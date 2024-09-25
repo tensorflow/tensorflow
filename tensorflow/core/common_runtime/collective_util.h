@@ -37,9 +37,9 @@ string SubdivPermDebugString(const CollectiveParams& col_params);
 class SubContext {
  public:
   OpKernelContext::Params sub_params_;
-  gtl::InlinedVector<TensorValue, 4> sub_inputs_;
-  gtl::InlinedVector<AllocatorAttributes, 4> sub_input_attr_;
-  gtl::InlinedVector<DeviceContext*, 4> sub_input_dc_;
+  absl::InlinedVector<TensorValue, 4UL> sub_inputs_;
+  absl::InlinedVector<AllocatorAttributes, 4UL> sub_input_attr_;
+  absl::InlinedVector<DeviceContext*, 4UL> sub_input_dc_;
   // Used only for Binary and Unary Ops for which we require
   // the calculation to be in-place on the first input.
   int forward_from_ = 0;

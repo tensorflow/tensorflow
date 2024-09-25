@@ -37,6 +37,7 @@ using tsl::profiler::kCustomPlanePrefix;            // NOLINT
 using tsl::profiler::kDeviceVendorAMD;              // NOLINT
 using tsl::profiler::kDeviceVendorNvidia;           // NOLINT
 using tsl::profiler::kGpuPlanePrefix;               // NOLINT
+using tsl::profiler::kHostOffloadOpLineName;        // NOLINT
 using tsl::profiler::kHostThreadsPlaneName;         // NOLINT
 using tsl::profiler::kKernelLaunchLineName;         // NOLINT
 using tsl::profiler::kMegaScaleBarrier;             // NOLINT
@@ -53,6 +54,7 @@ using tsl::profiler::kMetadataPlaneName;             // NOLINT
 using tsl::profiler::kPythonTracerPlaneName;         // NOLINT
 using tsl::profiler::kRoctracerApiPlaneName;         // NOLINT
 using tsl::profiler::kSourceLineName;                // NOLINT
+using tsl::profiler::kSparseCorePlaneRegex;          // NOLINT
 using tsl::profiler::kStepLineName;                  // NOLINT
 using tsl::profiler::kTensorFlowNameScopeLineName;   // NOLINT
 using tsl::profiler::kTensorFlowOpLineName;          // NOLINT

@@ -22,9 +22,9 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -236,10 +236,12 @@ std::string ComparisonDirectionToString(Comparison::Direction direction);
 std::string ComparisonTypeToString(Comparison::Type type);
 absl::string_view ComparisonPrimitiveTypeToString(PrimitiveType type);
 
-StatusOr<Comparison::Direction> StringToComparisonDirection(
+absl::StatusOr<Comparison::Direction> StringToComparisonDirection(
     absl::string_view direction);
-StatusOr<Comparison::Type> StringToComparisonType(absl::string_view comparison);
-StatusOr<Comparison::Order> StringToComparisonOrder(absl::string_view order);
+absl::StatusOr<Comparison::Type> StringToComparisonType(
+    absl::string_view comparison);
+absl::StatusOr<Comparison::Order> StringToComparisonOrder(
+    absl::string_view order);
 
 // Returns a comparison function using the provided key function on each value,
 // i.e. `key_fn(a) < key_fn(b)`.

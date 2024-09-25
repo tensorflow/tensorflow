@@ -16,12 +16,16 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -58,6 +62,49 @@ TEST_F(HloConstantSplitterTest, SplitConstants) {
   }
 }
 
+TEST_F(HloConstantSplitterTest, OnlySplitConstantsAllowedBySeedConstraints) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      param = (f32[], f32[]) parameter(0),
+        sharding={{maximal device=0}, {maximal device=0}}
+      gte0 = f32[] get-tuple-element(param), index=0
+      gte1 = f32[] get-tuple-element(param), index=1
+      constant1 = f32[] constant(1)
+      add0 = f32[] add(constant1, gte0)
+      add1 = f32[] add(constant1, add0)
+      constant2 = f32[] constant(2)
+      add2 = f32[] multiply(constant2, gte1)
+      ROOT root = (f32[], f32[], f32[]) tuple(constant2, add1, add2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  TF_ASSERT_OK(HloConstantSplitter(/* split_expressions */ false,
+                                   [](const HloInstruction* instruction) {
+                                     return instruction->name() != "constant1";
+                                   })
+                   .Run(module.get())
+                   .status());
+
+  // Check that every constant has at most one user except constant1 which
+  // should have 2 as it is not split.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kConstant &&
+          instruction->name() != "constant1") {
+        EXPECT_LE(instruction->user_count(), 1);
+      }
+    }
+  }
+
+  const HloInstruction* constant1 = FindInstruction(module.get(), "constant1");
+  ASSERT_NE(constant1, nullptr);
+  EXPECT_EQ(constant1->user_count(), 2);
+}
+
 TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   const char* module_str = R"(
     HloModule test_module
@@ -82,7 +129,7 @@ TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   EXPECT_FALSE(status_or.value());
 }
 
-TEST_F(HloConstantSplitterTest, SplittingExpressions) {
+TEST_F(HloConstantSplitterTest, SplittingExpressionsWithBroadcast) {
   const char* module_str = R"(
     HloModule test_module
 
@@ -115,6 +162,36 @@ TEST_F(HloConstantSplitterTest, SplittingExpressions) {
   TF_ASSERT_OK(dce.Run(module.get()).status());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
+}
+
+TEST_F(HloConstantSplitterTest, SplittingExpressionsWithSlice) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      iota.0 = u32[64] iota(), iota_dimension=0
+      slice.0 = u32[32] slice(iota.0), slice={[0:32]}
+      broadcast.0 = u32[16,32] broadcast(slice.0), dimensions={1}
+      broadcast.1 = u32[32,32] broadcast(slice.0), dimensions={1}
+      p.0 = u32[16,32] parameter(0)
+      p.1 = u32[32,32] parameter(1)
+      add.0 = u32[16,32] add(p.0, broadcast.0)
+      add.1 = u32[32,32] add(p.1, broadcast.1)
+      ROOT root = (u32[16,32], u32[32,32]) tuple(add.0, add.1)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
+  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  TF_ASSERT_OK(status_or.status());
+  // Verify that the changed flag returned is correct.
+  EXPECT_TRUE(status_or.value());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  XLA_VLOG_LINES(1, module->entry_computation()->ToString());
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 11);
 }
 
 TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {

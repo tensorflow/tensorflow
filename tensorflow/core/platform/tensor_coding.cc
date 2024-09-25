@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/tensor_coding.h"
 
+#include <climits>
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/core/platform/coding.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -34,6 +37,13 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
 }
 
 void EncodeStringList(const tstring* strings, int64_t n, string* out) {
+  int64_t tot = n * sizeof(size_t);
+  for (int i = 0; i < n; ++i) {
+    tot += strings[i].size();
+  }
+  if (tot > INT_MAX) {
+    LOG(FATAL) << "EncodeStringList size too large: " << tot;  // Crash OK
+  }
   out->clear();
   for (int i = 0; i < n; ++i) {
     core::PutVarint32(out, strings[i].size());
@@ -194,7 +204,7 @@ bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n) {
 }
 
 void CopyFromArray(absl::Cord* c, const char* base, size_t bytes) {
-  c->CopyFrom(base, bytes);
+  *c = absl::string_view(base, bytes);
 }
 
 class CordStringListEncoderImpl : public StringListEncoder {

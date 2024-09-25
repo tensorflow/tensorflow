@@ -94,6 +94,8 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:jpeg",
         "@com_google_absl//absl/base",
+        "@libjpeg_turbo//:jpeg",
     ],
 )

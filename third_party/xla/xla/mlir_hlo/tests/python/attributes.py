@@ -125,6 +125,8 @@ def test_gather_dimension_numbers():
   attr = mhlo.GatherDimensionNumbers.get(
       offset_dims=[1, 2],
       collapsed_slice_dims=[3, 4, 5],
+      operand_batching_dims=[],
+      start_indices_batching_dims=[],
       start_index_map=[6],
       index_vector_dim=7,
   )
@@ -185,6 +187,8 @@ def test_scatter_dimension_numbers():
   attr = mhlo.ScatterDimensionNumbers.get(
       update_window_dims=[1, 2, 3],
       inserted_window_dims=[4, 5],
+      input_batching_dims=[],
+      scatter_indices_batching_dims=[],
       scattered_dims_to_operand_dims=[6, 7],
       index_vector_dim=8,
   )
@@ -216,3 +220,13 @@ def test_type_extensions():
   attr = mhlo.TypeExtensions.get(bounds=[128, dyn_size])
   assert attr is not None
   assert attr.bounds == [128, dyn_size]
+
+
+@run
+def test_sparsity_descriptor():
+  attr = mhlo.SparsityDescriptor.get(dimension=1, n=2, m=4)
+  assert attr is not None
+  assert str(attr) == "#mhlo.sparsity<dimension = 1, n = 2, m = 4>"
+  assert attr.dimension == 1
+  assert attr.n == 2
+  assert attr.m == 4

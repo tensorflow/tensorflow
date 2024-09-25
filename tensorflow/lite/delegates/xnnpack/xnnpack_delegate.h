@@ -42,6 +42,9 @@ extern "C" {
 // Enable the latest XNNPACK operators and features in the delegate which have
 // not yet been enabled by default.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS 0x00000040
+// Enable XNNPack subgraph reshaping. This means that models with dynamic
+// tensors are supported and that inputs may be efficiently resized.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING 0x00000080
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -57,6 +60,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
@@ -64,9 +68,20 @@ typedef struct {
   // Deprecated. Use the flags bitfield with the
   // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
-  // Enable adaptive optimization for AVX CPUs.
-  bool experimental_adaptive_avx_optimization;
+  // Path to the weight cache to load.
+  //
+  // To keep backwards compatibility with the previous caching mechanism, the
+  // weight cache will only be loaded from this if `weight_cache` is undefined.
+  const char* weight_cache_file_path;
 } TfLiteXNNPackDelegateOptions;
+
+// Returns true on systems that support running the in-memory weight cache
+// provider.
+TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
+
+// Returns a file path that will activate the in-memory weight cache that
+// enables weight deduplication.
+TFL_CAPI_EXPORT const char* TfLiteXNNPackDelegateInMemoryFilePath();
 
 // Returns a structure with the default XNNPack delegate options.
 TFL_CAPI_EXPORT TfLiteXNNPackDelegateOptions
@@ -93,6 +108,13 @@ TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
 TFL_CAPI_EXPORT void* TfLiteXNNPackDelegateGetThreadPool(
     TfLiteDelegate* delegate);
 
+// Returns the options in the delegate.
+// Returns NULL if the delegate is NULL.
+//
+// WARNING: This API is experimental and subject to change.
+TFL_CAPI_EXPORT const TfLiteXNNPackDelegateOptions*
+TfLiteXNNPackDelegateGetOptions(TfLiteDelegate* delegate);
+
 // Returns the flags used for an XNNPack delegate.
 // See documentation for TfLiteXNNPackDelegateOptions.flags.
 //
@@ -107,11 +129,13 @@ TFL_CAPI_EXPORT void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate);
 // reduce memory bandwidth.
 TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
 TfLiteXNNPackDelegateWeightsCacheCreate();
+
 // Creates a new weights cache with a specified initial size that can be shared
 // with multiple delegate instances. The weights cache can hold up to size bytes
 // without growing.
 TFL_CAPI_EXPORT struct TfLiteXNNPackDelegateWeightsCache*
 TfLiteXNNPackDelegateWeightsCacheCreateWithSize(size_t size);
+
 // Soft-finalize a weights cache. Extra space will be left in the weights cache
 // to allow for cache "insertion" only if it is a cache hit. This has memory
 // overhead compared to TfLiteXNNPackDelegateWeightsCacheFinalizeHard. Use this
@@ -120,6 +144,7 @@ TfLiteXNNPackDelegateWeightsCacheCreateWithSize(size_t size);
 // Returns true on success, false on error.
 TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(
     struct TfLiteXNNPackDelegateWeightsCache* cache);
+
 // Hard-finalize a weights cache, cache is effectively frozen and no more cache
 // operations are allowed. Memory is resized to smallest possible. Use this if
 // the number of interpreter instances using XNNPACK delegate can be fixed and
@@ -128,6 +153,7 @@ TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(
 // Returns true on success, false on error.
 TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateWeightsCacheFinalizeHard(
     struct TfLiteXNNPackDelegateWeightsCache* cache);
+
 // Destroys a weights cache created with
 // `TfLiteXNNPackDelegateWeightsCacheCreate` call.
 TFL_CAPI_EXPORT void TfLiteXNNPackDelegateWeightsCacheDelete(

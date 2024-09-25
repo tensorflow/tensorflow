@@ -20,7 +20,7 @@ limitations under the License.
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/cloud/http_request_fake.h"
 #include "tsl/platform/env.h"
@@ -118,7 +118,7 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   EXPECT_EQ(13920, expiration_timestamp);
 
   // Now look at the JWT claim that was sent to the OAuth server.
-  StringPiece grant_type, assertion;
+  absl::string_view grant_type, assertion;
   ASSERT_TRUE(strings::Scanner(post_body)
                   .OneLiteral("grant_type=")
                   .RestartCapture()

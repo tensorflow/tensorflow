@@ -97,8 +97,8 @@ TextLineDatasetParams TextLineDatasetParams1() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::ZLIB;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -114,8 +114,8 @@ TextLineDatasetParams TextLineDatasetParams2() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::GZIP;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -131,8 +131,8 @@ TextLineDatasetParams TextLineDatasetParams3() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,

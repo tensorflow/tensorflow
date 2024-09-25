@@ -184,9 +184,9 @@ class XlaDevice : public LocalDevice {
   // Two convenient methods to get the underlying device context.
   // Get the default device context, created by the first
   // shape_representation_fn.
-  StatusOr<DeviceContext*> GetDeviceContextDefault();
+  absl::StatusOr<DeviceContext*> GetDeviceContextDefault();
   // Get the device context given the index.
-  StatusOr<DeviceContext*> GetDeviceContextWithIndex(int index);
+  absl::StatusOr<DeviceContext*> GetDeviceContextWithIndex(int index);
 
   // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
@@ -204,7 +204,7 @@ class XlaDevice : public LocalDevice {
   Status RefreshStatus() override TF_LOCKS_EXCLUDED(mu_);
 
  private:
-  StatusOr<xla::LocalClient*> GetOrCreateClient() const;
+  absl::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
@@ -214,7 +214,7 @@ class XlaDevice : public LocalDevice {
 
   // Return a vector of device context, ordered by the sequence in the given
   // shape_representation_fns.
-  StatusOr<std::vector<DeviceContext*>> GetDeviceContextLocked()
+  absl::StatusOr<std::vector<DeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Handles error when RefreshStatus sees !status.ok().

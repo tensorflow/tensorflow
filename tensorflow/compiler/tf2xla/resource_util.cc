@@ -55,8 +55,8 @@ bool IsControlFlowV1Node(const Node* n) {
 }
 
 // TODO(ycao): Add this as Tensorflow Node method.
-StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(const Node& n,
-                                                                 int idx) {
+absl::StatusOr<absl::InlinedVector<const Edge*, 1>> OutputEdgesByIndex(
+    const Node& n, int idx) {
   absl::InlinedVector<const Edge*, 1> res;
   if (idx >= n.num_outputs()) {
     return errors::InvalidArgument("Invalid out_edge index: ", idx, ", Node ",

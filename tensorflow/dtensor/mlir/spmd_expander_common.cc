@@ -23,22 +23,37 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -113,7 +128,7 @@ Status CreateSplitOp(const int num_split, const int split_dimension,
   // Correctly set output shapes of split op output if input shape is statically
   // known.
   mlir::Type output_type;
-  auto input_type = src_input.getType().cast<mlir::TensorType>();
+  auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
 
   if (input_type.hasRank()) {
     if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
@@ -680,7 +695,7 @@ mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
 
 Status SetBuilderInsertionAfterValue(mlir::Value value,
                                      mlir::OpBuilder& builder) {
-  if (value.isa<mlir::OpResult>()) {
+  if (mlir::isa<mlir::OpResult>(value)) {
     builder.setInsertionPointAfterValue(value);
     return absl::OkStatus();
   }
@@ -719,7 +734,7 @@ Status PrintTensor(mlir::Value value, const std::string& format_string = "%s") {
 Status ExtractConstStringVectorFromValue(
     mlir::Value value, llvm::SmallVectorImpl<std::string>& out_vector) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -736,7 +751,7 @@ Status ExtractConstStringVectorFromValue(
 
 StatusOr<std::string> ExtractConstScalarStringFromValue(mlir::Value value) {
   value = GetForwardedDTensorLayoutInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("Unable get constant value from block argument.");
   mlir::DenseStringElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {

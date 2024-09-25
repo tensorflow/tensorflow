@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ReaderNumWorkUnitsCompleted"
   input_arg {
     name: "reader_handle"

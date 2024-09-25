@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/model/affine_map_printer.h"
 
 #include <gmock/gmock.h>
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 

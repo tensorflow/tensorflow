@@ -1,13 +1,12 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 

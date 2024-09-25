@@ -91,33 +91,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class Kernel;
-class StreamExecutor;
-
-//===----------------------------------------------------------------------===//
-// Kernel cache config
-//===----------------------------------------------------------------------===//
-
-// This enum represents potential configurations of L1/shared memory when
-// running a particular kernel. These values represent user preference, and
-// the runtime is not required to respect these choices.
-enum class KernelCacheConfig {
-  // Indicates no preference for device L1/shared memory configuration.
-  kNoPreference,
-
-  // Indicates a preference for more shared memory than L1 cache.
-  kPreferShared,
-
-  // Indicates a preference for more L1 cache than shared memory.
-  kPreferL1,
-
-  // Indicates a preference for equal amounts of L1 cache and shared memory.
-  kPreferEqual,
-};
 
 //===----------------------------------------------------------------------===//
 // Kernel metadata
@@ -228,13 +205,6 @@ class Kernel {
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
 
-  // TODO(b/323534971): Kernel constructor should be moved to StreamExecutor or
-  // a dedicated KernelFactory accessible via StreamExecutor.
-
-  // Creates kernel on a given executor from a given kernel specification.
-  static absl::StatusOr<std::unique_ptr<Kernel>> Create(
-      StreamExecutor *executor, const MultiKernelLoaderSpec &spec);
-
   Kernel() = default;
   virtual ~Kernel() = default;
 
@@ -245,61 +215,42 @@ class Kernel {
   // nullary, unary, ...).
   virtual unsigned Arity() const = 0;
 
-  void set_metadata(const KernelMetadata &metadata) { metadata_ = metadata; }
-
-  const KernelMetadata &metadata() const { return metadata_; }
-
-  // Sets the preferred cache configuration for a kernel. This is just a
-  // suggestion to the runtime, and may not be honored during execution.
-  virtual void SetPreferredCacheConfig(KernelCacheConfig config) = 0;
-
-  // Gets the preferred cache configuration for a kernel.
-  virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
-
   // Returns the maximum number of blocks (per multiprocessor) occupied by the
   // kernel given the number of threads per block and shared memory size.
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  // Sets custom kernels arguments packing function for a kernel.
-  void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
-    kernel_args_packing_ = std::move(kernel_args_packing);
+  const KernelMetadata &metadata() const { return metadata_; }
+  void set_metadata(KernelMetadata metadata) {
+    metadata_ = std::move(metadata);
   }
 
-  const KernelArgsPacking &kernel_args_packing() const {
-    return kernel_args_packing_;
+  const KernelArgsPacking &args_packing() const { return args_packing_; }
+  void set_args_packing(KernelArgsPacking args_packing) {
+    args_packing_ = std::move(args_packing);
   }
 
-  void set_name(absl::string_view name);
   std::string_view name() const { return name_; }
-  std::string_view demangled_name() const { return demangled_name_; }
+  void set_name(absl::string_view name);
 
  private:
   std::string name_;
-  std::string demangled_name_;
 
   KernelMetadata metadata_;
-
-  KernelArgsPacking kernel_args_packing_;
+  KernelArgsPacking args_packing_;
 };
 
 //===----------------------------------------------------------------------===//
 // Typed kernel
 //===----------------------------------------------------------------------===//
+template <typename... Params>
+class TypedKernelFactory;
 
 // Typed kernel is a typed smart-pointer-like wrapper around untyped Kernel.
 template <typename... Params>
 class TypedKernel {
  public:
   static constexpr size_t kNumberOfParameters = sizeof...(Params);
-
-  // Creates a typed kernel on a given executor from a kernel specification.
-  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
-                                            const MultiKernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
-                        Kernel::Create(executor, spec));
-    return TypedKernel(std::move(kernel));
-  }
 
   TypedKernel() = default;
 
@@ -311,7 +262,11 @@ class TypedKernel {
 
   operator bool() const { return static_cast<bool>(kernel_); }  // NOLINT
 
+  // Type of factory used to create a TypedKernel.
+  using FactoryType = TypedKernelFactory<Params...>;
+
  private:
+  friend class TypedKernelFactory<Params...>;
   explicit TypedKernel(std::unique_ptr<Kernel> kernel)
       : kernel_(std::move(kernel)) {}
 

@@ -75,16 +75,15 @@ class DumpTensorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->env()->RecursivelyCreateDir(log_dir_path));
 
     std::string tensor_data_path = io::JoinPath(log_dir_path, file_name);
-    std::unique_ptr<tsl::WritableFile> tensor_data_file;
     OP_REQUIRES_OK(
-        ctx, ctx->env()->NewWritableFile(tensor_data_path, &tensor_data_file));
+        ctx, ctx->env()->NewWritableFile(tensor_data_path, &tensor_data_file_));
 
     // Turn on Zlib compression.
     io::RecordWriterOptions options =
         io::RecordWriterOptions::CreateRecordWriterOptions(
             io::compression::kZlib);
     tensor_data_writer_ =
-        std::make_unique<io::RecordWriter>(tensor_data_file.release(), options);
+        std::make_unique<io::RecordWriter>(tensor_data_file_.get(), options);
     OP_REQUIRES(ctx, tensor_data_writer_ != nullptr,
                 absl::AbortedError("Could not create record writer"));
 
@@ -102,6 +101,7 @@ class DumpTensorOp : public OpKernel {
   ~DumpTensorOp() override {
     (void)tensor_data_writer_->Flush();
     (void)tensor_data_writer_->Close();
+    (void)tensor_data_file_->Close();
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -118,6 +118,7 @@ class DumpTensorOp : public OpKernel {
 
  private:
   bool enabled_;
+  std::unique_ptr<tsl::WritableFile> tensor_data_file_;
   std::unique_ptr<io::RecordWriter> tensor_data_writer_;
 };
 

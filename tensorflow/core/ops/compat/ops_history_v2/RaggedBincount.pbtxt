@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RaggedBincount"
   input_arg {
     name: "splits"

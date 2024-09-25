@@ -23,9 +23,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 

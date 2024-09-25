@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/IR/BuiltinOps.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 

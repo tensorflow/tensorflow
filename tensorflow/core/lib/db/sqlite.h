@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <mutex>
 
+#include "absl/log/check.h"
 #include "sqlite3.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
 
 /// TensorFlow SQLite Veneer
 ///

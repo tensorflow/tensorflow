@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -67,9 +66,9 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "stablehlo/dialect/ChloOps.h"
 #include "transforms/passes.h"
 #include "transforms/rewriters.h"
 
@@ -91,7 +90,7 @@ static constexpr char kFusionFunctionLabel[] = "fusion";
 static Value materializeToTensor(OpBuilder& builder, TensorType type,
                                  ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
-  assert(inputs[0].getType().isa<BaseMemRefType>());
+  assert(mlir::isa<BaseMemRefType>(inputs[0].getType()));
   return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
 }
 
@@ -120,11 +119,11 @@ class CustomBufferizeTypeConverter
       // a memref with a specified layout, i.e. non-empty affine map.
       // TODO(pifon) : Change how target materialization is invoked in dialect
       // conversion.
-      if (auto memrefType = inputs[0].getType().dyn_cast<MemRefType>()) {
+      if (auto memrefType = mlir::dyn_cast<MemRefType>(inputs[0].getType())) {
         assert(!memrefType.getLayout().isIdentity());
         return inputs[0];
       }
-      assert(inputs[0].getType().isa<TensorType>());
+      assert(mlir::isa<TensorType>(inputs[0].getType()));
       return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
     });
   }
@@ -134,10 +133,12 @@ struct ComputeOpAndFuncBufferizePass
     : public impl::ComputeOpAndFuncBufferizePassBase<
           ComputeOpAndFuncBufferizePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
-                linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                shape::ShapeDialect, vector::VectorDialect>();
+    registry.insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
+                    memref::MemRefDialect, mhlo::MhloDialect,
+                    shape::ShapeDialect, vector::VectorDialect>();
+    arith::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::bufferization::func_ext::
+        registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -153,8 +154,7 @@ struct ComputeOpAndFuncBufferizePass
     // will be migrated to BufferizableOpInterface-based bufferization.
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
                                   linalg::LinalgDialect, mhlo::MhloDialect,
-                                  shape::ShapeDialect, tensor::TensorDialect,
-                                  vector::VectorDialect>();
+                                  shape::ShapeDialect, vector::VectorDialect>();
 
     if (failed(bufferization::bufferizeOp(getOperation(), options))) {
       signalPassFailure();
@@ -171,12 +171,15 @@ struct ComputeOpAndFuncBufferizePass
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<
-        affine::AffineDialect, arith::ArithDialect, complex::ComplexDialect,
-        func::FuncDialect, lmhlo::LmhloDialect, math::MathDialect,
-        memref::MemRefDialect, tensor::TensorDialect, vector::VectorDialect>();
+    target.addLegalDialect<affine::AffineDialect, arith::ArithDialect,
+                           complex::ComplexDialect, func::FuncDialect,
+                           math::MathDialect, memref::MemRefDialect,
+                           tensor::TensorDialect, vector::VectorDialect>();
     target.addLegalOp<UnrealizedConversionCastOp>();
-    target.addIllegalDialect<mhlo::MhloDialect>();
+    auto isLegalMhloOp = [&](Operation* op) {
+      return isa<mhlo::MinimumBroadcastShapesOp>(op);
+    };
+    target.addDynamicallyLegalDialect<mhlo::MhloDialect>(isLegalMhloOp);
 
     CustomBufferizeTypeConverter converter;
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
@@ -213,10 +216,9 @@ struct OneShotBufferizePass
     : public impl::OneShotBufferizeBase<OneShotBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<bufferization::BufferizationDialect, lmhlo::LmhloDialect,
-                linalg::LinalgDialect, memref::MemRefDialect, mhlo::MhloDialect,
-                scf::SCFDialect, shape::ShapeDialect, vector::VectorDialect>();
+    registry.insert<bufferization::BufferizationDialect, linalg::LinalgDialect,
+                    memref::MemRefDialect, mhlo::MhloDialect, scf::SCFDialect,
+                    shape::ShapeDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
         registry);
@@ -262,11 +264,10 @@ struct FinalBufferizePass
 
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry
-        .insert<affine::AffineDialect, bufferization::BufferizationDialect,
-                linalg::LinalgDialect, memref::MemRefDialect, scf::SCFDialect,
-                shape::ShapeDialect, tensor::TensorDialect, lmhlo::LmhloDialect,
-                arith::ArithDialect, vector::VectorDialect>();
+    registry.insert<affine::AffineDialect, bufferization::BufferizationDialect,
+                    linalg::LinalgDialect, memref::MemRefDialect,
+                    scf::SCFDialect, shape::ShapeDialect, tensor::TensorDialect,
+                    arith::ArithDialect, vector::VectorDialect>();
     arith::registerBufferizableOpInterfaceExternalModels(registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
@@ -315,14 +316,14 @@ struct FinalBufferizePass
         arith::ArithDialect, bufferization::BufferizationDialect,
         cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
         func::FuncDialect, scf::SCFDialect, tensor::TensorDialect,
-        affine::AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,
-        linalg::LinalgDialect, math::MathDialect, vector::VectorDialect>();
+        affine::AffineDialect, shape::ShapeDialect, linalg::LinalgDialect,
+        math::MathDialect, vector::VectorDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
-                        tensor::RankOp, chlo::MinimumBroadcastShapesOp,
+                        tensor::RankOp, mhlo::MinimumBroadcastShapesOp,
                         bufferization::ToTensorOp, bufferization::ToMemrefOp,
                         tensor::ExpandShapeOp, tensor::CollapseShapeOp>();
     CustomBufferizeTypeConverter converter;

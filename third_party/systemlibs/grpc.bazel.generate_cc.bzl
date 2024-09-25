@@ -172,8 +172,6 @@ _generate_cc = rule(
             cfg = "exec",
         ),
     },
-    # We generate .h files, so we need to output to genfiles.
-    output_to_genfiles = True,
     implementation = generate_cc_impl,
 )
 

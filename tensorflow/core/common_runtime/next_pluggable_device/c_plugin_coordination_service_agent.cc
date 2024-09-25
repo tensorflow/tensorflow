@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-StatusOr<std::string> ProcessGetKeyValueResult(TF_Buffer* result_buf,
-                                               TF_Status* status) {
+absl::StatusOr<std::string> ProcessGetKeyValueResult(TF_Buffer* result_buf,
+                                                     TF_Status* status) {
   if (TF_GetCode(status) != TF_OK) {
     return StatusFromTF_Status(status);
   } else {
@@ -51,7 +51,7 @@ Status CPluginCoordinationServiceAgent::InsertKeyValue(std::string_view key,
   return StatusFromTF_Status(status);
 }
 
-StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
+absl::StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
     std::string_view key) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
@@ -60,7 +60,7 @@ StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
   return ProcessGetKeyValueResult(result_buf, status);
 }
 
-StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
+absl::StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
     std::string_view key, absl::Duration timeout) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();
@@ -69,7 +69,7 @@ StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
   return ProcessGetKeyValueResult(result_buf, status);
 }
 
-StatusOr<std::string> CPluginCoordinationServiceAgent::TryGetKeyValue(
+absl::StatusOr<std::string> CPluginCoordinationServiceAgent::TryGetKeyValue(
     std::string_view key) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();

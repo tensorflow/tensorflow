@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/status.h"
 
 // This provides a lower level API than TransferManager that does not depend on
 // StreamExecutor. It is intended to be used by callers that do not want to use
@@ -30,17 +30,17 @@ limitations under the License.
 namespace xla {
 
 // Helper function to transfers to infeed on CPU.
-Status TransferLiteralToInfeedOnCpu(int device_ordinal,
-                                    const LiteralSlice& literal);
+absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
+                                          const LiteralSlice& literal);
 
 // Helper function to transfers from outfeed on CPU.
-Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
-                                       MutableBorrowingLiteral literal);
+absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
+                                             MutableBorrowingLiteral literal);
 
 // Helper function to retrieve dynamic shape on CPU.
-Status ReadDynamicShapesOnCpu(const ShapedBuffer* device_buffer,
-                              Shape* device_shape,
-                              HloCostAnalysis::ShapeSizeFunction shape_size_fn);
+absl::Status ReadDynamicShapesOnCpu(
+    const ShapedBuffer* device_buffer, Shape* device_shape,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_CPU_CPU_XFEED_H_

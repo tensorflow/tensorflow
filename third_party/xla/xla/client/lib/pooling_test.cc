@@ -19,7 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "xla/test.h"
+#include "absl/types/span.h"
+#include "xla/client/padding.h"
+#include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/shape.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 

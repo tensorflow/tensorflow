@@ -26,7 +26,6 @@ def quantize_qat_model(
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -40,7 +39,6 @@ def quantize_ptq_dynamic_range(
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -53,7 +51,6 @@ def quantize_weight_only(
     quantization_options_serialized: bytes,
     *,
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
 ) -> Any: ...  # Status
 
@@ -67,7 +64,6 @@ def quantize_ptq_static_range(
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
-    function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
     # Value type: RepresentativeDatasetFile.
     representative_dataset_file_map_serialized: dict[str, bytes],

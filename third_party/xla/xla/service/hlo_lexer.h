@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_LEXER_H_
 #define XLA_SERVICE_HLO_LEXER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/shape.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/regexp.h"
@@ -82,6 +81,7 @@ enum class TokKind {
   kDimLabels,      // [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
   kDxD,            // [0-9]+(x[0-9]+)+
   kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+  kSparsityDesc,   // ([LR]\.[0-9]+@[0-9]+:[0-9]+_?)+
   kIdent,          // other identifiers
   kString,         // "abcd\"\n"
   kInt,            // 42
@@ -110,6 +110,7 @@ class HloLexer {
       case TokKind::kDimLabels:
       case TokKind::kDxD:
       case TokKind::kPad:
+      case TokKind::kSparsityDesc:
       case TokKind::kString:
       case TokKind::kIdent:
         return token_state_.str_val;

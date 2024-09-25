@@ -69,6 +69,21 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[function(x) for x in range(5)])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testNoMapParallelizationWhenSynchronous(self):
+    dataset = (
+        dataset_ops.Dataset.range(5)
+        .apply(testing.assert_next(["Map"]))
+        .map(lambda x: x + 1, synchronous=True)
+    )
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_parallelization = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset, expected_output=[x + 1 for x in range(5)]
+    )
+
+  @combinations.generate(test_base.default_test_combinations())
   def testCapturedConstant(self):
     captured_t = constant_op.constant(42, dtype=dtypes.int64)
     def fn(x):

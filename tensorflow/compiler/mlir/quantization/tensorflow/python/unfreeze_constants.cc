@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/core/platform/env.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -47,7 +46,7 @@ absl::Status UnfreezeConstantsAndSaveVariables(
       },
       ctx, module_op));
 
-  if (const tsl::Status create_dir_status =
+  if (const absl::Status create_dir_status =
           Env::Default()->CreateDir(std::string(checkpoint_dir));
       !create_dir_status.ok()) {
     LOG(ERROR) << "Failed to create checkpoint directory at: "

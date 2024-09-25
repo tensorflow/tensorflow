@@ -378,14 +378,14 @@ TEST(GraphUtilsTest, TestFindSinkNodeNoFetches) {
 
 TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoShapes) {
   NodeDef from = NDef("range", "RangeDataset", {},
-                      {{kOutputTypes, gtl::ArraySlice<DataType>{}}});
+                      {{kOutputTypes, absl::Span<const DataType>{}}});
   NodeDef to_node;
   EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
 }
 
 TEST(GraphUtilsTest, TestCopyShapesAndTypesAttrsNoTypes) {
   NodeDef from = NDef("range", "RangeDataset", {},
-                      {{kOutputShapes, gtl::ArraySlice<TensorShape>{}}});
+                      {{kOutputShapes, absl::Span<const TensorShape>{}}});
   NodeDef to_node;
   EXPECT_FALSE(CopyShapesAndTypesAttrs(from, &to_node));
 }

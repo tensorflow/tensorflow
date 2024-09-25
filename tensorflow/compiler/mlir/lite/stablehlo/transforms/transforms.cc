@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -38,7 +39,7 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
   // if the input is a call_xla_module, then unwrap the content
   pm.addPass(mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
-  // TODO(b/230572023): Consider improving shape inference for While op instead
+  // TODO: b/230572023 - Consider improving shape inference for While op instead
   // of dropping the attribute. This need not be correct for models not trained
   // on TPU.
 
@@ -76,7 +77,8 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
   // TF -> StableHLO legalization.
   AddLegalizeTFToStablehloPasses(pm, /*skip_quantization_ops=*/false,
-                                 skip_resize);
+                                 skip_resize,
+                                 /*skip_partitioned_calls=*/false);
 
   // Wrap disallowed ops in stablehlo.custom_call ops.
   if (smuggle_disallowed_ops) {
@@ -85,11 +87,18 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
   }
 }
 
-void AddMhloOptimizationPasses(OpPassManager& pm) {
+void AddMhloOptimizationPasses(OpPassManager& pm,
+                               const bool add_fold_broadcast_pass) {
   // Rewrites some patterns for better performance.
   pm.addNestedPass<func::FuncOp>(createUnfuseBatchNormPass());
   pm.addNestedPass<func::FuncOp>(createFuseConvolutionPass());
   pm.addNestedPass<func::FuncOp>(createOptimizePass());
+  // Conditionally enable below pass because this causes unfused convolutions
+  // described in b/293149194. This problem is not replicated in
+  // StableHLO Quantizer.
+  if (add_fold_broadcast_pass) {
+    pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
+  }
 
   // Rewrites legacy StableHLO ops.
   pm.addNestedPass<func::FuncOp>(mhlo::createLegalizeEinsumToDotGeneralPass());
@@ -109,8 +118,8 @@ void AddStablehloOptimizationPasses(OpPassManager& pm) {
   // StableHLO -> MHLO legalization.
   pm.addPass(mhlo::createStablehloLegalizeToHloPass());
 
-  AddMhloOptimizationPasses(pm);
-  // TODO(b/293149194) Add `createFoldBroadcastPass` back to
+  AddMhloOptimizationPasses(pm, /*enable_stablehlo_quantizer=*/false);
+  // TODO: b/293149194 - Add `createFoldBroadcastPass` back to
   // `AddMhloOptimizationPasses`
   pm.addNestedPass<func::FuncOp>(createFoldBroadcastPass());
 

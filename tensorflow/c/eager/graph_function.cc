@@ -14,14 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/graph_function.h"
 
+#include <utility>
+
+#include "tensorflow/c/eager/abstract_function.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/platform/status.h"
+
 namespace tensorflow {
 namespace tracing {
 namespace graph {
 GraphFunction::GraphFunction(FunctionDef fdef)
-    : AbstractFunction(kGraph), fdef_(fdef) {}
+    : AbstractFunction(kGraph),
+      func_record_(new FunctionRecord(std::move(fdef), {}, true)) {}
 GraphFunction::~GraphFunction() {}
-Status GraphFunction::GetFunctionDef(FunctionDef** fdef) {
-  *fdef = &fdef_;
+Status GraphFunction::GetFunctionDef(const FunctionDef **fdef) {
+  *fdef = &(func_record_->fdef());
   return absl::OkStatus();
 }
 }  // namespace graph

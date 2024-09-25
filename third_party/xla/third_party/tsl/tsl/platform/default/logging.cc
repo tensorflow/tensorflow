@@ -18,6 +18,8 @@ limitations under the License.
 // TODO(b/142492876): Avoid depending on absl internal.
 #include "absl/base/internal/cycleclock.h"
 #include "absl/base/internal/sysinfo.h"
+#include "absl/base/log_severity.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
@@ -293,7 +295,7 @@ bool EmitThreadIdFromEnv() {
 
 }  // namespace
 
-int64_t MinLogLevelFromEnv() {
+absl::LogSeverityAtLeast MinLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since LOG uses >=
@@ -301,14 +303,15 @@ int64_t MinLogLevelFromEnv() {
   // the value we're interested on to disable printing is the maximum severity.
   // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  return tsl::NUM_SEVERITIES;
+  return absl::LogSeverityAtLeast::kInfinity;
 #else
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
-  return LogLevelStrToInt(tf_env_var_val);
+  return static_cast<absl::LogSeverityAtLeast>(
+      LogLevelStrToInt(tf_env_var_val));
 #endif
 }
 
-int64_t MaxVLogLevelFromEnv() {
+int MaxVLogLevelFromEnv() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
   // return a value so that nothing is actually printed. Since VLOG uses <=
@@ -323,7 +326,7 @@ int64_t MaxVLogLevelFromEnv() {
 #endif
 }
 
-LogMessage::LogMessage(const char* fname, int line, int severity)
+LogMessage::LogMessage(const char* fname, int line, absl::LogSeverity severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
 LogMessage& LogMessage::AtLocation(const char* fname, int line) {
@@ -334,7 +337,7 @@ LogMessage& LogMessage::AtLocation(const char* fname, int line) {
 
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
-  static int64_t min_log_level = MinLogLevelFromEnv();
+  static absl::LogSeverityAtLeast min_log_level = MinLogLevelFromEnv();
   if (severity_ >= min_log_level) {
     GenerateLogMessage();
   }
@@ -344,8 +347,8 @@ void LogMessage::GenerateLogMessage() {
   TFLogSinks::Instance().Send(TFLogEntry(severity_, fname_, line_, str()));
 }
 
-int64_t LogMessage::MaxVLogLevel() {
-  static int64_t max_vlog_level = MaxVLogLevelFromEnv();
+int LogMessage::MaxVLogLevel() {
+  static int max_vlog_level = MaxVLogLevelFromEnv();
   return max_vlog_level;
 }
 
@@ -368,7 +371,7 @@ bool LogMessage::VmoduleActivated(const char* fname, int level) {
 }
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)
-    : LogMessage(file, line, FATAL) {}
+    : LogMessage(file, line, absl::LogSeverity::kFatal) {}
 LogMessageFatal::~LogMessageFatal() {
   // abort() ensures we don't return (we promised we would not via
   // ATTRIBUTE_NORETURN).
@@ -376,7 +379,7 @@ LogMessageFatal::~LogMessageFatal() {
   abort();
 }
 
-void LogString(const char* fname, int line, int severity,
+void LogString(const char* fname, int line, absl::LogSeverity severity,
                const string& message) {
   LogMessage(fname, line, severity) << message;
 }

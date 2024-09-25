@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "InfeedEnqueueTuple"
   input_arg {
     name: "inputs"

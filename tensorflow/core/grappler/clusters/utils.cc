@@ -100,7 +100,7 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   // 8 is the number of bits per byte. 2 is accounted for
   // double data rate (DDR).
   device.set_bandwidth(properties.memoryBusWidth / 8 *
-                       properties.memoryClockRate * 2);
+                       properties.memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
       strings::StrCat(properties.major, ".", properties.minor);
@@ -132,10 +132,10 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   // 8 is the number of bits per byte. 2 is accounted for
   // double data rate (DDR).
   device.set_bandwidth(properties.memoryBusWidth / 8 *
-                       properties.memoryClockRate * 2);
+                       properties.memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
-      strings::StrCat("gfx", properties.gcnArch);
+      strings::StrCat("gfx", properties.gcnArchName);
 #endif
 
   return device;

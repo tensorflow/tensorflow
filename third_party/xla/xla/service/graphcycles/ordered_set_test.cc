@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "xla/service/graphcycles/ordered_set.h"
 
-#include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/test_benchmark.h"
 
-namespace tensorflow {
+namespace xla {
 namespace {
 TEST(OrderedSetTest, Insert) {
   OrderedSet<int> ordered_set;
@@ -113,4 +111,4 @@ TEST(OrderedSetTest, LargeInsertions) {
   }
 }
 }  // namespace
-}  // namespace tensorflow
+}  // namespace xla

@@ -257,7 +257,7 @@ void ClusterFunctionLibraryRuntime::Instantiate(
 
 void ClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::LocalHandle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::LocalHandle handle, absl::Span<const Tensor> args,
     std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -334,7 +334,7 @@ void ClusterFunctionLibraryRuntime::Run(
 void ClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle,
-    gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
+    absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {

@@ -199,7 +199,7 @@ template <>
 struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
   template <typename IntegerType>
   static inline IntegerType Run(IntegerType x, int exponent) {
-    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
+    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32_t>(-exponent)));
   }
   template <typename IntegerType>
   static inline IntegerType RunMult(IntegerType x, IntegerType exponent) {
@@ -207,7 +207,7 @@ struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
   }
   template <typename IntegerType>
   static inline IntegerType RunMult(IntegerType x, int exponent) {
-    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(exponent)));
+    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32_t>(exponent)));
   }
 };
 #endif  // ARM NEON
@@ -231,18 +231,18 @@ struct QuantizationTypeImpl {};
 
 template <>
 struct QuantizationTypeImpl<QuantizationType::kNonPerChannelUint8> {
-  typedef uint8 ExternalType;
+  typedef uint8_t ExternalType;
 
   static constexpr int kIntSymmetricZeroPoint = 128;
-  static constexpr uint8 kUint8SignBit = 0x80;
+  static constexpr uint8_t kUint8SignBit = 0x80;
 };
 
 template <>
 struct QuantizationTypeImpl<QuantizationType::kPerChannelInt8> {
-  typedef int8 ExternalType;
+  typedef int8_t ExternalType;
 
   static constexpr int kIntSymmetricZeroPoint = 0;
-  static constexpr uint8 kUint8SignBit = 0x0;
+  static constexpr uint8_t kUint8SignBit = 0x0;
 };
 
 template <
@@ -250,16 +250,16 @@ template <
 inline DotProduct3x3KernelType CategorizeDotProductKernel(
     const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
     const RuntimeShape& output_shape, const DepthwiseParams& params,
-    const int32* output_shift_ptr = nullptr) {
+    const int32_t* output_shift_ptr = nullptr) {
   constexpr int kSymmetricZeroPoint =
       QuantizationTypeImpl<quantization_type>::kIntSymmetricZeroPoint;
   const int padding =
       std::max(params.padding_values.width, params.padding_values.height);
   const int stride = params.stride_width;
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 depth_multiplier = params.depth_multiplier;
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
+  const int32_t input_depth = input_shape.Dims(3);
+  const int32_t depth_multiplier = params.depth_multiplier;
+  const int32_t filter_height = filter_shape.Dims(1);
+  const int32_t filter_width = filter_shape.Dims(2);
 
   bool supported = stride == params.stride_height && stride <= 2 &&
                    padding <= 1 && filter_width == 3 && filter_height == 3 &&
@@ -311,19 +311,19 @@ struct DepthwiseConvParams {
   int64_t output_depth;
   int64_t output_row_size;
   int64_t filter_row_size;
-  int32 input_offset;
-  int32 output_offset;
-  int32 filter_offset;
-  int32 output_multiplier;
-  int32 output_activation_min;
-  int32 output_activation_max;
-  int32 output_right_shift;
-  int32 input_width;
-  int32 input_height;
-  int32 stride_width;
-  int32 stride_height;
-  int32 output_width;
-  int32 output_height;
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t filter_offset;
+  int32_t output_multiplier;
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+  int32_t output_right_shift;
+  int32_t input_width;
+  int32_t input_height;
+  int32_t stride_width;
+  int32_t stride_height;
+  int32_t output_width;
+  int32_t output_height;
   float float_output_activation_min;
   float float_output_activation_max;
 };
@@ -335,51 +335,51 @@ struct DepthwiseConvParams {
 struct DepthwiseConvDotProdParams {
   int64_t input_depth;
   int64_t output_depth;
-  int32 stride;
-  int32 bias_increment;
+  int32_t stride;
+  int32_t bias_increment;
   //
-  int32 input_offset;
-  int32 output_offset;
-  int32 output_multiplier;
-  int32 output_shift;
-  int32 quantized_activation_min;
-  int32 quantized_activation_max;
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
+  int32_t output_shift;
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
   //
-  int32 padding_left;
-  int32 padding_right;
-  int32 padding_top;
-  int32 padding_bottom;
+  int32_t padding_left;
+  int32_t padding_right;
+  int32_t padding_top;
+  int32_t padding_bottom;
   //
-  int32 depth_micro_repeats;
+  int32_t depth_micro_repeats;
   //
-  int32 width_macro_count;
-  int32 input_width_overall_micro_repeats;
-  int32 input_width_micro_repeats;
-  int32 residual_width;
-  int32 output_width_overall_micro_repeats;
-  int32 output_width_micro_repeats;
-  int32 output_residual_width;
-  int32 workspace_width_micro_repeats;
+  int32_t width_macro_count;
+  int32_t input_width_overall_micro_repeats;
+  int32_t input_width_micro_repeats;
+  int32_t residual_width;
+  int32_t output_width_overall_micro_repeats;
+  int32_t output_width_micro_repeats;
+  int32_t output_residual_width;
+  int32_t workspace_width_micro_repeats;
   //
-  int32 height_macro_count;
-  int32 inbound_block_height;
-  int32 outbound_block_height;
-  int32 input_height_stride;
-  int32 output_height_stride;
-  int32 workspace_height_stride;
+  int32_t height_macro_count;
+  int32_t inbound_block_height;
+  int32_t outbound_block_height;
+  int32_t input_height_stride;
+  int32_t output_height_stride;
+  int32_t workspace_height_stride;
   //
-  int32 four_over_stride;
+  int32_t four_over_stride;
   //
-  const int32* output_multiplier_per_channel;
-  const int32* output_shift_per_channel;
+  const int32_t* output_multiplier_per_channel;
+  const int32_t* output_shift_per_channel;
 };
 
-template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
-          int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32_t kDepth,
+          int32_t kStrideWidth, int32_t kStrideHeight>
 struct DepthwiseConvWindow {};
 
-template <DepthwiseConvOutputRounding output_rounding, int32 kDepth,
-          int32 kStrideWidth, int32 kStrideHeight>
+template <DepthwiseConvOutputRounding output_rounding, int32_t kDepth,
+          int32_t kStrideWidth, int32_t kStrideHeight>
 struct DepthwiseConvWindowPerChannel {};
 
 enum class EdgeType { kCorner, kHorizontal, kVertical, kCenter };
@@ -397,13 +397,13 @@ struct DepthwiseConvPartialPerChannel {};
 // this is the cache line size.
 template <typename T>
 inline void ShuffleInput(const T* input_ptr, int64_t input_depth,
-                         int32 input_width, int32 input_height,
-                         int64_t output_depth, int32 output_width,
-                         int32 output_height, T* output_ptr) {
+                         int32_t input_width, int32_t input_height,
+                         int64_t output_depth, int32_t output_width,
+                         int32_t output_height, T* output_ptr) {
   const int64_t input_row_size = input_depth * input_width;
-  for (int32 y = 0; y < output_height; y++) {
+  for (int32_t y = 0; y < output_height; y++) {
     const T* ptr = input_ptr;
-    for (int32 x = 0; x < output_width; x++) {
+    for (int32_t x = 0; x < output_width; x++) {
       memcpy(output_ptr, ptr, output_depth);
       output_ptr += output_depth;
       ptr += input_depth;
@@ -413,21 +413,21 @@ inline void ShuffleInput(const T* input_ptr, int64_t input_depth,
 }
 
 // Calculates the input size depending on stride and output.
-inline int32 get_shuffle_input_size(int32 stride, int32 output) {
+inline int32_t get_shuffle_input_size(int32_t stride, int32_t output) {
   return stride * (output - 1) + 3;
 }
 
 // Indicates the input and output dimensions used when shuffling input
 // activations.
 struct ShuffleParams {
-  int32 output_width;
-  int32 output_height;
-  int32 input_width;
-  int32 input_height;
+  int32_t output_width;
+  int32_t output_height;
+  int32_t input_width;
+  int32_t input_height;
 
   ShuffleParams() = default;
-  ShuffleParams(int32 output_width, int32 output_height, int32 stride_width,
-                int32 stride_height)
+  ShuffleParams(int32_t output_width, int32_t output_height,
+                int32_t stride_width, int32_t stride_height)
       : output_width(output_width),
         output_height(output_height),
         input_width(get_shuffle_input_size(stride_width, output_width)),
@@ -438,17 +438,17 @@ template <
     QuantizationType quantization_type = QuantizationType::kNonPerChannelUint8>
 inline bool Fast3x3FilterKernelSupported(
     const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    int32 stride_width, int32 stride_height, int32 dilation_width_factor,
-    int32 dilation_height_factor, int32 pad_width, int32 pad_height,
-    int32 depth_multiplier, const RuntimeShape& output_shape,
-    int32 output_shift, const int32* output_shift_ptr = nullptr) {
-  const int32 input_height = input_shape.Dims(1);
-  const int32 input_width = input_shape.Dims(2);
-  const int32 input_depth = input_shape.Dims(3);
-  const int32 filter_height = filter_shape.Dims(1);
-  const int32 filter_width = filter_shape.Dims(2);
-  const int32 output_height = output_shape.Dims(1);
-  const int32 output_width = output_shape.Dims(2);
+    int32_t stride_width, int32_t stride_height, int32_t dilation_width_factor,
+    int32_t dilation_height_factor, int32_t pad_width, int32_t pad_height,
+    int32_t depth_multiplier, const RuntimeShape& output_shape,
+    int32_t output_shift, const int32_t* output_shift_ptr = nullptr) {
+  const int32_t input_height = input_shape.Dims(1);
+  const int32_t input_width = input_shape.Dims(2);
+  const int32_t input_depth = input_shape.Dims(3);
+  const int32_t filter_height = filter_shape.Dims(1);
+  const int32_t filter_width = filter_shape.Dims(2);
+  const int32_t output_height = output_shape.Dims(1);
+  const int32_t output_width = output_shape.Dims(2);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -466,14 +466,14 @@ inline bool Fast3x3FilterKernelSupported(
   // Handle case where padding is zero but padding type is not kValid.
   // This would require special boundary case handling that is not supported.
 
-  const int32 out_x = output_width - 1;
-  const int32 out_y = output_height - 1;
+  const int32_t out_x = output_width - 1;
+  const int32_t out_y = output_height - 1;
 
-  const int32 in_x_origin = (out_x * stride_width) - pad_width;
-  const int32 in_y_origin = (out_y * stride_height) - pad_height;
+  const int32_t in_x_origin = (out_x * stride_width) - pad_width;
+  const int32_t in_y_origin = (out_y * stride_height) - pad_height;
 
-  const int32 in_x_end = in_x_origin + filter_width;
-  const int32 in_y_end = in_y_origin + filter_height;
+  const int32_t in_x_end = in_x_origin + filter_width;
+  const int32_t in_y_end = in_y_origin + filter_height;
 
   // Supported only if filter on the right and bottom boundary lies completely
   // within the input if padding is zero.
@@ -525,7 +525,7 @@ struct ProcessPerDepth {
 template <DepthwiseConvImplementation implementation,
           QuantizationType quantization_type,
           DepthwiseConvDepthMultiplication depth_multiplication,
-          int32 max_padding>
+          int32_t max_padding>
 struct PackMacroBlock {
   // Routine is contained in a static Run() method. No default template version
   // is supplied, so that all implementations are deliberate choices of template
@@ -543,7 +543,7 @@ struct PackMacroBlock {
 // See the comments preceding DepthwiseConvDotProduct3x3() for further notes.
 template <DepthwiseConvImplementation implementation,
           QuantizationType quantization_type,
-          DepthwiseConvDepthMultiplication depth_multiplication, int32 stride>
+          DepthwiseConvDepthMultiplication depth_multiplication, int32_t stride>
 struct KernelMacroBlock {
   // Routine is contained in a static Run() method. No default template version
   // is supplied, so that all implementations are deliberate choices of template

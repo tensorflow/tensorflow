@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
@@ -30,6 +31,7 @@ limitations under the License.
 
 #if !defined(PLATFORM_GOOGLE)
 #include "third_party/gpus/cuda/cuda_config.h"
+#include "tsl/platform/env.h"
 #endif
 #include "tsl/platform/logging.h"
 
@@ -37,29 +39,49 @@ namespace tsl {
 
 std::vector<std::string> CandidateCudaRoots() {
 #if !defined(PLATFORM_GOOGLE)
-  auto roots = std::vector<std::string>{TF_CUDA_TOOLKIT_PATH,
-                                        std::string("/usr/local/cuda")};
+  auto roots = std::vector<std::string>{};
+  std::string runfiles_suffix = "runfiles";
+
+  // The CUDA candidate root for c++ targets.
+  std::string executable_path = tsl::Env::Default()->GetExecutablePath();
+  std::string cuda_nvcc_dir =
+      io::JoinPath(executable_path + "." + runfiles_suffix, "cuda_nvcc");
+  roots.emplace_back(cuda_nvcc_dir);
+
+  // The CUDA candidate root for python targets.
+  std::string runfiles_dir = tsl::Env::Default()->GetRunfilesDir();
+  std::size_t runfiles_ind = runfiles_dir.rfind(runfiles_suffix);
+  cuda_nvcc_dir = io::JoinPath(
+      runfiles_dir.substr(0, runfiles_ind + runfiles_suffix.length()),
+      "cuda_nvcc");
+  roots.emplace_back(cuda_nvcc_dir);
+
+  roots.emplace_back(TF_CUDA_TOOLKIT_PATH);
+  roots.emplace_back(std::string("/usr/local/cuda"));
 
 #if defined(PLATFORM_POSIX) && !defined(__APPLE__)
   Dl_info info;
 
   if (dladdr(&__FUNCTION__, &info)) {
-    auto lib = std::vector<char>{info.dli_fname,
-                                 info.dli_fname + strlen(info.dli_fname)};
-    auto dir = dirname(lib.data());
+    auto lib = std::string(info.dli_fname);
+    auto dir = io::Dirname(lib);
 
     // TF lib binaries are located in both the package's root dir and within a
     // 'python' subdirectory (for pywrap libs). So we check two possible paths
     // relative to the current binary for the wheel-based nvcc package.
-    for (auto path : {"/../nvidia/cuda_nvcc", "/../../nvidia/cuda_nvcc"})
-      roots.emplace_back(std::string(dir) + path);
+    for (auto path : {"../nvidia/cuda_nvcc", "../../nvidia/cuda_nvcc"})
+      roots.emplace_back(io::JoinPath(dir, path));
+
+    // Also add the path to the copy of libdevice.10.bc that we include within
+    // the Python wheel.
+    roots.emplace_back(io::JoinPath(dir, "cuda"));
   }
 #endif  // defined(PLATFORM_POSIX) && !defined(__APPLE__)
 
   for (auto root : roots) VLOG(3) << "CUDA root = " << root;
   return roots;
 #else   // !defined(PLATFORM_GOOGLE)
-  return {std::string("/usr/local/cuda")};
+  return {};
 #endif  //! defined(PLATFORM_GOOGLE)
 }
 

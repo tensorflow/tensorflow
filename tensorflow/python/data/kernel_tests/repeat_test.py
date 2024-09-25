@@ -13,9 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.repeat()`."""
+from typing import Callable, Optional
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.experimental.ops import global_shuffle_op
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -217,6 +220,96 @@ class RepeatRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Datasets with infinite cardinality do not support random access.
     with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(random_access.at(dataset, index=0))
+
+
+class RepeatGlobalShuffleTest(
+    test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[41],
+              repetitions=[1, 27],
+              seed=[None, 19],
+              reshuffle_each_iteration=[True, False])))
+  def testRepeat(
+      self,
+      dataset_range: int,
+      repetitions: int,
+      seed: Optional[int],
+      reshuffle_each_iteration: bool):
+    dataset = dataset_ops.Dataset.range(dataset_range)
+    dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+    dataset = global_shuffle_op._global_shuffle(
+        dataset, seed=seed, reshuffle_each_iteration=reshuffle_each_iteration)
+
+    expected = list(range(dataset_range)) * repetitions
+    dataset_output = self.getDatasetOutput(
+        dataset, requires_initialization=True)
+    self.assertCountEqual(dataset_output, expected)
+    self.assertNotEqual(dataset_output, expected)
+
+    output_per_iteration = [
+        dataset_output[i : i + dataset_range]
+        for i in range(0, len(dataset_output), dataset_range)]
+    # All sub-ranges should be shuffled.
+    for i in range(1, repetitions):
+      self.assertNotEqual(output_per_iteration[i], list(range(dataset_range)))
+      self.assertNotEqual(output_per_iteration[i], output_per_iteration[i - 1])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(repetitions=[None, 0])))
+  def testInvalidDataset(self, repetitions: Optional[int]):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.repeat(repetitions)
+    dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+
+    with self.assertRaisesRegex(
+        errors.FailedPreconditionError,
+        r"`repeat.*` does not support random access of tf.data datasets."):
+      dataset = global_shuffle_op._global_shuffle(dataset)
+      self.getDatasetOutput(dataset, requires_initialization=True)
+
+
+class RepeatGlobalShuffleCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              dataset_range=[41],
+              repetitions=[1, 27],
+              reshuffle_each_iteration=[True, False],
+              symbolic_checkpoint=[True, False])))
+  def testRepeat(
+      self,
+      verify_fn: Callable[..., None],
+      dataset_range: int,
+      repetitions: int,
+      reshuffle_each_iteration: bool,
+      symbolic_checkpoint: bool):
+
+    def _build_dataset() -> dataset_ops.Dataset:
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.repeat(repetitions)
+      dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
+      dataset = global_shuffle_op._global_shuffle(
+          dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self,
+        _build_dataset,
+        num_outputs=dataset_range * repetitions,
+        assert_items_equal=reshuffle_each_iteration)
 
 
 if __name__ == "__main__":

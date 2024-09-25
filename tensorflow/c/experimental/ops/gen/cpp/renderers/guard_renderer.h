@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_GUARD_RENDERER_H_
 
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

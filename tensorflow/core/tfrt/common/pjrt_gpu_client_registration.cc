@@ -16,16 +16,17 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_options.h"
 #include "tensorflow/core/tfrt/common/pjrt_client_factory_registry.h"
+#include "tsl/platform/statusor.h"
 namespace xla {
 
-StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
+absl::StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
     const PjrtClientFactoryOptions& option) {
   xla::GpuClientOptions gpu_client_options;
   gpu_client_options.node_id = option.gpu_options.node_id;

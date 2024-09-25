@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_STOCHASTIC_CONVERT_DECOMPOSER_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -29,7 +29,7 @@ class StochasticConvertDecomposer : public HloModulePass {
     return "stochastic_convert_decomposer";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

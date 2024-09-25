@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 #define XLA_SERVICE_GPU_MODEL_FUSION_ANALYSIS_CACHE_H_
 
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,9 +28,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Caches HloFusionAnalyses. Thread-compatible, if no threads concurrently `Get`
-// and `Invalidate` the same key. Analyses are cached based on unique_ids, no
-// checking or tracking of changes is done.
+// Caches HloFusionAnalyses. `Get` can be called concurrently, but `Invalidate`
+// and `Clear` shouldn't. Analyses are cached based on unique_ids, no checking
+// or tracking of changes is done.
 class HloFusionAnalysisCache {
  public:
   explicit HloFusionAnalysisCache(

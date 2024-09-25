@@ -33,7 +33,7 @@ void AddQuantizationPasses(mlir::PassManager& pass_manager,
             quantization_options);
   }
 
-  // TODO(b/276999414): Add activation and bias quantization component as
+  // TODO: b/276999414 - Add activation and bias quantization component as
   // respective quantization passes are created.
   QuantizationComponentSpec weight_component;
   for (const auto& component : quantization_options_.quantization_method()

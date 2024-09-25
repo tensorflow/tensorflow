@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_CPU_CONV_CANONICALIZATION_H_
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/cpu/target_machine_features.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace cpu {
@@ -42,7 +42,7 @@ class ConvCanonicalization : public HloModulePass {
     return "convolution-canonicalization";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

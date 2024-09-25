@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_REDUCE_SCATTER_COMBINER_H_
 #define XLA_SERVICE_REDUCE_SCATTER_COMBINER_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -34,7 +34,7 @@ class ReduceScatterCombiner : public HloModulePass {
   absl::string_view name() const override { return "reduce-scatter-combiner"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -1,7 +1,6 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 def workspace():
@@ -14,8 +13,6 @@ def workspace():
             "https://github.com/bazelbuild/rules_closure/archive/308b05b2419edb5c8ee0471b67a40403df940149.tar.gz",  # 2019-06-13
         ],
     )
-
-    tf_runtime()
 
     # https://github.com/bazelbuild/bazel-skylib/releases
     http_archive(

@@ -68,7 +68,7 @@ class TFGGrapplerOptimizer::Impl {
     if (num_tfg_threads) {
       llvm::ThreadPoolStrategy strategy;
       strategy.ThreadsRequested = num_tfg_threads;
-      threadpool_ = std::make_unique<llvm::ThreadPool>(strategy);
+      threadpool_ = std::make_unique<llvm::DefaultThreadPool>(strategy);
       ctx_.setThreadPool(*threadpool_);
     }
   }
@@ -90,7 +90,7 @@ class TFGGrapplerOptimizer::Impl {
  private:
   // An optional threadpool for running MLIR with threading. Use an external
   // threadpool so the number of threads can be controlled.
-  std::unique_ptr<llvm::ThreadPool> threadpool_;
+  std::unique_ptr<llvm::DefaultThreadPool> threadpool_;
   // The MLIR context.
   MLIRContext ctx_;
   // The pass manager containing the loaded TFG pass pipeline.

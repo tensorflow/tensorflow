@@ -14,80 +14,106 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <memory>
 #include <optional>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
+using ::tsl::testing::StatusIs;
+
 class TritonFusionTest : public HloTestBase {};
 
-TEST_F(TritonFusionTest, TritonSoftmaxFusion) {
-#ifndef GOOGLE_CUDA
-  GTEST_SKIP() << "Triton fusion only enable for CUDA devices.";
-#endif
+TEST_F(TritonFusionTest,
+       TritonFusionWithBlockLevelFusionConfig_LaunchConfigIsCorrect) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+triton_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT abs = f32[125,127] abs(param_0)
+}
 
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule t
+ENTRY entry_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT fusion.1 = f32[125,127] fusion(param_0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["3","127"],
+                                   "num_warps":"4"}}}
+})"));
 
-    add {
-      Arg_0 = f32[] parameter(0)
-      Arg_1 = f32[] parameter(1)
-      ROOT add = f32[] add(Arg_0, Arg_1)
-    }
-
-    auxiliary_computation {
-      parameter_0 = f32[125]{0} parameter(0)
-      ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
-    }
-
-    triton_softmax_computation {
-      parameter_0 = f32[125,127]{1,0} parameter(0)
-      multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
-      constant_0 = f32[] constant(0)
-      reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
-      broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
-      ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
-    }
-
-    ENTRY main {
-      param_0 = f32[125]{0} parameter(0)
-      auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
-      ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton_softmax"}}
-      })")
-                    .value();
-
-  stream_executor::GpuDeviceInfoProto device_info_proto;
-  stream_executor::DeviceDescription device_info(device_info_proto);
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter_fused,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_fused}));
-  auto triton_fusion = dynamic_cast<TritonFusion*>(emitter_fused.get());
+  std::unique_ptr<FusionInterface> emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+  auto triton_fusion = dynamic_cast<TritonFusion*>(emitter.get());
   ASSERT_NE(triton_fusion, nullptr);
-  auto launch_dims = triton_fusion->launch_dimensions();
-  ASSERT_NE(launch_dims, std::nullopt);
-  EXPECT_EQ(launch_dims->num_blocks(), 125);
-  EXPECT_EQ(launch_dims->num_threads_per_block(), 32);
+  std::optional<TritonFusion::LaunchConfig> launch_config =
+      triton_fusion->launch_config();
+  ASSERT_NE(launch_config, std::nullopt);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(),
+            /*ceil(125 / 3)=*/42);
+  EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(),
+            /*32 * num_warps=*/128);
+  EXPECT_THAT(launch_config->block_level_parameters.output_tile_sizes,
+              ElementsAre(3, 127));
+}
 
-  auto analysis_consumer = AnalyzeFusion(*root, device_info);
+TEST_F(TritonFusionTest,
+       TritonFusionWithoutBlockLevelFusionConfig_LaunchConfigIsNullopt) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+triton_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT abs = f32[125,127] abs(param_0)
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto emitter_consumer,
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis_consumer}));
-  ASSERT_NE(dynamic_cast<TritonFusion*>(emitter_consumer.get()), nullptr);
+ENTRY entry_computation {
+  param_0 = f32[125,127] parameter(0)
+  ROOT fusion = f32[125,127] fusion(param_0), kind=kCustom,
+    calls=triton_computation,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+})"));
+
+  stream_executor::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  std::unique_ptr<FusionInterface> emitter =
+      GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
+  auto triton_fusion_emitter = dynamic_cast<TritonFusion*>(emitter.get());
+  ASSERT_NE(triton_fusion_emitter, nullptr);
+  EXPECT_EQ(triton_fusion_emitter->launch_config(), std::nullopt);
+
+  // Ensure that the emitter fails gracefully when the launch config is not set.
+  mlir::MLIRContext mlir_context;
+  EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
+                  *::xla::Cast<HloFusionInstruction>(root), "random_name",
+                  device_info, /*llvm_module=*/nullptr, &mlir_context),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

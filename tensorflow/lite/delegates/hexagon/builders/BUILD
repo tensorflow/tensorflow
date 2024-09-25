@@ -81,6 +81,8 @@ cc_library(
         ":op_factory",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_implementation",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",

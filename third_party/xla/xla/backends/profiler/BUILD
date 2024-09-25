@@ -1,5 +1,5 @@
 load(
-    "@local_tsl//tsl:tsl.bzl",
+    "//xla/tsl:tsl.bzl",
     "if_with_tpu_support",
     "internal_visibility",
     "tsl_gpu_library",

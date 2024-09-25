@@ -73,8 +73,9 @@ class EncapsulateXlaComputationsPass : public GraphOptimizationPass {
   // XlaLaunch -> NodeA
   static Status BuildXlaLaunchOps(
       Graph* graph,
-      const std::function<StatusOr<bool>(const Node&)>& is_xla_launch_node,
-      const std::function<StatusOr<XlaFunctionInfo>(const Node&)>&
+      const std::function<absl::StatusOr<bool>(const Node&)>&
+          is_xla_launch_node,
+      const std::function<absl::StatusOr<XlaFunctionInfo>(const Node&)>&
           get_xla_function_info,
       bool add_edges_to_output_of_downstream_nodes);
 };

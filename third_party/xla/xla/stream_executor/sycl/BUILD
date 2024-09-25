@@ -1,0 +1,91 @@
+# Description:
+#   SYCL-platform specific StreamExecutor support code.
+
+load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load(
+    "//xla/stream_executor:build_defs.bzl",
+    "stream_executor_friends",
+)
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility([":friends"]),
+    licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = stream_executor_friends(),
+)
+
+cc_library(
+    name = "sycl_platform_id",
+    srcs = ["sycl_platform_id.cc"],
+    hdrs = ["sycl_platform_id.h"],
+    deps = ["//xla/stream_executor:platform"],
+)
+
+cc_library(
+    name = "sycl_platform",
+    srcs = if_sycl_is_configured(["sycl_platform.cc"]),
+    hdrs = if_sycl_is_configured(["sycl_platform.h"]),
+    visibility = ["//visibility:public"],
+    deps = if_sycl_is_configured([
+        ":sycl_platform_id",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "//xla/stream_executor",  # buildcleaner: keep
+        "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor/platform",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "@local_tsl//tsl/platform:errors",
+    ]),
+    alwayslink = True,  # Registers itself with the PlatformManager.
+)
+
+xla_cc_test(
+    name = "sycl_platform_test",
+    srcs = if_sycl_is_configured(["sycl_platform_test.cc"]),
+    deps = if_sycl_is_configured([
+        ":sycl_platform",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ]) + [
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "all_runtime",
+    copts = tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = if_sycl_is_configured([":sycl_platform"]),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "sycl_rpath",
+    linkopts = ["-Wl,-rpath,../local_config_sycl/sycl/sycl/lib"],
+)
+
+cc_library(
+    name = "stream_executor_sycl",
+    deps = [
+        ":sycl_platform_id",
+        ":sycl_rpath",
+        "//xla/stream_executor",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor/platform:dso_loader",
+    ] + if_static([":all_runtime"]),
+)

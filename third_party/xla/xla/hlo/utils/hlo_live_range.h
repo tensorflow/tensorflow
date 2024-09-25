@@ -20,12 +20,12 @@ the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_value.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -37,7 +37,7 @@ class HloLiveRange {
  public:
   // Constructs a hlo live range object for the given module and computation
   // assuming the given HLO instruction ordering.
-  static StatusOr<std::unique_ptr<HloLiveRange>> Run(
+  static absl::StatusOr<std::unique_ptr<HloLiveRange>> Run(
       const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
       const HloComputation* computation, bool module_scoped_analysis = true);
 

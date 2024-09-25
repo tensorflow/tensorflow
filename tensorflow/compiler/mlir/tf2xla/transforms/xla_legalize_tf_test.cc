@@ -40,7 +40,7 @@ using ::mlir::OwningOpRef;
 using ::mlir::PassManager;
 using ::tensorflow::monitoring::testing::CellReader;
 
-StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
+absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* context) {
   mlir::DialectRegistry mlir_registry;
   RegisterAllTensorFlowDialects(mlir_registry);

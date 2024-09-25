@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -286,7 +287,7 @@ LogicalResult analyzeBroadcastableConstraint(
     // For shapes without a definition, expect them to be an argument of the
     // regarded block.
     if (def == nullptr) {
-      auto barg = shape.dyn_cast<BlockArgument>();
+      auto barg = mlir::dyn_cast<BlockArgument>(shape);
       if (!barg || barg.getParentBlock() != theBlock) return failure();
       transitiveBcastableCstrOperands.push_back(
           CstrBroadcastableOperand::valueOf(barg));
@@ -299,7 +300,7 @@ LogicalResult analyzeBroadcastableConstraint(
     if (auto sof = llvm::dyn_cast<shape::ShapeOfOp>(def)) {
       if (!isWithinBlock(sof, theBlock)) return failure();
       tryFlagForErase(theBlock, def, toBeErased);
-      auto barg = sof.getArg().dyn_cast<BlockArgument>();
+      auto barg = mlir::dyn_cast<BlockArgument>(sof.getArg());
       if (!barg) return failure();
       transitiveBcastableCstrOperands.push_back(
           CstrBroadcastableOperand::shapeOf(barg));
@@ -351,7 +352,7 @@ LogicalResult analyzeBlockGlobalConstraints(
     // For witnesses without a definition, expect it to be an argument of the
     // regarded block.
     if (def == nullptr) {
-      auto barg = cstr.dyn_cast<BlockArgument>();
+      auto barg = mlir::dyn_cast<BlockArgument>(cstr);
       if (!barg || barg.getParentBlock() != theBlock) return failure();
       argumentCstrs.push_back(barg);
       continue;

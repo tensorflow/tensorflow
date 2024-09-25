@@ -176,6 +176,13 @@ void AddDynamicUpdateSliceNode(Subgraph* subgraph, int input0, int input1,
 }
 }  // namespace
 
+void Setup1DTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
+  int dim = 1;
+  ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 1,
+                                                   &dim, {}, false),
+            kTfLiteOk);
+}
+
 void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
   ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 0,
                                                    nullptr, {}, false),
@@ -275,7 +282,7 @@ void SubgraphBuilder::BuildOutputNotConsumedSubgraph(Subgraph& subgraph) {
   ASSERT_EQ(subgraph.SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
   ASSERT_EQ(subgraph.SetOutputs({kOutput0, kOutput1, kConstRhs}), kTfLiteOk);
   for (int i = 0; i < kTensorCount; ++i) {
-    SetupTensor(&subgraph, i, kTfLiteInt32);
+    Setup1DTensor(&subgraph, i, kTfLiteInt32);
   }
 
   // kInput0 --> +---+
@@ -720,6 +727,53 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   int node_index;
   subgraph->AddNodeWithParameters({kCondInput, kInput1, kInput2}, {kOutput}, {},
                                   nullptr, 0, params, if_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildCompositeSubgraph(Subgraph* subgraph,
+                                             const Subgraph* decomposition) {
+  //               +-----------+
+  // kInputs ----> | COMPOSITE | --> kOutput
+  //               +-----------+
+  //               |           ^
+  //               v           |
+  //               DECOMPOSITION
+
+  const int decomposition_subgraph_index = decomposition->GetSubgraphIndex();
+  const auto& inputs = decomposition->inputs();
+  const auto& outputs = decomposition->outputs();
+  const int decomposition_tensor_count = inputs.size() + outputs.size();
+
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(decomposition_tensor_count, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs(inputs), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(outputs), kTfLiteOk);
+
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const TfLiteTensor* src = decomposition->tensor(inputs[i]);
+    SetupTensor(subgraph, inputs[i], src->type);
+  }
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    const TfLiteTensor* src = decomposition->tensor(outputs[i]);
+    SetupTensor(subgraph, outputs[i], src->type);
+  }
+
+  TfLiteStablehloCompositeParams* params =
+      reinterpret_cast<TfLiteStablehloCompositeParams*>(
+          malloc(sizeof(TfLiteStablehloCompositeParams)));
+  params->name = "test_composite";
+  params->subgraph_index = decomposition_subgraph_index;
+  params->attributes = nullptr;
+  params->attributes_size = 0;
+  params->version = 1;
+  auto* composite_reg = ops::builtin::Register_STABLEHLO_COMPOSITE();
+  composite_reg->builtin_code = kTfLiteBuiltinStablehloComposite;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(inputs, outputs, {}, nullptr, 0, params,
+                                  composite_reg, &node_index);
 }
 
 void SubgraphBuilder::BuildLargeLessEqualCondSubgraph(Subgraph* subgraph,

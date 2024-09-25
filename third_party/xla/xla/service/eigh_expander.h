@@ -29,13 +29,13 @@ class EighExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
   virtual XlaOp BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                           bool sort_eigenvalues);
 
-  Status SortByEigenvalues(XlaOp& v, XlaOp& w);
+  absl::Status SortByEigenvalues(XlaOp& v, XlaOp& w);
 
  private:
   // Mapping from op signatures to existing computations.

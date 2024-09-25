@@ -44,4 +44,5 @@ def repo():
         system_link_files = SYS_LINKS,
         strip_prefix = "abseil-cpp-{commit}".format(commit = ABSL_COMMIT),
         urls = tf_mirror_urls("https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz".format(commit = ABSL_COMMIT)),
+        patch_file = ["//third_party/absl:nvidia_jetson.patch"],
     )

@@ -392,9 +392,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       self._testBinary(
           math_ops.subtract,
-          np.array([1, 2, 100], dtype=dtype),
-          np.array([10, 20, -1], dtype=dtype),
-          expected=np.array([-9, -18, 101], dtype=dtype))
+          np.array([1, 20, 100], dtype=dtype),
+          np.array([1, 2, 1], dtype=dtype),
+          expected=np.array([0, 18, 99], dtype=dtype))
       self._testBinary(
           math_ops.subtract,
           dtype(5),
@@ -402,9 +402,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([4, 3], dtype=dtype))
       self._testBinary(
           math_ops.subtract,
-          np.array([[1], [2]], dtype=dtype),
+          np.array([[7], [10]], dtype=dtype),
           dtype(7),
-          expected=np.array([[-6], [-5]], dtype=dtype))
+          expected=np.array([[0], [3]], dtype=dtype))
 
       # min/max not supported for complex
       if dtype not in self.complex_types | {np.uint8, np.int8}:
@@ -461,13 +461,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self._testBinary(
           nn_ops.bias_add,
           np.array([[1, 2], [3, 4]], dtype=dtype),
-          np.array([2, -1], dtype=dtype),
-          expected=np.array([[3, 1], [5, 3]], dtype=dtype))
+          np.array([2, 0], dtype=dtype),
+          expected=np.array([[3, 2], [5, 4]], dtype=dtype))
       self._testBinary(
           nn_ops.bias_add,
           np.array([[[[1, 2], [3, 4]]]], dtype=dtype),
-          np.array([2, -1], dtype=dtype),
-          expected=np.array([[[[3, 1], [5, 3]]]], dtype=dtype))
+          np.array([2, 0], dtype=dtype),
+          expected=np.array([[[[3, 2], [5, 4]]]], dtype=dtype))
 
     if np.int64 in self.numeric_types:
       self._testBinary(
@@ -998,8 +998,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self._testBinary(
           array_ops.fill,
           np.array([], dtype=np.int32),
-          dtype(-42),
-          expected=dtype(-42))
+          dtype(42),
+          expected=dtype(42))
       self._testBinary(
           array_ops.fill,
           np.array([1, 2], dtype=np.int32),

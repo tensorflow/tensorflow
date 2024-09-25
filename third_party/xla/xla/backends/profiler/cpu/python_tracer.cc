@@ -16,11 +16,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/python/profiler/internal/python_hooks.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

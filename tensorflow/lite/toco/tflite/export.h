@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/util.h"

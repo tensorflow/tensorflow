@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/shlo/shape.h"
 
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 
 namespace shlo_ref {
 namespace {
@@ -86,6 +89,20 @@ TEST(ShapeTest, NotEquals) {
   Shape s1({1, 2, 4, 8});
   Shape s2({1, 4, 2, 8});
   EXPECT_TRUE(s1 != s2);
+}
+
+TEST(ShapeTest, ComputeStridesFromShape) {
+  const Shape s1({1, 2, 4, 8});
+  const Strides expected_strides{64, 32, 8, 1};
+  const Strides strides = ComputeStrides(s1);
+  EXPECT_EQ(strides, expected_strides);
+}
+
+TEST(ShapeTest, ComputeStridesFromSpan) {
+  const std::vector<int> s1({1, 2, 4, 5});
+  const Strides expected_strides{40, 20, 5, 1};
+  const Strides strides = ComputeStrides(absl::Span<const int>(s1));
+  EXPECT_EQ(strides, expected_strides);
 }
 
 }  // namespace

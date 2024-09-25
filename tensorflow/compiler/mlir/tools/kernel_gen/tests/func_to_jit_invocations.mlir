@@ -9,17 +9,17 @@
 // RUN:       jit_i64_indexed_for_large_tensors=true" | \
 // RUN: FileCheck %s --check-prefix=CHECK-JFLT
 
-func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
-  %0 = mhlo.tanh %arg : tensor<*xf32>
-  func.return %0 : tensor<*xf32>
+func.func @unary_tanh(%arg : tensor<?xf32>) -> tensor<?xf32> {
+  %0 = mhlo.tanh %arg : tensor<?xf32>
+  func.return %0 : tensor<?xf32>
 }
 
 // CHECK-LABEL: @unary_tanh
-// CHECK-SAME:  %[[ARG:.*]]: tensor<*xf32>
+// CHECK-SAME:  %[[ARG:.*]]: tensor<?xf32>
 // CHECK:       %[[CALLABLE:.*]] = tf_framework.jit_compile_from_str
 // CHECK-SAME:      "
 // CHECK-SAME:      module {
-// CHECK-SAME:        func @main(%[[ARG_JIT:.*]]: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-SAME:        func @main(%[[ARG_JIT:.*]]: tensor<?xf32>) -> tensor<?xf32>
 // CHECK-SAME:          attributes {tf_entry}
 // CHECK-SAME:        {
 // CHECK-SAME:          %[[RES_JIT:.*]] = mhlo.tanh %[[ARG_JIT]]
@@ -37,7 +37,7 @@ func.func @unary_tanh(%arg : tensor<*xf32>) -> tensor<*xf32> {
 // CHECK:       return %[[RES]]
 
 // CHECK-JFLT-LABEL: @unary_tanh
-// CHECK-JFLT-SAME:  %[[ARG0:.*]]: tensor<*xf32>
+// CHECK-JFLT-SAME:  %[[ARG0:.*]]: tensor<?xf32>
 // CHECK-JFLT:       %[[SHAPE:.*]] = shape.shape_of %[[ARG0]]
 // CHECK-JFLT:       %[[NUM:.*]] = shape.num_elements %[[SHAPE]]
 // CHECK-JFLT:       %[[LIMIT:.*]] = arith.constant 2147483647

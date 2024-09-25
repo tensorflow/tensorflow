@@ -16,13 +16,17 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -31,6 +35,7 @@ namespace hlo_query {
 bool IsCollectiveCommunicationOp(HloOpcode op) {
   return op == HloOpcode::kAllReduce || op == HloOpcode::kAllGather ||
          op == HloOpcode::kAllToAll || op == HloOpcode::kCollectivePermute ||
+         op == HloOpcode::kCollectiveBroadcast ||
          op == HloOpcode::kReduceScatter || op == HloOpcode::kAllReduceStart ||
          op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart;
@@ -167,6 +172,11 @@ bool IsBroadcastOfScalarConstant(const HloInstruction& instr) {
          IsScalarConstant(instr.operand(0));
 }
 
+bool IsBroadcastOfParameter(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBroadcast &&
+         instr.operand(0)->opcode() == HloOpcode::kParameter;
+}
+
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               const HloOpcode opcode) {
   auto instructions = computation.instructions();
@@ -241,5 +251,65 @@ bool HasX64TransformedHostTransfer(const HloModule& module) {
   return false;
 }
 
+HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
+                                        int64_t index) {
+  HloInstruction* gte = nullptr;
+  for (HloInstruction* instr : operand->parent()->MakeInstructionPostOrder()) {
+    if (!Match(instr, match::GetTupleElement().WithTupleIndex(index))) {
+      continue;
+    }
+    if (instr->operand(0) != operand) {
+      continue;
+    }
+    // If gte is not unique, return nullptr.
+    if (gte != nullptr) {
+      return nullptr;
+    }
+    gte = instr;
+  }
+  return gte;
+}
+
+HloComputation* FindComputation(HloModule* module, absl::string_view name) {
+  auto computations = module->computations();
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
+  if (it == computations.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+std::pair<HloInstruction*, int> FindFirstInstruction(
+    const HloComputation* computation, absl::string_view name) {
+  int current_index = 0;
+  for (auto* instruction : computation->instructions()) {
+    if (instruction->name() == name) {
+      return {instruction, current_index};
+      break;
+    }
+    current_index++;
+  }
+  return {nullptr, -1};
+}
+
+std::pair<HloInstruction*, int> FindFirstInstruction(
+    const HloComputation* computation, HloOpcode opcode) {
+  int current_index = 0;
+  for (auto* instruction : computation->instructions()) {
+    if (instruction->opcode() == opcode) {
+      return {instruction, current_index};
+      break;
+    }
+    current_index++;
+  }
+  return {nullptr, -1};
+}
+
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2) {
+  return FindFirstInstruction(computation, inst1).second <
+         FindFirstInstruction(computation, inst2).second;
+}
 }  // namespace hlo_query
 }  // namespace xla

@@ -70,7 +70,7 @@ def _make_worker(
       heartbeat_interval_ms=TEST_HEARTBEAT_INTERVAL_MS,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
       data_transfer_protocol=data_transfer_protocol,
-      data_transfer_address=defaults.worker_address,
+      data_transfer_address=defaults.data_transfer_address,
       shutdown_quiet_period_ms=shutdown_quiet_period_ms,
       cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes,
       snapshot_max_chunk_size_bytes=snapshot_max_chunk_size_bytes,

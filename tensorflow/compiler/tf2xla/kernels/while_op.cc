@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,9 +50,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -140,7 +142,7 @@ void GetLoopInvariants(XlaOpKernelContext* ctx,
   const tensorflow::FunctionLibraryDefinition* fld =
       ctx->compiler()->flib_runtime()->GetFunctionLibraryDefinition();
   for (int i = 0; i < body->ret_nodes.size(); i++) {
-    StatusOr<bool> is_loop_invariant = IsLoopInvariant(body, i, fld);
+    absl::StatusOr<bool> is_loop_invariant = IsLoopInvariant(body, i, fld);
     OP_REQUIRES_OK(ctx, is_loop_invariant.status());
     (*loop_invariants)[i] = *is_loop_invariant;
     VLOG(2) << "Arg " << i << " of " << body_name_attr.name() << " is "
@@ -216,7 +218,7 @@ Status VerifyBodyInputAndOutputShapeMatch(
   return absl::OkStatus();
 }
 
-StatusOr<xla::XlaComputation> BuildWrappedCond(
+absl::StatusOr<xla::XlaComputation> BuildWrappedCond(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& cond) {
   xla::Shape cond_input_shape = cond.xla_input_shapes[0];
   std::unique_ptr<xla::XlaBuilder> cb =
@@ -227,7 +229,7 @@ StatusOr<xla::XlaComputation> BuildWrappedCond(
   return cb->Build();
 }
 
-StatusOr<xla::XlaComputation> BuildWrappedBody(
+absl::StatusOr<xla::XlaComputation> BuildWrappedBody(
     XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& body,
     const std::vector<bool>& compile_time_const_arg_indices,
     int num_compile_time_const_args, bool has_token_input_output) {
@@ -620,12 +622,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Building while loop";
 
   // Wraps the condition in a computation that unpacks the output tuple.
-  StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
+  absl::StatusOr<xla::XlaComputation> cond_result = BuildWrappedCond(ctx, cond);
   OP_REQUIRES_OK(ctx, cond_result.status());
   xla::XlaComputation wrapped_cond = std::move(cond_result.value());
 
   // Remove compile time const args from the list of body outputs.
-  StatusOr<xla::XlaComputation> body_result =
+  absl::StatusOr<xla::XlaComputation> body_result =
       BuildWrappedBody(ctx, *body.get(), compile_time_const_arg_indices,
                        num_compile_time_const_args, has_token_input_output_);
   OP_REQUIRES_OK(ctx, body_result.status());

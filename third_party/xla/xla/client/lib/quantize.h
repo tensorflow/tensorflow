@@ -82,7 +82,7 @@ inline XlaOp Dequantize(XlaOp input, const QuantizedRange& range,
                         absl::string_view mode_string = "MIN_COMBINED",
                         bool transpose_output = false) {
   XlaBuilder* const builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     float half_range =
         !std::is_signed<T>::value
             ? 0.0f

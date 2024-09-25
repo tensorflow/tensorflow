@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto_splitter_testdata;
+package tensorflow.proto_splitter_testdata;
 
 message RepeatedString {
   repeated string strings = 1;

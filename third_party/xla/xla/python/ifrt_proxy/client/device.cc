@@ -14,45 +14,53 @@
 
 #include "xla/python/ifrt_proxy/client/device.h"
 
-#include <memory>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/python/ifrt/attribute_map.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
-std::unique_ptr<xla::ScopedAsyncTrackingEvent> Device::CreateAsyncTrackingEvent(
-    absl::string_view description) const {
-  return nullptr;
+Device::Device(DeviceDescription description, int local_device_id,
+               int local_hardware_id, bool is_addressable)
+    : description_(std::move(description)),
+      attributes_(FromPjRtAttributeMap(description_.Attributes())),
+      local_device_id_(local_device_id),
+      local_hardware_id_(local_hardware_id),
+      is_addressable_(is_addressable) {}
+
+ifrt::Client* Device::client() const { return client_; }
+
+DeviceId Device::Id() const { return DeviceId(description_.id()); }
+
+bool Device::IsAddressable() const { return is_addressable_; }
+
+absl::string_view Device::Kind() const { return description_.device_kind(); }
+absl::string_view Device::ToString() const { return description_.ToString(); }
+
+absl::string_view Device::DebugString() const {
+  return description_.DebugString();
 }
 
-absl::Status Device::TransferToInfeed(const xla::LiteralSlice& literal) {
-  return absl::UnimplementedError("Device does not support TransferToInfeed");
-}
+absl::Span<ifrt::Memory* const> Device::Memories() const { return memories_; }
 
-absl::Status Device::TransferFromOutfeed(xla::MutableBorrowingLiteral literal) {
-  return absl::UnimplementedError(
-      "Device does not support TransferFromOutfeed");
-}
-
-absl::Span<xla::PjRtMemorySpace* const> Device::memory_spaces() const {
-  return memory_spaces_;
-}
-
-absl::StatusOr<xla::PjRtMemorySpace*> Device::default_memory_space() const {
-  if (default_memory_space_ == nullptr) {
-    return absl::UnimplementedError(
-        "Device does not support default_memory_space");
+absl::StatusOr<ifrt::Memory*> Device::DefaultMemory() const {
+  if (default_memory_ == nullptr) {
+    return absl::UnimplementedError("Device does not support default_memory");
   }
-  return default_memory_space_;
+  return default_memory_;
 }
+
+int Device::ProcessIndex() const { return description_.process_index(); }
+
+const AttributeMap& Device::Attributes() const { return attributes_; }
 
 char Device::ID = 0;  // NOLINT
 

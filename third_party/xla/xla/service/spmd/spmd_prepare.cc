@@ -19,20 +19,27 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
 namespace {
 
-StatusOr<bool> ProcessScatter(HloInstruction* hlo,
-                              const CallGraph& call_graph) {
+absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
+                                    const CallGraph& call_graph) {
   if (hlo->opcode() != HloOpcode::kScatter) {
     return false;
   }
@@ -48,7 +55,6 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   if (scatter->scatter_operand_count() > 1) {
     return false;
   }
-  ScatterDimensionNumbers scatt_dim = scatter->scatter_dimension_numbers();
   HloInstruction* operand = scatter->scatter_operands()[0];
   HloInstruction* indices = scatter->scatter_indices();
   HloInstruction* updates = scatter->scatter_updates()[0];
@@ -74,7 +80,7 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     int64_t index_vector_dim = dnums.index_vector_dim();
     const auto& index_map = dnums.scatter_dims_to_operand_dims();
     return hlo_sharding_util::GetGatherScatterBatchParallelDims(
-        indices, slice_sizes, index_vector_dim, index_map, call_graph);
+        operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
   };
   // Parallel dim already detected. Assume everything is good.
   if (get_parallel_dims_for_scatter(operand, indices, updates).has_value()) {
@@ -102,9 +108,7 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   if (lhs_parallel_dims->operand_parallel_dims !=
           rhs_parallel_dims->operand_parallel_dims ||
       lhs_parallel_dims->indices_parallel_dims !=
-          rhs_parallel_dims->indices_parallel_dims ||
-      lhs_parallel_dims->index_parallel_in_dim !=
-          rhs_parallel_dims->index_parallel_in_dim) {
+          rhs_parallel_dims->indices_parallel_dims) {
     return false;
   }
   if (lhs_parallel_dims->operand_parallel_dims.size() !=
@@ -153,8 +157,8 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   return true;
 }
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                const CallGraph& call_graph) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                      const CallGraph& call_graph) {
   bool changed = false;
   for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
     if (!hlo->has_sharding()) {
@@ -170,7 +174,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-StatusOr<bool> SpmdPrepare::Run(
+absl::StatusOr<bool> SpmdPrepare::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

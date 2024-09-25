@@ -84,7 +84,8 @@ Status DataServiceDispatcherClient::Initialize() {
   return absl::OkStatus();
 }
 
-StatusOr<WorkerHeartbeatResponse> DataServiceDispatcherClient::WorkerHeartbeat(
+absl::StatusOr<WorkerHeartbeatResponse>
+DataServiceDispatcherClient::WorkerHeartbeat(
     const WorkerHeartbeatRequest& request) {
   WorkerHeartbeatResponse response;
   grpc::ClientContext client_ctx;

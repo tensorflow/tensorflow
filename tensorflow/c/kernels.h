@@ -277,7 +277,7 @@ TF_CAPI_EXPORT extern int64_t TF_GetStepId(TF_OpKernelContext* ctx);
 // Returns the Device ID of the device that the context possesses. Returns the
 // PlatformDeviceId if a mapping between between TfDeviceId and PlatformDeviceId
 // is set; otherwise returns the id in the device name. Please refer to
-// tensorflow/tsl/framework/device_id.h for more details.
+// tensorflow/compiler/xla/tsl/framework/device_id.h for more details.
 // For mobile or slim build, returns the id in the device name.
 TF_CAPI_EXPORT extern int TF_GetDeviceId(TF_OpKernelContext* ctx);
 

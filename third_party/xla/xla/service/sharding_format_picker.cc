@@ -24,12 +24,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -164,7 +164,7 @@ std::unique_ptr<HloSharding> MaybeConvertToV1(const HloSharding& sharding) {
 
 }  // namespace
 
-StatusOr<bool> ShardingFormatPicker::Run(
+absl::StatusOr<bool> ShardingFormatPicker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

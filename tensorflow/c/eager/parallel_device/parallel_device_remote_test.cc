@@ -17,14 +17,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_experimental.h"
+#include "absl/log/log.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/parallel_device/parallel_device.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
   tensorflow::ServerDef server_def;

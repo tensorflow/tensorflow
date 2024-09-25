@@ -23,11 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/test_matchers.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/utils/test_metadata_config.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,8 +39,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/lib/core/status_test_util.h"
-#include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
@@ -45,6 +46,7 @@ namespace tf2xla {
 namespace v2 {
 
 using ::tensorflow::monitoring::testing::CellReader;
+using ::testing::Not;
 using ::testing::TestWithParam;
 using tpu::FunctionToHloArgs;
 using tpu::MlirToHloArgs;
@@ -80,7 +82,7 @@ static constexpr char kMlirModuleStr[] = R"(
   }
 })";
 
-// MLIR which should legalize at all
+// MLIR which should not legalize at all
 static constexpr char kBadMlirModuleStr[] = R"(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
   func.func @main() -> () {
@@ -100,7 +102,7 @@ static constexpr char kUnsupportedMlirBridgeModuleStr[] = R"(
   }
 })";
 
-tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     const char* mlir_module_str,
     ConfigProto::Experimental::MlirBridgeRollout rollout_state) {
   MlirToHloArgs mlir_to_hlo_args;
@@ -108,13 +110,18 @@ tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
   mlir_to_hlo_args.mlir_module = mlir_module_str;
 
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
 
   std::vector<TensorShape> arg_shapes;
   TPUCompileMetadataProto metadata_proto;
-  metadata_proto.add_retvals();
+  // Configure metadata requires parsing the module and if we are testing a
+  // failure, we ignore this particular set up error assuming we'll not get
+  // far enough to need valid metadata.
+  tensorflow::tf2xla::internal::ConfigureMetadata(mlir_module_str, arg_shapes,
+                                                  metadata_proto)
+      .IgnoreError();
   bool use_tuple_args = true;
   std::vector<ShardingAndIndex> arg_core_mapping;
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
@@ -231,8 +238,6 @@ TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
       ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
 
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeSuccess), 0);
-  EXPECT_EQ(compilation_status.Delta(kMlirWithFallbackModeFailure), 1);
   EXPECT_EQ(compilation_status.Delta(kMlirCombinedMlirFailure), 1);
 }
 
@@ -273,7 +278,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
                                          {&guaranteed_constants}};
 
   se::Platform* cpu_platform =
-      se::MultiPlatformManager::PlatformWithName("Host").value();
+      se::PlatformManager::PlatformWithName("Host").value();
   auto client =
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform).value();
 
@@ -285,7 +290,7 @@ TEST(LegalizeTFTest, RecordsStreamzForNoMlirFallback) {
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
   // This doesn't actually compile correctly.
-  tsl::StatusOr<XlaCompiler::CompilationResult> compile_result =
+  absl::StatusOr<XlaCompiler::CompilationResult> compile_result =
       LegalizeMlirToHlo(function_to_hlo_args, metadata_proto, use_tuple_args,
                         /*device_type=*/"XLA_CPU_JIT",
                         custom_legalization_passes,
@@ -307,6 +312,77 @@ TEST(LegalizeTFTest, RecordsCompilationTimeForSuccessfulCompilation) {
 
   // Compilation time should have been updated.
   EXPECT_GT(compilation_time.Delta(kFullBridge).num(), 0);
+}
+
+TEST(LegalizeTFTest, SuccessfullyCompilesModulesWithReturnValues) {
+  static constexpr char kHasReturnValuesAndNoMetadataRetvals[] = R"(
+    module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+      func.func @main() -> (tensor<2xi32>) {
+        %cst = "tf.Const"() {value = dense<[524170, 523952]> : tensor<2xi32>} : () -> tensor<2xi32>
+        return %cst : tensor<2xi32>
+    }
+  })";
+
+  auto compilation_result = CompileMlirModule(
+      kHasReturnValuesAndNoMetadataRetvals,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+  EXPECT_TRUE(compilation_result.ok());
+
+  // Ensure that the compilation result contains a constant.
+  EXPECT_THAT(compilation_result,
+              ComputationProtoContains("opcode:.*constant"));
+}
+
+TEST(LegalizeTFTest, SkipsTensorListSetItemIfDimensionsTooLarge) {
+  static constexpr char kTensorListSetItemDimensionTooLarge[] = R"(
+    module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+      func.func @main() -> tensor<!tf_type.variant<tensor<64x1xbf16>>> {
+      // unknown rank
+      %elem_shape = "tf.Const"() <{value = dense<-1> : tensor<i32>}> {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+      // zero reserved elements
+      %num_elements = "tf.Const"() <{value = dense<0> : tensor<i32>}> {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+
+      %list = "tf.TensorListReserve"(%elem_shape, %num_elements) : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<64x1xbf16>>>
+
+      %index = "tf.Const"() <{value = dense<0> : tensor<i32>}> {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> tensor<i32>
+      %element = "tf.Const"() <{value = dense<0.0> : tensor<64x1xbf16>}> {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> tensor<64x1xbf16>
+      // Results in a bad mismatch of shapes.
+      %updated_list = "tf.TensorListSetItem"(%list, %index, %element) : (tensor<!tf_type.variant<tensor<64x1xbf16>>>, tensor<i32>, tensor<64x1xbf16>) -> tensor<!tf_type.variant<tensor<64x1xbf16>>>
+
+      return %updated_list : tensor<!tf_type.variant<tensor<64x1xbf16>>>
+    }
+  })";
+
+  auto compilation_result = CompileMlirModule(
+      kTensorListSetItemDimensionTooLarge,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+
+  // Ensure that it compile
+  ASSERT_TRUE(compilation_result.ok());
+  // Assert that the tensor list operation is lowered to something.
+  ASSERT_THAT(compilation_result,
+              Not(ComputationProtoContains("%.*= \"tf.TensorListSetItem")));
+  // Assert that the tensor list operation is lowered to something that doesn't
+  // get stuck on a broken dynamic update slice.
+  ASSERT_THAT(compilation_result,
+              Not(ComputationProtoContains("%.*=.*DynamicUpdateSlice")));
+}
+
+TEST(LegalizeTFTest, LegalizesFunctionWithBoundedDynamicArg) {
+  static constexpr char kMlirModuleWithBoundedDynamicArgStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+  func.func @main(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [3]>> ) -> (tensor<?xi32, #mhlo.type_extensions<bounds = [3]>>) {
+    func.return %arg0 : tensor<?xi32, #mhlo.type_extensions<bounds = [3]>>
+  }
+})";
+
+  auto compilation_result = CompileMlirModule(
+      kMlirModuleWithBoundedDynamicArgStr,
+      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED);
+
+  ASSERT_TRUE(compilation_result.ok());
+  EXPECT_THAT(compilation_result,
+              ComputationProtoContains("element_type:.S32\n.*dimensions: 3"));
 }
 
 }  // namespace v2

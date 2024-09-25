@@ -74,6 +74,7 @@ def move_file_to_systemd(service_name):
 
 def enable_start_service(service_name):
   commands = [
+      "systemctl --user import-environment",
       "systemctl --user daemon-reload",
       f"systemctl --user enable {service_name}",
       f"systemctl --user start {service_name}",

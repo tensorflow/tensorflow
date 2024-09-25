@@ -24,9 +24,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -81,8 +81,8 @@ class DynamicParameterBinding {
   // Adds binding which indicates that the dimension indicated by
   // `dynamic_dimension` is dynamic, and its runtime size is represented by
   // `dynamic_parameter`.
-  Status Bind(const DynamicSizeParameter& dynamic_parameter,
-              const DynamicDimension& dynamic_dimension);
+  absl::Status Bind(const DynamicSizeParameter& dynamic_parameter,
+                    const DynamicDimension& dynamic_dimension);
 
   // Returns the parameter and the index representing the runtime size of
   // dimension `dim_num` of parameter `param_num` at `param_index`.
@@ -92,17 +92,17 @@ class DynamicParameterBinding {
       const DynamicDimension& dynamic_dimension) const;
 
   using BindingFn =
-      std::function<Status(const DynamicSizeParameter& dynamic_parameter,
-                           const DynamicDimension& dynamic_dimension)>;
+      std::function<absl::Status(const DynamicSizeParameter& dynamic_parameter,
+                                 const DynamicDimension& dynamic_dimension)>;
 
   // Iterate through each binding.
-  Status ForEachBinding(BindingFn fn) const;
+  absl::Status ForEachBinding(BindingFn fn) const;
 
   std::string ToString() const;
 
   // Verifies that the given binding is valid for the given computation.
   // Specifically, the binding's parameter and parameter size should be valid.
-  Status Verify(const HloComputation& computation) const;
+  absl::Status Verify(const HloComputation& computation) const;
 
   // Returns true iff there are no bindings.
   bool empty() const { return bindings_.empty(); }

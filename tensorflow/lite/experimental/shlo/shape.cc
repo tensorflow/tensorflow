@@ -68,4 +68,8 @@ bool operator==(const Shape& lhs, const Shape& rhs) {
 
 bool operator!=(const Shape& lhs, const Shape& rhs) { return !(lhs == rhs); }
 
+Strides ComputeStrides(const Shape& shape) {
+  return ComputeStrides(shape.Dimensions());
+}
+
 }  // namespace shlo_ref

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ class ConstantValue {
   static ConstantValue GetUnsigned(uint64_t value, int32_t bitwidth) {
     return ConstantValue(value, bitwidth, /*is_signed=*/false);
   }
-  static StatusOr<ConstantValue> FromLiteral(const Literal& literal);
+  static absl::StatusOr<ConstantValue> FromLiteral(const Literal& literal);
   ConstantValue add(const ConstantValue& other) const {
     return ConstantValue(value_ + other.value_, bitwidth_, is_signed_);
   }

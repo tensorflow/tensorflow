@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/tfprof_options.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
 
 namespace tensorflow {
@@ -38,7 +42,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   // The default is to use stdout.
   if (output_opt.empty()) {
     *output_type = kOutput[1];
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::set<string> output_types(kOutput,
@@ -117,7 +121,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
                           *output_type, *output_type, opt));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
@@ -167,7 +171,7 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
       opts_pb.account_displayed_op_only(),
       std::vector<string>(opts_pb.select().begin(), opts_pb.select().end()),
       output_type, output_options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string Options::ToString() const {

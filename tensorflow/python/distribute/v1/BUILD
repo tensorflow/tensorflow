@@ -15,6 +15,7 @@ cuda_py_strict_test(
     tags = [
         # "multi_and_single_gpu", # TODO(b/287692888): re-enable once the 2gpu test passes.
         "no_windows_gpu",  # b/216367668
+        "no_windows",  # b/326464742
     ],
     deps = [
         "//tensorflow/core:protos_all_py",

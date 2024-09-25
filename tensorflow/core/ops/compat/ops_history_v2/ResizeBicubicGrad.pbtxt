@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResizeBicubicGrad"
   input_arg {
     name: "grads"

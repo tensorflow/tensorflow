@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {

@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
+#include "xla/tsl/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -47,8 +49,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tsl/lib/io/snappy/snappy_inputbuffer.h"
-#include "tsl/lib/io/snappy/snappy_outputbuffer.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -579,7 +579,7 @@ class Reader::NestedDataset : public DatasetBase {
                          std::vector<DatasetBase*> datasets)
       : DatasetBase(std::move(ctx)), datasets_(datasets) {
     dtypes_.push_back(DT_VARIANT);
-    gtl::InlinedVector<int64_t, 1> element_dim_sizes;
+    absl::InlinedVector<int64_t, 1UL> element_dim_sizes;
     element_dim_sizes.push_back(1);
     partial_shapes_.emplace_back(element_dim_sizes);
   }
@@ -761,17 +761,17 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   return absl::OkStatus();
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
+absl::StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
   bytes_read_ += record.size();
   return Parse(record);
 }
 
-StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
+absl::StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   std::vector<Tensor> tensors;
   while (true) {
-    StatusOr<Tensor> tensor = GetNext();
+    absl::StatusOr<Tensor> tensor = GetNext();
     if (absl::IsOutOfRange(tensor.status())) {
       return tensors;
     }
@@ -781,7 +781,7 @@ StatusOr<std::vector<Tensor>> TFRecordReaderImpl::GetTensors() {
   return tensors;
 }
 
-StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
+absl::StatusOr<Tensor> TFRecordReaderImpl::Parse(const tstring& record) {
   TensorProto proto;
   if (!proto.ParseFromArray(record.data(), record.size())) {
     return errors::DataLoss(
@@ -859,9 +859,9 @@ Status CustomReader::Initialize(Env* env) {
 }
 
 Status CustomReader::ReadTensors(std::vector<Tensor>* read_tensors) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   if (version_ == 0 || compression_type_ != io::compression::kSnappy) {
     return ReadTensorsV0(read_tensors);
   }

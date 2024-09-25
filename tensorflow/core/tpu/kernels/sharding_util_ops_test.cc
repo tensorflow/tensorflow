@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -156,7 +156,7 @@ Status CreateSplitTensorGraph(const TensorShape& input_shape,
     output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateSplitResourceGraph(const TensorShape& input_shape,
@@ -199,7 +199,7 @@ Status CreateSplitResourceGraph(const TensorShape& input_shape,
     output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct XlaSplitNDTestParam {
@@ -816,7 +816,7 @@ Status CreateConcatTensorGraph(absl::Span<const TensorShape> input_shapes,
 
   output_tensor_names->push_back(absl::StrCat(xla_op->name(), ":", 0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <bool Init>
@@ -877,7 +877,7 @@ Status CreateConcatResourceGraph(
 
   output_tensor_names->push_back(absl::StrCat(read_var->name(), ":", 0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct XlaConcatNDTestParam {
@@ -1263,7 +1263,7 @@ Status CreateRoundtripTensorGraph(
 
   output_tensor_names->push_back(absl::StrCat(equal->name(), ":", 0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateRoundtripResourceGraph(
@@ -1337,7 +1337,7 @@ Status CreateRoundtripResourceGraph(
 
   output_tensor_names->push_back(absl::StrCat(equal->name(), ":", 0));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct RoundtripXlaSplitConcatNDTestParam {

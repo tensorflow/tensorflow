@@ -287,6 +287,9 @@ class AtomicFunction(core.AtomicFunction):
     if self._generated_graph:
       func_graph_module.dismantle_func_graph(self._generated_graph)
 
+    if RUNTIME_FUNCTION_REFS is None:
+      return
+
     key = (self._bound_context.function_scope_id, self.name)
     RUNTIME_FUNCTION_REFS[key] -= 1
     if RUNTIME_FUNCTION_REFS[key] < 0:
@@ -426,7 +429,7 @@ def make_call_op_in_graph(
   graph = ops.get_default_graph()
   graph._add_function_recursive(atomic)  # pylint: disable=protected-access
 
-  op = partitioned_call_op(
+  op = partitioned_call_op(  # pytype: disable=wrong-arg-types  # always-use-property-annotation
       name=atomic.name,
       args=tensor_inputs,
       is_stateful=atomic.call_options.is_stateful,

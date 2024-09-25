@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_FUTURE_H_
 #define XLA_PYTHON_IFRT_FUTURE_H_
 
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/status.h"
+#include "xla/pjrt/pjrt_future.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,14 +35,13 @@ namespace ifrt {
 // (1) no reference counting of `Future`s sharing the same `Promise` and (2)
 // safe mutable access to the value when the `Future` becomes ready, including
 // moving the value out of the `Future`/`Promise`.
-template <typename T>
+template <typename T = void>
 using Future = ::xla::PjRtFuture<T>;
 
-template <typename T>
+template <typename T = void>
 using Promise = typename ::xla::PjRtFuture<T>::Promise;
 
-// Returns a `Future` that aggregates the return status of all `Future`s.
-Future<Status> JoinFutures(absl::Span<Future<Status>> futures);
+using ::xla::JoinFutures;
 
 }  // namespace ifrt
 }  // namespace xla

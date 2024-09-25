@@ -26,23 +26,40 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_ordering.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -98,7 +115,9 @@ bool ShouldCopyRootValue(const HloValue& value,
 // Deep copy the given instructions 'from' and 'to' at the ShapeIndexes given in
 // 'indices_to_copy'. Add control edges from the respective kCopy instructions
 // in deep copy of 'from' to the respective kCopy instruction in the deep copy
-// of 'to'.
+// of 'to'. These control edges are necessary to prevent live range interference
+// between the kCopy instructions in the deep copy of 'from' and the kCopy
+// instructions in the deep copy of 'to'.
 //
 // Requirements: 'from' and 'to' must have compatible shapes.
 //
@@ -106,11 +125,11 @@ bool ShouldCopyRootValue(const HloValue& value,
 // the only index to copy. Prior to deep-copying we have:
 //
 //
-//      'from'
-//         |
-//        ...
-//         |
-//       'to'
+//       'from'
+//          |
+//         ...
+//          |
+//        'to'
 //
 // DeepCopyAndAddControlEdges produces:
 //
@@ -133,7 +152,7 @@ bool ShouldCopyRootValue(const HloValue& value,
 //        \   /
 //        Tuple
 //
-StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
 DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
                            const ShapeTree<bool>& indices_to_copy) {
   DCHECK(ShapeUtil::Compatible(from->shape(), to->shape()));
@@ -284,8 +303,8 @@ bool IndicesToCopyForConditional(const HloDataflowAnalysis& dataflow,
 // If the loop state is a tuple then the above kCopy instructions are a deep
 // copy constructed of kCopy, kGetTupleElement, and kTuple instruction as
 // constructed by HloInstruction::DeepCopyInstruction.
-Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
-                         HloInstruction* xla_while) {
+absl::Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
+                               HloInstruction* xla_while) {
   VLOG(2) << "Adding copies for kWhile instruction " << xla_while->name();
   TF_RET_CHECK(xla_while->opcode() == HloOpcode::kWhile);
 
@@ -294,7 +313,7 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
                              &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kWhile instruction "
             << xla_while->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Adding copies for " << xla_while->name() << " at indices:";
@@ -337,34 +356,34 @@ Status AddCopiesForWhile(const HloAliasAnalysis& alias_analysis,
   }
 
   body->set_root_instruction(root_copy);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add copies for the operands of in-place operations. RemoveUnnecessaryCopies
 // will remove the unnecessary copies.
-Status AddCopiesForInPlaceOperation(const HloAliasAnalysis& alias_analysis,
-                                    HloInstruction* in_place_op,
-                                    int64_t operand_number) {
+absl::Status AddCopiesForInPlaceOperation(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* in_place_op,
+    int64_t operand_number) {
   VLOG(2) << "Adding copies for in-place operation " << in_place_op->name();
   HloInstruction* operand = in_place_op->mutable_operand(operand_number);
   TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,
                       in_place_op->parent()->DeepCopyInstruction(operand));
   TF_RETURN_IF_ERROR(
       operand->ReplaceUseWith(in_place_op, operand_number, deep_copy));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Conservatively adds copies before root instruction of entry computation and
 // each aliased parameter to resolve interference of aliased input and output
 // buffer. We later rely on RemoveUnnecessaryCopies to drop the unnecessary
 // ones.
-Status AddCopiesForAliasedInputOutputs(
+absl::Status AddCopiesForAliasedInputOutputs(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloComputation* entry = module->entry_computation();
   if (!HloInstruction::IsThreadIncluded(entry->execution_thread(),
                                         execution_threads)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloInstruction* root = entry->root_instruction();
 
@@ -415,7 +434,7 @@ Status AddCopiesForAliasedInputOutputs(
   }
 
   if (!has_alias) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add copies before root instruction.
@@ -429,9 +448,9 @@ Status AddCopiesForAliasedInputOutputs(
   // Add control dependencies between the input/output copies.
   TF_RETURN_IF_ERROR(module->input_output_alias_config().ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) -> Status {
+          const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
         if (!copied_parameters[alias.parameter_number]) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         HloInstruction* from =
             copied_parameters[alias.parameter_number]->element(
@@ -441,16 +460,16 @@ Status AddCopiesForAliasedInputOutputs(
         TF_RET_CHECK(from != nullptr);
         TF_RET_CHECK(to != nullptr);
         TF_RETURN_IF_ERROR(from->AddControlDependencyTo(to));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   entry->set_root_instruction(root_copied);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Removes any control dependencies to or from the given instruction.
-Status StripControlDependenciesFrom(HloInstruction* instruction) {
+absl::Status StripControlDependenciesFrom(HloInstruction* instruction) {
   while (!instruction->control_successors().empty()) {
     TF_RETURN_IF_ERROR(instruction->RemoveControlDependencyTo(
         instruction->control_successors().front()));
@@ -462,7 +481,7 @@ Status StripControlDependenciesFrom(HloInstruction* instruction) {
             instruction));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class LiveRangeRegions {
@@ -894,7 +913,7 @@ class ComputeRelativeLocation {
             }
             VLOG(3) << "instr2 relation: " << instr2_relation.ToString();
           }
-          // Here instru2_relation is guaranteed to have at most a single entry,
+          // Here instr2_relation is guaranteed to have at most a single entry,
           // because it was initialized to be empty, and has been updated only
           // via instr2_relation.UnionRelationFromSameSource(rel), which
           // maintains that the updated result has only a single entry.
@@ -1001,7 +1020,8 @@ class ComputeRelativeLocation {
       }
     }
     for (const InstructionEntry& entry1 : unordered_ops) {
-      Save(entry2.first, entry1.first, desired_relation, true);
+      Save(entry2.first, entry1.first, desired_relation,
+           /*is_unordered_originally=*/true);
     }
     return true;
   }
@@ -1454,7 +1474,7 @@ class CopyRemover {
   }
 
   // Verify invariants within the linked lists.
-  Status Verify() const {
+  absl::Status Verify() const {
     for (const ValueNode* head : value_lists_) {
       const ValueNode* p = head;
       do {
@@ -1476,7 +1496,7 @@ class CopyRemover {
         p = p->next;
       } while (p != head);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Compute the set of instructions where values are alive and organize these
@@ -1603,7 +1623,7 @@ class CopyRemover {
     //  totally ordered live ranges; otherwise the merged buffer would have
     //  live range interference.
     if (copy_node.src->next == copy_node.dest) {
-      // In the process of eliding copies, its possible for a copy to have the
+      // In the process of eliding copies, it's possible for a copy to have the
       // same source and destination buffer. In this case, the copy can be
       // safely removed.
       VLOG(2) << copy->name() << " source and destination buffers are same.";
@@ -1906,7 +1926,7 @@ class CopyRemover {
         StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
-    VisitValueNode(element);
+    ForEachValueInRange(element, VisitValueNode);
     StrAppend(&result, "}");
     return result;
   }
@@ -1967,7 +1987,7 @@ class CopyRemover {
 // We add copies for all phi indices of the true and false computation
 // roots, in order to resolve interference. We later rely on
 // RemoveUnnecessaryCopies to drop the unnecessary ones.
-Status CopyInsertion::AddCopiesForConditional(
+absl::Status CopyInsertion::AddCopiesForConditional(
     const HloAliasAnalysis& alias_analysis, HloInstruction* conditional) {
   VLOG(2) << "Adding copies for kConditional instruction "
           << conditional->name();
@@ -1977,7 +1997,7 @@ Status CopyInsertion::AddCopiesForConditional(
                                    conditional, &indices_to_copy)) {
     VLOG(2) << "No copies necessary for kConditional instruction "
             << conditional->name();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (HloComputation* computation : conditional->branch_computations()) {
@@ -1991,13 +2011,13 @@ Status CopyInsertion::AddCopiesForConditional(
     }
     computation->set_root_instruction(deep_copy);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Add kCopy instructions to the given module to guarantee there is no
 // live-range interference. Generally interference can only occur around kWhile
 // instructions which have update-in-place semantics.
-Status CopyInsertion::AddCopiesToResolveInterference(
+absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -2068,17 +2088,17 @@ Status CopyInsertion::AddCopiesToResolveInterference(
 
   TF_RETURN_IF_ERROR(
       AddCopiesForAliasedInputOutputs(module, execution_threads));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CopyInsertion::AddSpecialCaseCopies(
+absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   return AddSpecialCaseCopies(*call_graph, execution_threads, module);
 }
 
-Status CopyInsertion::AddSpecialCaseCopies(
+absl::Status CopyInsertion::AddSpecialCaseCopies(
     const CallGraph& call_graph,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module) {
@@ -2228,7 +2248,7 @@ Status CopyInsertion::AddSpecialCaseCopies(
       instruction->parent()->set_root_instruction(deep_copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static int64_t GetNumExistingCopies(
@@ -2245,7 +2265,7 @@ static int64_t GetNumExistingCopies(
   return num_existing_copies;
 }
 
-Status CopyInsertion::RemoveUnnecessaryCopies(
+absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module, bool check_live_range_ordering,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
@@ -2317,10 +2337,10 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> CopyInsertion::Run(
+absl::StatusOr<bool> CopyInsertion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Copy insertion is performed in three steps:

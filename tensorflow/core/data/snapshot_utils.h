@@ -251,7 +251,7 @@ class TFRecordReaderImpl {
   // Constructs a `TFRecordReaderImpl`.
   // `filename` is the file to read from.
   // `compression_type` is the compression method, as defined in
-  // tensorflow/tsl/lib/io/compression.h.
+  // tensorflow/compiler/xla/tsl/lib/io/compression.h.
   // `output_buffer_size` specifies the buffer size required by Snappy/Zlib
   // compression algorithms. Ignored if compression is not enabled.
   TFRecordReaderImpl(const std::string& filename, const string& compression,
@@ -262,17 +262,17 @@ class TFRecordReaderImpl {
   Status Initialize(Env* env);
 
   // Reads the next Tensor in the input file.
-  StatusOr<Tensor> GetNext();
+  absl::StatusOr<Tensor> GetNext();
 
   // Reads all Tensors in the input file.
-  StatusOr<std::vector<Tensor>> GetTensors();
+  absl::StatusOr<std::vector<Tensor>> GetTensors();
 
   // Returns the number of bytes read.
   uint64_t BytesRead() const { return bytes_read_; }
 
  private:
   // Parses `record` into a Tensor.
-  StatusOr<Tensor> Parse(const tstring& record);
+  absl::StatusOr<Tensor> Parse(const tstring& record);
 
   std::string filename_;
   std::unique_ptr<RandomAccessFile> file_;

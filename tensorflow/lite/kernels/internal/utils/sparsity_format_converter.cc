@@ -19,6 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace internal {
 namespace sparsity {

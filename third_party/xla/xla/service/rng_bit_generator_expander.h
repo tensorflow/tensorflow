@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_SERVICE_RNG_BIT_GENERATOR_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/op_expander_pass.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -57,11 +57,11 @@ class RngBitGeneratorExpander : public OpExpanderPass {
   };
 
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
-  StatusOr<HloInstruction*> ExpandInstruction(HloInstruction* hlo) override;
-  StatusOr<HloComputation*> GetGeneratorComputation(const Shape& data_shape,
-                                                    const Shape& state_shape,
-                                                    RandomAlgorithm algorithm,
-                                                    HloModule* module);
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* hlo) override;
+  absl::StatusOr<HloComputation*> GetGeneratorComputation(
+      const Shape& data_shape, const Shape& state_shape,
+      RandomAlgorithm algorithm, HloModule* module);
 
   const RandomAlgorithm default_algorithm_;
   absl::flat_hash_map<RngGeneratorKey, HloComputation*> computation_cache_;

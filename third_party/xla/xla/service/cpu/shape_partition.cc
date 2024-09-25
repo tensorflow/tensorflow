@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/service/cpu/shape_partition.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 namespace xla {
 namespace cpu {
 
 std::vector<int64_t> ShapePartitionAssigner::Run(
     int64_t target_partition_count) {
-  // Gather outer-most dims where dim_size >= 'target_partition_count'.
+  // Gather outermost dims where dim_size >= 'target_partition_count'.
   // This may include the inner-dim as LLVM can vectorize loops with dynamic
   // bounds.
   std::vector<int64_t> outer_dims;

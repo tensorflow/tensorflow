@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include <atomic>
+#include <memory>
+#include <variant>
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -59,7 +61,7 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
       context->allocate_output(output_index, TensorShape({}), &handle));
   handle->scalar<ResourceHandle>()() =
       MakeResourceHandle(container, name, *context->device(), type_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace internal {
@@ -70,7 +72,7 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
         "Trying to access resource ", p.name(), " located in device ",
         p.device(), " from device ", ctx->device()->attributes().name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace internal
@@ -82,7 +84,7 @@ Status ResourceMgr::InsertDebugTypeName(uint64 hash_code,
     return errors::AlreadyExists("Duplicate hash code found for type ",
                                  type_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
@@ -97,17 +99,17 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
 ResourceMgr::ResourceAndName::ResourceAndName() : name(nullptr) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(const string& name)
-    : name(absl::make_unique<string>(name)) {}
+    : name(std::make_unique<string>(name)) {}
 
 core::RefCountPtr<ResourceBase> ResourceMgr::ResourceAndName::GetResource()
     const {
-  if (absl::holds_alternative<core::RefCountPtr<ResourceBase>>(resource)) {
+  if (std::holds_alternative<core::RefCountPtr<ResourceBase>>(resource)) {
     ResourceBase* ptr =
-        absl::get<core::RefCountPtr<ResourceBase>>(resource).get();
+        std::get<core::RefCountPtr<ResourceBase>>(resource).get();
     ptr->Ref();
     return core::RefCountPtr<ResourceBase>(ptr);
-  } else if (absl::holds_alternative<core::WeakPtr<ResourceBase>>(resource)) {
-    return absl::get<core::WeakPtr<ResourceBase>>(resource).GetNewRef();
+  } else if (std::holds_alternative<core::WeakPtr<ResourceBase>>(resource)) {
+    return std::get<core::WeakPtr<ResourceBase>>(resource).GetNewRef();
   } else {
     return nullptr;
   }
@@ -217,7 +219,7 @@ Status ResourceMgr::DoCreate(const string& container_name, TypeIndex type,
   auto st = container->insert(std::move(key_and_value));
   if (st.second) {
     TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::AlreadyExists("Resource ", container_name, "/", name, "/",
                                type.name());
@@ -257,7 +259,7 @@ Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
                             type_name, " has been destroyed.");
   }
   *resource = ptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ResourceMgr::PopResourceAndName(const string& container,
@@ -277,7 +279,7 @@ Status ResourceMgr::PopResourceAndName(const string& container,
   }
   std::swap(resource_and_name, iter->second);
   b->erase(iter);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
@@ -287,7 +289,7 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
   TF_RETURN_IF_ERROR(PopResourceAndName(
       container, type_hash_code, resource_name, type_name, resource_and_name));
 
-  if (absl::holds_alternative<core::WeakPtr<ResourceBase>>(
+  if (std::holds_alternative<core::WeakPtr<ResourceBase>>(
           resource_and_name.resource)) {
     return errors::Internal(
         "Cannot delete an unowned Resource ", container, "/", resource_name,
@@ -295,7 +297,7 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
         "This indicates ref-counting ResourceHandle is exposed to weak "
         "ResourceHandle code paths.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
@@ -313,7 +315,7 @@ Status ResourceMgr::Cleanup(const string& container) {
     tf_shared_lock l(mu_);
     if (!gtl::FindOrNull(containers_, container)) {
       // Nothing to cleanup.
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   Container* b = nullptr;
@@ -322,14 +324,14 @@ Status ResourceMgr::Cleanup(const string& container) {
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
       // Nothing to cleanup, it's OK (concurrent cleanup).
-      return OkStatus();
+      return absl::OkStatus();
     }
     b = iter->second;
     containers_.erase(iter);
   }
   CHECK(b != nullptr);
   delete b;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static bool IsValidContainerName(StringPiece s) {
@@ -371,7 +373,7 @@ Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
     static std::atomic<int64_t> counter(0);
     name_ = strings::StrCat("_", counter.fetch_add(1), "_", ndef.name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string ContainerInfo::DebugString() const {
@@ -392,7 +394,7 @@ Status HandleFromInput(OpKernelContext* ctx, int input,
     return absl::InvalidArgumentError("Empty resource handle");
   }
   *handle = tensor->flat<ResourceHandle>()(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
@@ -403,7 +405,7 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
     return absl::InvalidArgumentError("Empty resource handle");
   }
   *handle = tensor->flat<ResourceHandle>()(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
@@ -412,7 +414,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
   if (p.IsRefCounting()) {
     TF_ASSIGN_OR_RETURN(*value, p.GetResource<ResourceBase>());
     (*value)->Ref();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return ctx->resource_manager()->Lookup(p, value);
 }
@@ -420,7 +422,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   if (p.IsRefCounting()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return ctx->resource_manager()->Delete(p);
 }

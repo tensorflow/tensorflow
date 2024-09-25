@@ -57,7 +57,7 @@ Status DeviceSimple::MakeTensorFromProto(const TensorProto& tensor_proto,
     return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
   }
   *tensor = parsed;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,

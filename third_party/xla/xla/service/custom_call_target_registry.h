@@ -54,6 +54,9 @@ class CustomCallTargetRegistry {
                 const std::string& platform);
   void* Lookup(const std::string& symbol, const std::string& platform) const;
 
+  std::unordered_map<std::string, void*> registered_symbols(
+      const std::string& platform) const;
+
  private:
   // hash<pair<T,T>> is surprisingly not provided by default in stl.  It would
   // be better to use absl's hash function, but we're avoiding an absl

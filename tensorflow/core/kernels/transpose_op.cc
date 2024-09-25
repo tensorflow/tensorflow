@@ -107,7 +107,7 @@ Status PermutationHelper(const Tensor& perm, const int dims,
       reinterpret_cast<const volatile Tperm*>(Vperm.data());
   *permutation = std::vector<int32>(perm_begin, perm_begin + dims);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -146,7 +146,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   TensorShape shape;
 
   // Check whether permutation is a permutation of integers of [0 .. dims).
-  gtl::InlinedVector<bool, 8> bits(dims);
+  absl::InlinedVector<bool, 8UL> bits(dims);
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
     int32_t d = permutation[i];
@@ -188,7 +188,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
 }
 
 Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                                   gtl::ArraySlice<int32> perm, Tensor* out) {
+                                   absl::Span<const int32> perm, Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
@@ -196,7 +196,7 @@ Status TransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
 
 Status ConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                             const Tensor& in,
-                                            gtl::ArraySlice<int32> perm,
+                                            absl::Span<const int32> perm,
                                             Tensor* out) {
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoConjugateTranspose(ctx->eigen_device<CPUDevice>(), in,

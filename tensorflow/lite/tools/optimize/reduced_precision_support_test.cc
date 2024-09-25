@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/testing/util.h"
-#include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace tflite {
 namespace optimize {

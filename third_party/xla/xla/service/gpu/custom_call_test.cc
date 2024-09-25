@@ -15,18 +15,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
+#include <memory>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_format.h"
-#include "xla/shape.h"
-#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -38,10 +32,16 @@ limitations under the License.
 #define PLATFORM "ROCM"
 #endif
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -49,13 +49,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
@@ -350,13 +355,13 @@ TEST_F(CustomCallTest, WithStatusFailed) {
 // XLA runtime custom calls provides type-safe custom call API
 //===----------------------------------------------------------------------===//
 
-static absl::Status AlwaysFail(ffi::BufferBase arg, int32_t value) {
+static absl::Status AlwaysFail(ffi::Result<ffi::AnyBuffer>, int32_t value) {
   return absl::InternalError(absl::StrCat("Uh oh, wrong value: ", value));
 }
 
 XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // arg
+                           .Ret<ffi::AnyBuffer>()   //
                            .Attr<int32_t>("value")  // value
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail",
@@ -375,20 +380,18 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
 
-static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                           ffi::BufferBase src, ffi::BufferBase dst) {
-  run_options->stream()->ThenMemcpyD2D(
-      &dst.data, src.data,
-      absl::c_accumulate(src.dimensions, 1.0, std::multiplies<int64_t>()) *
-          sizeof(float));
-  return absl::OkStatus();
+static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+                           ffi::Result<ffi::AnyBuffer> dst) {
+  se::DeviceMemoryBase dst_mem = dst->device_memory();
+  se::DeviceMemoryBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::AnyBuffer>()  // src
+                           .Ret<ffi::AnyBuffer>()  // dst
 );
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
@@ -406,13 +409,14 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
 }
 
-static absl::Status HandleUserPointer(ffi::BufferBase, const std::string* str) {
+static absl::Status HandleUserPointer(ffi::Result<ffi::AnyBuffer>,
+                                      const std::string* str) {
   return absl::InternalError(*str);
 }
 
 XLA_FFI_DEFINE_HANDLER(kHandleUserPointer, HandleUserPointer,
                        ffi::Ffi::Bind()
-                           .Arg<ffi::BufferBase>()  // buffer for result
+                           .Ret<ffi::AnyBuffer>()  // buffer for result
                            .Attr<ffi::Pointer<std::string>>("message"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$user_data", PLATFORM,
@@ -435,13 +439,220 @@ TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("User-defined message"));
 }
 
+bool is_ffi_invoked = false;
+static absl::Status IsInvoked(ffi::Result<ffi::AnyBuffer>) {
+  is_ffi_invoked = true;
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kIsInvoked, IsInvoked,
+    ffi::Ffi::Bind().Ret<ffi::AnyBuffer>());  // Buffer for result (unused).
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$isinvoked", PLATFORM,
+                         kIsInvoked);
+
+TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$isinvoked", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
+  EXPECT_TRUE(is_ffi_invoked);
+}
+
+TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$unknown_target", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  auto status = Execute(&b, {}).status();
+  EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr("No registered implementation"));
+}
+
+// Memcpy and SubBuffers tests are already ported in
+// fusions/address_computation_fusion_test.cc
+
+// Reusing kExpectedOpaque from the original test.
+static absl::Status Opaque(ffi::Result<ffi::AnyBuffer>,
+                           const std::string* str) {
+  std::string opaque(*str);
+  if (opaque != kExpectedOpaque)
+    return absl::InternalError(absl::StrFormat(
+        "Opaque string does not match. Expected `%s` but got `%s`",
+        kExpectedOpaque, opaque));
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kOpaque, Opaque,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::AnyBuffer>()  // Dummy result buffer.
+                           .Attr<ffi::Pointer<std::string>>("opaque"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$opaque", PLATFORM,
+                         kOpaque);
+
+TEST_F(CustomCallTest, ExportedFfiOpaque) {
+  XlaBuilder b(TestName());
+  const std::string opaque = absl::StrFormat(
+      "{opaque = %d : i64}", reinterpret_cast<uintptr_t>(&kExpectedOpaque));
+  CustomCall(&b, "__xla_test$$opaque", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/opaque,
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
+static absl::Status CheckTokens(std::vector<PrimitiveType> args,
+                                std::string_view pattern) {
+  if (args.size() != pattern.size()) {
+    return absl::InternalError("Incorrect number of arguments");
+  }
+  for (auto i = 0; i < pattern.size(); ++i) {
+    char c = pattern[i];
+    bool is_token = args[i] == PrimitiveType::TOKEN;
+    if (c == 'T') {
+      if (!is_token) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Expected token at position %d", i));
+      }
+    } else if (c == 'A') {
+      if (is_token) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unexpected token at position %d", i));
+      }
+    } else {
+      return absl::InternalError(
+          absl::StrFormat("Unexpected character %c at position %d", c, i));
+    }
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status FfiTokens(ffi::RemainingArgs inputs,
+                              ffi::RemainingRets outputs,
+                              std::string_view pattern) {
+  std::vector<PrimitiveType> types;
+  for (auto i = 0; i < inputs.size(); ++i) {
+    types.push_back(inputs.get<ffi::AnyBuffer>(i).value().element_type());
+  }
+  for (auto i = 0; i < outputs.size(); ++i) {
+    types.push_back(outputs.get<ffi::AnyBuffer>(i).value()->element_type());
+  }
+  return CheckTokens(types, pattern);
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kFfiTokens, FfiTokens,
+    ffi::Ffi::Bind().RemainingArgs().RemainingRets().Attr<std::string_view>(
+        "pattern"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens", PLATFORM,
+                         kFfiTokens);
+
+TEST_P(CustomCallTokensTest, ExportedTokensTest) {
+  const TokenTestCase& tc = GetParam();
+  XlaBuilder b(TestName());
+  std::istringstream input(tc.input);
+  std::istringstream output(tc.output);
+  std::vector<XlaOp> call_inputs = BuildInputs(b, input);
+  std::vector<Shape> call_output = BuildOutputType(output);
+  ASSERT_GE(call_inputs.size(), 1);
+  ASSERT_LE(call_inputs.size(), 3);
+  ASSERT_EQ(call_output.size(), 1);
+
+  const std::string custom_call_name = "__xla_test$$tokens";
+  const std::string opaque = absl::StrFormat("{pattern = \"%s\"}", tc.opaque);
+  CustomCall(&b, custom_call_name, /*operands=*/call_inputs,
+             call_output.front(),
+             /*opaque=*/opaque,
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
+INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,
+                         ::testing::ValuesIn(GetTokenTestCases()));
+
+static absl::Status AlwaysSucceed(ffi::Result<ffi::AnyBuffer>) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
+                       ffi::Ffi::Bind().Ret<ffi::AnyBuffer>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
+                         PLATFORM, kAlwaysSucceed);
+
+TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "__xla_test$$always_succeed", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:FFI handler for testing attributes decoding
+//===----------------------------------------------------------------------===//
+
+static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
+                                  absl::Span<const int32_t> i32_arr) {
+  if (i32_arr.size() != 4)
+    return absl::InternalError("i32_arr size does not match");
+
+  if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 || i32_arr[3] != 4)
+    return absl::InternalError("i32_arr values do not match");
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kFfiAttributes, FfiAttributes,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::AnyBuffer>()
+                           .Attr<absl::Span<const int32_t>>("i32_arr"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_attributes",
+                         PLATFORM, kFfiAttributes);
+
+TEST_F(CustomCallTest, FfiAttributes) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "xla.gpu.ffi_attributes", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"{ i32_arr = array<i32: 1, 2, 3, 4> }",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+  TF_ASSERT_OK(Execute(&b, {}).status());
+}
+
 //===----------------------------------------------------------------------===//
 // XLA:FFI handler with attached HloComputation
 //===----------------------------------------------------------------------===//
 
 static absl::Status MemcpyWithCalledComputation(
-    const ServiceExecutableRunOptions* run_options, ffi::BufferBase src,
-    ffi::BufferBase dst, const HloComputation* called_computation) {
+    se::Stream* stream, int32_t device_ordinal,
+    se::DeviceMemoryAllocator* allocator,
+    se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
+    ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
   if (called_computation == nullptr)
     return absl::InternalError("Called computation is not defined");
 
@@ -451,19 +662,26 @@ static absl::Status MemcpyWithCalledComputation(
   if (!DynCast<HloParameterInstruction>(called_computation->root_instruction()))
     return absl::InternalError("ROOT must be a paremeter");
 
-  return Memcpy(run_options, src, dst);
+  // Check that scratch allocator is working.
+  auto scratch = scratch_allocator.AllocateBytes(1024);
+  if (!scratch.ok()) return scratch.status();
+
+  return Memcpy(stream, src, dst);
 }
 
 XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        MemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
-                           .Ctx<ServiceExecutableRunOptions>()
-                           .Arg<ffi::BufferBase>()  // src
-                           .Arg<ffi::BufferBase>()  // dst
+                           .Ctx<ffi::Stream>()
+                           .Ctx<ffi::DeviceOrdinal>()     // device_ordinal
+                           .Ctx<ffi::Allocator>()         // allocator
+                           .Ctx<ffi::ScratchAllocator>()  // scratch
+                           .Arg<ffi::AnyBuffer>()         // src
+                           .Ret<ffi::AnyBuffer>()         // dst
                            .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "xla.gpu.ext.memcpy_with_called_compuation", PLATFORM,
+                         "xla.gpu.ext.memcpy_with_called_computation", PLATFORM,
                          kMemcpyWithCalledComputation);
 
 TEST_F(CustomCallTest, WithCalledComputation) {
@@ -477,7 +695,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 
   XlaBuilder b(TestName());
   CustomCallWithComputation(
-      &b, "xla.gpu.ext.memcpy_with_called_compuation",
+      &b, "xla.gpu.ext.memcpy_with_called_computation",
       /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
       copy_computation, shape, /*opaque=*/"",
       /*has_side_effect=*/false,
@@ -486,6 +704,143 @@ TEST_F(CustomCallTest, WithCalledComputation) {
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
   EXPECT_THAT(result.data<float>(), ::testing::Each(42));
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:FFI handler with execution context
+//===----------------------------------------------------------------------===//
+
+// Arbitrary user-defined context passed via the execution context side channel
+// to a custom call handlers.
+struct SomeExtraContext {
+  explicit SomeExtraContext(int32_t value) : value(value) {}
+  int32_t value;
+  bool prepared = false;
+  bool initialized = false;
+  bool executed = false;
+};
+
+template <ffi::ExecutionStage stage>
+static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
+                                     SomeExtraContext* ctx) {
+  if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  if constexpr (stage == ffi::ExecutionStage::kPrepare) {
+    ctx->prepared = true;
+  } else if constexpr (stage == ffi::ExecutionStage::kInitialize) {
+    ctx->initialized = true;
+  } else if constexpr (stage == ffi::ExecutionStage::kExecute) {
+    ctx->executed = true;
+  } else {
+    return absl::InternalError("Unexpected stage");
+  }
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextPrepare,
+                       ExecutionContext<ffi::ExecutionStage::kPrepare>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextInitialize,
+                       ExecutionContext<ffi::ExecutionStage::kInitialize>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kInitialize>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
+                       ExecutionContext<ffi::ExecutionStage::kExecute>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
+                         PLATFORM,
+                         {
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/kExecutionContextPrepare,
+                             /*initialize=*/kExecutionContextInitialize,
+                             /*execute=*/kExecutionContextExecute,
+                         });
+
+TEST_F(CustomCallTest, FfiExecutionContext) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "xla.gpu.ffi_execution_context", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  ffi::ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
+
+  ffi::internal::ScopedExecutionContext scoped_execution_context(
+      &execution_context);
+
+  TF_ASSERT_OK(Execute(&b, {}).status());
+
+  // Check that FFI handler was called during initialization and execution.
+  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
+                          execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->prepared);
+  EXPECT_TRUE(user_context->initialized);
+  EXPECT_TRUE(user_context->executed);
+}
+
+//===----------------------------------------------------------------------===//
+// Stateful XLA:FFI handler
+//===----------------------------------------------------------------------===//
+
+struct SomeState {
+  explicit SomeState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// Every time custom call HLO operation is instantiated as a GPU runtime Thunk,
+// XLA calls instantiate callback to create a new instance of the handler state,
+// that will be passed to all other FFI handler calls.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
+  return std::make_unique<SomeState>(42);
+}
+
+// At run time we can access the state created by the instantiate callback.
+static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
+  if (state->value != 42) {
+    return absl::InternalError("Unexpected value");
+  }
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(
+    kGetState, GetState,
+    ffi::Ffi::Bind().Ret<ffi::AnyBuffer>().Ctx<ffi::State<SomeState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_state",
+                         PLATFORM,
+                         {
+                             /*instantiate=*/kInstantiateState,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kGetState,
+                         });
+
+TEST_F(CustomCallTest, FfiExecutionState) {
+  XlaBuilder b(TestName());
+  CustomCall(&b, "xla.gpu.ffi_execution_state", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {}),
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
 }  // anonymous namespace

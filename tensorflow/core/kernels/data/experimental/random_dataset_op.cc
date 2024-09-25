@@ -73,7 +73,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       Status s = resource_mgr_->Delete<SeedGeneratorManager>(
           resource_handle_.container(), resource_handle_.name());
       if (!s.ok()) {
-        LOG(WARNING) << "Failed to delete RNG resource: " << s.ToString();
+        LOG(WARNING) << "Failed to delete RNG resource: " << s;
       }
     }
   }

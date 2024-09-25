@@ -15,27 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SCHEMA_SCHEMA_CONVERSION_UTILS_H_
 #define TENSORFLOW_LITE_SCHEMA_SCHEMA_CONVERSION_UTILS_H_
 
-#include "flatbuffers/flatbuffers.h"
-#include "tensorflow/lite/schema/schema_generated.h"
-
-namespace tflite {
-
-int8_t ConvertBuiltinCodeToDeprecatedBuiltinCode(
-    const BuiltinOperator builtin_code);
-
-// The following methods are for backward compatibility for the early version
-// three, which does not have an extended builtin code.
-flatbuffers::Offset<OperatorCode> CreateOperatorCode(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    flatbuffers::Offset<flatbuffers::String> custom_code = 0,
-    int32_t version = 1);
-
-flatbuffers::Offset<OperatorCode> CreateOperatorCodeDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    BuiltinOperator builtin_code = BuiltinOperator_ADD,
-    const char *custom_code = nullptr, int32_t version = 1);
-
-}  // namespace tflite
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"  // IWYU pragma: keep
 
 #endif  // TENSORFLOW_LITE_SCHEMA_SCHEMA_CONVERSION_UTILS_H_

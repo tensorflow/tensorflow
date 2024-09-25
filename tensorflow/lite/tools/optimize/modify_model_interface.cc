@@ -248,7 +248,7 @@ TfLiteStatus SetOutputTypeToUINT8(ModelT* model,
 
 TfLiteStatus RemoveInputTensor(ModelT* model,
                                const std::vector<TensorOpTensor>& inputs,
-                               int32 original_number_tensors) {
+                               int32_t original_number_tensors) {
   // Consistency check to make sure that erase start from the end.
   int last_op_index = std::numeric_limits<int32_t>::max();
   int last_tensor_index = std::numeric_limits<int32_t>::max();
@@ -274,7 +274,7 @@ TfLiteStatus RemoveInputTensor(ModelT* model,
 
 TfLiteStatus RemoveOutputTensor(ModelT* model,
                                 const std::vector<TensorOpTensor>& outputs,
-                                int32 original_number_tensors) {
+                                int32_t original_number_tensors) {
   // Consistency check to make sure that erase start from the end.
   int last_op_index = std::numeric_limits<int32_t>::max();
   int last_tensor_index = std::numeric_limits<int32_t>::max();
@@ -297,7 +297,6 @@ TfLiteStatus RemoveOutputTensor(ModelT* model,
   }
   return kTfLiteOk;
 }
-
 
 int GetOriginalNumberOfTensors(const TensorType& input_type,
                                const TensorType& output_type, ModelT* model,

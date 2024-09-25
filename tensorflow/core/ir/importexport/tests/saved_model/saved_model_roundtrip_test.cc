@@ -43,7 +43,7 @@ void RunRoundTrip(const std::string& input_file) {
   ASSERT_TRUE(read_result.ok());
 
   tensorflow::GraphDebugInfo debug_info;
-  tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref_status =
       mlir::tfg::ImportSavedModelToMlir(&context, debug_info, original_model);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =

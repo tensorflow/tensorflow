@@ -99,7 +99,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   Operation* materializeCallConversion(OpBuilder& builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+    if (!mlir::isa<TensorType>(result_type) ||
+        !mlir::isa<TensorType>(input.getType()))
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));
@@ -307,7 +308,7 @@ ParseResult SetReplicateOpOperands(
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
   for (const auto& attr : state->attributes)
     if (attr.getName().strref() == "n")
-      if (auto n_attr = attr.getValue().dyn_cast<IntegerAttr>())
+      if (auto n_attr = mlir::dyn_cast<IntegerAttr>(attr.getValue()))
         *n = n_attr.getInt();
 
   if (*n < 2)
@@ -507,13 +508,14 @@ LogicalResult ReplicateOp::verify() {
   // Check number of devices, if set, matches `n`.
   if (op.getDevices().has_value()) {
     for (auto device_attr : op.getDevices().value().getValue()) {
-      auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
+      auto device_list =
+          mlir::dyn_cast_or_null<ArrayAttr>(device_attr.getValue());
       if (!device_list)
         return op.emitError()
                << "expects 'devices' to be a map alias and device name list.";
 
       bool is_device_string = llvm::all_of(device_list, [](Attribute attr) {
-        return attr.dyn_cast_or_null<StringAttr>();
+        return mlir::dyn_cast_or_null<StringAttr>(attr);
       });
       if (!is_device_string)
         return op.emitOpError() << "expects 'devices' to be a consists of "
@@ -747,8 +749,8 @@ static LogicalResult EliminatePassThroughResults(ClusterOp op,
     // Old bridge only removes unsupported TPU types (only string for now)
     // during outside compilation extraction so this should be enough for
     // the parity.
-    bool is_unsupported_type = getElementTypeOrSelf(operand.get().getType())
-                                   .isa<mlir::TF::StringType>();
+    bool is_unsupported_type = mlir::isa<mlir::TF::StringType>(
+        getElementTypeOrSelf(operand.get().getType()));
     Value result = operand.get();
     if (is_unsupported_type && result.getParentBlock() != &body &&
         !is_used_for_resource_write) {

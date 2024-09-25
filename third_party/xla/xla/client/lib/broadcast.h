@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_BROADCAST_H_
 #define XLA_CLIENT_LIB_BROADCAST_H_
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/types.h"
@@ -25,7 +27,8 @@ namespace xla {
 
 // Broadcasts 'input' up to shape 'output_dims', using TensorFlow broadcasting
 // rules. Supports broadcasting a dimension of size x to size x*y, i.e., tiling.
-StatusOr<XlaOp> BroadcastTo(XlaOp input, absl::Span<int64_t const> output_dims);
+absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
+                                  absl::Span<int64_t const> output_dims);
 
 }  // namespace xla
 

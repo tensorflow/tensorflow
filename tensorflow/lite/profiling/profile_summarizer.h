@@ -45,13 +45,13 @@ class ProfileSummarizer {
   // Returns a string detailing the accumulated runtime stats in the format of
   // summary_formatter_.
   std::string GetOutputString() {
-    return summary_formatter_->GetOutputString(stats_calculator_map_,
-                                               *delegate_stats_calculator_);
+    return summary_formatter_->GetOutputString(
+        stats_calculator_map_, *delegate_stats_calculator_, subgraph_name_map_);
   }
 
   std::string GetShortSummary() {
-    return summary_formatter_->GetShortSummary(stats_calculator_map_,
-                                               *delegate_stats_calculator_);
+    return summary_formatter_->GetShortSummary(
+        stats_calculator_map_, *delegate_stats_calculator_, subgraph_name_map_);
   }
 
   tensorflow::StatsCalculator* GetStatsCalculator(uint32_t subgraph_index);
@@ -73,6 +73,17 @@ class ProfileSummarizer {
 
   // Summary formatter for customized output formats.
   std::shared_ptr<ProfileSummaryFormatter> summary_formatter_;
+
+  std::map<uint32_t, std::string> subgraph_name_map_;
+
+  void SetSubgraphNameMap(const tflite::Interpreter& interpreter) {
+    subgraph_name_map_.clear();
+    for (int subgraph_index = 0; subgraph_index < interpreter.subgraphs_size();
+         ++subgraph_index) {
+      subgraph_name_map_[subgraph_index] =
+          interpreter.subgraph(subgraph_index)->GetName();
+    }
+  }
 };
 
 }  // namespace profiling

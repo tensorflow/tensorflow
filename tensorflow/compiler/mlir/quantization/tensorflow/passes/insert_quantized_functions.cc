@@ -19,13 +19,17 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/quantized_function_library.h"
@@ -38,6 +42,7 @@ namespace quant {
 namespace {
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+using ::tensorflow::quantization::OpSet;
 
 class InsertQuantizedFunctionsPass
     : public PassWrapper<InsertQuantizedFunctionsPass,

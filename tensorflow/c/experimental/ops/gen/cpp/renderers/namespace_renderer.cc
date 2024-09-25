@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/namespace_renderer.h"
 
-#include "absl/strings/str_split.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
+#include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer_context.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {

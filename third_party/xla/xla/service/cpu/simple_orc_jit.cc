@@ -18,28 +18,45 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <list>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
+#include <string>
 #include <system_error>  // NOLINT
 #include <utility>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/Mangler.h"
-#include "llvm/IR/Operator.h"
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/Memory.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Host.h"
-#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
+#include "mlir/ExecutionEngine/CRunnerUtils.h"
+#include "xla/service/cpu/compiler_functor.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 #include "xla/service/cpu/runtime_conv2d.h"
@@ -50,6 +67,7 @@ limitations under the License.
 #include "xla/service/cpu/runtime_fft.h"
 #include "xla/service/cpu/runtime_fork_join.h"
 #include "xla/service/cpu/runtime_fp16.h"
+#include "xla/service/cpu/runtime_handle_ffi_call.h"  // NOLINT
 #include "xla/service/cpu/runtime_key_value_sort.h"
 #include "xla/service/cpu/runtime_matmul.h"
 #include "xla/service/cpu/runtime_matmul_acl.h"
@@ -61,11 +79,12 @@ limitations under the License.
 #include "xla/service/cpu/runtime_topk.h"
 #include "xla/service/cpu/windows_compatibility.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/types.h"
+#include "xla/service/llvm_compiler.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/onednn_convolution.h"
 #include "xla/service/cpu/onednn_layer_norm.h"
 #include "xla/service/cpu/onednn_matmul.h"
 #include "xla/service/cpu/onednn_softmax.h"
@@ -77,21 +96,17 @@ extern "C" uint16_t __truncsfbf2(float);
 // Converts an F64 value to a BF16.
 extern "C" uint16_t __truncdfbf2(double);
 
-namespace xla {
-namespace cpu {
-namespace {
+namespace xla::cpu {
 
-llvm::SmallVector<std::string, 0> DetectMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
-  llvm::StringMap<bool> host_features;
-  if (llvm::sys::getHostCPUFeatures(host_features)) {
-    for (auto& feature : host_features) {
-      result.push_back((feature.second ? '+' : '-') +
-                       std::string(feature.first()));
-    }
+std::vector<std::string> DetectMachineAttributes() {
+  std::vector<std::string> result;
+  for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
+    result.push_back((enabled ? '+' : '-') + std::string(feature));
   }
   return result;
 }
+
+namespace {
 
 class DefaultMemoryMapper final
     : public llvm::SectionMemoryManager::MemoryMapper {
@@ -293,6 +308,8 @@ bool ContiguousSectionMemoryManager::finalizeMemory(std::string* err_msg) {
 SimpleOrcJIT::InferTargetMachineForJIT(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOptLevel opt_level) {
+  std::vector<std::string> attrs = DetectMachineAttributes();
+  llvm::SmallVector<std::string, 0> llvm_attrs(attrs.begin(), attrs.end());
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -300,9 +317,16 @@ SimpleOrcJIT::InferTargetMachineForJIT(
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
               /*MCPU=*/llvm::sys::getHostCPUName(),
-              /*MAttrs=*/DetectMachineAttributes()));
+              /*MAttrs=*/llvm_attrs));
   CHECK(target_machine != nullptr);
   return target_machine;
+}
+
+static CompilerFunctor::TargetMachineBuilder CreateTargetMachineBuilder(
+    llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level) {
+  return [target_options, opt_level]() {
+    return SimpleOrcJIT::InferTargetMachineForJIT(target_options, opt_level);
+  };
 }
 
 SimpleOrcJIT::SimpleOrcJIT(
@@ -313,8 +337,11 @@ SimpleOrcJIT::SimpleOrcJIT(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook)
-    : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    size_t num_jit_dylibs)
+    : target_machine_builder_(
+          CreateTargetMachineBuilder(target_options, opt_level)),
+      target_machine_(target_machine_builder_()),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
       target_process_control_(std::move(target_process_control)),
@@ -327,12 +354,11 @@ SimpleOrcJIT::SimpleOrcJIT(
       compile_layer_(
           *execution_session_, object_layer_,
           std::make_unique<CompilerFunctor>(
-              target_machine_.get(), static_cast<int>(opt_level),
+              target_machine_builder_, static_cast<int>(opt_level),
               optimize_for_size, disable_expensive_passes,
               disable_slp_vectorizer, fast_math_flags,
               std::move(pre_optimization_hook),
               std::move(post_optimization_hook), std::move(post_codegen_hook))),
-      main_jit_dylib_(&execution_session_->createBareJITDylib("<main>")),
       gdb_jit_event_listener_(
           llvm::JITEventListener::createGDBRegistrationListener()),
       perf_jit_event_listener_(
@@ -364,8 +390,17 @@ SimpleOrcJIT::SimpleOrcJIT(
       return llvm::Error::success();
     }
   };
-  main_jit_dylib_->addGenerator(
-      std::make_unique<RuntimeSymbolGenerator>(*this));
+
+  // Always create at least one dylib.
+  num_jit_dylibs = std::max(size_t{1}, num_jit_dylibs);
+  jit_dylibs_.resize(num_jit_dylibs);
+  for (size_t i = 0; i < num_jit_dylibs; ++i) {
+    jit_dylibs_[i] = &execution_session_->createBareJITDylib(
+        absl::StrCat("<xla_jit_dylib_", i, ">"));
+    jit_dylibs_[i]->addGenerator(
+        std::make_unique<RuntimeSymbolGenerator>(*this));
+  }
+
   object_layer_.registerJITEventListener(*this);
   if (perf_jit_event_listener_) {
     object_layer_.registerJITEventListener(*perf_jit_event_listener_);
@@ -390,8 +425,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
-        post_codegen_hook) {
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
+    size_t num_jit_dylibs) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
       llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
@@ -405,7 +440,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
       std::move(*target_process_control), std::move(execution_session),
       target_options, opt_level, optimize_for_size, disable_expensive_passes,
       disable_slp_vectorizer, fast_math_flags, std::move(pre_optimization_hook),
-      std::move(post_optimization_hook), std::move(post_codegen_hook));
+      std::move(post_optimization_hook), std::move(post_codegen_hook),
+      num_jit_dylibs);
 }
 
 llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(
@@ -423,11 +459,15 @@ llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(
   }
 
   if (func_addr == nullptr) {
-    LOG(ERROR)
-        << "Unable to resolve runtime symbol: `" << name.str()
-        << "'. Hint: if the symbol a custom call target, make sure you've "
-           "registered it with the JIT using "
-           "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
+    // If symbol corresponds to a kernel function, then it must be defined in
+    // another LLVM module part (another dylib).
+    if (!kernel_symbols_.contains(name)) {
+      LOG(ERROR)
+          << "Unable to resolve runtime symbol: `" << name.str()
+          << "'. Hint: if the symbol a custom call target, make sure you've "
+             "registered it with the JIT using "
+             "XLA_CPU_REGISTER_CUSTOM_CALL_TARGET.";
+    }
     return {};
   }
   return {llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(func_addr)),
@@ -447,12 +487,13 @@ void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
 }
 
 llvm::Error SimpleOrcJIT::AddObjFile(
-    std::unique_ptr<llvm::MemoryBuffer> obj_file) {
-  return object_layer_.add(*main_jit_dylib_, std::move(obj_file));
+    std::unique_ptr<llvm::MemoryBuffer> obj_file, size_t dylib_index) {
+  return object_layer_.add(*jit_dylibs_[dylib_index], std::move(obj_file));
 }
 
-llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module) {
-  return compile_layer_.add(*main_jit_dylib_, std::move(module));
+llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module,
+                                    size_t dylib_index) {
+  return compile_layer_.add(*jit_dylibs_[dylib_index], std::move(module));
 }
 
 void SimpleOrcJIT::DoneCompiling() {
@@ -463,7 +504,7 @@ void SimpleOrcJIT::DoneCompiling() {
 
 llvm::Expected<llvm::orc::ExecutorSymbolDef> SimpleOrcJIT::FindCompiledSymbol(
     const std::string& name) {
-  return execution_session_->lookup({main_jit_dylib_}, name);
+  return execution_session_->lookup(jit_dylibs_, name);
 }
 
 #if defined(PLATFORM_WINDOWS)
@@ -520,12 +561,15 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(DuccSingleThreadedFft);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E4M3FN);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E5M2);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulU8);
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(PrintfToStderr);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
@@ -535,10 +579,12 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
   REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
+  REGISTER_CPU_RUNTIME_SYMBOL(HandleFfiCall);
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnLayerNorm);
+  REGISTER_CPU_RUNTIME_SYMBOL(OneDnnConvolution);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMulReorder);
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 
@@ -672,7 +718,6 @@ bool RegisterKnownJITSymbols() {
 }
 
 bool unused = RegisterKnownJITSymbols();
-}  // namespace
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace
+}  // namespace xla::cpu

@@ -18,15 +18,20 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<XlaOp> BroadcastTo(XlaOp input,
-                            absl::Span<int64_t const> output_dims) {
+absl::StatusOr<XlaOp> BroadcastTo(XlaOp input,
+                                  absl::Span<int64_t const> output_dims) {
   XlaBuilder* builder = input.builder();
   TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
   absl::Span<int64_t const> input_dims = input_shape.dimensions();

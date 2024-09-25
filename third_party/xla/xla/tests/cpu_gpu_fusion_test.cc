@@ -24,7 +24,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/array2d.h"
 #include "xla/client/client_library.h"
 #include "xla/client/xla_builder.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -949,9 +950,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
           .value();
   auto executable = std::move(executables[0]);
 
-  se::Stream stream(executors[device_ordinal]);
-  stream.Init();
-
+  auto stream = executors[device_ordinal]->CreateStream().value();
   // Initialize thread pool.
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
                                intra_op_parallelism_threads);
@@ -959,7 +958,7 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   // Initialize ExecutableRunOptions.
   ExecutableRunOptions options;
-  options.set_allocator(&allocator).set_stream(&stream);
+  options.set_allocator(&allocator).set_stream(stream.get());
   options.set_intra_op_thread_pool(&device);
 
   // Run some warm-up executions.

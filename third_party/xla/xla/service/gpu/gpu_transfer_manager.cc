@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -63,16 +65,43 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
 
+InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* infeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<InfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!infeed_managers->contains(executor)) {
+    infeed_managers->emplace(executor,
+                             std::make_unique<InfeedManager>(executor));
+  }
+  return infeed_managers->at(executor).get();
+}
+
+OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* outfeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<OutfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!outfeed_managers->contains(executor)) {
+    outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
+  }
+  return outfeed_managers->at(executor).get();
+}
+
 absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
-      executor, literal);
+  InfeedManager* infeed_manager = GetOrCreateInfeedManager(executor);
+  return infeed_manager->TransferLiteralToInfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
-      executor, literal);
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(executor);
+  return outfeed_manager->TransferLiteralFromOutfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
@@ -83,7 +112,6 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   TF_ASSIGN_OR_RETURN(pinned_chunk_,
                       executor->HostMemoryAllocate(kPinnedChunkBytes));
-  pinned_chunk_se_ = executor;
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
@@ -102,8 +130,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
 
-  TF_ASSIGN_OR_RETURN(auto compiler,
-                      Compiler::GetForPlatform(stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
 
   // First, figure out which parts of `device_shape` are dynamic and where the
@@ -112,7 +140,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
 
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+      [&](const ShapeIndex& index,
+          const se::DeviceMemoryBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -181,7 +210,7 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   for (int i = 0; i < copies.size(); i++) {
     se::DeviceMemoryBase src = copies[i].first;
     void* dst = h2d_memcpy_dsts[i];
-    stream->ThenMemcpy(dst, src, src.size());
+    TF_RETURN_IF_ERROR(stream->Memcpy(dst, src, src.size()));
   }
 
   // Wait for all the async copies to complete, then write into device_shape.
@@ -201,16 +230,18 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
 }
 
 // Chunks `size` into chunks of `chunk_size` and calls `callback` for each.
-static void ForEachChunk(
+static absl::Status ForEachChunk(
     size_t size, size_t chunk_size,
-    absl::FunctionRef<void(size_t chunk_offset, size_t chunk_size)> callback) {
+    absl::FunctionRef<absl::Status(size_t chunk_offset, size_t chunk_size)>
+        callback) {
   int64_t num_chunks = CeilOfRatio(size, chunk_size);
 
   for (int64_t chunk_index = 0; chunk_index < num_chunks; ++chunk_index) {
-    callback(
+    TF_RETURN_IF_ERROR(callback(
         /*chunk_offset=*/chunk_index * chunk_size,
-        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size));
+        /*chunk_size=*/std::min(chunk_size, size - chunk_index * chunk_size)));
   }
+  return absl::OkStatus();
 }
 
 absl::Status GpuTransferManager::TransferBufferFromDevice(
@@ -233,20 +264,23 @@ absl::Status GpuTransferManager::TransferBufferFromDevice(
   void* staging = staging_buffer->allocation->opaque();
 
   // Transfer chunk of data from device to destination via staging buffer.
-  auto transfer_chunk = [&](size_t chunk_offset, size_t chunk_size) {
+  auto transfer_chunk = [&](size_t chunk_offset,
+                            size_t chunk_size) -> absl::Status {
     VLOG(5) << "Transfer buffer chunk from device: offset=" << chunk_offset
             << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
 
     se::DeviceMemoryBase chunk = source.GetByteSlice(chunk_offset, chunk_size);
-    stream->ThenMemcpy(staging, chunk, chunk_size);
+    TF_RETURN_IF_ERROR(stream->Memcpy(staging, chunk, chunk_size));
 
     void* dst = reinterpret_cast<char*>(destination) + chunk_offset;
-    stream->ThenDoHostCallback([=] { std::memcpy(dst, staging, chunk_size); });
+    return stream->DoHostCallback(
+        [=] { std::memcpy(dst, staging, chunk_size); });
   };
 
-  stream->ThenWaitFor(staging_buffer->transfer_completed.get());
-  ForEachChunk(size, kStagingBufferSize, transfer_chunk);
-  stream->ThenRecordEvent(staging_buffer->transfer_completed.get());
+  TF_RETURN_IF_ERROR(stream->WaitFor(staging_buffer->transfer_completed.get()));
+  TF_RETURN_IF_ERROR(ForEachChunk(size, kStagingBufferSize, transfer_chunk));
+  TF_RETURN_IF_ERROR(
+      stream->RecordEvent(staging_buffer->transfer_completed.get()));
 
   return absl::OkStatus();
 }
@@ -276,15 +310,17 @@ absl::Status GpuTransferManager::TransferBufferToDevice(
             << " size=" << tsl::strings::HumanReadableNumBytes(chunk_size);
 
     const void* src = reinterpret_cast<const char*>(source) + chunk_offset;
-    stream->ThenDoHostCallback([=] { std::memcpy(staging, src, chunk_size); });
+    TF_RETURN_IF_ERROR(
+        stream->DoHostCallback([=] { std::memcpy(staging, src, chunk_size); }));
 
     auto chunk = destination->GetByteSlice(chunk_offset, chunk_size);
-    stream->ThenMemcpy(&chunk, staging, chunk_size);
+    return stream->Memcpy(&chunk, staging, chunk_size);
   };
 
-  stream->ThenWaitFor(staging_buffer->transfer_completed.get());
-  ForEachChunk(size, kStagingBufferSize, transfer_chunk);
-  stream->ThenRecordEvent(staging_buffer->transfer_completed.get());
+  TF_RETURN_IF_ERROR(stream->WaitFor(staging_buffer->transfer_completed.get()));
+  TF_RETURN_IF_ERROR(ForEachChunk(size, kStagingBufferSize, transfer_chunk));
+  TF_RETURN_IF_ERROR(
+      stream->RecordEvent(staging_buffer->transfer_completed.get()));
 
   return absl::OkStatus();
 }
@@ -310,10 +346,7 @@ GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       executor->HostMemoryAllocate(kStagingBufferSize));
 
-  auto transfer_completed = std::make_unique<se::Event>(executor);
-  if (!transfer_completed->Init()) {
-    return absl::InternalError("Failed to initialize transfer completed event");
-  }
+  TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
 
   auto emplaced = staging_buffers_.try_emplace(
       executor, std::move(staging_buffer), std::move(transfer_completed));
@@ -337,11 +370,20 @@ static std::unique_ptr<xla::TransferManager> CreateAMDGPUTransferManager() {
           .getPointerSize(0 /* default address space */));
 }
 
+static std::unique_ptr<xla::TransferManager> CreateSYCLTransferManager() {
+  return std::make_unique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::sycl::kSyclPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::spir::DataLayout())
+          .getPointerSize(0 /* default address space */));
+}
+
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
       stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   xla::TransferManager::RegisterTransferManager(
       stream_executor::rocm::kROCmPlatformId, &CreateAMDGPUTransferManager);
+  xla::TransferManager::RegisterTransferManager(
+      stream_executor::sycl::kSyclPlatformId, &CreateSYCLTransferManager);
   return true;
 }
 

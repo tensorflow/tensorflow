@@ -15,7 +15,7 @@ limitations under the License.
 // Must be included first
 // clang-format off
 #include "tensorflow/c/tf_datatype.h"
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/python/lib/core/ml_dtypes.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 namespace {
@@ -67,7 +67,6 @@ char const* numpy_type_name(int numpy_type) {
     TYPE_CASE(NPY_DATETIME);
     TYPE_CASE(NPY_TIMEDELTA);
     TYPE_CASE(NPY_HALF);
-    TYPE_CASE(NPY_NTYPES);
     TYPE_CASE(NPY_NOTYPE);
     TYPE_CASE(NPY_CHAR);
     TYPE_CASE(NPY_USERDEF);
@@ -75,6 +74,10 @@ char const* numpy_type_name(int numpy_type) {
       return "not a numpy type";
   }
 }
+
+#if NPY_ABI_VERSION < 0x02000000
+#define PyDataType_FIELDS(descr) ((descr)->fields)
+#endif  // NPY_ABI_VERSION < 0x02000000
 
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
                                    TF_DataType* out_tf_datatype) {
@@ -84,11 +87,11 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
 
   // Return an error if the fields attribute is null.
   // Occurs with an improper conversion attempt to resource.
-  if (descr->fields == nullptr) {
+  if (PyDataType_FIELDS(descr) == nullptr) {
     return errors::Internal("Unexpected numpy data type");
   }
 
-  if (PyDict_Next(descr->fields, &pos, &key, &value)) {
+  if (PyDict_Next(PyDataType_FIELDS(descr), &pos, &key, &value)) {
     // In Python 3, the keys of numpy custom struct types are unicode, unlike
     // Python 2, where the keys are bytes.
     const char* key_string =
@@ -333,7 +336,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
 // Determine the dimensions of a numpy ndarray to be created to represent an
 // output Tensor.
 Status GetPyArrayDimensionsForTensor(const TF_Tensor* tensor,
-                                     gtl::InlinedVector<npy_intp, 4>* dims,
+                                     absl::InlinedVector<npy_intp, 4UL>* dims,
                                      int64_t* nelems) {
   dims->clear();
   const int ndims = TF_NumDims(tensor);
@@ -431,7 +434,7 @@ Status TF_TensorToMaybeAliasedPyArray(Safe_TF_TensorPtr tensor,
 
   TF_Tensor* moved = tensor.release();
   int64_t nelems = -1;
-  gtl::InlinedVector<npy_intp, 4> dims;
+  absl::InlinedVector<npy_intp, 4UL> dims;
   TF_RETURN_IF_ERROR(GetPyArrayDimensionsForTensor(moved, &dims, &nelems));
   return ArrayFromMemory(
       dims.size(), dims.data(), TF_TensorData(moved),
@@ -450,7 +453,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
     return OkStatus();
   }
   int64_t nelems = -1;
-  gtl::InlinedVector<npy_intp, 4> dims;
+  absl::InlinedVector<npy_intp, 4UL> dims;
   TF_RETURN_IF_ERROR(
       GetPyArrayDimensionsForTensor(tensor.get(), &dims, &nelems));
 
@@ -525,7 +528,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
   TF_RETURN_IF_ERROR(PyArray_TYPE_to_TF_DataType(array, &dtype));
 
   int64_t nelems = 1;
-  gtl::InlinedVector<int64_t, 4> dims;
+  absl::InlinedVector<int64_t, 4UL> dims;
   for (int i = 0; i < PyArray_NDIM(array); ++i) {
     dims.push_back(PyArray_SHAPE(array)[i]);
     nelems *= dims[i];

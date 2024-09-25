@@ -57,7 +57,6 @@ bazel test \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
       //tensorflow/... \
-      -//tensorflow/python/integration_testing/... \
       -//tensorflow/core/tpu/... \
       -//tensorflow/lite/... \
       -//tensorflow/compiler/tf2tensorrt/... \

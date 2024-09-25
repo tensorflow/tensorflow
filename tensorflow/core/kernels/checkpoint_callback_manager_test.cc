@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace checkpoint {
@@ -46,7 +46,7 @@ class CheckpointCallbackManagerTest : public ::testing::Test {
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithTempDir) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5_temp/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -56,7 +56,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5/part-00000-of-00001");
   TF_ASSERT_OK(pair.status());
@@ -66,7 +66,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixWithoutPartFile) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/model.ckpt-5");
   TF_ASSERT_OK(pair.status());
@@ -76,7 +76,7 @@ TEST_F(CheckpointCallbackManagerTest,
 
 TEST_F(CheckpointCallbackManagerTest,
        GetCheckpointIdAndPathFromPrefixForLongerPartName) {
-  StatusOr<std::pair<std::string, std::string>> pair =
+  absl::StatusOr<std::pair<std::string, std::string>> pair =
       CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
           "/foo/bar/ckpt-tensor-1_temp/part-00000-of-00002_dev-0-of-2");
   TF_ASSERT_OK(pair.status());

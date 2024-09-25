@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -76,6 +78,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         legacy_autotune_(legacy_autotune),
         buffer_size_min_(buffer_size_min) {
     input_->Ref();
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -114,6 +120,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override {
     return input_->Get(ctx, index, out_tensors);
+  }
+
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
   }
 
  protected:
@@ -432,9 +442,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status s = buffer_.front().status;
       if (s.ok()) {
         int64_t buffer_element_id = buffer_.front().uid;
-        profiler::TraceMe traceme(
+        tsl::profiler::TraceMe traceme(
             [&] {
-              return profiler::TraceMeEncode(
+              return tsl::profiler::TraceMeEncode(
                   "PrefetchConsume", {{"element_id", buffer_element_id}});
             },
             profiler::kInfo);
@@ -537,9 +547,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         bool end_of_sequence = false;
         BufferElement buffer_element(ctx.get());
         {
-          profiler::TraceMe traceme(
+          tsl::profiler::TraceMe traceme(
               [&] {
-                return profiler::TraceMeEncode(
+                return tsl::profiler::TraceMeEncode(
                     "PrefetchProduce", {{"element_id", buffer_element.uid}});
               },
               profiler::kInfo);
@@ -655,6 +665,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
   // parameter.
   const int64_t buffer_size_min_ = 0;
 
+  absl::Status random_indexing_compatible_;
   TraceMeMetadata traceme_metadata_;
 };
 

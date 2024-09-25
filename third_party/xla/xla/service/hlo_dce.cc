@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "xla/service/hlo_dce.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <iterator>
+#include <set>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -27,8 +36,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -59,16 +68,112 @@ bool IsRemovableWhile(HloInstruction* instruction,
   return true;
 }
 
+// Returns true if it found and removed unused outputs.
+absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
+    HloComputation* computation) {
+  HloInstruction* fusion_instruction = computation->FusionInstruction();
+  if (!fusion_instruction) {
+    return false;
+  }
+
+  if (computation->root_instruction()->opcode() != HloOpcode::kTuple ||
+      computation->root_instruction()->has_sharding() ||
+      !fusion_instruction->output_operand_aliasing().empty() ||
+      fusion_instruction->HasControlDependencies() ||
+      fusion_instruction->IsCustomFusion()) {
+    return false;
+  }
+
+  // The order of the used outputs is relevant for the algorithm below.
+  std::set<int64_t> used_tuple_elements;
+
+  // We only support this cleanup if all users of the fusion instruction are
+  // GetTupleElement ops, and there is at least one user of
+  // 'fusion_instruction'.
+  if (fusion_instruction->users().empty()) {
+    return false;
+  }
+
+  for (HloInstruction* gte : fusion_instruction->users()) {
+    if (gte->opcode() != HloOpcode::kGetTupleElement) {
+      return false;
+    }
+    used_tuple_elements.insert(gte->tuple_index());
+  }
+
+  // If all outputs are used, nothing to clean up.
+  if (used_tuple_elements.size() ==
+      computation->root_instruction()->operand_count()) {
+    return false;
+  }
+
+  std::vector<Shape> tuple_shapes;
+  tuple_shapes.reserve(used_tuple_elements.size());
+  for (int64_t tuple_index : used_tuple_elements) {
+    tuple_shapes.push_back(
+        fusion_instruction->shape().tuple_shapes(tuple_index));
+  }
+  Shape new_shape = tuple_shapes.size() == 1
+                        ? tuple_shapes[0]
+                        : ShapeUtil::MakeTupleShape(tuple_shapes);
+  *fusion_instruction->mutable_shape() = std::move(new_shape);
+
+  // Update the users of the old fusion instruction.
+  if (tuple_shapes.size() > 1) {
+    for (HloInstruction* gte : fusion_instruction->users()) {
+      auto it = used_tuple_elements.lower_bound(gte->tuple_index());
+      int64_t new_tuple_index = std::distance(used_tuple_elements.begin(), it);
+      gte->set_tuple_index(new_tuple_index);
+    }
+  } else {
+    // Since we iterate over users while removing them .. make a local copy
+    // first.
+    std::vector<HloInstruction*> users(fusion_instruction->users());
+    for (HloInstruction* gte : users) {
+      // Replace and change control successors to be dependent on the fusion
+      // instruction itself.
+      TF_ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
+                                           gte, fusion_instruction,
+                                           /*preserve_sharding=*/true,
+                                           /*relay_control_dependency=*/true));
+    }
+  }
+
+  // Update the root of the fusion computation.
+  if (tuple_shapes.size() > 1) {
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(used_tuple_elements.size());
+    for (int64_t tuple_index : used_tuple_elements) {
+      new_operands.push_back(
+          computation->root_instruction()->mutable_operand(tuple_index));
+    }
+    auto new_tuple =
+        computation->AddInstruction(HloInstruction::CreateTuple(new_operands));
+    TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        computation->root_instruction(), new_tuple));
+  } else {
+    TF_RETURN_IF_ERROR(
+        computation->root_instruction()->ReplaceAllUsesWithDifferentShape(
+            computation->root_instruction()->mutable_operand(
+                *used_tuple_elements.begin())));
+  }
+
+  // We always updated the fusion if we got here.
+  return true;
+}
+
 }  // namespace
 
-/*static*/ StatusOr<bool> HloDCE::RunOnComputation(
+/*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
-  bool changed = false;
-  VLOG(3) << "Before dce:";
-  XLA_VLOG_LINES(3, computation->ToString());
-  // Remove any dead roots and their dead transitive operands. Collect them
-  // into a separate list first to avoid problems with iterating through the
-  // computation's instruction while simultaneously removing instructions.
+  // We do this first, because it may create dead roots which we can clean up
+  // next.
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      RemoveMultiOutputFusionsUnusedOutputs(computation));
+
+  // Remove any dead roots and their dead transitive operands. Collect
+  // them into a separate list first to avoid problems with iterating through
+  // the computation's instruction while simultaneously removing instructions.
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
     auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);
@@ -93,24 +198,22 @@ bool IsRemovableWhile(HloInstruction* instruction,
         computation->RemoveInstructionAndUnusedOperands(dead_root));
     changed = true;
   }
-  if (changed) {
-    VLOG(3) << "After dce:";
-    XLA_VLOG_LINES(3, computation->ToString());
-  }
   return changed;
 }
 
-Status HloDCE::RecursivelyRemoveDeadComputation(
+absl::Status HloDCE::RecursivelyRemoveDeadComputation(
     HloModule* module, HloComputation* computation,
     absl::flat_hash_map<HloComputation*, int>& live_call_counts) {
+  std::vector<HloComputation*> to_be_deleted;
   // First loops all the sub-instructions/sub-computations.
   for (HloInstruction* instruction : computation->instructions()) {
     for (HloComputation* subcomp : instruction->called_computations()) {
       auto iter = live_call_counts.find(subcomp);
       if (iter == live_call_counts.end()) {
         return tsl::errors::Internal(
-            "called computation not found in live_call_counts table during "
-            "HloDCE");
+            "called computation %s not found in live_call_counts table during "
+            "HloDCE",
+            subcomp->name());
       }
 
       // Decrements the live call count and sees if there are no more live
@@ -118,17 +221,27 @@ Status HloDCE::RecursivelyRemoveDeadComputation(
       int live_call_count = --iter->second;
       CHECK_GE(live_call_count, 0);
       if (live_call_count == 0) {
-        TF_RETURN_IF_ERROR(RecursivelyRemoveDeadComputation(module, subcomp,
-                                                            live_call_counts));
+        to_be_deleted.push_back(subcomp);
+        live_call_counts.erase(iter);
       }
     }
   }
   VLOG(1) << "Removing dead computation " << computation->name();
   // After looping called subcomputations, now safe to delete the computation.
-  return module->RemoveEmbeddedComputation(computation);
+  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+
+  // Only remove the to be deleted subcomputations now after 'computation' has
+  // been removed. Otherwise we might still have pointers to subcomputations
+  // that we want to delete.
+  for (HloComputation* subcomp : to_be_deleted) {
+    TF_RETURN_IF_ERROR(
+        RecursivelyRemoveDeadComputation(module, subcomp, live_call_counts));
+  }
+  return absl::OkStatus();
 }
 
-StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
+absl::StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(
+    HloModule* module) {
   // Tracks whether any dead code is eliminated by this pass.
   bool module_contains_dead_code = false;
 
@@ -151,7 +264,6 @@ StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
   }
 
   // Find dead computations.
-  absl::flat_hash_set<HloComputation*> dead_computations;
   for (auto* computation : module->MakeComputationPostOrder()) {
     // Finds all "top-level" dead computations not called by any instructions.
     // contains(comp) = true and live_computation_call_count[comp] = 0 also
@@ -167,7 +279,7 @@ StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
   return module_contains_dead_code;
 }
 
-StatusOr<bool> HloDCE::Run(
+absl::StatusOr<bool> HloDCE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -175,9 +287,12 @@ StatusOr<bool> HloDCE::Run(
   VLOG(2) << "Before dce:";
   XLA_VLOG_LINES(2, module->ToString());
 
-  // Run DCE on each computation.
-  for (auto* computation :
-       module->MakeComputationPostOrder(execution_threads)) {
+  // Run DCE on each computation. Use reverse post order so that we cleanup dead
+  // get-tuple-element users of MultiOutput fusions before cleaning up the
+  // fusion computation.
+  auto computations = module->MakeComputationPostOrder(execution_threads);
+  std::reverse(computations.begin(), computations.end());
+  for (auto* computation : computations) {
     TF_ASSIGN_OR_RETURN(
         bool changed_for_computation,
         RunOnComputation(computation, remove_cross_partition_collective_ops_));
@@ -191,8 +306,10 @@ StatusOr<bool> HloDCE::Run(
                       RecursivelyRemoveDeadComputations(module));
   changed |= module_contains_dead_code;
 
-  VLOG(2) << "After dce:";
-  XLA_VLOG_LINES(2, module->ToString());
+  if (changed) {
+    VLOG(2) << "After dce:";
+    XLA_VLOG_LINES(2, module->ToString());
+  }
 
   return changed;
 }

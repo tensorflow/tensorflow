@@ -106,7 +106,7 @@ Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
   return absl::OkStatus();
 }
 
-StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
+absl::StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   const char* const kArgOp = "_Arg";
   NodeDef arg_def;
   NodeDefBuilder builder(absl::StrCat(kArgOp, index), kArgOp);

@@ -73,7 +73,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
@@ -367,7 +366,6 @@ DirectSession::DirectSession(const SessionOptions& options,
   }
   session_handle_ =
       strings::StrCat("direct", strings::FpToString(random::New64()));
-  int devices_added = 0;
   if (options.config.log_device_placement()) {
     const string mapping_str = device_mgr_->DeviceMappingString();
     string msg;
@@ -380,17 +378,12 @@ DirectSession::DirectSession(const SessionOptions& options,
       LOG(INFO) << msg;
     }
   }
+  // The client device is a CPU device from which we feed and fetch tensors.
+  device_set_.set_client_device(device_mgr_->HostCPU());
   for (auto d : device_mgr_->ListDevices()) {
     devices_.push_back(d);
     device_set_.AddDevice(d);
     d->op_segment()->AddHold(session_handle_);
-
-    // The first device added is special: it is the 'client device' (a
-    // CPU device) from which we feed and fetch Tensors.
-    if (devices_added == 0) {
-      device_set_.set_client_device(d);
-    }
-    ++devices_added;
   }
 }
 
@@ -524,7 +517,7 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         if (options_.config.experimental().has_session_metadata()) {
@@ -541,8 +534,8 @@ Status DirectSession::RunInternal(
               "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
-      profiler::ContextType::kTfExecutor, step_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
   if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
@@ -670,6 +663,7 @@ Status DirectSession::RunInternal(
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
+  args.session_config = &options_.config;
   args.session_state = &session_state_;
   args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
@@ -1021,6 +1015,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // because RunOptions is not passed in so we can't know whether
   // their use is intended.
   args.collective_executor = nullptr;
+  args.session_config = &options_.config;
   args.runner = [this, pool](Executor::Args::Closure c) {
     pool->Schedule(std::move(c));
   };
@@ -1493,9 +1488,9 @@ Status DirectSession::CreateExecutors(
 }
 
 Status DirectSession::GetOrCreateExecutors(
-    gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-    gtl::ArraySlice<string> target_nodes, ExecutorsAndKeys** executors_and_keys,
-    RunStateArgs* run_state_args) {
+    absl::Span<const string> inputs, absl::Span<const string> outputs,
+    absl::Span<const string> target_nodes,
+    ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
   int64_t handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);

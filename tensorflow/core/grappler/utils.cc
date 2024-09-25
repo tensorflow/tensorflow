@@ -21,21 +21,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -454,7 +465,7 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
       return errors::InvalidArgument("Unsupported type ",
                                      DataTypeString(dtype));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #undef HANDLE_CASE
@@ -464,14 +475,14 @@ Status CheckAttrExists(const NodeDef& node, const string& key) {
     return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
                                    "' attr: ", node.ShortDebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
   for (const string& key : keys) {
     TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IsKernelRegisteredForNode(

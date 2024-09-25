@@ -18,13 +18,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/types/span.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,32 +40,13 @@ class FusionInfo {
   virtual bool CanEmitDynamicUpdateSliceInPlace() const = 0;
 
   // Attempts to create a memcpy fusion, if possible. Returns nullopt if the
-  // fusion failed to pattern match. Returns an error if the fusion successfully
-  // pattern matched, but buffer assignment failed.
+  // fusion failed to pattern match.
   // TODO(b/204548848): Find a proper abstraction for this once LMHLO is gone.
-  virtual std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const = 0;
+  virtual std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const = 0;
 
  private:
   const HloFusionAnalysis& analysis_;
-};
-
-class LmhloFusionInfo : public FusionInfo {
- public:
-  LmhloFusionInfo(const HloFusionAnalysis& analysis,
-                  mlir::lmhlo::FusionOp fusion_op,
-                  absl::Span<const BufferAllocation* const> allocations)
-      : FusionInfo(analysis),
-        fusion_op_(fusion_op),
-        allocations_(allocations) {}
-
-  bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override;
-
- private:
-  mlir::lmhlo::FusionOp fusion_op_;
-  absl::Span<const BufferAllocation* const> allocations_;
 };
 
 class HloFusionInfo : public FusionInfo {
@@ -80,8 +59,8 @@ class HloFusionInfo : public FusionInfo {
         buffer_assignment_(buffer_assignment) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override;
+  std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const override;
 
  private:
   const HloFusionInstruction* instr_;
@@ -94,12 +73,13 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
       : FusionInfo(analysis) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override {
-    // Optimistically assume all DUS fusions are in-place.
-    return true;
+    auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+        analysis().fusion(), /*get_allocation_slice=*/{});
+    return ret.value_or(false);
   }
 
-  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
-  GetCopyFusion() const override {
+  std::optional<std::unique_ptr<FusionInterface>> GetCopyFusion()
+      const override {
     // Copy fusions can't be created without buffer assignment. Note:
     // technically, this is only needed to generate the chunk, the validation
     // itself could be done without a buffer assignment. However, we currently
@@ -108,9 +88,8 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
   }
 };
 
-// Returns the emitter for the given fusion. Returns nullopt if the fusion
-// type is not yet supported.
-absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+// Returns the emitter for the given fusion.
+std::unique_ptr<FusionInterface> GetFusionEmitter(
     const FusionInfo& fusion_info);
 
 }  // namespace gpu

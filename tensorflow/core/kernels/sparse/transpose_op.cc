@@ -246,7 +246,7 @@ struct CSRSparseMatrixTransposeComponent<CPUDevice, T> {
         current_col_count[col_idx] += 1;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

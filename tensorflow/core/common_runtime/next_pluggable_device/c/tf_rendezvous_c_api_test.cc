@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
@@ -44,8 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -109,7 +109,7 @@ class FakeDeviceManager : public DeviceMgr {
   bool ContainsDevice(int64_t device_incarnation) const override {
     return false;
   }
-  void ClearContainers(gtl::ArraySlice<string> containers) const override {}
+  void ClearContainers(absl::Span<const string> containers) const override {}
   int NumDeviceType(const string& type) const override { return 0; }
   int NumDevices() const override { return 0; }
   Device* HostCPU() const override { return nullptr; }

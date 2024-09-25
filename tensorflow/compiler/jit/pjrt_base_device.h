@@ -99,7 +99,7 @@ class PjRtBaseDevice : public LocalDevice {
   // Creates a new PJRT base device.
   PjRtBaseDevice(const SessionOptions& session_options, const Options& options);
 
-  static StatusOr<const PjRtBaseDevice::Metadata*> GetMetadataFromDevice(
+  static absl::StatusOr<const PjRtBaseDevice::Metadata*> GetMetadataFromDevice(
       DeviceBase* device);
 
  private:

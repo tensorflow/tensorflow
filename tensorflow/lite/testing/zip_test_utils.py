@@ -87,7 +87,7 @@ MAP_TF_TO_NUMPY_TYPE = {
     tf.int16: np.int16,
     tf.int64: np.int64,
     tf.bool: np.bool_,
-    tf.string: np.string_,
+    tf.string: np.bytes_,
 }
 
 
@@ -126,7 +126,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     value = np.random.randint(min_value, max_value + 1, shape)
   elif dtype == tf.bool:
     value = np.random.choice([True, False], size=shape)
-  elif dtype == np.string_:
+  elif dtype == np.bytes_:
     # Not the best strings, but they will do for some basic testing.
     letters = list(string.ascii_uppercase)
     return np.random.choice(letters, size=shape).astype(dtype)
@@ -146,7 +146,7 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
     value = np.random.randint(min_value, max_value + 1)
   elif dtype == tf.bool:
     value = np.random.choice([True, False])
-  elif dtype == np.string_:
+  elif dtype == np.bytes_:
     l = np.random.randint(1, 6)
     value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
   return np.array(value, dtype=dtype)
@@ -168,7 +168,7 @@ def freeze_graph(session, outputs):
 
 def format_result(t):
   """Convert a tensor to a format that can be used in test specs."""
-  if t.dtype.kind not in [np.dtype(np.string_).kind, np.dtype(np.object_).kind]:
+  if t.dtype.kind not in [np.dtype(np.bytes_).kind, np.dtype(np.object_).kind]:
     # Output 9 digits after the point to ensure the precision is good enough.
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)

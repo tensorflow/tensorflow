@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -30,13 +32,26 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-
 namespace xla {
 namespace {
+
+// Creates a container of ReplicaGroups.
+std::vector<ReplicaGroup> CreateReplicaGroups(
+    const std::vector<std::vector<int64_t>> &replica_groups) {
+  std::vector<ReplicaGroup> result;
+  result.reserve(replica_groups.size());
+  for (const auto &replica_group : replica_groups) {
+    ReplicaGroup &group = result.emplace_back();
+    for (auto id : replica_group) {
+      group.add_replica_ids(id);
+    }
+  }
+  return result;
+}
 
 TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
   std::vector<int> actual =
@@ -85,7 +100,7 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId) {
   HloInstruction *all_gather =
       module->entry_computation()->GetInstructionWithName("all-gather");
 
-  EXPECT_TRUE(IsCollectiveWithChannelId(all_gather));
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(all_gather), all_gather);
 }
 
 TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
@@ -101,16 +116,144 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
   HloInstruction *instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1, {group},
-          true, 231, true));
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
+          CollectiveDeviceList({group}), true, 231, true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
       HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
                                    HloInstruction::FusionKind::kOutput,
                                    {param_0}, computation.get(), "fusion");
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion.get()), instr);
 
-  EXPECT_TRUE(IsCollectiveWithChannelId(fusion.get()));
+  auto builder2 = HloComputation::Builder("CollectiveWithChannelId2");
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloInstruction * param_1,
+      builder2.AddParameter(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
+  HloInstruction *instr_without_channel_id =
+      builder2.AddInstruction(HloInstruction::CreateAllGather(
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1, {group},
+          true, std::nullopt, true));
+  auto computation2 = builder2.Build(builder2.AddInstruction(
+      HloInstruction::CreateTuple({instr_without_channel_id})));
+  auto fusion2 =
+      HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
+                                   HloInstruction::FusionKind::kOutput,
+                                   {param_1}, computation2.get(), "fusion2");
+  EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
+}
+
+TEST(CollectiveOpsUtilsTest, IsForwardCycle) {
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {3, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 0}})) << "Self link is not a cycle!";
+  EXPECT_FALSE(IsForwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}}));
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {2, 0}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsForwardCycle({{1, 0}, {0, 1}})) << "Backward cycle";
+  EXPECT_FALSE(IsForwardCycle({{3, 0}, {0, 1}, {1, 2}, {2, 3}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {2, 3}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
+}
+
+TEST(CollectiveOpsUtilsTest, IsBackwardCycle) {
+  EXPECT_TRUE(IsBackwardCycle({{0, 1}, {1, 0}}));
+  EXPECT_TRUE(IsBackwardCycle({{0, 3}, {1, 0}, {2, 1}, {3, 2}}));
+  EXPECT_FALSE(IsBackwardCycle({{0, 0}})) << "Self link is a backward cycle!";
+  EXPECT_FALSE(IsBackwardCycle({{}})) << "Self link due to initialization to 0";
+
+  EXPECT_FALSE(IsForwardCycle({}));
+  EXPECT_FALSE(IsForwardCycle({{1, 0}}));
+  EXPECT_FALSE(IsForwardCycle({{2, 1}, {0, 2}})) << "No link between 1 and 2";
+  EXPECT_FALSE(IsBackwardCycle({{3, 2}, {0, 3}, {1, 0}, {2, 1}}))
+      << "Unordered pairs are not a cycle";
+  EXPECT_FALSE(IsForwardCycle({{0, 1}, {1, 2}, {4, 5}, {3, 0}}))
+      << "Out of order pairs are not a cycle";
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaNoChannelSet) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  DeviceAssignment device_assignment(num_replicas, num_partitions);
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/false, device_assignment);
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaAndCrossModuleNoGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  DeviceAssignment device_assignment(num_replicas, num_partitions);
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/true, device_assignment);
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossModuleNoGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0}, {1}, {2}, {3}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/false,
+                               /*has_channel_id=*/true, device_assignment);
+  EXPECT_TRUE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaWithGlobalIds) {
+  int64_t num_replicas = 8;
+  int64_t num_partitions = 1;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment);
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossReplicaAndCrossModuleWithGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1, 2, 3, 4, 5, 6, 7}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment);
+  EXPECT_FALSE(is_exclusively_cross_module);
+}
+
+TEST(IsExclusivelyCrossModuleTest, CrossModuleWithGlobalIds) {
+  int64_t num_replicas = 4;
+  int64_t num_partitions = 2;
+
+  ComputationPlacer placer;
+  TF_ASSERT_OK_AND_ASSIGN(DeviceAssignment device_assignment,
+                          placer.AssignDevices(num_replicas, num_partitions));
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups({{0, 1}, {2, 3}, {4, 5}, {6, 7}});
+  bool is_exclusively_cross_module =
+      IsExclusivelyCrossModule(replica_groups, /*use_global_ids=*/true,
+                               /*has_channel_id=*/true, device_assignment);
+  EXPECT_TRUE(is_exclusively_cross_module);
 }
 
 }  // namespace
@@ -152,7 +295,7 @@ class GetCollectOpGroupModeTest : public testing::TestWithParam<TestCase> {};
 
 TEST_P(GetCollectOpGroupModeTest, Test) {
   const TestCase &tc = GetParam();
-  StatusOr<CollectiveOpGroupMode> actual =
+  absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
     TF_ASSERT_OK(actual.status());
@@ -174,7 +317,7 @@ namespace GetParticipatingDevicesTest {
 // expected output corresponding to those values.
 struct TestCase {
   xla::Array2D<int> device_assignment;
-  std::vector<std::vector<int>> replica_groups;
+  std::vector<std::vector<int64_t>> replica_groups;
   bool has_channel_id;
   std::optional<bool> use_global_device_ids;
 
@@ -195,7 +338,7 @@ struct TestCase {
 // modes and their behavior.
 std::string TestCase::ToString() const {
   std::ostringstream s;
-  StatusOr<CollectiveOpGroupMode> group_mode =
+  absl::StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(has_channel_id, use_global_device_ids);
   if (group_mode.ok()) {
     s << CollectiveOpGroupModeToString(*group_mode);
@@ -439,17 +582,10 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     }
   }
 
-  std::vector<ReplicaGroup> replica_groups;
-  absl::c_transform(tc.replica_groups, std::back_inserter(replica_groups),
-                    [](const std::vector<int> &ids) {
-                      ReplicaGroup group;
-                      for (int id : ids) {
-                        group.add_replica_ids(id);
-                      }
-                      return group;
-                    });
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups(tc.replica_groups);
 
-  StatusOr<CollectiveOpGroupMode> group_mode =
+  absl::StatusOr<CollectiveOpGroupMode> group_mode =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
 
   if (!group_mode.ok()) {
@@ -459,7 +595,7 @@ TEST_P(GetParticipatingDevicesTest, Test) {
 
   // Execute each sub-test.
   for (const TestCase::CurrentIdAndOutput &subtest : tc.subtests) {
-    StatusOr<std::vector<GlobalDeviceId>> actual =
+    absl::StatusOr<std::vector<GlobalDeviceId>> actual =
         GetParticipatingDevices(GlobalDeviceId(subtest.current_id),
                                 device_assignment, replica_groups, *group_mode);
     if (!actual.ok()) {
@@ -473,9 +609,9 @@ TEST_P(GetParticipatingDevicesTest, Test) {
     EXPECT_EQ(*actual, expected);
   }
 
-  StatusOr<std::vector<std::vector<GlobalDeviceId>>> actual_device_groups =
-      GetParticipatingDevicesGroups(device_assignment, replica_groups,
-                                    *group_mode);
+  absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
+      actual_device_groups = GetParticipatingDevicesGroups(
+          device_assignment, replica_groups, *group_mode);
 
   if (!actual_device_groups.ok()) {
     EXPECT_TRUE(tc.expected_failure);
@@ -502,4 +638,77 @@ INSTANTIATE_TEST_SUITE_P(GetParticipatingDevices, GetParticipatingDevicesTest,
                          testing::ValuesIn(GetTestCases()));
 
 }  // namespace GetParticipatingDevicesTest
+
+namespace GetPariticipantCountsForReplicaGroupsTest {
+
+struct TestCase {
+  std::string test_name;
+  std::vector<std::vector<int64_t>> replica_groups;
+  CollectiveOpGroupMode group_mode;
+  int64_t num_replicas;
+  int64_t num_partitions;
+  std::vector<int64_t> expected;
+};
+
+class GetPariticipantCountsForReplicaGroupsTest
+    : public testing::TestWithParam<TestCase> {};
+
+TEST_P(GetPariticipantCountsForReplicaGroupsTest, Test) {
+  const TestCase &tc = GetParam();
+
+  std::vector<ReplicaGroup> replica_groups =
+      CreateReplicaGroups(tc.replica_groups);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<int64_t> actual,
+      GetPariticipantCountsForReplicaGroups(tc.num_replicas, tc.num_partitions,
+                                            replica_groups, tc.group_mode));
+  EXPECT_THAT(actual, testing::ElementsAreArray(tc.expected));
+}
+
+std::vector<TestCase> GetTestCases() {
+  return {
+      {
+          "CrossReplicaEmptyGroup",
+          {},
+          CollectiveOpGroupMode::kCrossReplica,
+          8,
+          1,
+          {8},
+      },
+      {
+          "CrossReplicaWithPartitions",
+          {{0, 1}, {2, 3}},
+          CollectiveOpGroupMode::kCrossReplica,
+          4,
+          2,
+          {2, 2, 2, 2},
+      },
+      {
+          "CrossReplicaAndPartition",
+          {{0, 1}, {2, 3}},
+          CollectiveOpGroupMode::kCrossReplicaAndPartition,
+          4,
+          2,
+          {4, 4},
+      },
+      {
+          "FlattenedID",
+          {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}},
+          CollectiveOpGroupMode::kFlattenedID,
+          4,
+          2,
+          {1, 1, 1, 1, 1, 1, 1, 1},
+      },
+  };
+}
+INSTANTIATE_TEST_SUITE_P(
+    GetPariticipantCountsForReplicaGroups,
+    GetPariticipantCountsForReplicaGroupsTest,
+    testing::ValuesIn(GetTestCases()),
+    [](const testing::TestParamInfo<
+        GetPariticipantCountsForReplicaGroupsTest::ParamType> &info) {
+      return info.param.test_name;
+    });
+
+}  // namespace GetPariticipantCountsForReplicaGroupsTest
 }  // namespace xla

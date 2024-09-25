@@ -50,7 +50,7 @@ Status ForceXlaConstantsOnHostPass::Run(
       node->AddAttr("_input_hostmem", constant_arg_indices);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -23,15 +23,13 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -69,7 +67,7 @@ class ExpandHloTuplesPass
                                                  func.getArguments().end());
     for (auto argument : funcArguments) {
       auto type = argument.getType();
-      auto tupleType = type.dyn_cast_or_null<TupleType>();
+      auto tupleType = mlir::dyn_cast_or_null<TupleType>(type);
       if (!tupleType) {
         expandedInputTypes.push_back(type);
       } else {
@@ -109,7 +107,7 @@ class ExpandHloTuplesPass
     SmallVector<Value, 4> expandedReturnOperands;
     SmallVector<Type, 4> expandedResultTypes;
     for (auto value : returnOp.getOperands()) {
-      if (auto tupleTy = value.getType().dyn_cast<TupleType>()) {
+      if (auto tupleTy = mlir::dyn_cast<TupleType>(value.getType())) {
         llvm::copy(tupleTy.getTypes(), std::back_inserter(expandedResultTypes));
         for (auto [index, ty] : llvm::enumerate(tupleTy.getTypes())) {
           expandedReturnOperands.push_back(
@@ -145,7 +143,7 @@ class ExpandHloTuplesPass
     while (
         llvm::any_of(llvm::concat<const Type>(entryFunction.getArgumentTypes(),
                                               entryFunction.getResultTypes()),
-                     [](Type type) { return type.isa<TupleType>(); })) {
+                     [](Type type) { return mlir::isa<TupleType>(type); })) {
       expandTupledTensorInReturnOp(entryFunction);
     }
   }

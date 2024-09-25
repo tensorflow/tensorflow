@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
@@ -25,11 +26,18 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
+
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::TraceMeConsumer;  // NOLINT
-using tsl::profiler::TraceMeProducer;  // NOLINT
+using TraceMeConsumer ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::TraceMeConsumer;  // NOLINT
+using TraceMeProducer ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::TraceMeProducer;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

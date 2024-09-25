@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UnravelIndex"
   input_arg {
     name: "indices"

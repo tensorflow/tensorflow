@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/unsupported_op_spmd_expander.h"
 
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
+
 namespace tensorflow {
 namespace dtensor {
 

@@ -17,31 +17,37 @@ limitations under the License.
 #define XLA_PJRT_CPU_CPU_TOPOLOGY_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
 #include "xla/pjrt/cpu/cpu_topology.pb.h"
+#include "xla/pjrt/pjrt_common.h"
 
 namespace xla {
 class CpuTopology {
  public:
   struct CpuDevice {
-    int id;
-    int process_index;
-    int local_hardware_id;
+    int process_id;
+    int local_device_id;
 
     bool operator==(const CpuDevice& other) const {
-      return id == other.id && process_index == other.process_index &&
-             local_hardware_id == other.local_hardware_id;
+      return process_id == other.process_id &&
+             local_device_id == other.local_device_id;
     }
   };
 
-  explicit CpuTopology(std::vector<CpuDevice> cpu_deices)
-      : cpu_devices_(std::move(cpu_deices)) {}
+  explicit CpuTopology(std::vector<CpuDevice> cpu_devices,
+                       std::vector<std::string> machine_attributes)
+      : cpu_devices_(std::move(cpu_devices)),
+        machine_attributes_(std::move(machine_attributes)) {}
 
   int number_of_devices() const { return cpu_devices_.size(); }
   absl::Span<const CpuDevice> devices() const { return cpu_devices_; }
+  absl::Span<const std::string> machine_attributes() const {
+    return machine_attributes_;
+  }
 
   static std::unique_ptr<const CpuTopology> FromProto(
       const CpuTopologyProto& proto);
@@ -49,7 +55,19 @@ class CpuTopology {
 
  private:
   const std::vector<CpuDevice> cpu_devices_;
+  const std::vector<std::string> machine_attributes_;
 };
+
+static const int kMaxCpuDevicesPerProcess = 1 << 17;
+
+inline PjRtGlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
+  return PjRtGlobalDeviceId(kMaxCpuDevicesPerProcess * process_index +
+                            device_id);
+}
+
+inline int UnpackCpuProcessIndex(PjRtGlobalDeviceId global_device_id) {
+  return global_device_id.value() / kMaxCpuDevicesPerProcess;
+}
 
 }  // namespace xla
 

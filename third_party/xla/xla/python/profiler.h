@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_PROFILER_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "nanobind/nanobind.h"
 
 namespace xla {
 
-void BuildProfilerSubmodule(pybind11::module* m);
+void BuildProfilerSubmodule(nanobind::module_& m);
 
 }  // namespace xla
 

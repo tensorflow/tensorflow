@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
@@ -67,7 +68,7 @@ void TensorDeviceCopyConversionPass::runOnOperation() {
         (isa<TF::TPUExecuteOp, TF::TPUExecuteAndUpdateVariablesOp>(def_op))) {
       return true;
     }
-    if (BlockArgument block_arg = arg.dyn_cast<BlockArgument>()) {
+    if (BlockArgument block_arg = mlir::dyn_cast<BlockArgument>(arg)) {
       // Skip the folding logic if the block argument is not from the function
       // arguments. This can happen when the argument is from a while loop.
       if (block_arg.getParentRegion() != &func_op.getRegion()) {

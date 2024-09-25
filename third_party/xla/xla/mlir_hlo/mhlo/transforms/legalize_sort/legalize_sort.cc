@@ -139,7 +139,7 @@ SmallVector<Value> loadTensorElements(ImplicitLocOpBuilder& b,
 SmallVector<Value> loadMemrefElements(ImplicitLocOpBuilder& b,
                                       ValueRange memrefs, Value index) {
   return llvm::to_vector(llvm::map_range(memrefs, [&](Value memref) -> Value {
-    Type type = memref.getType().cast<MemRefType>().getElementType();
+    Type type = mlir::cast<MemRefType>(memref.getType()).getElementType();
     return b.create<memref::LoadOp>(type, memref, index);
   }));
 }
@@ -414,25 +414,24 @@ struct Slicer {
   }
 
   MemRefType toSlicedType(MemRefType sourceType) {
-    return memref::SubViewOp::inferRankReducedResultType(
-               {ShapedType::kDynamic} /*1D output*/, sourceType, offsets, sizes,
-               strides)
-        .cast<MemRefType>();
+    return mlir::cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+        {ShapedType::kDynamic} /*1D output*/, sourceType, offsets, sizes,
+        strides));
   }
 
   template <typename Op, typename Ty>
   Value slice(ImplicitLocOpBuilder& b, Value input) {
-    Ty ty = input.getType().cast<Ty>();
+    Ty ty = mlir::cast<Ty>(input.getType());
     return b.create<Op>(toSlicedType(ty), input, offsets, sizes, strides)
         .getResult();
   }
 
   Value apply(ImplicitLocOpBuilder& b, Value input) {
     Type inTy = input.getType();
-    if (inTy.isa<RankedTensorType>()) {
+    if (mlir::isa<RankedTensorType>(inTy)) {
       return slice<tensor::ExtractSliceOp, RankedTensorType>(b, input);
     }
-    assert(inTy.isa<MemRefType>());
+    assert(mlir::isa<MemRefType>(inTy));
     return slice<memref::SubViewOp, MemRefType>(b, input);
   }
 
@@ -470,7 +469,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     SmallVector<Value> scratchMemrefs;
 
     Value firstOperand = op.getOperands().front();
-    auto firstOperandType = firstOperand.getType().cast<ShapedType>();
+    auto firstOperandType = mlir::cast<ShapedType>(firstOperand.getType());
     int64_t inputRank = firstOperandType.getRank();
 
     Value sortDimSize = b.createOrFold<tensor::DimOp>(
@@ -489,7 +488,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     // statically known to be <= kInsertionSortSize, `scratchMemrefs` are unused
     // and will be cleaned up later.
     for (auto input : op.getOperands()) {
-      auto inputType = input.getType().cast<ShapedType>();
+      auto inputType = mlir::cast<ShapedType>(input.getType());
       auto memRefType =
           MemRefType::get(inputType.getShape(), inputType.getElementType());
 

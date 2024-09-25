@@ -286,6 +286,10 @@ class WhileToMapFnPass
     for (auto tensor_list_index : loop_info.tensor_list_or_flow_in) {
       mlir::Operation *tensor_list_or_flow_in_defining_op =
           while_op.getOperand(tensor_list_index).getDefiningOp();
+      if (tensor_list_or_flow_in_defining_op == nullptr) {
+        return mlir::failure();
+      }
+
       mlir::Operation *max_iterations = nullptr;
       if (loop_info.max_iterations_arg_idx.has_value()) {
         max_iterations =

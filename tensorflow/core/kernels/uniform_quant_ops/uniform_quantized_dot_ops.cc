@@ -39,7 +39,7 @@ Status DotInputShapeValid(const TensorShape& lhs_shape,
         "shape ",
         lhs_shape.DebugString(), " and rhs shape ", rhs_shape.DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Performs dot(lhs, rhs) and writes output to output. Assumes that output is
@@ -109,7 +109,7 @@ Status EvalLhsPerTensorAndRhsPerTensorQuantizedDot(
             /*input_zero_point=*/0, output_zero_point,
             output_quantization_min_val, output_quantization_max_val);
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Performs dot on per-tensor quantized lhs and per-channel (dimension 1)
@@ -178,7 +178,7 @@ Status EvalLhsPerTensorAndRhsPerChannelQuantizedDot(
             output_zero_points_data[is_output_scales_scalar ? 0 : out_c],
             output_quantization_min_val, output_quantization_max_val);
       });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Performs dot on per-batch (dimension 0) quantized lhs and per-tensor
@@ -300,7 +300,7 @@ Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
         rhs_scales.scalar<float>()(), rhs_zero_points.scalar<int32_t>()(),
         output);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

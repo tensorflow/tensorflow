@@ -23,12 +23,15 @@ limitations under the License.
 #include <memory>
 
 #include "absl/base/casts.h"
+#include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/jpeg.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
-
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace jpeg {

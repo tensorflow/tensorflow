@@ -28,13 +28,8 @@ inline const absl::string_view kMemoryTargetUnpinnedHost = "unpinned_host";
 inline const absl::string_view kMemoryTargetDevice = "device";
 
 // Internal annotations:
-// These are currently called PipelineForward/PipelineBackward, because they
-// were originally meant as a hook point for the collective-pipeliner. They do
-// more than just that though (identify memory movement direction), so should be
-// renamed to something related to memory movement.
-inline const absl::string_view kMoveToHostCustomCallTarget = "PipelineForward";
-inline const absl::string_view kMoveToDeviceCustomCallTarget =
-    "PipelineBackward";
+inline const absl::string_view kMoveToHostCustomCallTarget = "MoveToHost";
+inline const absl::string_view kMoveToDeviceCustomCallTarget = "MoveToDevice";
 
 }  // namespace host_memory_offload_annotations
 }  // namespace xla

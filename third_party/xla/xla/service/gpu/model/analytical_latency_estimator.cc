@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_collective_performance_model.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
@@ -62,7 +63,7 @@ LatencyEstimator::TimeCost AnalyticalLatencyEstimator::NodeCost(
 
   absl::Duration total_estimated_time =
       GpuPerformanceModel::EstimateRunTimeForInstruction(
-          instr, &*cost_analysis_,
+          instr, gpu_info_, &*cost_analysis_,
           GpuPerformanceModelOptions::ForModule(instr->GetModule()))
           .exec_time;
   LatencyEstimator::TimeCost cost_in_us =
@@ -85,8 +86,9 @@ AnalyticalLatencyEstimator::AnalyticalLatencyEstimator(
   cost_analysis_.emplace(
       GpuHloCostAnalysis::Options{shape_size_function_,
                                   /*per_second_rates=*/{},
+                                  /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true},
-      &gpu_info_);
+      gpu_info_);
   TF_CHECK_OK(computation->Accept(&cost_analysis_.value()));
 }
 

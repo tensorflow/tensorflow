@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/plugin_registry.h"
 
+#include <optional>
+#include <string>
+
 #include "absl/base/const_init.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -75,17 +80,19 @@ absl::Status PluginRegistry::RegisterFactoryInternal(
 bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                 PluginKind plugin_kind) const {
   auto iter = factories_.find(platform_id);
-  if (iter != factories_.end()) {
-    switch (plugin_kind) {
-      case PluginKind::kBlas:
-        return iter->second.blas.has_value();
-      case PluginKind::kDnn:
-        return iter->second.dnn.has_value();
-      case PluginKind::kFft:
-        return iter->second.fft.has_value();
-      default:
-        break;
-    }
+  if (iter == factories_.end()) {
+    return false;
+  }
+
+  switch (plugin_kind) {
+    case PluginKind::kBlas:
+      return iter->second.blas.has_value();
+    case PluginKind::kDnn:
+      return iter->second.dnn.has_value();
+    case PluginKind::kFft:
+      return iter->second.fft.has_value();
+    default:
+      break;
   }
 
   LOG(ERROR) << "Invalid plugin kind specified: "

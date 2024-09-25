@@ -18,19 +18,16 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/platform/env.h"
+#include "tsl/platform/env.h"
 #include "tfrt/core_runtime/tensor_handle.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 #include "tfrt/host_context/kernel_utils.h"  // from @tf_runtime
-#include "tfrt/host_context/sync_kernel_utils.h"  // from @tf_runtime
 #include "tfrt/support/logging.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
@@ -38,7 +35,6 @@ limitations under the License.
 namespace tfd {
 
 namespace {
-using ::tensorflow::Env;
 using ::tfrt::Attribute;
 using ::tfrt::DType;
 using ::tfrt::EnqueueWork;
@@ -51,6 +47,7 @@ using ::tfrt::RemainingResults;
 using ::tfrt::StringHostTensor;
 using ::tfrt::TensorHandle;
 using ::tfrt::TensorMetadata;
+using ::tsl::Env;
 
 static void CreateTensorHandleWithDelayedAsyncTensor(
     RemainingArguments inputs, RemainingResults output_tensors,

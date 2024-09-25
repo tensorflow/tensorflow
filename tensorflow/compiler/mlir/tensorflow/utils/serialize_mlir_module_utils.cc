@@ -54,7 +54,7 @@ Status DeserializeMlirModule(llvm::StringRef serialized_mlir_module,
     return error_handler.Combine(
         errors::InvalidArgument("could not parse MLIR module"));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

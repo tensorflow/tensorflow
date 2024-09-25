@@ -31,12 +31,12 @@ namespace tensorflow {
 using tsl::StatusOr;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
-StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
-                                                mlir::Builder* builder);
+absl::StatusOr<mlir::ElementsAttr> ConvertTensorProto(
+    const TensorProto& input_tensor, mlir::Builder* builder);
 
 // Converts an TensorFlow tensor into an MLIR elements attribute.
-StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
-                                           mlir::Builder* builder);
+absl::StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
+                                                 mlir::Builder* builder);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
 void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
@@ -53,8 +53,8 @@ absl::StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(
     const mlir::Type& type);
 
 // Converts a TensorFlow shape attribute to an MLIR shape attribute.
-StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
-                                                  mlir::MLIRContext* context);
+absl::StatusOr<mlir::Attribute> ConvertTensorShapeProto(
+    const TensorShapeProto& shape, mlir::MLIRContext* context);
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,

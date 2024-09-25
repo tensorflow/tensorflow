@@ -16,9 +16,18 @@ limitations under the License.
 
 #include <tuple>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -29,8 +38,8 @@ namespace TF {
 namespace {
 
 bool IsResourceType(Type type) {
-  if (auto tensor_type = type.dyn_cast<TensorType>()) {
-    return tensor_type.getElementType().isa<TF::ResourceType>();
+  if (auto tensor_type = mlir::dyn_cast<TensorType>(type)) {
+    return mlir::isa<TF::ResourceType>(tensor_type.getElementType());
   }
   return false;
 }
@@ -44,10 +53,9 @@ func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   if (session_init_op && !session_init_op.getInitializers().empty()) {
     SymbolTable symbol_table(module);
-    func::FuncOp init_func_op =
-        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
-                                              .cast<FlatSymbolRefAttr>()
-                                              .getValue());
+    func::FuncOp init_func_op = symbol_table.lookup<func::FuncOp>(
+        mlir::cast<FlatSymbolRefAttr>(session_init_op.getInitializers()[0])
+            .getValue());
     return init_func_op;
   }
   return nullptr;

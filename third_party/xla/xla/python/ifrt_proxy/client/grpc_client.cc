@@ -56,7 +56,7 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     absl::AnyInvocable<void(absl::string_view)> log_initial_connection) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto init_response_promise =
-      Future<absl::StatusOr<std::shared_ptr<InitResponse>>>::CreatePromise();
+      Future<std::shared_ptr<InitResponse>>::CreatePromise();
 
   if (on_disconnect == nullptr) {
     on_disconnect = [](absl::Status s) {
@@ -68,32 +68,31 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   // that we can pass mock `ClientSession` to the client.
   auto stub = CreateGrpcStub(server_address);
 
-  auto session_disconnect_cb =
-      [init_response = Future<absl::StatusOr<std::shared_ptr<InitResponse>>>(
-           init_response_promise),
-       on_disconnect = std::move(on_disconnect),
-       attempt_no](absl::Status s) mutable {
-        // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
-        // the callback cb in that statement (which sets `init_response`) is
-        // guaranteed by `GrpcClientSession::Create()` to be called before
-        // `session_disconnect_cb`.
-        // TODO(madthanu): The above statement is false (even if we wanted to,
-        // we cannot meaningfully enforce or document the guarantee of
-        // the returned Future's OnReady being called before another callback),
-        // although the exact way init_response_promise is set below makes it
-        // work most of the time.
-        if (init_response.IsReady() && init_response.Await().ok()) {
-          // If the init RPC has already completed successfully, we have
-          // already or will be returning OK from the `AttemptConnection` call.
-          // So, invoke `on_disconnect`.
-          on_disconnect(s);
-        } else {
-          // Otherwise, we are going to return an error from
-          // `AttemptConnection`. So do not invoke `on_disconnect`.
-          VLOG(0) << "GrpcClientSession attempt " << attempt_no
-                  << " failed: " << s;
-        }
-      };
+  auto session_disconnect_cb = [init_response =
+                                    Future<std::shared_ptr<InitResponse>>(
+                                        init_response_promise),
+                                on_disconnect = std::move(on_disconnect),
+                                attempt_no](absl::Status s) mutable {
+    // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
+    // the callback cb in that statement (which sets `init_response`) is
+    // guaranteed by `GrpcClientSession::Create()` to be called before
+    // `session_disconnect_cb`.
+    // TODO(madthanu): The above statement is false (even if we wanted to,
+    // we cannot meaningfully enforce or document the guarantee of
+    // the returned Future's OnReady being called before another callback),
+    // although the exact way init_response_promise is set below makes it
+    // work most of the time.
+    if (init_response.IsReady() && init_response.Await().ok()) {
+      // If the init RPC has already completed successfully, we have
+      // already or will be returning OK from the `AttemptConnection` call.
+      // So, invoke `on_disconnect`.
+      on_disconnect(s);
+    } else {
+      // Otherwise, we are going to return an error from
+      // `AttemptConnection`. So do not invoke `on_disconnect`.
+      VLOG(0) << "GrpcClientSession attempt " << attempt_no << " failed: " << s;
+    }
+  };
 
   GrpcIfrtSessionMetadata metadata;
   {
@@ -126,10 +125,9 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   rpc_helper->Init(std::make_unique<InitRequest>())
       .OnReady([&](auto resp) mutable { init_response_promise.Set(resp); });
 
-  TF_ASSIGN_OR_RETURN(auto init_response,
-                      Future<absl::StatusOr<std::shared_ptr<InitResponse>>>(
-                          init_response_promise)
-                          .Await());
+  TF_ASSIGN_OR_RETURN(
+      auto init_response,
+      Future<std::shared_ptr<InitResponse>>(init_response_promise).Await());
 
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
       stub, metadata.version(), init_response->session_id());

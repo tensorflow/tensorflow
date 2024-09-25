@@ -16,7 +16,6 @@
 """Tensor Handle Operations."""
 
 # pylint: disable=g-bad-name
-import numpy as np
 
 from tensorflow.core.framework import resource_handle_pb2
 from tensorflow.python.client import pywrap_tf_session
@@ -27,13 +26,15 @@ from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 
 def encode_resource_handle(resource_handle):
   """Encode a ResourceHandle proto as custom numpy struct type."""
-  return np.asarray(bytearray(resource_handle.SerializeToString()),
-                    dtype=dtypes.np_resource)
+  return numpy_compat.np_asarray(
+      bytearray(resource_handle.SerializeToString()), dtype=dtypes.np_resource
+  )
 
 
 class TensorHandle:

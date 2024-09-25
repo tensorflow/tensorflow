@@ -76,7 +76,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
   params.op_kernel = kernel.get();
   AllocatorAttributes alloc_attrs;
   params.output_attr_array = &alloc_attrs;
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4UL> inputs;
   inputs.emplace_back(tags);
   inputs.emplace_back(values);
   params.inputs = inputs;

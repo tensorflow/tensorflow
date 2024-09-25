@@ -19,23 +19,21 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/lib/arithmetic.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/constants.h"
-#include "xla/client/lib/loops.h"
-#include "xla/client/lib/math.h"
 #include "xla/client/lib/matrix.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "tsl/platform/errors.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 QrDecomposition Qr(XlaOp a) {
-  auto result = [&]() -> StatusOr<QrDecomposition> {
+  auto result = [&]() -> absl::StatusOr<QrDecomposition> {
     XlaBuilder* builder = a.builder();
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int num_dims = a_shape.rank();
@@ -69,7 +67,7 @@ QrDecomposition Qr(XlaOp a) {
 
 XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape taus_shape, builder->GetShape(taus));
     if (a_shape.rank() < 2) {
@@ -109,7 +107,7 @@ XlaOp ProductOfElementaryHouseholderReflectors(XlaOp a, XlaOp taus) {
 }
 
 void QrExplicit(XlaOp a, bool full_matrices, XlaOp& q, XlaOp& r) {
-  StatusOr<Shape> a_shape_or = a.builder()->GetShape(a);
+  absl::StatusOr<Shape> a_shape_or = a.builder()->GetShape(a);
   if (!a_shape_or.ok()) {
     q = a.builder()->ReportError(a_shape_or.status());
     r = q;

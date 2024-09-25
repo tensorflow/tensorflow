@@ -1407,6 +1407,7 @@ TEST(OpVersionTest, VersioningExpTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+
 TEST(OpVersionTest, VersioningLogTest) {
   OpSignature fake_op_sig = {};
   fake_op_sig.op = BuiltinOperator_LOG;
@@ -1417,6 +1418,18 @@ TEST(OpVersionTest, VersioningLogTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
+TEST(OpVersionTest, VersioningDynamicUpdateSliceTest) {
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt32});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt64});
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 }  // namespace tflite

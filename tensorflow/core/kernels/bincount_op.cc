@@ -81,7 +81,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, true> {
     Eigen::array<int, 1> reduce_dim({0});
     output.device(context->eigen_cpu_device()) =
         partial_bins.any(reduce_dim).cast<T>();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -164,7 +164,7 @@ struct BincountFunctor<CPUDevice, Tidx, T, false> {
       Eigen::array<int, 1> reduce_dim({0});
       output.device(context->eigen_cpu_device()) = partial_bins.sum(reduce_dim);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -209,7 +209,7 @@ struct BincountReduceFunctor<CPUDevice, Tidx, T, binary_output> {
           static_cast<int>(err_neg_val)));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -308,7 +308,7 @@ class DenseBincountOp : public OpKernel {
 
     Tensor* out_t;
     functor::SetZeroFunctor<Device, T> fill;
-    if (data.dims() == 1) {
+    if (data.dims() <= 1) {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({size}), &out_t));
       auto out = out_t->flat<T>();
       fill(ctx->eigen_device<Device>(), out);
@@ -325,7 +325,7 @@ class DenseBincountOp : public OpKernel {
       const int64_t num_rows = data.dim_size(0);
       auto weight_matrix =
           (weights.NumElements() == 0)
-              ? weights.shaped<T, 2>(gtl::InlinedVector<int64_t, 2>(2, 0))
+              ? weights.shaped<T, 2>(absl::InlinedVector<int64_t, 2UL>(2, 0))
               : weights.matrix<T>();
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));

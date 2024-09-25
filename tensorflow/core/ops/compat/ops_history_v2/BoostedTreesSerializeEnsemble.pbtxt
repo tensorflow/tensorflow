@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BoostedTreesSerializeEnsemble"
   input_arg {
     name: "tree_ensemble_handle"

@@ -192,7 +192,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, num_samples,
           kElementCost, DoWork);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -200,7 +200,7 @@ struct StatelessRandomGammaFunctor<CPUDevice, T> {
 
 namespace {
 
-StatusOr<std::tuple<int64_t, int64_t, int64_t> > GetParams(
+absl::StatusOr<std::tuple<int64_t, int64_t, int64_t>> GetParams(
     const Tensor& alpha_t, const TensorShape& samples_shape) {
   if (!TensorShapeUtils::EndsWith(samples_shape, alpha_t.shape())) {
     return errors::InvalidArgument(

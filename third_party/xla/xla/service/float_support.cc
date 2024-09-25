@@ -87,6 +87,7 @@ bool FloatSupport::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kAllToAll:
     case HloOpcode::kBroadcast:
     case HloOpcode::kClamp:
+    case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:

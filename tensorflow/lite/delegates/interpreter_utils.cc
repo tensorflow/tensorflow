@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/interpreter.h"
+
 namespace tflite {
 namespace delegates {
 TfLiteStatus InterpreterUtils::InvokeWithCPUFallback(Interpreter* interpreter) {

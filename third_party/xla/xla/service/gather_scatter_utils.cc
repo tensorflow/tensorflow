@@ -19,13 +19,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/layout_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
 
 namespace xla {
 
-StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
-                                                int64_t index_vector_dim) {
+absl::StatusOr<HloInstruction*> TransformStartIndices(
+    HloInstruction* indices, int64_t index_vector_dim) {
   int64_t rank = indices->shape().rank();
   if (index_vector_dim == rank) {
     // Add a size 1 dimension to the indices if the index_vector_dim is
@@ -62,16 +63,20 @@ MakeOperandStartIndexPermutations(absl::Span<const int64_t> dim_map,
   return {perm, InversePermutation(perm)};
 }
 
-StatusOr<HloInstruction*> MaybeTranspose(
+absl::StatusOr<HloInstruction*> MaybeTranspose(
     HloInstruction* operand, absl::Span<const int64_t> permutation) {
   if (IsIdentityPermutation(permutation)) {
     return operand;
   }
   TF_ASSIGN_OR_RETURN(auto* result, MakeTransposeHlo(operand, permutation));
+  // Assign the default layout to the transpose. This method is also used after
+  // layout normalization, and before, we don't care about the layout.
+  *result->mutable_shape()->mutable_layout() =
+      LayoutUtil::GetDefaultLayoutForShape(result->shape());
   return result;
 }
 
-StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
+absl::StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
     absl::Span<HloInstruction* const> operands,
     const std::vector<int64_t>& operand_permutation) {
   std::vector<HloInstruction*> result;
@@ -83,8 +88,9 @@ StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
   return result;
 }
 
-StatusOr<HloInstruction*> MoveDimensionToEnd(HloInstruction* operand,
-                                             size_t dimension, size_t rank) {
+absl::StatusOr<HloInstruction*> MoveDimensionToEnd(HloInstruction* operand,
+                                                   size_t dimension,
+                                                   size_t rank) {
   std::vector<int64_t> permutation;
   for (size_t i = 0; i < rank; ++i) {
     if (i != dimension) permutation.push_back(i);

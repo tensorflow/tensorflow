@@ -56,6 +56,8 @@ class IteratorResource : public ResourceBase {
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
 
+  absl::Status GetModelProto(std::string& model_proto);
+
   // Saves a checkpoint of the state of the iterator through the given `writer`.
   Status Save(OpKernelContext* ctx, ExternalStatePolicy external_state_policy,
               IteratorStateWriter* writer);
@@ -271,6 +273,17 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
  private:
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class IteratorGetModelProtoOp : public HybridAsyncOpKernel {
+ public:
+  explicit IteratorGetModelProtoOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(
+            ctx,
+            /*background_worker_name=*/"tf_data_iterator_get_model_proto") {}
+
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {

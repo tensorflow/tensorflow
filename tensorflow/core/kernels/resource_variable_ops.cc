@@ -325,7 +325,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("resources")
         .TypeConstraint("dtypes", {DT_INT64, DT_COMPLEX64, DT_COMPLEX128,
                                    DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BOOL,
-                                   DT_VARIANT, DT_BFLOAT16}),
+                                   DT_VARIANT, DT_BFLOAT16, DT_INT8}),
     ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(
@@ -501,7 +501,7 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                 [](Var** ptr) {
                                   // Created on host.
                                   *ptr = new Var(DT_VARIANT);
-                                  return OkStatus();
+                                  return absl::OkStatus();
                                 }));
 
     // For purposes of forwarding DT_VARIANT, we want the least
@@ -994,8 +994,8 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   se::DeviceMemoryBase device_ptr(
       const_cast<Tensor&>(device_tensor).flat<T>().data(),
       device_tensor.flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(host_tensor->flat<T>().data(), device_ptr,
-                     device_tensor.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(host_tensor->flat<T>().data(), device_ptr,
+                                    device_tensor.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy indices to host");
   }
@@ -1030,8 +1030,8 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
   // Copy 'host_params' to device.
   se::DeviceMemoryBase params_ptr(params->flat<T>().data(),
                                   params->flat<T>().size() * sizeof(T));
-  stream->ThenMemcpy(&params_ptr, host_params.flat<T>().data(),
-                     host_params.NumElements() * sizeof(T));
+  TF_RETURN_IF_ERROR(stream->Memcpy(&params_ptr, host_params.flat<T>().data(),
+                                    host_params.NumElements() * sizeof(T)));
   if (!stream) {
     return errors::Internal("Failed to copy params to device");
   }
@@ -1124,25 +1124,22 @@ class ResourceScatterUpdateOp : public OpKernel {
                     "DType of scatter resource and updates does not match."));
 
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
-    const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
-                                  c->input_dtype(0) == DT_STRING ||
-                                  c->input_dtype(0) == DT_VARIANT;
+    const bool is_non_pod_dtype =
+        update_dtype == DT_STRING || update_dtype == DT_VARIANT;
     if (is_non_pod_dtype || use_exclusive_lock_) {
       mutex_lock ml(*v->mu());
-      DoCompute(c);
+      DoCompute(c, v.get());
     } else {
       // For POD dtypes, we can safely run the update without the mutex.
       tf_shared_lock ml(*v->mu());
-      DoCompute(c);
+      DoCompute(c, v.get());
     }
   }
 
  private:
   bool use_exclusive_lock_;
 
-  void DoCompute(OpKernelContext* c) {
-    core::RefCountPtr<Var> v;
-    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+  void DoCompute(OpKernelContext* c, Var* v) {
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);

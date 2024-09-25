@@ -22,11 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
+#include "tsl/platform/macros.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace swig {

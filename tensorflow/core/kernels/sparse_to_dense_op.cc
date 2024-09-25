@@ -85,7 +85,7 @@ Status CheckSparseToDenseShapes(const Tensor& indices,
   if (!TensorShapeUtils::IsScalar(default_value.shape())) {
     return errors::InvalidArgument("default_value should be a scalar.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace
@@ -150,7 +150,7 @@ class SparseToDense : public OpKernel {
     }
 
     // Assume SparseTensor is lexicographically sorted.
-    gtl::InlinedVector<int64_t, 8> order(output->shape().dims());
+    absl::InlinedVector<int64_t, 8UL> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
     OP_REQUIRES_OK(
@@ -240,15 +240,10 @@ class SparseToDenseGPU : public AsyncOpKernel {
     auto output_shape_data =
         AsDeviceMemory(output_shape_tensor.template flat<Index>().data(),
                        output_shape_tensor.template flat<Index>().size());
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         c,
-        stream
-            ->ThenMemcpy(&output_shape_data, output_shape_vec.data(),
-                         output_shape_tensor.NumElements() * sizeof(Index))
-            .ok(),
-        errors::InvalidArgument(
-            "failed to copy output_shape vector from host to "
-            "device in SparseToDenseOp"),
+        stream->Memcpy(&output_shape_data, output_shape_vec.data(),
+                       output_shape_tensor.NumElements() * sizeof(Index)),
         done);
 
     functor::LaunchSparseToDense<T, Index>()(

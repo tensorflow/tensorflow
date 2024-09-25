@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -41,11 +42,10 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/TargetParser/Triple.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -57,9 +57,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -84,6 +82,8 @@ void AnnotateWithInt32Value(std::string name, int64_t value,
        llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(
            llvm::IntegerType::get(llvm_context, /*NumBits=*/32), value))}));
 }
+
+}  // namespace
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
@@ -116,12 +116,10 @@ absl::Status AnnotateKernelLaunchDimensions(
   return absl::OkStatus();
 }
 
-}  // namespace
-
-IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
-    const LaunchDimensions& launch_dims, int unroll_factor,
-    const Shape& output_shape, mlir::MLIRContext* ctx) {
-  std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
+IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
+    const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
+    mlir::MLIRContext* ctx) {
+  std::vector<mlir::AffineExpr> output_dims(shape.rank());
 
   std::array<uint64_t, 3> thread_counts{
       launch_dims.thread_counts_per_block().x,
@@ -164,42 +162,41 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
 
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
   uint64_t divisor = 1;
-  for (auto dimension : LayoutUtil::MinorToMajor(output_shape)) {
-    output_dims[dimension] =
-        (linear_index.floorDiv(divisor)) %
-        static_cast<uint64_t>(output_shape.dimensions(dimension));
-    divisor *= output_shape.dimensions(dimension);
+  for (auto dimension : LayoutUtil::MinorToMajor(shape)) {
+    output_dims[dimension] = (linear_index.floorDiv(divisor)) %
+                             static_cast<uint64_t>(shape.dimensions(dimension));
+    divisor *= shape.dimensions(dimension);
   }
 
-  std::vector<Range> dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
+  std::vector<DimVar> dim_vars = {
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().x) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().y) - 1}},
+      {{0, static_cast<int64_t>(launch_dims.block_counts().z) - 1}},
   };
-  std::vector<Range> symbol_ranges;
-  int64_t num_elements = ShapeUtil::ElementsIn(output_shape);
-  symbol_ranges.push_back(
-      {0, CeilOfRatio(num_elements,
-                      static_cast<int64_t>(launch_dims.launch_bound()) *
-                          unroll_factor) -
-              1});
-  symbol_ranges.push_back({0, unroll_factor - 1});
+  std::vector<RangeVar> range_vars;
+  int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  range_vars.push_back(
+      {{0, CeilOfRatio(num_elements,
+                       static_cast<int64_t>(launch_dims.launch_bound()) *
+                           unroll_factor) -
+               1}});
+  range_vars.push_back({0, unroll_factor - 1});
   IndexingMap indexing_map(
       mlir::AffineMap::get(/*dimCount=*/6,
                            /*symbolCount=*/2, output_dims, ctx),
-      dimension_ranges, symbol_ranges);
-  // Remove the unroll_elem_id symbol if unrolling divides num_elements.
-  if (num_elements % unroll_factor == 0) {
-    indexing_map.AddConstraint(linear_index.replace({{unroll_elem_id, c0}}),
-                               Range{0, num_elements - unroll_factor});
-  } else {
-    indexing_map.AddConstraint(linear_index, Range{0, num_elements - 1});
-  }
+      dim_vars, range_vars, /*rt_vars=*/{});
+  indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
   return indexing_map;
+}
+
+std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& suggested_name) {
+  return ir_emitter_context.name_uniquer()->GetUniqueName(
+      llvm_ir::SanitizeFunctionName(suggested_name));
 }
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
@@ -210,6 +207,20 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder) {
+  return BuildKernelPrototypeFromUniqueName(
+      ir_emitter_context,
+      GetSanitizedUniqueName(ir_emitter_context, suggested_name), arguments,
+      num_inputs, launch_dimensions, builder);
+}
+
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+                          std::vector<llvm_ir::IrArray>>>
+BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& unique_kernel_name,
+                                   absl::Span<const KernelArgument> arguments,
+                                   size_t num_inputs,
+                                   const LaunchDimensions& launch_dimensions,
+                                   llvm::IRBuilder<>* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
   llvm::SmallVector<int> to_arg_no;
@@ -226,11 +237,6 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   }
   const int kNumLlvmArgs = to_arg_no.size();
 
-  // Compute the kernel name. The opcode string may contain "-" which cannot be
-  // in a PTX function name, so sanitize the name before uniquifying it.
-  std::string kernel_name = ir_emitter_context.name_uniquer()->GetUniqueName(
-      llvm_ir::SanitizeFunctionName(suggested_name));
-
   // Create the kernel and add it to the module.
   auto* llvm_module = ir_emitter_context.llvm_module();
   llvm::LLVMContext& context = llvm_module->getContext();
@@ -242,12 +248,12 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
-                             kernel_name, llvm_module);
+                             unique_kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
   TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
-      ir_emitter_context.gpu_device_info(), launch_dimensions, kernel_name,
-      llvm_module));
+      ir_emitter_context.gpu_device_info(), launch_dimensions,
+      unique_kernel_name, llvm_module));
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
@@ -302,22 +308,19 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
-    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
-  TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), &fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(
+      KernelArguments kernel_arguments,
+      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
 
   auto* fused_computation = fusion.fused_instructions_computation();
 
   TF_ASSIGN_OR_RETURN(auto result,
-                      EmitInitializers(ir_emitter_context, fusion_op, fusion));
+                      EmitInitializers(ir_emitter_context, fusion));
   auto launch_dims = launch_dimensions();
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [status_or_entry, cached] =
@@ -352,15 +355,9 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
             << entry->kernel_name;
   }
 
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  } else {
-    result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->cluster_dim, entry->shmem_bytes));
-  }
+  result.thunks.emplace_back(std::make_unique<KernelThunk>(
+      &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+      entry->cluster_dim, entry->shmem_bytes));
 
   return result;
 }

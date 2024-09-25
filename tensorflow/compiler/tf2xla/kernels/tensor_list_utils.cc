@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
@@ -25,9 +28,11 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 // TensorList is represented by a tuple.
 // - The first part of the tuple is a buffer containing all the tensors,
@@ -492,6 +497,27 @@ Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   start_indices[0] = index;
 
   xla::XlaOp list_part = xla::GetTupleElement(list, 0);
+  {
+    TF_ASSIGN_OR_RETURN(const xla::Shape* list_part_shape,
+                        b->GetShapePtr(list_part));
+    TF_ASSIGN_OR_RETURN(const xla::Shape* update_shape, b->GetShapePtr(update));
+    for (int i = 0; i < list_part_shape->dimensions_size(); ++i) {
+      auto list_part_dim_size = list_part_shape->dimensions(i);
+      auto update_dim_size = update_shape->dimensions(i);
+      // If the update is larger than the list part, the DynamicUpdateSlice will
+      // fail so just ignore this operation and return list as is.
+      if (update_dim_size > list_part_dim_size) {
+        LOG_FIRST_N(WARNING, 1)
+            << "Warning: TensorListSetItem: ignoring set item because the "
+               "update dim ["
+            << update_dim_size << "] is larger than the list dim ["
+            << list_part_dim_size << "] at dimension " << i << ".";
+
+        *result = list;
+        return absl::OkStatus();
+      }
+    }
+  }
   xla::XlaOp updated_list_part =
       xla::DynamicUpdateSlice(list_part, update, start_indices);
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/gpu_helpers.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
@@ -22,19 +23,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/service/platform_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "tsl/framework/device_id.h"
-#include "tsl/util/env_var.h"
 
 namespace xla {
 
 // Builds an xla::LocalClient for the GPU platform.
-StatusOr<LocalClient*> GetGpuXlaClient(
+absl::StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices) {
   TF_ASSIGN_OR_RETURN(
@@ -58,7 +59,7 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
       se::StreamExecutor* from = executors[i];
       se::StreamExecutor* to = executors[j];
       if (from->CanEnablePeerAccessTo(to)) {
-        Status status = from->EnablePeerAccessTo(to);
+        absl::Status status = from->EnablePeerAccessTo(to);
         if (!status.ok()) {
           LOG(WARNING) << "Unable to enable peer access between GPUs " << i
                        << " and " << j << "; status: " << status;
@@ -71,11 +72,12 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 }
 
 // Builds a BFCAllocator for all local GPUs.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
-    se::StreamExecutor* executor, double memory_fraction, bool preallocate) {
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
+    se::StreamExecutor* executor, double memory_fraction, bool preallocate,
+    std::optional<int64_t> gpu_system_memory_size) {
   bool enable_unified_memory;
-  Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY", false,
-                                          &enable_unified_memory);
+  absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
+                                                false, &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
                << status.message();
@@ -103,6 +105,11 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   size_t allocator_memory = enable_unified_memory
                                 ? total_memory * fmax(1.0, memory_fraction)
                                 : total_memory * memory_fraction;
+  // If gpu_system_memory_size is set, use it instead of default value.
+  if (gpu_system_memory_size.has_value()) {
+    allocator_memory = gpu_system_memory_size.value();
+  }
+
   if (preallocate) {
     LOG(INFO) << "XLA backend allocating " << allocator_memory
               << " bytes on device " << device_ordinal << " for BFCAllocator.";
@@ -119,7 +126,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 }
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
-StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size) {
   int device_ordinal = executor->device_ordinal();
@@ -157,18 +164,52 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64GB pool of pinned memory.
+// transfers. We use a fixed pool of pinned memory.
+//
+// The pool size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment
+// variable, which defaults to 64GB.
+//
+// If XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
+// preallocated, and the preallocated size is controlled by
+// XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
+// 16GB in this case.
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
       new se::DeviceHostAllocator(executor, /*numa_node=*/0,
                                   /*alloc_visitors=*/{},
                                   /*free_visitors=*/{}));
-  // TODO(phawkins): allow the user to tune this.
-  const int64_t kGpuHostMemoryLimitBytes = 64 * (1LL << 30);
+  bool xla_pjrt_gpu_host_memory_preallocate;
+  {
+    absl::Status status =
+        tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
+                                &xla_pjrt_gpu_host_memory_preallocate);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE: "
+                 << status.message();
+    }
+  }
+
+  const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
+      xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
+
+  int64_t xla_pjrt_gpu_host_memory_limit_gb;
+  {
+    absl::Status status =
+        tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
+                                 default_xla_pjrt_gpu_host_memory_limit_gb,
+                                 &xla_pjrt_gpu_host_memory_limit_gb);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
+                 << status.message();
+    }
+  }
+
+  const int64_t kGpuHostMemoryLimitBytes =
+      xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
 
   tsl::BFCAllocator::Options opts;
-  opts.allow_growth = true;
+  opts.allow_growth = !xla_pjrt_gpu_host_memory_preallocate;
   return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
                                              kGpuHostMemoryLimitBytes,
                                              /*name=*/"xla_gpu_host_bfc", opts);

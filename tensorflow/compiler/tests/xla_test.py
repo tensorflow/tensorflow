@@ -106,7 +106,7 @@ class XLATestCase(test.TestCase):
       context.context().enable_xla_devices()
 
     # Check if the mlir bridge has been explicitly enabled or disabled. If
-    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # is_mlir_bridge_enabled() returns None, the user did not explicitly enable
     # or disable the bridge so do not update enable_mlir_bridge.
     if test_util.is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True

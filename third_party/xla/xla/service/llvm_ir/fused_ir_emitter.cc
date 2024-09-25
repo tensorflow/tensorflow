@@ -19,25 +19,22 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/llvm_ir/tuple_ops.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -45,14 +42,14 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::DefaultAction(
     const HloInstruction& instruction) {
   IndexedGenerator generator = elemental_emitter_.MakeElementGenerator(
       &instruction, indexed_generators_);
 
-  return StatusOr<IndexedGenerator>([&, generator = std::move(generator)](
-                                        const IrArray::Index& index)
-                                        -> StatusOr<llvm::Value*> {
+  return absl::StatusOr<IndexedGenerator>([&, generator = std::move(generator)](
+                                              const IrArray::Index& index)
+                                              -> absl::StatusOr<llvm::Value*> {
     ValueCacheKey key{&instruction, index.multidim()};
     llvm::Value* value = value_cache_.insert({key, nullptr}).first->second;
 
@@ -119,7 +116,7 @@ FusedIrEmitter::IndexedGenerator FusedIrEmitter::HandleConstant(
   };
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
     const HloInstruction& tuple) {
   std::vector<llvm::Type*> element_ir_types;
   element_ir_types.reserve(tuple.operand_count());
@@ -131,8 +128,9 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   llvm::IRBuilder<>* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
-  return StatusOr<IndexedGenerator>([&, b, type](const IrArray::Index& index)
-                                        -> StatusOr<llvm::Value*> {
+  return absl::StatusOr<IndexedGenerator>([&, b,
+                                           type](const IrArray::Index& index)
+                                              -> absl::StatusOr<llvm::Value*> {
     llvm::Value* ret = llvm::UndefValue::get(type);
     for (size_t i = 0; i < tuple.operand_count(); ++i) {
       IrArray::Index used_index = index;
@@ -149,8 +147,8 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   });
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
-    const HloInstruction& instruction) {
+absl::StatusOr<FusedIrEmitter::IndexedGenerator>
+FusedIrEmitter::CreateGenerator(const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     case HloOpcode::kConstant:
       return HandleConstant(instruction);
@@ -165,7 +163,7 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
   }
 }
 
-StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+absl::StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
     const HloInstruction& instruction) {
   std::vector<const HloInstruction*> stack = {&instruction};
   while (!stack.empty()) {

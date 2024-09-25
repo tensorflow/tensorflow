@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The CUDA implementation of the StreamExecutorInterface functionality.
+// The CUDA implementation of the StreamExecutor functionality.
 // CUDA inclusions are ideally confined to this implementation file.
 //
 // The notions from the StreamExecutor basically correspond to the CUDA streams
@@ -28,7 +28,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -39,7 +39,9 @@ namespace stream_executor::gpu {
 
 class GpuKernel : public Kernel {
  public:
-  explicit GpuKernel(GpuExecutor* gpu_executor) : gpu_executor_(gpu_executor) {}
+  explicit GpuKernel(GpuExecutor* gpu_executor)
+      : gpu_executor_(gpu_executor),
+        gpu_context_(gpu_executor->gpu_context()) {}
 
   // Note that the function is unloaded when the module is unloaded, and the
   // module that the function is contained in is owned by the GpuExecutor.
@@ -50,52 +52,21 @@ class GpuKernel : public Kernel {
   void set_arity(unsigned arity) { arity_ = arity; }
   unsigned Arity() const override { return arity_; }
 
-  void set_name(std::string name) { name_ = std::move(name); }
-  void set_gpu_context(GpuContext* gpu_context) { gpu_context_ = gpu_context; }
-
-  // Returns the GpuFunctionHandle value for passing to the CUDA API.
-  GpuFunctionHandle AsGpuFunctionHandle() const {
-    DCHECK(gpu_function_ != nullptr);
-    return const_cast<GpuFunctionHandle>(gpu_function_);
-  }
-
-  // Returns the slot that the GpuFunctionHandle is stored within for this
-  // object, for the CUDA API which wants to load into a GpuFunctionHandle*.
-  GpuFunctionHandle* gpu_function_ptr() { return &gpu_function_; }
-
-  // CUDA supports setting the preferred cache configuration of a
-  // GpuFunctionHandle (more-or-less equivalent to a GpuKernel). We support this
-  // via the below functions; users can set a preference, and that is applied
-  // when the kernel is [lazy-]loaded (in GpuExecutor::Launch). The alternative
-  // would be to load the kernel & set the preference when the user calls the
-  // setter below; either approach is valid. Sets the current kernel cache
-  // configuration preference.
-  void SetPreferredCacheConfig(KernelCacheConfig config) override {
-    preferred_cache_config_ = config;
-  }
-
-  // Returns the current kernel cache configuration preference.
-  KernelCacheConfig GetPreferredCacheConfig() const override {
-    return preferred_cache_config_;
-  }
-
-  // Returns the current kernel cache configuration preference as a
-  // CUfunc_cache.
-  GpuFuncCachePreference GetGpuCacheConfig() const;
-
   absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
+  // Simple accessor methods.
+  GpuFunctionHandle gpu_function() const { return gpu_function_; }
+  void set_gpu_function(GpuFunctionHandle gpu_function) {
+    gpu_function_ = gpu_function;
+  }
+
  private:
   GpuExecutor* gpu_executor_ = nullptr;
-  GpuContext* gpu_context_ = nullptr;  // context where kernel is loaded
-  std::string name_;                   // kernel name
+  Context* gpu_context_ = nullptr;  // context where kernel is loaded
 
   GpuFunctionHandle gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
-
-  // Preferred (but not required) cache configuration for this kernel
-  KernelCacheConfig preferred_cache_config_ = KernelCacheConfig::kNoPreference;
 };
 
 inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {

@@ -78,7 +78,7 @@ absl::StatusOr<std::string> GetMlirDumpDir() {
 // A simple wrapper of tsl::WritableFile so that mlir Pass infra can use it.
 class WritableFileWrapper : public llvm::raw_ostream {
  public:
-  ~WritableFileWrapper() override = default;
+  ~WritableFileWrapper() override { flush(); }
   static absl::StatusOr<std::unique_ptr<WritableFileWrapper>> Create(
       const std::string& filepath) {
     std::unique_ptr<tsl::WritableFile> file;
@@ -89,7 +89,7 @@ class WritableFileWrapper : public llvm::raw_ostream {
  private:
   explicit WritableFileWrapper(std::unique_ptr<tsl::WritableFile> file)
       : file_(std::move(file)) {
-    SetUnbuffered();
+    SetBuffered();
   }
 
   uint64_t current_pos() const override {
@@ -102,7 +102,7 @@ class WritableFileWrapper : public llvm::raw_ostream {
   }
 
   void write_impl(const char* ptr, size_t size) override {
-    if (file_ && !file_->Append(tsl::StringPiece(ptr, size)).ok()) {
+    if (file_ && !file_->Append(absl::string_view(ptr, size)).ok()) {
       file_ = nullptr;
     }
   }
@@ -228,7 +228,6 @@ void EnableIrPrinting(mlir::PassManager& pm,
       /*print_after_only_on_change=*/true, flag));
 }
 
-// TODO(b/259374854): Create tests for MaybeEnableIrPrinting.
 absl::Status MaybeEnableIrPrinting(mlir::PassManager& pm,
                                    absl::string_view file_name_prefix) {
   if (!VLOG_IS_ON(1)) {

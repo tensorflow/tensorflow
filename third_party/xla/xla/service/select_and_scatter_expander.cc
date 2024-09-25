@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
     HloInstruction* instruction) {
   // Prepare the original values
   auto* computation = instruction->parent();

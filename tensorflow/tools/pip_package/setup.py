@@ -48,24 +48,17 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.17.0'
+_VERSION = '2.18.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
 # when building the pip package.
 project_name = 'tensorflow'
-if '--project_name' in sys.argv:
-  project_name_idx = sys.argv.index('--project_name')
-  project_name = sys.argv[project_name_idx + 1]
-  sys.argv.remove('--project_name')
-  sys.argv.pop(project_name_idx)
+if os.environ.get('project_name', None):
+  project_name = os.environ['project_name']
 
-
-collaborator_build = False
-if '--collaborator_build' in sys.argv:
-  sys.argv.remove('--collaborator_build')
-  collaborator_build = True
+collaborator_build = os.environ.get('collaborator_build', False)
 
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
@@ -85,15 +78,10 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.5.26',
+    'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes ~= 0.3.1',
-    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
-    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
-    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
@@ -121,9 +109,13 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.17.0.a',
-    'keras-nightly ~= 3.0.0.dev',
+    'tb-nightly ~= 2.18.0.a',
+    'keras-nightly >= 3.2.0.dev',
+    'numpy >= 1.26.0, < 2.2.0',
+    'h5py >= 3.11.0',
+    'ml_dtypes >= 0.4.0, < 0.5.0',
 ]
+
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
 FAKE_REQUIRED_PACKAGES = [
@@ -132,9 +124,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-    'platform_machine=="aarch64")',
     standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
     _VERSION + ';platform_system=="Windows"',
 ]
@@ -146,25 +135,12 @@ if collaborator_build:
   # If this is a collaborator build, then build an "installer" wheel and
   # add the collaborator packages as the only dependencies.
   REQUIRED_PACKAGES = [
-      # Install the TensorFlow package built by AWS if the user is running
-      # Linux on an Aarch64 machine.
-      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
-      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
-      'platform_machine=="aarch64")',
       # Install the TensorFlow package built by Intel if the user is on a
       # Windows machine.
-      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-      _VERSION + ';platform_system=="Windows"',
-      # Starting with TF 2.16, Apple Silicon packages are uploaded directly
-      # to the "tensorflow" project on PyPI. In order to not break users who
-      # are still using `tensorflow-macos`, we upload an empty installer wheel
-      # to "tensorflow-macos" and add "tensorflow" as its dependency. Please
-      # note that this will go away in TF 2.17 and `tensorflow-macos` will be
-      # considered deprecated. Installer packages are not uploaded to
-      # `tf-nightly-macos`, `tf-nightly` is added below only to avoid breaking
-      # CI builds.
-      standard_or_nightly('tensorflow', 'tf-nightly') + '==' +
-      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
+      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel')
+      + '=='
+      + _VERSION
+      + ';platform_system=="Windows"',
   ]
 
 # Set up extra packages, which are optional sets of other Python package deps.
@@ -173,18 +149,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.3.4.1',
-    'nvidia-cuda-cupti-cu12 == 12.3.101',
-    'nvidia-cuda-nvcc-cu12 == 12.3.107',
-    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
-    'nvidia-cuda-runtime-cu12 == 12.3.101',
-    'nvidia-cudnn-cu12 == 8.9.7.29',
-    'nvidia-cufft-cu12 == 11.0.12.1',
-    'nvidia-curand-cu12 == 10.3.4.107',
-    'nvidia-cusolver-cu12 == 11.5.4.101',
-    'nvidia-cusparse-cu12 == 12.2.0.103',
-    'nvidia-nccl-cu12 == 2.19.3',
-    'nvidia-nvjitlink-cu12 == 12.3.101',
+    'nvidia-cublas-cu12 == 12.5.3.2',
+    'nvidia-cuda-cupti-cu12 == 12.5.82',
+    'nvidia-cuda-nvcc-cu12 == 12.5.82',
+    'nvidia-cuda-nvrtc-cu12 == 12.5.82',
+    'nvidia-cuda-runtime-cu12 == 12.5.82',
+    'nvidia-cudnn-cu12 == 9.3.0.75',
+    'nvidia-cufft-cu12 == 11.2.3.61',
+    'nvidia-curand-cu12 == 10.3.6.82',
+    'nvidia-cusolver-cu12 == 11.6.3.83',
+    'nvidia-cusparse-cu12 == 12.5.1.3',
+    'nvidia-nccl-cu12 == 2.21.5',
+    'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
 DOCLINES = __doc__.split('\n')
@@ -257,8 +233,7 @@ class InstallHeaders(Command):
     install_dir = os.path.join(self.install_dir, os.path.dirname(header))
     # Windows platform uses "\" in path strings, the external header location
     # expects "/" in paths. Hence, we replaced "\" with "/" for this reason
-    if platform.system() == 'Windows':
-      install_dir = install_dir.replace('\\', '/')
+    install_dir = install_dir.replace('\\', '/')
     # Get rid of some extra intervening directories so we can have fewer
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
@@ -327,22 +302,26 @@ for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
 # If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
-# $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
+# $ pip install <tf-tpu project> -f \
+#  https://storage.googleapis.com/libtpu-releases/index.html
 # libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tensorflow-tpu releases, use a set libtpu version;
   # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
   # timing of these tests, the UTC date from eight hours ago is expected to be a
   # valid version.
   _libtpu_version = standard_or_nightly(
-      '0.1.dev20231018',
+      _VERSION.replace('-', ''),
       '0.1.dev'
       + (
           datetime.datetime.now(tz=datetime.timezone.utc)
           - datetime.timedelta(hours=8)
       ).strftime('%Y%m%d'),
   )
-  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  if _libtpu_version.startswith('0.1'):
+    REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+  else:
+    REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '

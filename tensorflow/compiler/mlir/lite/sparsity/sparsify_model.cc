@@ -15,31 +15,37 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 
+#include <cstdint>
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
+#include "tensorflow/compiler/mlir/lite/transforms/dense_to_sparse_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
 namespace mlir {
 namespace lite {
 
-TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
-                           flatbuffers::FlatBufferBuilder* builder,
-                           tflite::ErrorReporter* error_reporter) {
+absl::Status SparsifyModel(const tflite::ModelT& input_model,
+                           flatbuffers::FlatBufferBuilder* builder) {
   MLIRContext context;
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
@@ -57,25 +63,26 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
       serialized_model, &context, UnknownLoc::get(&context));
   if (!module) {
-    error_reporter->Report("Couldn't import flatbuffer to MLIR.");
-    return kTfLiteError;
+    LOG(ERROR) << "Couldn't import flatbuffer to MLIR.";
+    return absl::InternalError("Couldn't import flatbuffer to MLIR.");
   }
 
   PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
-  pm.addPass(TFL::CreateDenseToSparsePass());
+  pm.addPass(TFL::Create<TFL::DenseToSparsePass>());
 
   if (failed(pm.run(module.get()))) {
-    const std::string err(statusHandler.ConsumeStatus().message());
-    error_reporter->Report("Failed to sparsify: %s", err.c_str());
-    return kTfLiteError;
+    LOG(ERROR) << "Failed to sparsify: "
+               << statusHandler.ConsumeStatus().message();
+    return absl::InternalError(absl::StrCat(
+        "Failed to sparsify: ", statusHandler.ConsumeStatus().message()));
   }
 
   // Export the results to the builder
   std::string result;
   tflite::FlatbufferExportOptions options;
-  options.toco_flags.set_force_select_tf_ops(false);
-  options.toco_flags.set_enable_select_tf_ops(true);
-  options.toco_flags.set_allow_custom_ops(true);
+  options.converter_flags.set_force_select_tf_ops(false);
+  options.converter_flags.set_enable_select_tf_ops(true);
+  options.converter_flags.set_allow_custom_ops(true);
 
   // Copy metadata for Reduced Precision Support from input model if it exists
   for (const auto& metadata : input_model.metadata) {
@@ -90,13 +97,13 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
 
   if (!tflite::MlirToFlatBufferTranslateFunction(module.get(), options,
                                                  &result)) {
-    error_reporter->Report("Failed to export MLIR to flatbuffer.");
-    return kTfLiteError;
+    LOG(ERROR) << "Failed to export MLIR to flatbuffer.";
+    return absl::InternalError("Failed to export MLIR to flatbuffer.");
   }
   builder->PushFlatBuffer(reinterpret_cast<const uint8_t*>(result.data()),
                           result.size());
 
-  return kTfLiteOk;
+  return absl::OkStatus();
 }
 
 }  // namespace lite

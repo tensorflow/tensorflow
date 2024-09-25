@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
-#include <cinttypes>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -27,14 +26,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/pjrt/local_device_state.h"
-#include "xla/pjrt/utils.h"
+#include "absl/types/span.h"
+#include "xla/pjrt/event_pool.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event.h"
-#include "xla/types.h"
+#include "tsl/platform/logging.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 
@@ -44,7 +50,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   {
     absl::MutexLock lock(&mu_);
-    defined_status_.emplace(OkStatus());
+    defined_status_.emplace(absl::OkStatus());
     CHECK(!event_.event());
     event_ = std::move(event);
     CHECK(streams_defined_on_.empty());
@@ -56,6 +62,10 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
 
 bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
+}
+
+bool BufferSequencingEvent::IsDefinedNoLock() const {
+  return defined_status_.IsConcrete();
 }
 
 uint64_t BufferSequencingEvent::sequence_number() const {
@@ -79,11 +89,11 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->ThenWaitFor(event_.event());
+  stream->WaitFor(event_.event()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 
-Status BufferSequencingEvent::WaitForEventOnExternalStream(
+absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
     std::intptr_t stream) {
   absl::MutexLock lock(&mu_);
 
@@ -97,13 +107,18 @@ Status BufferSequencingEvent::WaitForEventOnExternalStream(
   return event_.event()->WaitForEventOnExternalStream(stream);
 }
 
-bool BufferSequencingEvent::DefinedOn(se::Stream* stream) {
+bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
+    se::Stream* stream) {
   absl::MutexLock lock(&mu_);
+  // IsDefined would be true for both a defined buffer and an error buffer.
+  // Can't use BufferSequencingEvent::EventHasBeenRecorded here since that's
+  // only true for a non-error buffer(i.e. defined buffer).
+  mu_.Await(absl::Condition(this, &BufferSequencingEvent::IsDefinedNoLock));
 
-  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
-  // newly created events are deemed to have already happened past.
-  mu_.Await(
-      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
+  if (defined_status_.IsConcrete() && !defined_status_.get().ok()) {
+    // IsPredeterminedError
+    return true;
+  }
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
@@ -144,17 +159,20 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
 
 void BufferSequencingEvent::ExecuteFutureTasks() {
   absl::MutexLock lock(&mu_);
-  for (auto& [task_name, task_callback] : on_ready_tasks_callback_) {
-    thread_pool_->Schedule(std::move(task_callback));
-  }
-  on_ready_tasks_callback_.clear();
+  auto call_all_task_callbacks = [on_ready_tasks_callback =
+                                      std::move(on_ready_tasks_callback_)]() {
+    for (auto& [task_name, task_callback] : on_ready_tasks_callback) {
+      task_callback();
+    }
+  };
+  thread_pool_->Schedule(std::move(call_all_task_callbacks));
 }
 
 /* static */ std::shared_ptr<TrackedDeviceBuffer>
 TrackedDeviceBuffer::FromScopedShapedBuffer(
     ScopedShapedBuffer* shaped_buffer,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>>
-        definition_events) {
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
+    PjRtDevice* device) {
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer->buffers().begin();
   std::vector<se::DeviceMemoryBase> buffers;
@@ -169,14 +187,16 @@ TrackedDeviceBuffer::FromScopedShapedBuffer(
       });
   CHECK(iterator == shaped_buffer->buffers().end());
   return std::make_shared<TrackedDeviceBuffer>(
-      shaped_buffer->memory_allocator(), shaped_buffer->device_ordinal(),
+      shaped_buffer->memory_allocator(), device,
       absl::Span<se::DeviceMemoryBase>(buffers), definition_events,
       /*on_delete_callback=*/nullptr);
 }
 
 ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
     const Shape& on_device_shape) const {
-  ShapedBuffer shaped_buffer(on_device_shape, device_ordinal_);
+  ShapedBuffer shaped_buffer(on_device_shape,
+                             device_->local_device_id().value(),
+                             device_->local_hardware_id().value());
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   for (const se::DeviceMemoryBase& buf : device_memory_) {
@@ -210,20 +230,20 @@ void TrackedDeviceBuffer::AddToInputAsDonated(
   for (const se::DeviceMemoryBase& buf : device_memory_) {
     CHECK(*iterator != end);
     // Set buffers to be case (2) in the comment on ExecutionInput.
-    (*iterator)->second = MaybeOwningDeviceMemory(
-        se::OwningDeviceMemory(buf, device_ordinal_, allocator));
+    (*iterator)->second = MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+        buf, device_->local_device_id().value(), allocator));
     execution_input->SetUnownedIndex((*iterator)->first);
     ++(*iterator);
   }
 }
 
 TrackedDeviceBuffer::TrackedDeviceBuffer(
-    se::DeviceMemoryAllocator* allocator, int device_ordinal,
+    se::DeviceMemoryAllocator* allocator, PjRtDevice* device,
     absl::Span<se::DeviceMemoryBase const> device_memory,
     absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
     absl::AnyInvocable<void() &&> on_delete_callback)
     : allocator_(allocator),
-      device_ordinal_(device_ordinal),
+      device_(device),
       device_memory_(device_memory.begin(), device_memory.end()),
       definition_events_(std::make_move_iterator(definition_events.begin()),
                          std::make_move_iterator(definition_events.end())),
@@ -233,7 +253,8 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
 TrackedDeviceBuffer::~TrackedDeviceBuffer() {
   if (allocator_) {
     for (const se::DeviceMemoryBase& buffer : device_memory_) {
-      Status status = allocator_->Deallocate(device_ordinal_, buffer);
+      absl::Status status =
+          allocator_->Deallocate(device_->local_device_id().value(), buffer);
       if (!status.ok()) {
         LOG(ERROR) << "Buffer deallocation failed: " << status;
       }

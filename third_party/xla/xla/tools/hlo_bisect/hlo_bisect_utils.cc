@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/protobuf_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_proto_util.h"
@@ -56,7 +57,7 @@ Literal ExecuteWithRunnerAndRetrieveResult(std::unique_ptr<HloModule> module,
 }
 
 // Loads the given HloProto as HloModule.
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromHloProto(
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromHloProto(
     const HloProto& proto) {
   const HloModuleProto& module_proto = proto.hlo_module();
   TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
@@ -65,8 +66,9 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromHloProto(
   return CreateModuleFromProto(module_proto, module_config);
 }
 
-StatusOr<std::unique_ptr<HloModule>> LoadModuleAndInputDataFromHloSnapshot(
-    const HloSnapshot& snapshot, std::vector<Literal>* input_data) {
+absl::StatusOr<std::unique_ptr<HloModule>>
+LoadModuleAndInputDataFromHloSnapshot(const HloSnapshot& snapshot,
+                                      std::vector<Literal>* input_data) {
   for (int64_t i = 0; i < snapshot.arguments_size(); ++i) {
     TF_ASSIGN_OR_RETURN(Literal literal,
                         Literal::CreateFromProto(snapshot.arguments(i)));
@@ -79,7 +81,7 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleAndInputDataFromHloSnapshot(
   return HloModule::CreateFromProto(snapshot.hlo().hlo_module(), config);
 }
 
-StatusOr<ModuleWithInputs> GetModuleAndInputData(
+absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
     absl::string_view input_filename) {
   const std::string input_file(input_filename);
   tsl::Env* env = tsl::Env::Default();
@@ -95,7 +97,7 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
   }
   LOG(INFO) << input_file << " is not HloSnapshot. Trying HLO binary proto.\n";
   HloProto hlo_proto;
-  StatusOr<std::unique_ptr<HloModule>> module_or_status;
+  absl::StatusOr<std::unique_ptr<HloModule>> module_or_status;
   if (tsl::ReadBinaryProto(env, input_file, &hlo_proto).ok()) {
     module_or_status = LoadModuleFromHloProto(hlo_proto);
     if (!module_or_status.ok()) {
@@ -108,7 +110,8 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
   }
   LOG(INFO) << input_file << " is not HloProto. Trying HLO text.\n";
   std::string hlo_string;
-  Status to_string_status = tsl::ReadFileToString(env, input_file, &hlo_string);
+  absl::Status to_string_status =
+      tsl::ReadFileToString(env, input_file, &hlo_string);
   if (!to_string_status.ok()) {
     LOG(ERROR) << input_file << " problem in reading file to string: "
                << to_string_status.message();
@@ -129,13 +132,13 @@ StatusOr<ModuleWithInputs> GetModuleAndInputData(
 }
 
 // Outputs the given HloModule as HloProto to the given file.
-Status DumpHloModule(HloModule* module, const std::string& file_name,
-                     absl::string_view dir_path,
-                     absl::string_view output_format) {
+absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
+                           absl::string_view dir_path,
+                           absl::string_view output_format) {
   HloProto proto = MakeHloProto(*module);
   if (output_format == "hlo") {
     tsl::Env* env = tsl::Env::Default();
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(std::string(dir_path)));
+    TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(dir_path), env));
     std::string file_path =
         tsl::io::JoinPath(dir_path, SanitizeFileName(file_name)) + ".hlo";
     LOG(INFO) << "Dumped HLO text to " << file_path;
@@ -146,15 +149,15 @@ Status DumpHloModule(HloModule* module, const std::string& file_name,
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, std::string(dir_path), file_name, &path));
+    TF_RETURN_IF_ERROR(
+        DumpProtoToDirectory(proto, std::string(dir_path), file_name, &path));
     LOG(INFO) << "Dumped HLO module proto to " << path;
 
   } else {
     LOG(FATAL) << "Unexpected output format: " << output_format;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -168,7 +171,7 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
   // Generate input data and store the data for all the execution.
   std::minstd_rand0 rng_engine;
   if (input_data.empty()) {
-    StatusOr<std::vector<Literal>> input_status =
+    absl::StatusOr<std::vector<Literal>> input_status =
         MakeFakeArguments(module, &rng_engine);
     CHECK(input_status.ok());
     input_data_ = std::move(input_status).value();
@@ -178,14 +181,14 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
   }
 
   // Set up the reference platform.
-  StatusOr<se::Platform*> reference_platform_status =
+  absl::StatusOr<se::Platform*> reference_platform_status =
       PlatformUtil::GetPlatform(std::string(reference_platform));
   CHECK(reference_platform_status.ok());
   reference_runner_ =
       std::make_unique<HloRunner>(reference_platform_status.value());
 
   // Set up the test platform.
-  StatusOr<se::Platform*> test_platform_status =
+  absl::StatusOr<se::Platform*> test_platform_status =
       PlatformUtil::GetPlatform(std::string(test_platform));
   CHECK(test_platform_status.ok());
   test_runner_ =
@@ -195,7 +198,7 @@ MiscompareChecker::MiscompareChecker(HloModule* module,
 // Executes the module with the test_runner and the reference_runner and
 // compares the results from the two runs. Returns true if the two results are
 // not near to indicate a bug exists.
-StatusOr<bool> MiscompareChecker::Run(const HloModule& module) {
+absl::StatusOr<bool> MiscompareChecker::Run(const HloModule& module) {
   std::unique_ptr<HloModule> test_module = module.Clone(/*suffix=*/"");
 
   // Make sure that the module config has a non-zero seed, which the CPU and GPU
@@ -224,7 +227,7 @@ StatusOr<bool> MiscompareChecker::Run(const HloModule& module) {
       /*run_hlo_passes=*/true);
 
   // Compare the results.
-  StatusOr<::testing::AssertionResult> status_or_result =
+  absl::StatusOr<::testing::AssertionResult> status_or_result =
       LiteralTestUtil::Near(/*expected=*/reference_result,
                             /*actual=*/test_result,
                             /*error_spec=*/error_spec_,
@@ -240,13 +243,14 @@ absl::flat_hash_map<std::string, Literal> MiscompareChecker::GetResults() {
   return {};
 }
 
-StatusOr<std::unique_ptr<HloModule>> MiscompareChecker::PrepareReferenceModule(
+absl::StatusOr<std::unique_ptr<HloModule>>
+MiscompareChecker::PrepareReferenceModule(
     const HloModule& hlo_module, HloRunnerInterface* hlo_runner) const {
   // By default clone the test module (could be overridden).
   return xla::PrepareReferenceModule(hlo_module, hlo_runner);
 }
 
-StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
+absl::StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   tsl::Env* env = tsl::Env::Default();
   // Write hlo into a temporary file.
   std::string hlo_path;
@@ -292,7 +296,7 @@ absl::flat_hash_map<std::string, Literal> ScriptChecker::GetResults() {
   return {};
 }
 
-StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunEntry() {
+absl::StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunEntry() {
   HloBisectState hlo_bisect(std::move(module_), bug_checker_.get());
   TF_ASSIGN_OR_RETURN(bool has_bug, hlo_bisect.ShouldProcess());
   if (!has_bug) {
@@ -305,13 +309,13 @@ StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunEntry() {
   return hlo_bisect.GetResult();
 }
 
-StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunAll() {
+absl::StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunAll() {
   std::unique_ptr<HloModule> original_module = std::move(module_);
   std::unique_ptr<HloModule> result;
   for (HloComputation* c : original_module->computations()) {
     LOG(INFO) << "Bisecting computation: " << c->name();
     module_ = original_module->Clone(/*suffix=*/"");
-    StatusOr<std::unique_ptr<HloModule>> new_result;
+    absl::StatusOr<std::unique_ptr<HloModule>> new_result;
     if (c->IsEntryComputation()) {
       // Run on the entry computation with input data.
       new_result = RunEntry();
@@ -340,18 +344,18 @@ StatusOr<std::unique_ptr<HloModule>> BisectRunner::RunAll() {
 
 void RunBisect(std::unique_ptr<BisectRunner> runner, bool all_computations,
                absl::string_view dump_path, absl::string_view output_format) {
-  StatusOr<std::unique_ptr<HloModule>> bisect_status =
+  absl::StatusOr<std::unique_ptr<HloModule>> bisect_status =
       all_computations ? runner->RunAll() : runner->RunEntry();
   CHECK(bisect_status.ok()) << bisect_status.status().message();
 
   std::unique_ptr<HloModule> new_module = std::move(bisect_status.value());
-  Status dump_status =
+  absl::Status dump_status =
       DumpHloModule(new_module.get(), new_module->name() + "_trimmed",
                     dump_path, output_format);
   CHECK(dump_status.ok()) << dump_status.message();
 }
 
-StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
+absl::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
     absl::string_view input_filename) {
   std::unique_ptr<HloModule> module;
   std::vector<Literal> input_data;
@@ -366,10 +370,10 @@ StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
       }
     }
   }
-  Status verified_status = HloVerifier(/*layout_sensitive=*/false,
-                                       /*allow_mixed_precision=*/false)
-                               .Run(module.get())
-                               .status();
+  absl::Status verified_status = HloVerifier(/*layout_sensitive=*/false,
+                                             /*allow_mixed_precision=*/false)
+                                     .Run(module.get())
+                                     .status();
   if (!verified_status.ok()) {
     LOG(ERROR) << "Failed to verify hlo module " << verified_status.message();
     return verified_status;

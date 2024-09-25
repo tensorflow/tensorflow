@@ -16,22 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_
 #define XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_
 
-#include "llvm/Support/raw_os_ostream.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-
-namespace xla {
-
-mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
-                                                  llvm::raw_ostream& output,
-                                                  bool emit_return_tuple,
-                                                  bool emit_use_tuple_arg);
-
-mlir::LogicalResult MlirHloToHloTextTranslateFunction(
-    mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
-    bool emit_use_tuple_arg, bool print_layouts, bool print_sugar,
-    bool print_large_constants, bool via_builder, bool with_layouts);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/mhlo_to_hlo/translate.h"
 
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_TRANSLATE_H_

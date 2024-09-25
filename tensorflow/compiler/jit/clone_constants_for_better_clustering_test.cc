@@ -55,7 +55,7 @@ Status CloneConstantsForBetterClustering(const Scope& s,
   CloneConstantsForBetterClusteringPass rewriter;
   TF_RETURN_IF_ERROR(rewriter.Run(options));
   *result = std::move(graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const char* kCPU = "/job:localhost/replica:0/task:0/device:CPU:0";

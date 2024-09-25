@@ -111,8 +111,11 @@ float GetMaxSysBwFromGpu(const se::CudaComputeCapability cc,
       return bandwidths_table[1];
     case se::CudaComputeCapability::HOPPER:
       return bandwidths_table[2];
+    case se::CudaComputeCapability::BLACKWELL:
+      return bandwidths_table[3];
+    default:
+      return bandwidths_table[4];
   }
-  return -1;
 }
 
 }  // namespace
@@ -133,7 +136,7 @@ float GpuPerformanceWithCollectiveModel::GetNvlinkBw(
 }
 
 /*static*/ bool GpuPerformanceWithCollectiveModel::InitNvml() {
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA && (defined(PLATFORM_POSIX) || defined(PLATFORM_GOOGLE))
   void* libhandle = dlopen("libnvidia-ml.so.1", RTLD_NOW);
   CHECK(libhandle != nullptr) << "Failed to open libnvidia-ml.so.1";
 
@@ -189,7 +192,8 @@ GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
   nvmlReturn_t nvlink_cap_result = xla_nvmlDeviceGetNvLinkCapability(
       nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
       &supported_p2p);
-  CHECK(nvlink_cap_result == NVML_SUCCESS);
+  CHECK(nvlink_cap_result == NVML_SUCCESS ||
+        nvlink_cap_result == NVML_ERROR_NOT_SUPPORTED);
   CHECK(ShutdownNvml()) << "NVML shutdown failed.";
   return supported_p2p;
 #else
@@ -242,9 +246,9 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
 
   // Since channels are pipelined together, compute time will only occur as in a
   // single channel.
-  absl::Duration compute_time_per_channel =
-      ComputeTime(gpu_device_info,
-                  cost_analysis->flop_count(instr) / num_channels, num_threads);
+  absl::Duration compute_time_per_channel = ComputeTime(
+      gpu_device_info, cost_analysis->flop_count(instr) / num_channels,
+      /*num_blocks=*/num_channels, /*num_threads_per_block=*/num_threads);
   total_time += compute_time_per_channel;
 
   uint32_t supported_p2p = CheckIfNvlinkSupportsP2P();
@@ -268,7 +272,7 @@ GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(
                            num_channels * per_channel_ring_ll128_Bw);
   double actual_bandwidth = bus_bandwidth * cost_analysis->ScalingRatio(instr);
 
-  absl::Duration communication_time = absl::Microseconds(
+  absl::Duration communication_time = absl::Milliseconds(
       cost_analysis->bytes_accessed(instr) / (1e6 * actual_bandwidth));
   total_time += communication_time;
   return total_time;

@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/pjrt/semaphore.h"
 
+#include <cstdint>
+
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
-Semaphore::Semaphore(int64_t capacity) : value_(capacity) {
+Semaphore::Semaphore(int64_t capacity)
+    : value_(capacity), max_capacity_(capacity) {
   CHECK_GE(capacity, 0);
 }
 
@@ -37,6 +41,16 @@ void Semaphore::Acquire(int64_t amount) {
   mu_.LockWhen(absl::Condition(&CanAcquire, &args));
   value_ -= amount;
   mu_.Unlock();
+}
+
+bool Semaphore::TryAcquire(int64_t amount) {
+  CHECK_GE(amount, 0);
+  absl::MutexLock lock(&mu_);
+  if (value_ >= amount) {
+    value_ -= amount;
+    return true;
+  }
+  return false;
 }
 
 void Semaphore::Release(int64_t amount) {

@@ -38,9 +38,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "re2/re2.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -54,6 +54,7 @@ namespace {
 
 using QuantizationUnit =
     ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
+using ::tensorflow::quantization::OpSet;
 using ::tensorflow::quantization::QuantizationComponentSpec;
 using ::tensorflow::quantization::QuantizationMethod;
 using ::tensorflow::quantization::QuantizationOptions;
@@ -173,7 +174,7 @@ class CheckQuantizableOps
   LogicalResult matchAndRewrite(TF::PartitionedCallOp call_op,
                                 PatternRewriter& rewriter) const override {
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     if (!function_name.starts_with("composite_") ||
         !call_op->hasAttr(kQuantTraitAttrName)) {
       return failure();
@@ -192,11 +193,10 @@ class CheckQuantizableOps
     }
 
     // Only the composite functions with f32 inputs are quantizable.
-    if (call_op.getResults().size() == 1 && !call_op->getResult(0)
-                                                 .getType()
-                                                 .cast<ShapedType>()
-                                                 .getElementType()
-                                                 .isF32()) {
+    if (call_op.getResults().size() == 1 &&
+        !mlir::cast<ShapedType>(call_op->getResult(0).getType())
+             .getElementType()
+             .isF32()) {
       check_status.Update(absl::InternalError(
           "Composite functions for quantization should be f32 type."));
     }
@@ -273,7 +273,7 @@ class CheckQuantizableOps
       // For BatchMatMul, the input must be ranked to determine the batch
       // dimensions.
       ShapedType shaped_type =
-          call_op->getOperand(0).getType().dyn_cast<ShapedType>();
+          mlir::dyn_cast<ShapedType>(call_op->getOperand(0).getType());
       if (!shaped_type || !shaped_type.hasRank()) {
         return absl::InternalError("The input of BatchMatMul must have rank.");
       }
@@ -281,7 +281,8 @@ class CheckQuantizableOps
       // This op is guaranteed to be a constant as ODS checks IsConstTensor.
       // Check if the number of elements meets the requirement.
       int64_t num_elements =
-          call_op.getOperand(0).getType().cast<ShapedType>().getNumElements();
+          mlir::cast<ShapedType>(call_op.getOperand(0).getType())
+              .getNumElements();
       if (num_elements < quant_options_.min_num_elements_for_weights()) {
         return absl::InternalError(
             "The params of Gather have fewer number of elements than "
@@ -390,7 +391,9 @@ void LiftQuantizableSpotsAsFunctionsPass::runOnOperation() {
   populateWithGenerated(patterns);
   patterns.add<CheckQuantizableOps>(ctx, quant_options_);
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
-  for (auto func : module.getOps<func::FuncOp>()) {
+
+  // Iterate over the sorted list of functions to keep the order deterministic.
+  for (func::FuncOp func : GetSortedFunctions(module)) {
     if (failed(applyPatternsAndFoldGreedily(func, frozen_patterns))) {
       func.emitError() << "quant-lift-quantizable-spots-as-functions failed.";
       signalPassFailure();

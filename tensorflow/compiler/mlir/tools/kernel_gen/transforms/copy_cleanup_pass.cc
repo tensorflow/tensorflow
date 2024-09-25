@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
 namespace mlir {
@@ -135,7 +136,7 @@ void RemoveCopyIfTargetIsFunctionArg(func::FuncOp func) {
   Block &body = func.getBody().front();
   for (auto &op : llvm::reverse(body.without_terminator())) {
     if (auto copy = dyn_cast<memref::CopyOp>(op)) {
-      auto block_arg = copy.getTarget().dyn_cast<BlockArgument>();
+      auto block_arg = mlir::dyn_cast<BlockArgument>(copy.getTarget());
       if (!block_arg) break;
       if (!isa<func::FuncOp>(block_arg.getOwner()->getParentOp()) ||
           !block_arg.hasOneUse())

@@ -16,6 +16,7 @@
 # pylint: disable=undefined-variable
 
 import os
+import sys
 
 import lit.formats
 from lit.llvm import llvm_config
@@ -39,6 +40,11 @@ config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 
 llvm_config.with_system_environment(['HOME', 'INCLUDE', 'LIB', 'TMP', 'TEMP'])
+
+# Adjusted the PATH to correctly detect the tools on Windows
+if sys.platform == 'win32':
+  llvm_config.config.llvm_tools_dir = r'..\llvm-project\llvm'
+  llvm_config.config.mlir_binary_dir = r'..\llvm-project\mlir'
 
 llvm_config.use_default_substitutions()
 

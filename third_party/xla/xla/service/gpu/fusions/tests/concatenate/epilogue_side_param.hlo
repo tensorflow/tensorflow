@@ -1,0 +1,11 @@
+// RUN: test_correctness %s
+
+fusion {
+  param0 = f32[64] parameter(0)
+  param1 = f32[192] parameter(1)
+  neg = f32[64] negate(param0)
+  slice = f32[128] slice(param1), slice={[32:160]}
+  exp = f32[128] exponential(slice)
+  concat = f32[192] concatenate(neg, exp), dimensions={0}
+  ROOT add = f32[192] add(concat, param1)
+}

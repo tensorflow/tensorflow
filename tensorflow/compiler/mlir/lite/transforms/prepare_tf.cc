@@ -31,6 +31,8 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -50,8 +52,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -59,10 +63,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -77,6 +79,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -92,7 +95,7 @@ namespace {
 // Preconditions: The given value must have a ShapedType.
 static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
                                BoolAttr truncate) {
-  auto x_type = x.getType().dyn_cast_or_null<ShapedType>();
+  auto x_type = mlir::dyn_cast_or_null<ShapedType>(x.getType());
   if (!x_type) llvm_unreachable("unsupported type");
   Type type = x_type.clone(builder->getI32Type());
   return builder->create<TF::CastOp>(loc, type, x, truncate);
@@ -122,6 +125,13 @@ class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
     this->allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
     this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
+  }
+
+  explicit PrepareTFPass(const PrepareTFPassOptions &options) {
+    this->unfold_batch_matmul_ = options.unfold_batch_matmul_;
+    this->allow_bf16_and_f16_type_legalization_ =
+        options.allow_bf16_and_f16_type_legalization_;
+    this->use_fake_quant_num_bits_ = options.use_fake_quant_num_bits_;
   }
 
   void runOnOperation() override;
@@ -203,14 +213,14 @@ class ConvertTFConvOp : public RewritePattern {
     // that we can extract info from the shape (e.g., for constructing bias
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.getFilter();
-    auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
+    auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
     if (!filter_type || filter_type.getRank() != 4 ||
         !filter_type.hasStaticShape())
       return failure();
 
     Value input = tf_op.getInput();
     RankedTensorType input_type =
-        input.getType().template dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(input.getType());
     // Only rank size four input will be only available by the tf.Conv2D
     // operator verification.
     if (!input_type || input_type.isDynamicDim(3)) {
@@ -247,7 +257,7 @@ class ConvertTFConvOp : public RewritePattern {
           op->getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
 
       auto get_int = [](Attribute attr) {
-        return attr.template cast<IntegerAttr>().getInt();
+        return mlir::cast<IntegerAttr>(attr).getInt();
       };
 
       SmallVector<int32_t> padding_values(padding_attr_array.size());
@@ -327,7 +337,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
 
     // Create tensor type for the transpose result.
-    auto filter_type = filter.getType().cast<RankedTensorType>();
+    auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
     auto result_shape =
         llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
           return filter_type.getDimSize(dim);
@@ -364,7 +374,8 @@ class ConvertTFDepthwiseConv2dNative
     // have a corresponding 'depth_multiplier' attribute; the multiplier is the
     // fourth dimension in the 4-D filter tensor. We query the multiplier from
     // tf.DepthwiseConv2dNative and set it as the attribute value accordingly.
-    auto multiplier = filter.getType().cast<RankedTensorType>().getDimSize(3);
+    auto multiplier =
+        mlir::cast<RankedTensorType>(filter.getType()).getDimSize(3);
 
     filter = legalizeFilter(rewriter, loc, filter);
     return rewriter.create<TFL::DepthwiseConv2DOp>(
@@ -388,7 +399,7 @@ class ConvertTFDepthwiseConv2dNative
   /// RankedTensorType.
   Value legalizeFilter(PatternRewriter &rewriter, Location loc,
                        Value filter) const {
-    auto filter_type = filter.getType().cast<RankedTensorType>();
+    auto filter_type = mlir::cast<RankedTensorType>(filter.getType());
     auto filterShape = filter_type.getShape();
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
@@ -446,7 +457,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     // Insert a new reshape op.
     Value original_input = strided_slice_op.getInput();
     RankedTensorType original_input_type =
-        original_input.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(original_input.getType());
     if (!original_input_type) {
       return failure();
     }
@@ -525,7 +536,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     DenseIntElementsAttr begin_dense_elem_attr;
     Value begin = strided_slice_op.getBegin();
-    auto begin_ranked_attr_type = begin.getType().dyn_cast<RankedTensorType>();
+    auto begin_ranked_attr_type =
+        mlir::dyn_cast<RankedTensorType>(begin.getType());
     if (!begin_ranked_attr_type ||
         !matchPattern(begin, m_Constant(&begin_dense_elem_attr))) {
       return failure();
@@ -533,7 +545,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     DenseIntElementsAttr end_dense_elem_attr;
     Value end = strided_slice_op.getEnd();
-    auto end_ranked_attr_type = end.getType().dyn_cast<RankedTensorType>();
+    auto end_ranked_attr_type = mlir::dyn_cast<RankedTensorType>(end.getType());
     if (!end_ranked_attr_type ||
         !matchPattern(end, m_Constant(&end_dense_elem_attr))) {
       return failure();
@@ -542,14 +554,15 @@ struct ConvertTFStridedSlice : public RewritePattern {
     DenseIntElementsAttr stride_dense_elem_attr;
     Value stride = strided_slice_op.getStrides();
     auto stride_ranked_attr_type =
-        stride.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(stride.getType());
     if (!stride_ranked_attr_type ||
         !matchPattern(stride, m_Constant(&stride_dense_elem_attr))) {
       return failure();
     }
 
     Value input = strided_slice_op.getInput();
-    RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType input_type =
+        mlir::dyn_cast<RankedTensorType>(input.getType());
     if (!input_type) {
       return failure();
     }
@@ -557,7 +570,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int input_size = input_shape.size();
 
-    RankedTensorType begin_type = begin.getType().cast<RankedTensorType>();
+    RankedTensorType begin_type = mlir::cast<RankedTensorType>(begin.getType());
     const ArrayRef<int64_t> begin_shape = begin_type.getShape();
     const int begin_dim = begin_shape.size();
 
@@ -691,7 +704,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     }
 
     auto ranked_input_type =
-        strided_slice_op.getInput().getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(strided_slice_op.getInput().getType());
     if (!ranked_input_type) {
       return failure();
     }
@@ -700,10 +713,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto end_attr = strided_slice_op.getEnd();
     auto strides_attr = strided_slice_op.getStrides();
 
-    auto begin_attr_type = begin_attr.getType().dyn_cast<RankedTensorType>();
-    auto end_attr_type = end_attr.getType().dyn_cast<RankedTensorType>();
+    auto begin_attr_type =
+        mlir::dyn_cast<RankedTensorType>(begin_attr.getType());
+    auto end_attr_type = mlir::dyn_cast<RankedTensorType>(end_attr.getType());
     auto strides_attr_type =
-        strides_attr.getType().dyn_cast<RankedTensorType>();
+        mlir::dyn_cast<RankedTensorType>(strides_attr.getType());
 
     DenseIntElementsAttr begin_elem_attr;
     DenseIntElementsAttr end_elem_attr;
@@ -902,8 +916,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
       if (!epsilon)
         epsilon = rewriter.getFloatAttr(rewriter.getF32Type(), 0.0001f);
 
-      if (!(((epsilon.isa<::mlir::FloatAttr>())) &&
-            ((epsilon.cast<::mlir::FloatAttr>().getType().isF32())))) {
+      if (!(((mlir::isa<::mlir::FloatAttr>(epsilon))) &&
+            ((mlir::cast<::mlir::FloatAttr>(epsilon).getType().isF32())))) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
               diag << "op 'tf.FusedBatchNormV3' attribute 'epsilon' failed to "
@@ -966,7 +980,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     int64_t last_dim = ShapedType::kDynamic;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
-        auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
+        auto v_type = mlir::dyn_cast_or_null<RankedTensorType>(v.getType());
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
         if (v_last_dim == ShapedType::kDynamic) return true;
@@ -1010,9 +1024,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
 
     // For training, mean and variance is calculated from input values.
     if (is_training.getValue()) {
-      auto input_type = fused_batch_norm_op.getX()
-                            .getType()
-                            .dyn_cast_or_null<RankedTensorType>();
+      auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(
+          fused_batch_norm_op.getX().getType());
       if (!input_type || input_type.getRank() != 4) {
         return rewriter.notifyMatchFailure(
             fused_batch_norm_op, [&](::mlir::Diagnostic &diag) {
@@ -1386,14 +1399,14 @@ struct ConvertRfftToRfft2d : public RewritePattern {
     auto rfft_op = dyn_cast<TF::RFFTOp>(op);
 
     auto input = rfft_op.getInput();
-    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
     if (!input_type) return failure();
     auto fft_len = rfft_op.getFftLength();
-    auto fft_len_type = fft_len.getType().dyn_cast_or_null<ShapedType>();
+    auto fft_len_type = mlir::dyn_cast_or_null<ShapedType>(fft_len.getType());
     if (!fft_len_type) return failure();
 
     auto output_type =
-        rfft_op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+        mlir::dyn_cast_or_null<RankedTensorType>(rfft_op.getResult().getType());
     if (!output_type) return failure();
 
     // Expanded inputs.
@@ -1485,10 +1498,126 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   }
 };
 
+// Quantizes Concat ops where the inputs are quantized with fake quant but the
+// result is not explicitly quantized. Without this, later quantization passes
+// handle the quantization of the concat op incorrectly.
+class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
+ public:
+  QuantizeConcatResult(MLIRContext *context, bool use_fake_quant_num_bits)
+      : OpRewritePattern<TF::ConcatV2Op>(context),
+        use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
+
+  LogicalResult matchAndRewrite(TF::ConcatV2Op concat,
+                                PatternRewriter &rewriter) const override {
+    // Skip concat ops where the output is already quantized.
+    for (auto *user : concat->getUsers()) {
+      if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
+          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
+        return failure();
+      }
+    }
+
+    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
+    // had qdq ops generated so we'll need to follow up the chain to get to the
+    // fake quants.
+    llvm::SmallVector<TF::FakeQuantWithMinMaxVarsOp> fake_quant_ops;
+    for (Value operand_value : concat.getValues()) {
+      auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
+          operand_value.getDefiningOp());
+
+      if (!dq) {
+        return failure();
+      }
+
+      auto q = mlir::dyn_cast_or_null<TFL::QuantizeOp>(
+          dq.getInput().getDefiningOp());
+
+      if (!q) {
+        return failure();
+      }
+
+      auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
+          q.getInput().getDefiningOp());
+
+      if (!fq) {
+        return failure();
+      }
+
+      fake_quant_ops.emplace_back(fq);
+    }
+
+    float min = std::numeric_limits<float>::max();
+    float max = std::numeric_limits<float>::min();
+    Value min_v;
+    Value max_v;
+
+    // Extract min/max from across the fake quants.
+    for (TF::FakeQuantWithMinMaxVarsOp fq : fake_quant_ops) {
+      DenseFPElementsAttr min_attr;
+      DenseFPElementsAttr max_attr;
+      if (!matchPattern(fq.getMin(), m_Constant(&min_attr))) {
+        return failure();
+      }
+      if (!matchPattern(fq.getMax(), m_Constant(&max_attr))) {
+        return failure();
+      }
+      if (min_attr.size() > 1) {
+        return failure();
+      }
+      if (max_attr.size() > 1) {
+        return failure();
+      }
+      if (float new_min = min_attr.getValues<float>()[0]; new_min <= min) {
+        min = new_min;
+        min_v = fq.getMin();
+      }
+      if (float new_max = max_attr.getValues<float>()[0]; new_max >= max) {
+        max = new_max;
+        max_v = fq.getMax();
+      }
+    }
+
+    if (!min_v || !max_v) {
+      return failure();
+    }
+
+    Value concat_result = concat.getResult();
+    llvm::SmallVector<OpOperand *> uses;
+    for (OpOperand &use : concat_result.getUses()) {
+      uses.push_back(&use);
+    }
+
+    llvm::SmallVector<Value, 4> inputs{concat_result, min_v, max_v};
+
+    rewriter.setInsertionPointAfter(concat.getOperation());
+    auto new_fake_quant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
+        concat.getLoc(), concat->getResultTypes(), inputs,
+        (*fake_quant_ops.begin())->getAttrs());
+
+    for (OpOperand *use : uses) {
+      use->assign(new_fake_quant_op);
+    }
+
+    // Rather than directly generating qdq ops ourselves we leverage existing
+    // logic to do it for us.
+    (void)InsertTFLQuantOpsAfterTFFakeQuantOp<
+        TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
+        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>(
+        use_fake_quant_num_bits_)
+        .matchAndRewrite(new_fake_quant_op, rewriter);
+
+    return success();
+  }
+
+ private:
+  bool use_fake_quant_num_bits_;
+};
+
 void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
   RewritePatternSet phase_2_patterns(ctx);
+  RewritePatternSet phase_3_patterns(ctx);
   auto func = getOperation();
 
   // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
@@ -1556,6 +1685,9 @@ void PrepareTFPass::runOnOperation() {
   TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
+
+  phase_3_patterns.add<QuantizeConcatResult>(ctx, use_fake_quant_num_bits_);
+  (void)applyPatternsAndFoldGreedily(func, std::move(phase_3_patterns));
 }
 
 }  // namespace
@@ -1567,6 +1699,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
                                          allow_bf16_and_f16_type_legalization,
                                          use_fake_quant_num_bits);
+}
+
+// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
+    const PrepareTFPassOptions &options) {
+  return std::make_unique<PrepareTFPass>(options);
 }
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.

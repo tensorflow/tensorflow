@@ -60,6 +60,8 @@ def CastElementsToI64Elements : NativeCodeCall<
   "hlo::convertElementsAttr("
     "$0.cast<ElementsAttr>(), $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
+def EmptyDotAlgorithmAttr : NativeCodeCall<"mlir::mhlo::DotAlgorithmAttr{}">;
+
 //===----------------------------------------------------------------------===//
 // ApproximateEqual op pattern.
 //===----------------------------------------------------------------------===//
@@ -566,28 +568,16 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (ConstantLikeMatcher Elements
 
 foreach Mapping = [
                    [TF_AbsOp, MHLO_AbsOp],
-                   [TF_AcosOp, CHLO_AcosOp],
-                   [TF_AcoshOp, CHLO_AcoshOp],
-                   [TF_AsinOp, CHLO_AsinOp],
-                   [TF_AsinhOp, CHLO_AsinhOp],
-                   [TF_AtanOp, CHLO_AtanOp],
-                   [TF_AtanhOp, CHLO_AtanhOp],
                    [TF_CeilOp, MHLO_CeilOp],
-                   [TF_CoshOp, CHLO_CoshOp],
                    [TF_ComplexAbsOp, MHLO_AbsOp],
-                   [TF_ConjOp, CHLO_ConjOp],
                    [TF_CosOp, MHLO_CosineOp],
-                   [TF_DigammaOp, CHLO_DigammaOp],
                    [TF_ExpOp, MHLO_ExpOp],
                    [TF_Expm1Op, MHLO_Expm1Op],
                    [TF_ErfOp, MHLO_ErfOp],
-                   [TF_ErfcOp, CHLO_ErfcOp],
                    [TF_FloorOp, MHLO_FloorOp],
                    [TF_ImagOp, MHLO_ImagOp],
                    [TF_InvertOp, MHLO_NotOp],
                    [TF_IsFiniteOp, MHLO_IsFiniteOp],
-                   [TF_IsInfOp, CHLO_IsInfOp],
-                   [TF_LgammaOp, CHLO_LgammaOp],
                    [TF_LogOp, MHLO_LogOp],
                    [TF_Log1pOp, MHLO_Log1pOp],
                    [TF_LogicalNotOp, MHLO_NotOp],
@@ -595,13 +585,31 @@ foreach Mapping = [
                    [TF_RealOp, MHLO_RealOp],
                    [TF_RsqrtOp, MHLO_RsqrtOp],
                    [TF_SigmoidOp, MHLO_LogisticOp],
-                   [TF_SinhOp, CHLO_SinhOp],
                    [TF_SinOp, MHLO_SineOp],
                    [TF_SqrtOp, MHLO_SqrtOp],
                    [TF_TanhOp, MHLO_TanhOp],
                    [TF_TanOp, MHLO_TanOp]
                   ] in {
  def : Pat<(Mapping[0] MHLO_Tensor:$input),
+           (Mapping[1] $input)>;
+}
+
+foreach Mapping = [
+                   [TF_AcosOp, CHLO_AcosOp],
+                   [TF_AcoshOp, CHLO_AcoshOp],
+                   [TF_AsinOp, CHLO_AsinOp],
+                   [TF_AsinhOp, CHLO_AsinhOp],
+                   [TF_AtanOp, CHLO_AtanOp],
+                   [TF_AtanhOp, CHLO_AtanhOp],
+                   [TF_CoshOp, CHLO_CoshOp],
+                   [TF_ConjOp, CHLO_ConjOp],
+                   [TF_DigammaOp, CHLO_DigammaOp],
+                   [TF_ErfcOp, CHLO_ErfcOp],
+                   [TF_IsInfOp, CHLO_IsInfOp],
+                   [TF_LgammaOp, CHLO_LgammaOp],
+                   [TF_SinhOp, CHLO_SinhOp],
+                  ] in {
+ def : Pat<(Mapping[0] MHLO_AnyTensor:$input),
            (Mapping[1] $input)>;
 }
 
@@ -620,10 +628,6 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
             (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)], [],
             (addBenefit 2)>;
 }
-
-// Lowering tf.Reshape with dynamic shape
-def : Pat<(TF_ReshapeOp:$res MHLO_Tensor:$arg, $shape),
-          (CHLO_DynamicReshapeOp $arg, $shape)>;
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 def : Pat<(TF_SignOp $x), (MHLO_SignOp $x)>;
@@ -758,7 +762,8 @@ def HasValidPrecisionConfig : Constraint<CPred<"HasValidPrecisionConfig($0)">>;
 def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config)),
+                            (ToPrecisionConfigsAttr $precision_config),
+                            (EmptyDotAlgorithmAttr)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//
@@ -768,7 +773,8 @@ def : Pat<(TF_XlaDotOp $lhs, $rhs, $dimension_numbers, $precision_config),
 def : Pat<(TF_XlaDotV2Op $lhs, $rhs, $dimension_numbers, $precision_config),
           (MHLO_DotGeneralOp $lhs, $rhs,
                             (ToDotDimNumsAttr $dimension_numbers),
-                            (ToPrecisionConfigsAttr $precision_config)),
+                            (ToPrecisionConfigsAttr $precision_config),
+                            (EmptyDotAlgorithmAttr)),
           [(HasValidDotDims $dimension_numbers), (HasValidPrecisionConfig $precision_config)]>;
 
 //===----------------------------------------------------------------------===//

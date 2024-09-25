@@ -26,6 +26,7 @@ namespace xla {
 
 static constexpr double kDeviceMeshAlpha = 1.0;
 static constexpr double kDeviceMeshBeta = 1.0;
+static constexpr double kOverbudgetCoeff = 1e6;
 
 // Options for the autosharding pass
 struct AutoShardingOption {
@@ -63,6 +64,10 @@ struct AutoShardingOption {
   // Enabled when memory_budget_per_device == 0;
   float memory_budget_ratio = 1.1;
 
+  // Controls the penalty associated with violating memory constraints; if
+  // negative, the memory budget is instead imposed as a hard constraint.
+  float memory_overbudget_coeff = kOverbudgetCoeff;
+
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_override_all_gather_cost = false;
   double all_gather_cost = 0;
@@ -78,11 +83,6 @@ struct AutoShardingOption {
   // Overwrite the all gather cost with the input all reduce cost.
   bool force_override_reduce_scatter_cost = false;
   double reduce_scatter_cost = 0;
-
-  // Forcibly split the batch dimension and map it to a mesh dimension.
-  // This can force the auto-sharding pass to generate the data parallel
-  // strategy.
-  int force_batch_dim_to_mesh_dim = -1;
 
   // If true, allow replicated parameters.
   bool allow_replicated_parameters = true;
@@ -112,22 +112,13 @@ struct AutoShardingOption {
   bool allow_recompute_heavy_op = true;
 
   // If true, allow adding 1d strategies in 2d logical mesh.
-  bool allow_mixed_mesh_shape = false;
-
-  // The number of micro batches if gradient accumulation is used.
-  // If this is not 1, the cost of all-reduce for gradient synchronization
-  // is divided by this number.
-  int grad_acc_num_micro_batches = 1;
+  bool allow_mixed_mesh_shape = true;
 
   // If true, N-D sharding (e.g., N maybe be 2 or 3) will be solved in N
   // iterations, where one iteration chooses one tensor dimension to shard. If
   // false, solve N-D sharding directly, i.e., generating all possible sharding
   // strategies for N-D mesh shape.
   bool solve_nd_sharding_iteratively = true;
-
-  // If it is not empty, forcibly use simple heuristic strategies
-  // instead of the ILP solver. This is used for ablation study.
-  std::string force_simple_heuristic;
 
   // If true, forcibly set the strategy of some instructions.
   bool force_strategy = false;
@@ -186,6 +177,30 @@ struct AutoShardingOption {
   // departures from the defaults, use sharding propagation instead of assuming
   // a simple replicated default.
   bool use_sharding_propagation_for_default_shardings = false;
+
+  // Whether or not to model the memory usage of intermediate tensors, if any,
+  // for resharding edges.
+  bool model_resharding_memory_costs = false;
+
+  // Whether or not to generate strategies that model the windowed einsum (or
+  // collective matmul) optimization
+  // TODO(331684721,329508561): Generate windowed-einsum strategies by default
+  // once it is fully implemented.
+  bool generate_windowed_einsum_strategies = false;
+
+  // Whether or not to allow shardings where a tensor dim is shared across a
+  // number of devices larger than the size of the tensor dimension
+  bool allow_shardings_small_dims_across_many_devices = false;
+
+  // Split constant expressions as well when invoking HloConstantSplitter.
+  bool enable_expression_constant_splitter = false;
+
+  // Whether to post-process the solution by reshaping/resharding tensors for
+  // non-dot/conv ops. We insert the reshapes for dots/convs as this empirically
+  // gives better auto-sharding outcomes.
+  // TODO(b/365834709) Investigate the need for resharding reshapes across all
+  // ops in a principled manner.
+  bool insert_resharding_reshapes_for_non_dot_ops = false;
 
   // Prints a debug string.
   std::string ToString() const;

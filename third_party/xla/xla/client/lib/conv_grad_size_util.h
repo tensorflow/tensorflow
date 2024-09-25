@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_CONV_GRAD_SIZE_UTIL_H_
 #define XLA_CLIENT_LIB_CONV_GRAD_SIZE_UTIL_H_
 
+#include "absl/status/statusor.h"
 #include "xla/client/padding.h"
 
 namespace xla {
@@ -33,7 +34,7 @@ struct SpatialDimensionOutputSizeAndPadding {
 
 // Verifies that the dimensions all match, and computes the size and padding of
 // a spatial dimension for convolution gradient operations.
-StatusOr<SpatialDimensionOutputSizeAndPadding>
+absl::StatusOr<SpatialDimensionOutputSizeAndPadding>
 ConvGradExtractAndVerifyDimension(int64_t input_size, int64_t filter_size,
                                   int64_t output_size, int64_t dilation,
                                   int64_t stride, Padding padding);

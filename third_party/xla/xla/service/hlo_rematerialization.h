@@ -20,17 +20,17 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -45,7 +45,8 @@ class HloRematerialization : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
 
-  using CompactShapeFunction = std::function<StatusOr<Shape>(const Shape&)>;
+  using CompactShapeFunction =
+      std::function<absl::StatusOr<Shape>(const Shape&)>;
 
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
@@ -89,13 +90,15 @@ class HloRematerialization : public HloModulePass {
   static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
 
   struct Options {
-    explicit Options(
-        HloCostAnalysis& hlo_cost_analysis,
-        const RematerializationModeConfig& remat_mode_config,
-        int64_t memory_limit_bytes, int block_size_limit,
-        int block_rematerialization_factor, int64_t min_remat_size,
-        CompactShapeFunction compact_shape_function,
-        std::optional<HostMemoryOffloadConfig> host_memory_offload_config)
+    explicit Options(HloCostAnalysis& hlo_cost_analysis,
+                     const RematerializationModeConfig& remat_mode_config,
+                     int64_t memory_limit_bytes, int block_size_limit,
+                     int block_rematerialization_factor, int64_t min_remat_size,
+                     CompactShapeFunction compact_shape_function,
+                     std::optional<HostMemoryOffloadConfig>
+                         host_memory_offload_config = std::nullopt,
+                     absl::flat_hash_map<HloComputation*, int64_t>
+                         async_computation_parallelism = {})
         : hlo_cost_analysis(hlo_cost_analysis),
           remat_mode_config(remat_mode_config),
           memory_limit_bytes(memory_limit_bytes),
@@ -105,7 +108,8 @@ class HloRematerialization : public HloModulePass {
           compact_shape_function(compact_shape_function == nullptr
                                      ? DefaultCompactShapeFunction
                                      : std::move(compact_shape_function)),
-          host_memory_offload_config(host_memory_offload_config) {}
+          host_memory_offload_config(host_memory_offload_config),
+          async_computation_parallelism(async_computation_parallelism) {}
 
     // The cost model used for decisions during rematerialization for host
     // memory offload. It is also used for getting Shape size.
@@ -132,7 +136,7 @@ class HloRematerialization : public HloModulePass {
     // return for potentially reduced memory consumption.
     int block_rematerialization_factor;
 
-    // The minimim size, in bytes, of a tensor to be considered for
+    // The minimum size, in bytes, of a tensor to be considered for
     // rematerialization. All tensors smaller than this size will be skipped
     // over.
     int64_t min_remat_size;
@@ -142,6 +146,10 @@ class HloRematerialization : public HloModulePass {
     CompactShapeFunction compact_shape_function;
 
     std::optional<HostMemoryOffloadConfig> host_memory_offload_config;
+
+    // Collection of async entry computations and their number of parallel
+    // invocations.
+    absl::flat_hash_map<HloComputation*, int64_t> async_computation_parallelism;
   };
 
   explicit HloRematerialization(Options options, RematerializationSizes& sizes)
@@ -166,24 +174,16 @@ class HloRematerialization : public HloModulePass {
   // specified in the constructor then no instructions are rematerialized and
   // false is returned.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
-  // Rematerializes instructions within the given computation. 'order' is the
-  // order in which the computation's instructions will be emitted in the
-  // backend. Rematerialized instructions will be added to the HLO computation
-  // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(HloComputation* computation,
-                                          HloSchedule* schedule,
-                                          int64_t memory_limit_bytes,
-                                          int64_t min_remat_size) {
-    return RematerializeComputation(computation, schedule, memory_limit_bytes,
-                                    min_remat_size, /*execution_threads=*/{});
-  }
-
-  virtual StatusOr<bool> RematerializeComputation(
+  // Rematerializes instructions within the given computation. 'schedule'
+  // constains the order in which the computation's instructions will be emitted
+  // in the backend. Rematerialized instructions will be added to the HLO
+  // computation and inserted into 'schedule'.
+  virtual absl::StatusOr<bool> RematerializeComputation(
       HloComputation* computation, HloSchedule* schedule,
       int64_t memory_limit_bytes, int64_t min_remat_size,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
@@ -192,13 +192,13 @@ class HloRematerialization : public HloModulePass {
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
-  StatusOr<int64_t> ComputePeakMemory(
+  absl::StatusOr<int64_t> ComputePeakMemory(
       const HloComputation* computation, const HloInstructionSequence& order,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.
-  StatusOr<int64_t> CalledComputationsMemoryUsage(
+  absl::StatusOr<int64_t> CalledComputationsMemoryUsage(
       const HloInstruction* instruction,
       const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 

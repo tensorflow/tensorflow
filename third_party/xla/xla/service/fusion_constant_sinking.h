@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_FUSION_CONSTANT_SINKING_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -29,7 +29,7 @@ class FusionConstantSinking : public HloModulePass {
   // Run fusion constant sinking operations on the given module. Returns whether
   // the module was changed (constant expressions folded).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

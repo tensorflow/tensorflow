@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for legalizing mhlo.dot_general to
 // tflite.batch_matmul.
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -34,11 +35,11 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -101,7 +102,14 @@ class DotDimensionsInfo {
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int64_t dim : contracting_dimensions) {
+    // Create a sorted contracting dimensions array. This currently doesn't
+    // support dynamic tensors.
+    llvm::SmallVector<int64_t, 4> sorted_contracting_dimensions =
+        llvm::to_vector(contracting_dimensions);
+    if (type.hasStaticShape()) {
+      llvm::sort(sorted_contracting_dimensions);
+    }
+    for (const int64_t dim : sorted_contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
@@ -169,7 +177,7 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
                                       DotDimensionsInfo dot_dimensions_info,
                                       ImplicitLocOpBuilder& builder,
                                       bool is_lhs) {
-  auto operand_type = operand.getType().cast<ShapedType>();
+  auto operand_type = mlir::cast<ShapedType>(operand.getType());
   auto operand_shape = builder.create<TFL::ShapeOp>(
       RankedTensorType::get(static_cast<int32_t>(operand_type.getRank()),
                             builder.getIntegerType(32)),
@@ -248,8 +256,8 @@ Value BuildDotOperandFlattenedShapeOp(Value operand,
 Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
                  mhlo::DotDimensionNumbersAttr dot_dimension_numbers,
                  ShapedType result_type, mlir::Location loc) {
-  auto lhs_type = lhs.getType().cast<ShapedType>();
-  auto rhs_type = rhs.getType().cast<ShapedType>();
+  auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
+  auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
   const int lhs_rank = lhs_type.getRank();
   const int rhs_rank = rhs_type.getRank();
   ImplicitLocOpBuilder builder(loc, rewriter);
@@ -408,29 +416,15 @@ Value ConvertDot(PatternRewriter& rewriter, Value lhs, Value rhs,
   return reshaped.getResult();
 }
 
-// Converts mhlo.dot_general to tfl.BatchMatMul. Reshape and Transpose ops will
-// be inserted when necessary. See ConvertDotGeneralOp for additional notes.
-Value ConvertDotOp(PatternRewriter& rewriter, Operation* old_op) {
-  auto dot_op = cast<mhlo::DotOp>(old_op);
-  auto lhs_rank = dot_op.getLhs().getType().cast<ShapedType>().getRank();
-  auto dot_dimension_numbers =
-      mhlo::DotDimensionNumbersAttr::get(rewriter.getContext(),
-                                         /*lhsBatchingDimensions=*/{},
-                                         /*rhsBatchingDimensions=*/{},
-                                         /*lhsContractingDimensions=*/
-                                         {lhs_rank == 1 ? 0 : 1},
-                                         /*rhsContractingDimensions=*/{0});
-  return ConvertDot(
-      rewriter, dot_op.getLhs(), dot_op.getRhs(), dot_dimension_numbers,
-      dot_op.getResult().getType().cast<ShapedType>(), dot_op.getLoc());
+LogicalResult LowerDotGeneralOp::matchAndRewrite(
+    mhlo::DotGeneralOp op, OpAdaptor adaptor,
+    ConversionPatternRewriter& rewriter) const {
+  auto val = ConvertDot(
+      rewriter, op.getLhs(), op.getRhs(), op.getDotDimensionNumbers(),
+      mlir::cast<ShapedType>(op.getResult().getType()), op.getLoc());
+  rewriter.replaceOp(op, val.getDefiningOp());
+  return mlir::success();
 }
 
-Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
-  auto dot_general_op = cast<mhlo::DotGeneralOp>(old_op);
-  return ConvertDot(rewriter, dot_general_op.getLhs(), dot_general_op.getRhs(),
-                    dot_general_op.getDotDimensionNumbers(),
-                    dot_general_op.getResult().getType().cast<ShapedType>(),
-                    dot_general_op.getLoc());
-}
 }  // namespace odml
 }  // namespace mlir

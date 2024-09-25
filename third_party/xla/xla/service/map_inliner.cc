@@ -18,17 +18,18 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -39,14 +40,14 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
       : computation_(computation) {}
 
   // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return OkStatus();
+  absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+    return absl::OkStatus();
   }
 
-  Status HandleMap(HloInstruction* map) override;
+  absl::Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
-  StatusOr<bool> Run(HloComputation* computation);
+  absl::StatusOr<bool> Run(HloComputation* computation);
 
  private:
   // Current HloComputation instance the MapInlinerVisitor is traversing.
@@ -56,14 +57,14 @@ class MapInlinerVisitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
 };
 
-StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
+absl::StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   changed_ = false;
   computation_ = computation;
   TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
   return changed_;
 }
 
-Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
+absl::Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   HloComputation* function = map->to_apply();
   HloInstruction& root = *function->root_instruction();
   // Only inlining functions that are simply a single operation until a better
@@ -71,7 +72,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   if (hlo_query::AllOperandsAreParameters(root)) {
     if (root.opcode() == HloOpcode::kFusion) {
       // Cloning not supported for these instructions.
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(10) << "inlining map({X ... Y}, op) => : op(X ... Y) with function "
              << root.ToShortString();
@@ -104,13 +105,13 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     }
     changed_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> MapInliner::Run(
+absl::StatusOr<bool> MapInliner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   MapInlinerVisitor visitor(/*computation=*/nullptr);

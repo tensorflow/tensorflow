@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
@@ -63,7 +64,7 @@ FailureOr<SymbolRefAttr> GetTfFuncCustomCallFuncName(
     return failure();
   }
 
-  if (auto attr = f.dyn_cast<FlatSymbolRefAttr>()) {
+  if (auto attr = mlir::dyn_cast<FlatSymbolRefAttr>(f)) {
     return attr;
   }
 

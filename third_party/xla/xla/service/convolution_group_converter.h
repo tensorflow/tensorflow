@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/status_macros.h"
 
 namespace xla {
@@ -45,7 +45,7 @@ class ConvolutionGroupConverter : public HloModulePass {
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

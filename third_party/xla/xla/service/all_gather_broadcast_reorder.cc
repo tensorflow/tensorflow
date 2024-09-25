@@ -15,19 +15,27 @@ limitations under the License.
 
 #include "xla/service/all_gather_broadcast_reorder.h"
 
-#include "absl/algorithm/container.h"
+#include <cstdint>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
-StatusOr<bool> AllGatherBroadcastReorder::Run(
+absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   if (hlo_query::ContainsLayoutConstrainedCollective(*module,

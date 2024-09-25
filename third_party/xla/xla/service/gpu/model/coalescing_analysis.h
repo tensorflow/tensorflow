@@ -18,11 +18,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -36,7 +38,7 @@ class CoalescingAnalysis {
   // Computes read coalescing for operands of `instr`.
   CoalescingAnalysis(const HloInstruction* instr,
                      absl::Span<const HloInstruction* const> operands,
-                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
                      mlir::MLIRContext* mlir_context = nullptr,
                      bool use_heuristic = true);
@@ -45,7 +47,7 @@ class CoalescingAnalysis {
   CoalescingAnalysis(const HloInstruction* producer,
                      const HloInstruction* consumer,
                      absl::Span<const HloInstruction* const> operands,
-                     HloFusionAnalysis::EmitterFusionKind fusion_kind,
+                     const HloFusionAnalysis& fusion_analysis,
                      KernelFusionInterface* fusion_interface = nullptr,
                      mlir::MLIRContext* mlir_context = nullptr,
                      bool use_heuristic = true);
@@ -57,7 +59,7 @@ class CoalescingAnalysis {
   bool ComputeCoalescingForAllOperands(
       const HloFusionAdaptor& fusion_adaptor,
       absl::Span<const HloInstruction* const> operands,
-      HloFusionAnalysis::EmitterFusionKind fusion_kind,
+      const HloFusionAnalysis& fusion_analysis,
       KernelFusionInterface* fusion_interface, mlir::MLIRContext* mlir_context);
 
   absl::flat_hash_map<const HloInstruction*, bool> coalescing_per_operand_;
@@ -70,6 +72,17 @@ class CoalescingAnalysis {
 bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
                               const HloInstruction* producer,
                               const HloInstruction* consumer = nullptr);
+
+// Returns true if read of this tiled hlo operand is coalesced.
+//
+// We consider a read coalesced if the operand tile consist of contiguous chunk
+// of memory that saturate DRAM->L2 cache line. For post-V100 NVIDIA GPUs, that
+// is 64 bytes by default.
+//
+// TODO(b/332714755): check whether we should bump up the granularity of
+// memory transactions.
+bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
+                                   const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

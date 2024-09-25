@@ -22,10 +22,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-using Labels = gtl::InlinedVector<int, 8>;
-using OperandLabels = gtl::InlinedVector<Labels, 2>;
-using LabelCounts = gtl::InlinedVector<int, 8>;
-using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
+using Labels = absl::InlinedVector<int, 8UL>;
+using OperandLabels = absl::InlinedVector<Labels, 2UL>;
+using LabelCounts = absl::InlinedVector<int, 8UL>;
+using OperandLabelCounts = absl::InlinedVector<LabelCounts, 2UL>;
 
 // Dummy axis label used to denote an ellipsis in an input or output subscript.
 constexpr int kEllipsisLabel = -1;
@@ -52,9 +52,9 @@ enum EinsumDimensionType {
 };
 
 // Parses and validates an einsum equation in explicit form.
-Status ValidateEinsumEquation(const string& equation,
-                              gtl::InlinedVector<string, 2>* input_subscripts,
-                              string* output_subscript);
+Status ValidateEinsumEquation(
+    const string& equation, absl::InlinedVector<string, 2UL>* input_subscripts,
+    string* output_subscript);
 
 // Parses and validates the equation and the input shapes. Single character
 // labels are integerized and we populate input and output label subscripts
@@ -65,7 +65,7 @@ Status ParseEinsumEquation(const string& equation, OperandLabels* input_labels,
                            std::vector<EinsumDimensionType>* label_types,
                            OperandLabelCounts* input_label_counts,
                            LabelCounts* output_label_counts,
-                           gtl::InlinedVector<bool, 2>* input_has_ellipsis,
+                           absl::InlinedVector<bool, 2UL>* input_has_ellipsis,
                            bool* output_has_ellipsis);
 
 }  // namespace tensorflow

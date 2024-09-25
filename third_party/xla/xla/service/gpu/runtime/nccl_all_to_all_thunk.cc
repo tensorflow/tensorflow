@@ -23,13 +23,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/substitute.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -42,18 +42,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using mlir::lmhlo_gpu::AllToAllStartOp;
-
 namespace {
-
-NcclAllToAllConfig GetNcclAllToAllConfig(AllToAllStartOp op) {
-  NcclAllToAllConfig config;
-  // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
-  // attribute and it should be removed.
-  config.config = GetNcclCollectiveConfigForMlir(op, std::nullopt);
-  config.has_split_dimension = op.getSplitDimension().has_value();
-  return config;
-}
 
 NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
   NcclAllToAllConfig config;
@@ -67,16 +56,6 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 }  // namespace
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, NcclApi* nccl_api, AllToAllStartOp op,
-    std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
-                          op.getIsSync()),
-      config_(GetNcclAllToAllConfig(op)),
-      buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_count, buffers_.size());
-}
-
-NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
@@ -85,26 +64,6 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
       config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
-}
-
-/*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
-    AllToAllStartOp op, int64_t replica_count, int64_t partition_count) {
-  auto status = [&]() -> absl::Status {
-    std::optional<uint64_t> split_dim = op.getSplitDimension();
-    for (mlir::Value operand : op.getInputs()) {
-      TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllToAll));
-      Shape shape = GetShape(operand);
-      if (split_dim &&
-          !ShapeUtil::IsEffectivelyMostMajorDimension(shape, *split_dim)) {
-        return absl::UnimplementedError(absl::Substitute(
-            "all-to-all split dim $0 is not the most major in input shape $1",
-            *split_dim, shape.ToString(/*print_layout=*/true)));
-      }
-    }
-    return absl::OkStatus();
-  };
-  return AddOpDescription<NcclAllToAllStartThunk>(status(), op, replica_count,
-                                                  partition_count);
 }
 
 /*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
@@ -129,23 +88,20 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 }
 
 /*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
-    AllToAllStartOp op) {
-  return GetNcclAllToAllConfig(op).config.group_mode;
-}
-/*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
     const HloAllToAllInstruction* instr) {
   return GetNcclAllToAllConfig(instr).config.group_mode;
 }
 
 absl::Status NcclAllToAllStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream,
-    NcclApi::NcclCommHandle comm) {
+    NcclCommHandleWrapper comm_wrapper) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   return xla::gpu::RunAllToAll(nccl_api(), config_.has_split_dimension,
-                               device_buffers, stream, comm);
+                               device_buffers, stream,
+                               comm_wrapper.comm_handle);
 }
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
@@ -153,6 +109,8 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 

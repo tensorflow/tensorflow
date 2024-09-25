@@ -138,7 +138,7 @@ Status CreateControlDependencies(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Insert control dependencies defined by `dependency_edges` in `graph`.  If
@@ -176,7 +176,7 @@ Status InsertControlDependencies(
     return errors::Internal("Unexpected GraphCollectiveOrder type ",
                             static_cast<int>(order_type));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -190,7 +190,7 @@ Status OrderCollectives(Graph* graph, GraphCollectiveOrder order_type) {
   TF_RETURN_IF_ERROR(DiscoverDataDependencies(
       graph, &collective_nodes, &instance_keys, &data_dependencies));
 
-  if (collective_nodes.empty()) return OkStatus();
+  if (collective_nodes.empty()) return absl::OkStatus();
 
   absl::flat_hash_map<Node*, absl::flat_hash_set<Node*>> dependency_edges;
   // For all pairs of collective nodes n1 and n2 on the same device, if n1 does

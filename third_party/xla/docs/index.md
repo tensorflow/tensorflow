@@ -39,4 +39,4 @@ Alibaba, Amazon Web Services, AMD, Apple, Arm, Google, Intel, Meta, and NVIDIA.
 
 To learn more about XLA, check out the links on the left. If you're a new XLA
 developer, you might want to start with [XLA architecture](architecture.md) and
-then read [Code reviews](code_reviews.md).
+then read [Contributing](contributing.md).

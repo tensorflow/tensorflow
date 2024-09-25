@@ -67,7 +67,7 @@ class NoDefaultConstructor {
 static_assert(!std::is_default_constructible<NoDefaultConstructor>(),
               "Should not be default-constructible.");
 
-StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
+absl::StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
   // Uses implicit constructor from T&&
   return std::unique_ptr<int>(new int(0));
 }
@@ -75,25 +75,25 @@ StatusOr<std::unique_ptr<int>> ReturnUniquePtr() {
 TEST(StatusOr, NullPointerStatusOr) {
   // As a very special case, null-plain-pointer StatusOr used to be an
   // error. Test that it no longer is.
-  StatusOr<int*> null_status(nullptr);
+  absl::StatusOr<int*> null_status(nullptr);
   EXPECT_TRUE(null_status.ok());
   EXPECT_EQ(null_status.value(), nullptr);
 }
 
 TEST(StatusOr, TestNoDefaultConstructorInitialization) {
   // Explicitly initialize it with an error code.
-  StatusOr<NoDefaultConstructor> statusor(errors::Cancelled(""));
+  absl::StatusOr<NoDefaultConstructor> statusor(errors::Cancelled(""));
   EXPECT_FALSE(statusor.ok());
   EXPECT_EQ(statusor.status().code(), absl::StatusCode::kCancelled);
 
   // Default construction of StatusOr initializes it with an UNKNOWN error code.
-  StatusOr<NoDefaultConstructor> statusor2;
+  absl::StatusOr<NoDefaultConstructor> statusor2;
   EXPECT_FALSE(statusor2.ok());
   EXPECT_EQ(statusor2.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOr, TestMoveOnlyInitialization) {
-  StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
+  absl::StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
   ASSERT_TRUE(thing.ok());
   EXPECT_EQ(0, *thing.value());
   int* previous = thing.value().get();
@@ -105,12 +105,12 @@ TEST(StatusOr, TestMoveOnlyInitialization) {
 }
 
 TEST(StatusOr, TestMoveOnlyStatusCtr) {
-  StatusOr<std::unique_ptr<int>> thing(errors::Cancelled(""));
+  absl::StatusOr<std::unique_ptr<int>> thing(errors::Cancelled(""));
   ASSERT_FALSE(thing.ok());
 }
 
 TEST(StatusOr, TestMoveOnlyValueExtraction) {
-  StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
+  absl::StatusOr<std::unique_ptr<int>> thing(ReturnUniquePtr());
   ASSERT_TRUE(thing.ok());
   std::unique_ptr<int> ptr = std::move(thing).value();
   EXPECT_EQ(0, *ptr);
@@ -121,7 +121,7 @@ TEST(StatusOr, TestMoveOnlyValueExtraction) {
 }
 
 TEST(StatusOr, TestMoveOnlyConversion) {
-  StatusOr<std::unique_ptr<const int>> const_thing(ReturnUniquePtr());
+  absl::StatusOr<std::unique_ptr<const int>> const_thing(ReturnUniquePtr());
   EXPECT_TRUE(const_thing.ok());
   EXPECT_EQ(0, *const_thing.value());
 
@@ -135,7 +135,7 @@ TEST(StatusOr, TestMoveOnlyConversion) {
 
 TEST(StatusOr, TestMoveOnlyVector) {
   // Sanity check that StatusOr<MoveOnly> works in vector.
-  std::vector<StatusOr<std::unique_ptr<int>>> vec;
+  std::vector<absl::StatusOr<std::unique_ptr<int>>> vec;
   vec.push_back(ReturnUniquePtr());
   vec.resize(2);
   auto another_vec = std::move(vec);
@@ -144,11 +144,13 @@ TEST(StatusOr, TestMoveOnlyVector) {
 }
 
 TEST(StatusOr, TestMoveWithValuesAndErrors) {
-  StatusOr<std::string> status_or(std::string(1000, '0'));
-  StatusOr<std::string> value1(std::string(1000, '1'));
-  StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(absl::StatusCode::kUnknown, "error1"));
-  StatusOr<std::string> error2(Status(absl::StatusCode::kUnknown, "error2"));
+  absl::StatusOr<std::string> status_or(std::string(1000, '0'));
+  absl::StatusOr<std::string> value1(std::string(1000, '1'));
+  absl::StatusOr<std::string> value2(std::string(1000, '2'));
+  absl::StatusOr<std::string> error1(
+      absl::Status(absl::StatusCode::kUnknown, "error1"));
+  absl::StatusOr<std::string> error2(
+      absl::Status(absl::StatusCode::kUnknown, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -175,11 +177,13 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
 }
 
 TEST(StatusOr, TestCopyWithValuesAndErrors) {
-  StatusOr<std::string> status_or(std::string(1000, '0'));
-  StatusOr<std::string> value1(std::string(1000, '1'));
-  StatusOr<std::string> value2(std::string(1000, '2'));
-  StatusOr<std::string> error1(Status(absl::StatusCode::kUnknown, "error1"));
-  StatusOr<std::string> error2(Status(absl::StatusCode::kUnknown, "error2"));
+  absl::StatusOr<std::string> status_or(std::string(1000, '0'));
+  absl::StatusOr<std::string> value1(std::string(1000, '1'));
+  absl::StatusOr<std::string> value2(std::string(1000, '2'));
+  absl::StatusOr<std::string> error1(
+      absl::Status(absl::StatusCode::kUnknown, "error1"));
+  absl::StatusOr<std::string> error2(
+      absl::Status(absl::StatusCode::kUnknown, "error2"));
 
   ASSERT_TRUE(status_or.ok());
   EXPECT_EQ(std::string(1000, '0'), status_or.value());
@@ -212,13 +216,13 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
 }
 
 TEST(StatusOr, TestDefaultCtor) {
-  StatusOr<int> thing;
+  absl::StatusOr<int> thing;
   EXPECT_FALSE(thing.ok());
   EXPECT_EQ(thing.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOrDeathTest, TestDefaultCtorValue) {
-  StatusOr<int> thing;
+  absl::StatusOr<int> thing;
 #ifdef ABSL_HAVE_EXCEPTIONS
   try {
     thing.value();
@@ -230,7 +234,7 @@ TEST(StatusOrDeathTest, TestDefaultCtorValue) {
   EXPECT_DEATH(thing.value(), "");
 #endif
 
-  const StatusOr<int> thing2;
+  const absl::StatusOr<int> thing2;
 #ifdef ABSL_HAVE_EXCEPTIONS
   try {
     thing.value();
@@ -244,93 +248,94 @@ TEST(StatusOrDeathTest, TestDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestStatusCtor) {
-  StatusOr<int> thing(Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int> thing(absl::Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(thing.ok());
   EXPECT_EQ(thing.status().code(), absl::StatusCode::kCancelled);
 }
 
 TEST(StatusOr, TestValueCtor) {
   const int kI = 4;
-  const StatusOr<int> thing(kI);
+  const absl::StatusOr<int> thing(kI);
   EXPECT_TRUE(thing.ok());
   EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusOk) {
   const int kI = 4;
-  const StatusOr<int> original(kI);
-  const StatusOr<int> copy(original);
+  const absl::StatusOr<int> original(kI);
+  const absl::StatusOr<int> copy(original);
   EXPECT_EQ(copy.status(), original.status());
   EXPECT_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOk) {
-  StatusOr<int> original(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<int> copy(original);
+  absl::StatusOr<int> original(absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
 
 TEST(StatusOr, TestCopyCtorNonAssignable) {
   const int kI = 4;
   CopyNoAssign value(kI);
-  StatusOr<CopyNoAssign> original(value);
-  StatusOr<CopyNoAssign> copy(original);
+  absl::StatusOr<CopyNoAssign> original(value);
+  absl::StatusOr<CopyNoAssign> copy(original);
   EXPECT_EQ(copy.status(), original.status());
   EXPECT_EQ(original.value().foo_, copy.value().foo_);
 }
 
 TEST(StatusOr, TestCopyCtorStatusOKConverting) {
   const int kI = 4;
-  StatusOr<int> original(kI);
-  StatusOr<double> copy(original);
+  absl::StatusOr<int> original(kI);
+  absl::StatusOr<double> copy(original);
   EXPECT_EQ(copy.status(), original.status());
   EXPECT_DOUBLE_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestCopyCtorStatusNotOkConverting) {
-  StatusOr<int> original(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<double> copy(original);
+  absl::StatusOr<int> original(absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<double> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
 
 TEST(StatusOr, TestAssignmentStatusOk) {
   const int kI = 4;
-  StatusOr<int> source(kI);
-  StatusOr<int> target;
+  absl::StatusOr<int> source(kI);
+  absl::StatusOr<int> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
   EXPECT_EQ(source.value(), target.value());
 }
 
 TEST(StatusOr, TestAssignmentStatusNotOk) {
-  StatusOr<int> source(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<int> target;
+  absl::StatusOr<int> source(absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
 }
 
 TEST(StatusOr, TestStatus) {
-  StatusOr<int> good(4);
+  absl::StatusOr<int> good(4);
   EXPECT_TRUE(good.ok());
-  StatusOr<int> bad(Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int> bad(absl::Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(bad.ok());
-  EXPECT_EQ(bad.status(), Status(absl::StatusCode::kCancelled, ""));
+  EXPECT_EQ(bad.status(), absl::Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestValue) {
   const int kI = 4;
-  StatusOr<int> thing(kI);
+  absl::StatusOr<int> thing(kI);
   EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOr, TestValueConst) {
   const int kI = 4;
-  const StatusOr<int> thing(kI);
+  const absl::StatusOr<int> thing(kI);
   EXPECT_EQ(kI, thing.value());
 }
 
 TEST(StatusOrDeathTest, TestValueNotOk) {
-  StatusOr<int> thing(Status(absl::StatusCode::kCancelled, "cancelled"));
+  absl::StatusOr<int> thing(
+      absl::Status(absl::StatusCode::kCancelled, "cancelled"));
 #ifdef ABSL_HAVE_EXCEPTIONS
   try {
     thing.value();
@@ -344,7 +349,7 @@ TEST(StatusOrDeathTest, TestValueNotOk) {
 }
 
 TEST(StatusOrDeathTest, TestValueNotOkConst) {
-  const StatusOr<int> thing(Status(absl::StatusCode::kUnknown, ""));
+  const absl::StatusOr<int> thing(absl::Status(absl::StatusCode::kUnknown, ""));
 #ifdef ABSL_HAVE_EXCEPTIONS
   try {
     thing.value();
@@ -358,13 +363,13 @@ TEST(StatusOrDeathTest, TestValueNotOkConst) {
 }
 
 TEST(StatusOr, TestPointerDefaultCtor) {
-  StatusOr<int*> thing;
+  absl::StatusOr<int*> thing;
   EXPECT_FALSE(thing.ok());
   EXPECT_EQ(thing.status().code(), absl::StatusCode::kUnknown);
 }
 
 TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
-  StatusOr<int*> thing;
+  absl::StatusOr<int*> thing;
 #ifdef ABSL_HAVE_EXCEPTIONS
   try {
     thing.value();
@@ -378,94 +383,97 @@ TEST(StatusOrDeathTest, TestPointerDefaultCtorValue) {
 }
 
 TEST(StatusOr, TestPointerStatusCtor) {
-  StatusOr<int*> thing(Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int*> thing(absl::Status(absl::StatusCode::kCancelled, ""));
   EXPECT_FALSE(thing.ok());
-  EXPECT_EQ(thing.status(), Status(absl::StatusCode::kCancelled, ""));
+  EXPECT_EQ(thing.status(), absl::Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestPointerValueCtor) {
   const int kI = 4;
-  StatusOr<const int*> thing(&kI);
+  absl::StatusOr<const int*> thing(&kI);
   EXPECT_TRUE(thing.ok());
   EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusOk) {
   const int kI = 0;
-  StatusOr<const int*> original(&kI);
-  StatusOr<const int*> copy(original);
+  absl::StatusOr<const int*> original(&kI);
+  absl::StatusOr<const int*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
   EXPECT_EQ(original.value(), copy.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOk) {
-  StatusOr<int*> original(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<int*> copy(original);
+  absl::StatusOr<int*> original(absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusOKConverting) {
   Derived derived;
-  StatusOr<Derived*> original(&derived);
-  StatusOr<Base2*> copy(original);
+  absl::StatusOr<Derived*> original(&derived);
+  absl::StatusOr<Base2*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
   EXPECT_EQ(static_cast<const Base2*>(original.value()), copy.value());
 }
 
 TEST(StatusOr, TestPointerCopyCtorStatusNotOkConverting) {
-  StatusOr<Derived*> original(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<Base2*> copy(original);
+  absl::StatusOr<Derived*> original(
+      absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<Base2*> copy(original);
   EXPECT_EQ(copy.status(), original.status());
 }
 
 TEST(StatusOr, TestPointerAssignmentStatusOk) {
   const int kI = 0;
-  StatusOr<const int*> source(&kI);
-  StatusOr<const int*> target;
+  absl::StatusOr<const int*> source(&kI);
+  absl::StatusOr<const int*> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
   EXPECT_EQ(source.value(), target.value());
 }
 
 TEST(StatusOr, TestPointerAssignmentStatusNotOk) {
-  StatusOr<int*> source(Status(absl::StatusCode::kCancelled, ""));
-  StatusOr<int*> target;
+  absl::StatusOr<int*> source(absl::Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<int*> target;
   target = source;
   EXPECT_EQ(target.status(), source.status());
 }
 
 TEST(StatusOr, TestPointerStatus) {
   const int kI = 0;
-  StatusOr<const int*> good(&kI);
+  absl::StatusOr<const int*> good(&kI);
   EXPECT_TRUE(good.ok());
-  StatusOr<const int*> bad(Status(absl::StatusCode::kCancelled, ""));
-  EXPECT_EQ(bad.status(), Status(absl::StatusCode::kCancelled, ""));
+  absl::StatusOr<const int*> bad(
+      absl::Status(absl::StatusCode::kCancelled, ""));
+  EXPECT_EQ(bad.status(), absl::Status(absl::StatusCode::kCancelled, ""));
 }
 
 TEST(StatusOr, TestPointerValue) {
   const int kI = 0;
-  StatusOr<const int*> thing(&kI);
+  absl::StatusOr<const int*> thing(&kI);
   EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestPointerValueConst) {
   const int kI = 0;
-  const StatusOr<const int*> thing(&kI);
+  const absl::StatusOr<const int*> thing(&kI);
   EXPECT_EQ(&kI, thing.value());
 }
 
 TEST(StatusOr, TestArrowOperator) {
-  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  absl::StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
   EXPECT_EQ(*uptr->get(), 0);
 }
 
 TEST(StatusOr, TestStarOperator) {
-  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  absl::StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
   EXPECT_EQ(**uptr, 0);
 }
 
 TEST(StatusOr, TestStarOperatorDeath) {
-  StatusOr<Base1> error(Status(absl::StatusCode::kCancelled, "cancelled"));
+  absl::StatusOr<Base1> error(
+      absl::Status(absl::StatusCode::kCancelled, "cancelled"));
   EXPECT_DEATH(*error, "cancelled");
 }
 
@@ -478,7 +486,7 @@ TEST(StatusOr, TestStarOperatorDeath) {
 //   v.reserve(v.capacity() + 10);
 // }
 
-static StatusOr<int> MakeStatus() { return 100; }
+static absl::StatusOr<int> MakeStatus() { return 100; }
 // A factory to help us benchmark the various factory styles. All of
 // the factory methods are marked as non-inlineable so as to more
 // accurately simulate calling a factory for which you do not have
@@ -502,25 +510,25 @@ class BenchmarkFactory {
   // A more sophisticated factory, which returns a status to indicate
   // the result of the operation. The factory result is populated into
   // the user provided pointer result.
-  Status ArgumentFactory(T** result) TF_ATTRIBUTE_NOINLINE {
+  absl::Status ArgumentFactory(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = value_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {
+  absl::Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(absl::StatusCode::kCancelled, "");
+    return absl::Status(absl::StatusCode::kCancelled, "");
   }
 
-  Status ArgumentFactoryFailShortMsg(T** result) TF_ATTRIBUTE_NOINLINE {
+  absl::Status ArgumentFactoryFailShortMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(absl::StatusCode::kInternal, "");
+    return absl::Status(absl::StatusCode::kInternal, "");
   }
 
-  Status ArgumentFactoryFailLongMsg(T** result) TF_ATTRIBUTE_NOINLINE {
+  absl::Status ArgumentFactoryFailLongMsg(T** result) TF_ATTRIBUTE_NOINLINE {
     *result = nullptr;
-    return Status(absl::StatusCode::kInternal,
-                  "a big string of message junk that will never be read");
+    return absl::Status(absl::StatusCode::kInternal,
+                        "a big string of message junk that will never be read");
   }
 
   // A factory that returns a StatusOr<T*>. If the factory operation
@@ -531,16 +539,16 @@ class BenchmarkFactory {
   }
 
   StatusOr<T*> StatusOrFactoryFail() TF_ATTRIBUTE_NOINLINE {
-    return Status(absl::StatusCode::kCancelled, "");
+    return absl::Status(absl::StatusCode::kCancelled, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailShortMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(absl::StatusCode::kInternal, "");
+    return absl::Status(absl::StatusCode::kInternal, "");
   }
 
   StatusOr<T*> StatusOrFactoryFailLongMsg() TF_ATTRIBUTE_NOINLINE {
-    return Status(absl::StatusCode::kInternal,
-                  "a big string of message junk that will never be read");
+    return absl::Status(absl::StatusCode::kInternal,
+                        "a big string of message junk that will never be read");
   }
 
  private:
@@ -594,7 +602,7 @@ void BM_ArgumentFactory(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
     BenchmarkType* result = nullptr;
-    Status status = factory.ArgumentFactory(&result);
+    absl::Status status = factory.ArgumentFactory(&result);
     if (status.ok() && result != nullptr) {
       result->DoWork();
     }
@@ -607,7 +615,7 @@ BENCHMARK(BM_ArgumentFactory);
 void BM_StatusOrFactory(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
-    StatusOr<BenchmarkType*> result = factory.StatusOrFactory();
+    absl::StatusOr<BenchmarkType*> result = factory.StatusOrFactory();
     if (result.ok()) {
       result.value()->DoWork();
     }
@@ -622,7 +630,7 @@ void BM_ArgumentFactoryFail(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
     BenchmarkType* result = nullptr;
-    Status status = factory.ArgumentFactoryFail(&result);
+    absl::Status status = factory.ArgumentFactoryFail(&result);
     if (status.ok() && result != nullptr) {
       result->DoWork();
     }
@@ -635,7 +643,7 @@ BENCHMARK(BM_ArgumentFactoryFail);
 void BM_StatusOrFactoryFail(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
-    StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFail();
+    absl::StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFail();
     if (result.ok()) {
       result.value()->DoWork();
     }
@@ -650,7 +658,7 @@ void BM_ArgumentFactoryFailShortMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
     BenchmarkType* result = nullptr;
-    Status status = factory.ArgumentFactoryFailShortMsg(&result);
+    absl::Status status = factory.ArgumentFactoryFailShortMsg(&result);
     if (status.ok() && result != nullptr) {
       result->DoWork();
     }
@@ -663,7 +671,8 @@ BENCHMARK(BM_ArgumentFactoryFailShortMsg);
 void BM_StatusOrFactoryFailShortMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
-    StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailShortMsg();
+    absl::StatusOr<BenchmarkType*> result =
+        factory.StatusOrFactoryFailShortMsg();
     if (result.ok()) {
       result.value()->DoWork();
     }
@@ -678,7 +687,7 @@ void BM_ArgumentFactoryFailLongMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
     BenchmarkType* result = nullptr;
-    Status status = factory.ArgumentFactoryFailLongMsg(&result);
+    absl::Status status = factory.ArgumentFactoryFailLongMsg(&result);
     if (status.ok() && result != nullptr) {
       result->DoWork();
     }
@@ -691,7 +700,8 @@ BENCHMARK(BM_ArgumentFactoryFailLongMsg);
 void BM_StatusOrFactoryFailLongMsg(::testing::benchmark::State& state) {
   BenchmarkFactory<BenchmarkType> factory;
   for (auto s : state) {
-    StatusOr<BenchmarkType*> result = factory.StatusOrFactoryFailLongMsg();
+    absl::StatusOr<BenchmarkType*> result =
+        factory.StatusOrFactoryFailLongMsg();
     if (result.ok()) {
       result.value()->DoWork();
     }
@@ -701,22 +711,22 @@ BENCHMARK(BM_StatusOrFactoryFailLongMsg);
 
 #if defined(PLATFORM_GOOGLE)
 
-StatusOr<int> GetError() {
+absl::StatusOr<int> GetError() {
   return absl::InvalidArgumentError("An invalid argument error");
 }
 
-StatusOr<int> PropagateError() {
+absl::StatusOr<int> PropagateError() {
   TF_ASSIGN_OR_RETURN(int a, GetError());
   return a;
 }
 
-StatusOr<int> PropagateError2() {
+absl::StatusOr<int> PropagateError2() {
   TF_ASSIGN_OR_RETURN(int a, PropagateError());
   return a;
 }
 
 TEST(Status, StackTracePropagation) {
-  StatusOr<int> s = PropagateError2();
+  absl::StatusOr<int> s = PropagateError2();
   auto sources = s.status().GetSourceLocations();
   ASSERT_EQ(sources.size(), 3);
 

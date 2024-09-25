@@ -1,8 +1,8 @@
 # Description:
 #  Holds the native layer of the app.
 
-load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_deps", "latency_benchmark_extra_deps")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "jni_binary_with_tflite")
+load("//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:build_defs.bzl", "accuracy_benchmark_extra_deps", "latency_benchmark_extra_deps")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -37,7 +37,10 @@ cc_library(
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/profiling:memory_info",
+        "//tensorflow/lite/tools/benchmark:benchmark_model_lib",
+        "//tensorflow/lite/tools/benchmark:benchmark_params",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
         "//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/proto:delegate_performance_cc_proto",
         "@com_google_absl//absl/strings",

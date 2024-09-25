@@ -181,6 +181,9 @@ def InvokeNvcc(argv, log=False):
   nvccopts += ['--keep', '--keep-dir', tempdir]
   # Force C++17 dialect (note, everything in just one string!)
   nvccopts += ['--std c++17']
+  # This is so that nvcc does not complain about MSVC or CLANG.
+  nvccopts += ['-allow-unsupported-compiler']
+  nvccopts += ['--expt-extended-lambda', '--expt-relaxed-constexpr']
   if log:
     Log([NVCC_PATH] + nvccopts)
 

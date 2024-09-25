@@ -40,11 +40,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -248,6 +248,9 @@ void QuantizePass::runOnOperation() {
     ParseCustomOpSpecs(enable_custom_op_weight_only_,
                        quant::CustomOpUpdateOptions::kWeightOnly,
                        quant_specs.custom_map);
+  }
+  if (enable_float16_quantization_) {
+    quant_specs.inference_type = tensorflow::DT_HALF;
   }
 
   const quant::QuantPassSpec quant_params = {

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -47,9 +49,10 @@ TEST(TypesTest, kDataTypeRefOffset) {
   for (;
        DataType_IsValid(e) && DataType_IsValid(e_ref) && e_ref <= DataType_MAX;
        ++e, ++e_ref) {
-    string enum_name = enum_descriptor->FindValueByNumber(e)->name();
-    string enum_ref_name = enum_descriptor->FindValueByNumber(e_ref)->name();
-    EXPECT_EQ(enum_name + "_REF", enum_ref_name)
+    absl::string_view enum_name = enum_descriptor->FindValueByNumber(e)->name();
+    absl::string_view enum_ref_name =
+        enum_descriptor->FindValueByNumber(e_ref)->name();
+    EXPECT_EQ(strings::StrCat(enum_name, "_REF"), enum_ref_name)
         << enum_name << "_REF should have value " << e_ref << " not "
         << enum_ref_name;
     // Validate DataTypeString() as well.

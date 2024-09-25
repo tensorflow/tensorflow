@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
@@ -46,7 +46,8 @@ class EagerContextDistributedManager
 
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
                               int keep_alive_secs, int64_t init_timeout_in_ms,
-                              int retries) override;
+                              int retries,
+                              bool clear_existing_contexts = false) override;
 
   Status InitializeLocalOnlyContext(const ServerDef& server_def,
                                     int keep_alive_secs) override;

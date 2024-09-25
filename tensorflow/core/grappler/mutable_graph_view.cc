@@ -386,8 +386,8 @@ void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
         fanouts()[output].emplace(node, Graph::kControlSlot);
       } else {
         max_input_port = pos;
-        max_regular_output_port()[output.node] =
-            std::max(max_regular_output_port()[output.node], output.port_id);
+        int& max_port = max_regular_output_port()[output.node];
+        max_port = std::max(max_port, output.port_id);
         fanouts()[output].emplace(node, pos);
       }
       ++pos;

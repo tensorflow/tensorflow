@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/service/result_caster.h"
 
+#include <memory>
+#include <tuple>
+
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/primitive_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -51,7 +57,10 @@ TEST_P(ResultCasterTest, CastResultWhenNeeded) {
   TF_ASSERT_OK_AND_ASSIGN(bool casted, ResultCaster().Run(module.get()));
   const PrimitiveType accumulation_type =
       primitive_util::HigherPrecisionType(lhs_type, rhs_type);
-  const bool should_cast = result_type != accumulation_type;
+  const bool should_cast =
+      result_type != accumulation_type &&
+      primitive_util::HigherPrecisionType(accumulation_type, result_type) ==
+          accumulation_type;
   EXPECT_EQ(casted, should_cast);
   auto lhs = op::Parameter(0);
   auto rhs = op::Parameter(1);
@@ -74,7 +83,29 @@ TEST_P(ResultCasterTest, CastResultWhenNeeded) {
 INSTANTIATE_TEST_SUITE_P(All, ResultCasterTest,
                          ::testing::Values(std::make_tuple(BF16, BF16, S32),
                                            std::make_tuple(F32, F32, S32),
-                                           std::make_tuple(F32, BF16, F32)));
+                                           std::make_tuple(F32, BF16, F32),
+                                           std::make_tuple(BF16, F32, F64)));
+
+TEST_F(ResultCasterTest, SparseDot) {
+  absl::string_view kHlo = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[2,16]{1,0} parameter(0)
+    p1 = f32[32,2]{1,0} parameter(1)
+    meta = u16[2,2]{1,0} parameter(2)
+    ROOT dot = bf16[2,2]{1,0} dot(p0, p1, meta),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool casted, ResultCaster().Run(module.get()));
+  EXPECT_TRUE(casted);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convert(::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+                  HloOpcode::kDot,
+                  {op::Parameter(0), op::Parameter(1), op::Parameter(2)}))));
+}
 
 }  // namespace
 }  // namespace xla

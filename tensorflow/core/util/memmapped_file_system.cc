@@ -76,7 +76,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
         std::min(length_ - offset, static_cast<uint64>(to_read));
     *result =
         StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
-    return (region_left == to_read) ? OkStatus()
+    return (region_left == to_read) ? absl::OkStatus()
                                     : Status(absl::StatusCode::kOutOfRange,
                                              "Read less bytes than requested");
   }
@@ -98,7 +98,7 @@ Status MemmappedFileSystem::FileExists(const string& fname,
   }
   const auto dir_element = directory_.find(fname);
   if (dir_element != directory_.end()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::NotFound(fname, " not found");
 }
@@ -116,7 +116,7 @@ Status MemmappedFileSystem::NewRandomAccessFile(
   *result = std::make_unique<RandomAccessFileFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
       dir_element->second.length);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -132,7 +132,7 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   *result = std::make_unique<ReadOnlyMemoryRegionFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
       dir_element->second.length);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::GetFileSize(const string& filename,
@@ -145,7 +145,7 @@ Status MemmappedFileSystem::GetFileSize(const string& filename,
     return errors::NotFound("Region ", filename, " is not found");
   }
   *size = dir_element->second.length;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MemmappedFileSystem::Stat(const string& fname, TransactionToken* token,
@@ -256,7 +256,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     }
     prev_element_offset = element_iter->offset();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
@@ -295,7 +295,7 @@ Status MemmappedEnv::GetFileSystemForFile(const string& fname,
           "MemmappedEnv is not initialized from a file.");
     }
     *result = memmapped_file_system_.get();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return EnvWrapper::GetFileSystemForFile(fname, result);
 }

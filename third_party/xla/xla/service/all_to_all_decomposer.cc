@@ -45,7 +45,7 @@ bool AllToAllDecomposer::InstructionMatchesPattern(
   }
   return all_to_all->shape().rank() < min_array_rank_;
 }
-StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
+absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     HloInstruction* instruction) {
   auto* all_to_all = Cast<HloAllToAllInstruction>(instruction);
   int64_t split_dim = *all_to_all->split_dimension();
@@ -107,7 +107,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
       std::vector<const Shape*>(all_to_all_group_size, &slice_shape));
   HloInstruction* new_all_to_all =
       all_to_all->parent()->AddInstruction(HloInstruction::CreateAllToAll(
-          all_to_all_shape, slices, all_to_all->replica_groups(), false,
+          all_to_all_shape, slices, all_to_all->device_list(), false,
           all_to_all->channel_id(), std::nullopt));
   std::vector<HloInstruction*> gtes;
   gtes.reserve(all_to_all_group_size);

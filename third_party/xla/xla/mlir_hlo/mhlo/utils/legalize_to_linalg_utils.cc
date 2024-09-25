@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
@@ -33,7 +34,7 @@ namespace mhlo {
 namespace {
 
 bool hasIntegralShapeType(Operation* op) {
-  auto stp = op->getOperand(0).getType().dyn_cast<ShapedType>();
+  auto stp = mlir::dyn_cast<ShapedType>(op->getOperand(0).getType());
   return stp && stp.getElementType().isIntOrIndex();
 }
 
@@ -54,17 +55,17 @@ SmallVector<utils::IteratorType, 3> getNParallelLoopsAttrs(
 
 Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
                            ArrayRef<Value> dynSizes) {
-  return b.create<bufferization::AllocTensorOp>(loc, type.cast<TensorType>(),
-                                                dynSizes,
-                                                /*copy=*/Value(),
-                                                /*memory_space=*/IntegerAttr());
+  return b.create<bufferization::AllocTensorOp>(
+      loc, mlir::cast<TensorType>(type), dynSizes,
+      /*copy=*/Value(),
+      /*memory_space=*/IntegerAttr());
 }
 
 Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
                      ArrayRef<Value> dynSizes) {
-  return b.create<tensor::EmptyOp>(loc, type.getShape(), type.getElementType(),
-                                   dynSizes,
-                                   type.cast<RankedTensorType>().getEncoding());
+  return b.create<tensor::EmptyOp>(
+      loc, type.getShape(), type.getElementType(), dynSizes,
+      mlir::cast<RankedTensorType>(type).getEncoding());
 }
 
 Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
@@ -129,7 +130,7 @@ Value postSparsify(Operation* op, Value semiring, Value result, OpBuilder* b) {
 
 bool allOperandsAreScalarTensors(Operation* op) {
   return llvm::all_of(op->getOperands(), [](Value operand) {
-    auto operandTy = operand.getType().dyn_cast<ShapedType>();
+    auto operandTy = mlir::dyn_cast<ShapedType>(operand.getType());
     return operandTy && operandTy.getRank() == 0;
   });
 }

@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla.ifrt;
 
-import "xla/python/ifrt/types.proto";
+import "xla/python/ifrt/device.proto";
 import "xla/xla_data.proto";
 
 // Wire format for `HloSharding`.

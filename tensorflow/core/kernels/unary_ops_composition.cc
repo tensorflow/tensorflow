@@ -69,7 +69,7 @@ struct UnaryOpsCompositionBase {
       *cost += reg.cost;
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unordered_map<string, ComputeFnRegistration> compute_fns;

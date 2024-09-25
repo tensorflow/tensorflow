@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_TENSOR_ARRAY_SIDE_EFFECT_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_ANALYSIS_TENSOR_ARRAY_SIDE_EFFECT_ANALYSIS_H_
 
+#include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace tfrt_compiler {

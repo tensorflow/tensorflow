@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ListSnapshotChunksDataset"
   input_arg {
     name: "snapshot_path"

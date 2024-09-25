@@ -463,7 +463,7 @@ std::optional<const TensorShapeProto*> FindLeadingShape(
 
 // Returns the inputs that are relevant to determinate the batch size of the
 // operation. This routine handles the following cases:
-//   . Operations that support implicit boradcasting, such as operation mul.
+//   . Operations that support implicit broadcasting, such as operation mul.
 //     In this case, we need to inspect all the inputs in order to determine the
 //     batch size of the operation.
 //   . Special cases. Such as "Conv2DBackpropInput", "Conv3DBackpropInputV2".
@@ -919,9 +919,8 @@ Status SegmentGraph(const Graph* tf_graph,
     const string node_op_type{node->tf_node()->type_string()};
 
     auto exclude_node = [&](absl::string_view reason) {
-      VLOG(1) << "Not a TF-TRT candidate, "
-              << "(Op type: " << node_op_type << "), "
-              << "(Op name: " << node->name() << "), "
+      VLOG(1) << "Not a TF-TRT candidate, " << "(Op type: " << node_op_type
+              << "), " << "(Op name: " << node->name() << "), "
               << "(Reason: " << reason << ")";
       nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
@@ -1276,8 +1275,7 @@ Status SegmentGraph(const Graph* tf_graph,
         if (mask[i]) {
           VLOG(1) << "[*] Segment " << i
                   << " [node count: " << effective_nodes_counts[i]
-                  << "] accepted. Re-assigned "
-                  << "segment id=" << j;
+                  << "] accepted. Re-assigned " << "segment id=" << j;
           segments->at(j) = segments->at(i);
           j++;
         }

@@ -240,7 +240,7 @@ Status ShapeRefiner::AddNodeInternal(
       continue;
     }
 
-    InferenceContext* input_ic = it->second->get_context();
+    InferenceContext* input_ic = it->second.get();
     ic->SetInput(e->dst_input(), input_ic->output(e->src_output()));
 
     const auto* in_v =
@@ -263,14 +263,11 @@ Status ShapeRefiner::AddNodeInternal(
         "', did you forget to define it?");
   }
 
-  std::unique_ptr<ExtendedInferenceContext> ec(
-      new ExtendedInferenceContext(std::move(ic), node));
-
   // Run the shape inference function, and return if there was an error.
-  TF_RETURN_IF_ERROR(RunShapeFn(node, op_reg_data, ec.get(), outer_context));
+  TF_RETURN_IF_ERROR(RunShapeFn(node, op_reg_data, ic.get(), outer_context));
 
   // Store the resulting context object in the map.
-  node_to_context_[node].swap(ec);
+  node_to_context_[node].swap(ic);
 
   return absl::OkStatus();
 }
@@ -314,8 +311,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     *refined = true;
     return AddNode(node);
   }
-  ExtendedInferenceContext* node_ext_context = it->second.get();
-  InferenceContext* node_context = node_ext_context->get_context();
+  InferenceContext* node_context = it->second.get();
 
   // Give up if the context wasn't successfully built by the AddNode() method.
   TF_RETURN_IF_ERROR(node_context->construction_status());
@@ -336,7 +332,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
           "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = iter->second->get_context();
+    InferenceContext* c = iter->second.get();
     DCHECK_GE(dst_input, 0);
     ShapeHandle existing_input = node_context->input(dst_input);
     if (!relax) {
@@ -409,7 +405,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     return absl::OkStatus();
   }
 
-  return RunShapeFn(node, op_reg_data, node_ext_context);
+  return RunShapeFn(node, op_reg_data, node_context);
 }
 
 Status ShapeRefiner::EvaluateConstantTensorForEdge(
@@ -713,7 +709,7 @@ Status ShapeRefiner::PartialStridedSliceShape(
 
 Status ShapeRefiner::RunShapeFn(const Node* node,
                                 const OpRegistrationData* op_reg_data,
-                                ExtendedInferenceContext* ec,
+                                InferenceContext* c,
                                 InferenceContext* outer_context) {
   // This will be filled in with real data in a second pass.
   std::vector<const Tensor*> input_tensors(node->num_inputs(), nullptr);
@@ -721,8 +717,6 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   std::vector<bool> attempted_materialization(node->num_inputs());
   std::vector<bool> attempted_tensor_as_shape_conversion(node->num_inputs());
   std::vector<ShapeHandle> input_tensors_as_shapes;
-
-  auto* c = ec->get_context();
 
   c->set_input_tensors(input_tensors);
   c->set_input_tensors_as_shapes(input_tensors_as_shapes);
@@ -748,19 +742,29 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           // performing inference on the function body.
           auto const_tensor_map_copy = const_tensor_map_;
           const_tensor_map_.clear();
+          VLOG(4) << "Running shape inference for function \""
+                  << function.name() << "\".";
           Status function_inference_status = InferShapesForFunction(
               function_def, AttrSlice(&function.attr()), c);
           const_tensor_map_ = const_tensor_map_copy;
+          VLOG(4) << "Shape inference for function \"" << function.name()
+                  << "\" returned status " << function_inference_status << ".";
           return function_inference_status;
         }
       }
     }
 
     if (op_reg_data->shape_inference_fn) {
+      VLOG(4) << "Running shape inference function for node \"" << node->name()
+              << "\" of type \"" << node->type_string() << "\".";
       TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
     } else {
+      VLOG(4) << "Unknown shape inference function for node \"" << node->name()
+              << "\" of type \"" << node->type_string() << "\".";
       TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
     }
+    VLOG(4) << "Shape inference passed for node \"" << node->name()
+            << "\" of type \"" << node->type_string() << "\".";
     return absl::OkStatus();
   };
   TF_RETURN_IF_ERROR(run_inference_lambda());

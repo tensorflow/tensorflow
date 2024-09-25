@@ -32,11 +32,11 @@ class PjRtClientTestFactoryRegistry {
   typedef std::function<Shape(const Shape&)> DeviceShapeRepresentationFn;
   typedef std::function<DeviceShapeRepresentationFn(PjRtClient*)>
       DeviceShapeRepresentationFnFactory;
-  typedef std::function<StatusOr<std::unique_ptr<PjRtClient>>()>
+  typedef std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()>
       PjRtClientFactory;
 
   static DeviceShapeRepresentationFn DefaultShapeRepresentationRegisteredFn(
-      StatusOr<PjRtClient*> client) {
+      absl::StatusOr<PjRtClient*> client) {
     return [](const Shape& host_shape) { return host_shape; };
   }
 
@@ -66,14 +66,14 @@ class PjRtClientTestFactoryRegistry {
     return factory_ != nullptr;
   }
 
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> Get() const {
     absl::MutexLock lock(&mu_);
     return factory_;
   }
 
  private:
   mutable absl::Mutex mu_;
-  std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory_
+  std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory_
       ABSL_GUARDED_BY(mu_);
   DeviceShapeRepresentationFnFactory registered_device_shape_representation_fn_;
 };

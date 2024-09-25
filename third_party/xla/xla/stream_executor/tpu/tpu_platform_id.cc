@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
 
+#include "xla/stream_executor/platform.h"
+
 namespace tensorflow {
 namespace tpu {
 

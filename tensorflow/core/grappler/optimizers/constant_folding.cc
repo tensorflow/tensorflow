@@ -3067,13 +3067,32 @@ Status ConstantFolding::SimplifyArithmeticOperations(
       return absl::OkStatus();
     }
 
-    // Simplify multiplication and matmul by zeros.
-    // Also optimize zeros divided by a tensor, but only if we are in
-    // aggressive mode, since we might get rid of divisions by zero.
+    // Simplify multiplication and matmul by zeros, or zeros divided by
+    // a tensor.
+    // Note that care must be taken when multiplying zero by NaN or Inf, or
+    // when dividing by zeros.  For such potential cases, we only simplify in
+    // aggressive mode.
     const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
-    bool optimize_zeros_divided_by_y = is_any_div && x_is_zero && is_aggressive;
-    if ((x_is_zero || y_is_zero) &&
-        (is_mul || is_matmul || optimize_zeros_divided_by_y)) {
+    const bool simplify_zeros_divided_by_y =
+        is_any_div && x_is_zero && is_aggressive;
+    bool simplify_multiply_by_zero =
+        (is_mul || is_matmul) && (x_is_zero || y_is_zero);
+    if (simplify_multiply_by_zero) {
+      const DataType y_dtype =
+          properties.GetInputProperties(node->name())[1].dtype();
+      const DataType x_dtype =
+          properties.GetInputProperties(node->name())[0].dtype();
+      if ((x_is_zero &&
+           (DataTypeIsFloating(y_dtype) || DataTypeIsComplex(y_dtype))) ||
+          (y_is_zero &&
+           (DataTypeIsFloating(x_dtype) || DataTypeIsComplex(x_dtype)))) {
+        // Only simplify multiplication of floats in aggressive mode to avoid
+        // overwriting Infs/NaNs.
+        simplify_multiply_by_zero = is_aggressive;
+      }
+    }
+
+    if (simplify_multiply_by_zero || simplify_zeros_divided_by_y) {
       if (shp.IsFullyDefined()) {
         bool is_quantized = IsQuantizedMatMul(*node);
         TF_RETURN_IF_ERROR(ReplaceOperationWithConstant(

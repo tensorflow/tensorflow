@@ -21,14 +21,20 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Transforms/Passes.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -100,14 +106,14 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   AddTfDeviceAssignmentPasses(pm, options);
 
   // After the standard pass, we now have MLIR in TF dialect, and now we convert
-  // reference variable to resource variables, which is besteffort.
+  // reference variable to resource variables, which is best effort.
   pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
 
   // Move the tf.Assert op to the end of the function, so that it does not
   // impose unnecessary control dependencies on other ops.
   pm.addPass(tfrt_compiler::CreateReorderTfAssertPass());
 
-  // Optimze the side-effects of control flow ops by examining the ops in its
+  // Optimize the side-effects of control flow ops by examining the ops in its
   // callees.
   pm.addPass(tfrt_compiler::CreateOptimizeTfControlFlowSideEffectPass());
 
@@ -116,6 +122,12 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 
   // Merge non-side-effecting tf.If ops if their operands are the same.
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
+
+  pm.addPass(tfrt_compiler::CreateReconfigBatchOpPass({
+      .min_num_batch_threads = options.min_num_batch_threads,
+      .min_max_enqueued_batches = options.min_max_enqueued_batches,
+      .batch_padding_policy = options.batch_padding_policy,
+  }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name
@@ -220,7 +232,7 @@ Status ValidateTfrtPipelineOptions(const TfrtPipelineOptions &options) {
         "Invalid pipeline options. Targeting both TPU and GPU is not "
         "supported.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
@@ -234,7 +246,7 @@ Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
         /*print_module_scope=*/true));
   }
   CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(pm, options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

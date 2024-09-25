@@ -16,8 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME_COPY_THUNK_H_
 
+#include <cstdint>
+#include <memory>
+#include <utility>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -31,34 +43,129 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
                           const BufferAllocation::Slice& source_buffer,
                           const BufferAllocation::Slice& destination_buffer,
-                          uint64_t mem_size, mlir::Value source_value,
-                          mlir::Value destination_value);
+                          uint64_t mem_size);
 
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ClearCompileTimeInfo() override {
-    Thunk::ClearCompileTimeInfo();
-    source_value_ = nullptr;
-    destination_value_ = nullptr;
-  }
-
   const BufferAllocation::Slice& source() const { return source_buffer_; }
   const BufferAllocation::Slice& destination() const {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
-  mlir::Value source_value() const { return source_value_; }
-  mlir::Value destination_value() const { return destination_value_; }
 
  private:
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
-  mlir::Value source_value_;
-  mlir::Value destination_value_;
+};
+
+//===----------------------------------------------------------------------===//
+// CopyThunk
+//===----------------------------------------------------------------------===//
+class CopyThunk : public Thunk {
+ public:
+  class AsyncEvents {
+   public:
+    // Add a new copy-start completion event.
+    absl::Status Emplace(se::StreamExecutor* executor,
+                         const HloInstruction* instr,
+                         std::unique_ptr<se::Event> event);
+
+    // Retrieve a completion event started by copy-start instruction
+    // `instr`, and remove the event from the collection.
+    absl::StatusOr<std::unique_ptr<se::Event>> Extract(
+        se::StreamExecutor* executor, const HloInstruction* instr);
+
+   private:
+    using Key = std::pair<se::StreamExecutor*, const HloInstruction*>;
+    absl::Mutex mutex_;
+    absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
+        ABSL_GUARDED_BY(mutex_);
+  };
+  CopyThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
+            const BufferAllocation::Slice& destination_buffer,
+            uint64_t mem_size);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  const BufferAllocation::Slice& source() const { return source_buffer_; }
+  const BufferAllocation::Slice& destination() const {
+    return destination_buffer_;
+  }
+  uint64_t size_bytes() const { return mem_size_; }
+
+ private:
+  const BufferAllocation::Slice source_buffer_;
+  const BufferAllocation::Slice destination_buffer_;
+  const uint64_t mem_size_;
+};
+
+//===----------------------------------------------------------------------===//
+// DeviceToHostCopyThunk
+//===----------------------------------------------------------------------===//
+// The memcpy between a host and a device
+
+// A thunk that copies data from a device buffer to a host buffer.
+class DeviceToHostCopyThunk : public CopyThunk {
+ public:
+  // Constructs a DeviceToHostCopyThunk that copies data from `source_buffer` to
+  // the device buffer `destination_buffer`. `mem_size` is the size of the data
+  // in bytes. `events` are the cuda record/wait events.
+  // `instr` is the copy-start instruction.
+  DeviceToHostCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size,
+                        std::shared_ptr<CopyThunk::AsyncEvents> events,
+                        const HloInstruction* instr);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
+  const HloInstruction* instr_;
+};
+
+//===----------------------------------------------------------------------===//
+// HostToDeviceCopyThunk
+//===----------------------------------------------------------------------===//
+// The memcpy between a host and a device
+
+// A thunk that copies data from a host buffer to a device buffer.
+class HostToDeviceCopyThunk : public CopyThunk {
+ public:
+  // Constructs a HostToDeviceCopyThunk that copies data from `source_buffer` to
+  // the host buffer `destination_buffer`. `mem_size` is the size of the data
+  // in bytes. `events` are the cuda record/wait events.
+  // `instr` is the copy-start instruction.
+  HostToDeviceCopyThunk(ThunkInfo thunk_info,
+                        const BufferAllocation::Slice& source_buffer,
+                        const BufferAllocation::Slice& destination_buffer,
+                        uint64_t mem_size,
+                        std::shared_ptr<CopyThunk::AsyncEvents> events,
+                        const HloInstruction* instr);
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
+  const HloInstruction* instr_;
+};
+
+//===----------------------------------------------------------------------===//
+// CopyDoneThunk
+//===----------------------------------------------------------------------===//
+
+class CopyDoneThunk : public Thunk {
+ public:
+  CopyDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+                std::shared_ptr<CopyThunk::AsyncEvents> events,
+                const HloInstruction* copy_start_instr);
+
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+ private:
+  std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
+  const HloInstruction* copy_start_instr_;
 };
 
 }  // namespace gpu

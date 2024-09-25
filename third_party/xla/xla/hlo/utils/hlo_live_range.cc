@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -36,12 +37,11 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 /*static*/
-StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
+absl::StatusOr<std::unique_ptr<HloLiveRange>> HloLiveRange::Run(
     const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
     const HloComputation* computation, bool module_scoped_analysis) {
   std::unique_ptr<HloLiveRange> hlo_live_range(

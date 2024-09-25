@@ -13,11 +13,11 @@ cc_library(
         "import_model.cc",
     ],
     hdrs = [
-        "export_graphdef.h",
         "import_model.h",
     ],
     deps = [
         ":mlir_roundtrip_flags",
+        ":node_order",
         ":upgrade_graph",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
@@ -26,7 +26,6 @@ cc_library(
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
         "//tensorflow/compiler/mlir/tensorflow:convert_attr",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
@@ -38,37 +37,35 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:initialize_variables_in_session_init",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lift_variables_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:mark_initialized_variables_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler/utils:transitive_fanin",
-        "//tensorflow/core/platform:crash_analysis",
+        "//tensorflow/core/common_runtime:function_body",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/client:sharding_builder",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/service:hlo_parser",
     ],
 )
 
@@ -107,50 +104,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla:status_macros",
-    ],
-)
-
-cc_library(
-    name = "translate_tf_dialect_op",
-    srcs = ["translate_tf_dialect_op.cc"],
-    deps = [
-        ":export_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TranslateLib",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "mlir_roundtrip_pass",
-    srcs = ["mlir_roundtrip_pass.cc"],
-    hdrs = ["mlir_roundtrip_pass.h"],
-    deps = [
-        ":export_graphdef",
-        ":import_model",
-        ":mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
         "@local_xla//xla:status_macros",
     ],
-)
-
-cc_library(
-    name = "mlir_roundtrip_pass_registration",
-    srcs = ["mlir_roundtrip_pass_registration.cc"],
-    deps = [
-        ":mlir_roundtrip_pass",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -208,6 +164,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -226,67 +183,25 @@ cc_library(
 )
 
 cc_library(
-    name = "export_graphdef",
-    srcs = [
-        "export_graphdef.cc",
-    ],
-    hdrs = [
-        "export_graphdef.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":export_tf_dialect_op",
-        ":mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:convert_type",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_utils",
-        "//tensorflow/compiler/mlir/tensorflow:translate_utils",
-        "//tensorflow/compiler/mlir/tensorflow:verify_suitable_for_graph_export",
-        "//tensorflow/compiler/mlir/utils:name_utils",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/graph/regularization:util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
-    ],
-)
-
-cc_library(
     name = "translate_registration",
     srcs = [
         "tf_mlir_translate_registration.cc",
     ],
     deps = [
-        ":export_graphdef",
         ":mlir_roundtrip_flags",
         ":translate_cl_options",
         ":translate_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TranslateLib",
+        "@local_tsl//tsl/platform:protobuf",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/service/cpu:cpu_compiler",
@@ -335,5 +250,46 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "node_order",
+    srcs = ["node_order.cc"],
+    hdrs = ["node_order.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "node_order_test",
+    size = "small",
+    srcs = [
+        "node_order_test.cc",
+    ],
+    deps = [
+        ":node_order",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
     ],
 )

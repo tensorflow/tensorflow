@@ -173,6 +173,7 @@ tf_cc_test(
     srcs = ["constant_fold_test.cc"],
     deps = [
         ":constant_fold",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:tensorflow",
@@ -183,7 +184,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

@@ -17,6 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
@@ -64,24 +68,22 @@ bool CanEmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,
 // where the input and output buffers share the same slice, so we can simply
 // modify the input/output buffer without touching any of the other elements.
-Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
-                                     const IrArray& output_array,
-                                     absl::string_view name,
-                                     llvm::IRBuilder<>* b);
+absl::Status EmitDynamicUpdateSliceInPlace(
+    absl::Span<const IrArray> operand_arrays, const IrArray& output_array,
+    absl::string_view name, llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
 // (sequential) code for a fusion node that does the dynamic-update-slice in
 // place.
-Status EmitFusedDynamicUpdateSliceInPlace(HloInstruction* fusion,
-                                          const IrArray& fusion_output_array,
-                                          FusedIrEmitter* fused_emitter,
-                                          llvm::IRBuilder<>* b);
+absl::Status EmitFusedDynamicUpdateSliceInPlace(
+    HloInstruction* fusion, const IrArray& fusion_output_array,
+    FusedIrEmitter* fused_emitter, llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions for arbitrarily many independent dynamic slice
 // updates.
-Status EmitParallelFusedDynamicUpdateSliceInPlace(
+absl::Status EmitParallelFusedDynamicUpdateSliceInPlace(
     const HloComputation* fusion,
     const std::vector<std::pair<const HloInstruction*, const IrArray>>&
         dus_and_output_array,

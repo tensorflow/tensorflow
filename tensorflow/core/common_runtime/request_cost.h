@@ -37,10 +37,27 @@ class RequestCost {
   void RecordCost(
       const std::vector<std::pair<absl::string_view, absl::Duration>>& costs);
 
+  // Scales all types of costs for processing an rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the costs have been collected.
+  void ScaleCosts(int scale_factor);
+
   // Gets all types of costs for processing an rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
   // rpc request, when all the costs have been collected.
   absl::flat_hash_map<std::string, absl::Duration> GetCosts() const;
+
+  // Records metrics. The inputs should be pairs of metric name and value.
+  // It's thread-safe, and can be called from different threads. Unlike
+  // RecordCosts where costs are summed up if recorded with the same key,
+  // metrics are replaced.
+  void RecordMetrics(
+      const std::vector<std::pair<absl::string_view, double>>& metrics);
+
+  // Gets all types of metrics for processing an rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all the metrics have been collected.
+  absl::flat_hash_map<std::string, double> GetMetrics() const;
 
   // Metrics of each batch that processes this rpc request.
   struct BatchMetrics {
@@ -59,6 +76,11 @@ class RequestCost {
   // called multiple times if a request is processed by more than one batches.
   void RecordBatchMetrics(const BatchMetrics& batch_metrics);
 
+  // Scales costs of all the batches that process this rpc request.
+  // It's thread-safe. It's expected to be called at the end of processing an
+  // rpc request, when all batch processing has completed.
+  void ScaleBatchCosts(int scale_factor);
+
   // Get metrics of all the batches that process this rpc request.
   // It's thread-safe. It's expected to be called at the end of processing an
   // rpc request, when all batch processing has completed.
@@ -70,6 +92,8 @@ class RequestCost {
   // Query costs. Map from cost type to cost.
   absl::flat_hash_map<std::string, absl::Duration> cost_map_
       ABSL_GUARDED_BY(mutex_);
+  // Query metrics. Map from metric name to value.
+  absl::flat_hash_map<std::string, double> metric_map_ ABSL_GUARDED_BY(mutex_);
 
   // Metrics of batches that process this rpc request.
   std::vector<BatchMetrics> batch_metrics_ ABSL_GUARDED_BY(mutex_);

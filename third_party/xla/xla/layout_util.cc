@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -69,6 +69,7 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
     absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
+    absl::Span<const SplitConfig> split_configs,
     std::optional<Shape> physical_shape,
     int64_t dynamic_shape_metadata_prefix_bytes) {
   Layout layout;
@@ -101,6 +102,9 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   layout.set_pointer_primitive_type(pointer_primitive_type);
   layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
+  for (const SplitConfig& split_config : split_configs) {
+    layout.add_split_configs(split_config);
+  }
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
@@ -200,7 +204,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   LayoutUtil::SetToDefaultLayout(program_shape->mutable_result());
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutInShape(
+/* static */ absl::Status LayoutUtil::ValidateLayoutInShape(
     const Shape& shape, bool allow_missing_layouts) {
   if (shape.IsTuple()) {
     // Tuple shape.
@@ -211,11 +215,11 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
-    return OkStatus();
+    return absl::OkStatus();
   } else if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       return InvalidArgument("shape %s does not have a layout",
                              ShapeUtil::HumanString(shape));
@@ -228,12 +232,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
-/* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
-                                                       const Shape& shape) {
+/* static */ absl::Status LayoutUtil::ValidateLayoutForShape(
+    const Layout& layout, const Shape& shape) {
   if (shape.IsTuple()) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
@@ -244,7 +248,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           "shape of primitive type %s should not have a non-trivial layout",
           PrimitiveType_Name(shape.element_type()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (layout.minor_to_major_size() != shape.rank()) {
@@ -346,7 +350,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
       TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
-          [&](const Shape& subshape, const ShapeIndex& index) {
+          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
             if (subshape.has_layout() &&
                 subshape.layout().has_physical_shape()) {
               return InvalidArgument(
@@ -354,7 +358,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
                   "physical shape: %s",
                   shape.ShortDebugString());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }));
       if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID &&
           !primitive_util::IsUnsignedIntegralType(
@@ -410,7 +414,12 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
   }
 
-  return OkStatus();
+  if (layout.element_size_in_bits() < 0) {
+    return InvalidArgument("layout element_size_in_bits field is negative: %d",
+                           layout.element_size_in_bits());
+  }
+
+  return absl::OkStatus();
 }
 
 /* static */ void LayoutUtil::ClearLayout(Shape* shape) {
@@ -518,6 +527,18 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
   return shape.has_layout();
 }
 
+/* static */ bool LayoutUtil::HasAnyLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    // Tuple shape: all subshapes must have a layout.
+    return absl::c_any_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasAnyLayout(s); });
+  } else if (!shape.IsArray()) {
+    // Opaque, token types etc. ignore layout.
+    return true;
+  }
+  return shape.has_layout();
+}
+
 /* static */ bool LayoutUtil::HasLayout(const ProgramShape& program_shape) {
   for (auto& parameter_shape : program_shape.parameters()) {
     if (!LayoutUtil::HasLayout(parameter_shape)) {
@@ -565,7 +586,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 namespace {
 
 // Internal helper for recursively copying layouts.
-Status CopyLayoutInternal(const Shape& src, Shape* dst) {
+absl::Status CopyLayoutInternal(const Shape& src, Shape* dst) {
   if (src.IsTuple() != dst->IsTuple()) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
@@ -592,13 +613,13 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
       dst->clear_layout();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
 /* static */
-Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
+absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return CopyLayoutInternal(src, dst);
 }
 
@@ -766,6 +787,42 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
     stride *= dims[i];
   }
   return true;
+}
+
+/*static*/ int64_t LayoutUtil::MaxSplitSize(const Shape& shape, int64_t dim) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  if (!shape.has_layout()) {
+    return shape.dimensions(dim);
+  }
+  const SplitConfig* split_config = nullptr;
+  for (const SplitConfig& config : shape.layout().split_configs()) {
+    if (Major(shape.layout(), config.dimension()) == dim) {
+      split_config = &config;
+      break;
+    }
+  }
+  if (split_config != nullptr) {
+    int64_t max_split_size = 0;
+    int64_t last_split_index = 0;
+    for (int split_index : split_config->split_indices()) {
+      int64_t split_size = split_index - last_split_index;
+      max_split_size = std::max(split_size, max_split_size);
+      last_split_index = split_index;
+    }
+    max_split_size =
+        std::max(max_split_size, shape.dimensions(dim) - last_split_index);
+    return max_split_size;
+  }
+  return shape.dimensions(dim);
+}
+
+/*static*/ int64_t LayoutUtil::MaxElementsInPerSplit(const Shape& shape) {
+  CHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+  int64_t max_elements_in = 1;
+  for (int dim = 0; dim < shape.rank(); ++dim) {
+    max_elements_in *= MaxSplitSize(shape, dim);
+  }
+  return max_elements_in;
 }
 
 }  // namespace xla

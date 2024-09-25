@@ -109,12 +109,15 @@ tf.__doc__ = """
   ```
   """
 
-tf.estimator.Estimator = doc_controls.inheritable_header("""\
-  Warning: TensorFlow 2.15 included the final release of the `tf-estimator` 
-  package. Estimators will not be available in TensorFlow 2.16 or after. See the
-  [migration guide](https://www.tensorflow.org/guide/migrate/migrating_estimator)
-  for more information about how to convert off of Estimators."
-  """)(tf.estimator.Estimator)
+try:
+  tf.estimator.Estimator = doc_controls.inheritable_header(textwrap.dedent("""\
+    Warning: TensorFlow 2.15 included the final release of the `tf-estimator` 
+    package. Estimators will not be available in TensorFlow 2.16 or after. See the
+    [migration guide](https://www.tensorflow.org/guide/migrate/migrating_estimator)
+    for more information about how to convert off of Estimators."
+    """))(tf.estimator.Estimator)
+except AttributeError:
+  pass
 
 
 class RawOpsPageInfo(module_page.ModulePageInfo):

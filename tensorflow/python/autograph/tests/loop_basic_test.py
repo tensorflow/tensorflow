@@ -249,7 +249,7 @@ class ReferenceTest(reference_test_base.TestCase, parameterized.TestCase):
   ))
   def test_for_one_var(self, l, type_, xla):
     if type_ is _int_dataset and xla:
-      self.skipTest('Datsets not supported in XLA')
+      self.skipTest('Datasets not supported in XLA')
     if type_ is _int_tensor and xla and not l:
       self.skipTest('Empty loops not supported in XLA')
 
@@ -298,7 +298,7 @@ class ReferenceTest(reference_test_base.TestCase, parameterized.TestCase):
   ))
   def test_for_two_vars(self, l, type_, xla):
     if type_ is _int_dataset and xla:
-      self.skipTest('Datsets not supported in XLA')
+      self.skipTest('Datasets not supported in XLA')
     if type_ is _int_tensor and xla and not l:
       self.skipTest('Empty loops not supported in XLA')
 

@@ -44,6 +44,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_FFT_H_
 
 #include <complex>
+#include <cstdint>
 #include <memory>
 
 #include "xla/stream_executor/platform/port.h"

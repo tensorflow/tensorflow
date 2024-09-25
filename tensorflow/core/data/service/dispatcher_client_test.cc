@@ -55,6 +55,7 @@ using ::tensorflow::data::testing::LocalTempFilename;
 using ::tensorflow::data::testing::RangeDataset;
 using ::tensorflow::testing::StatusIs;
 using ::testing::AllOf;
+using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
 
 constexpr const char kProtocol[] = "grpc";
@@ -89,7 +90,7 @@ class DispatcherClientTest : public ::testing::Test {
   }
 
   // Creates a dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(
+  absl::StatusOr<std::string> RegisterDataset(
       const DatasetDef& dataset, const DataServiceMetadata& metadata,
       const std::optional<std::string>& requested_dataset_id = std::nullopt) {
     std::string dataset_id;
@@ -99,7 +100,7 @@ class DispatcherClientTest : public ::testing::Test {
   }
 
   // Starts snapshots and returns the directories.
-  StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots(
+  absl::StatusOr<absl::flat_hash_set<std::string>> StartDummySnapshots(
       int64_t num_snapshots) {
     DistributedSnapshotMetadata metadata =
         CreateDummyDistributedSnapshotMetadata();
@@ -383,7 +384,7 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
       StatusIs(error::INVALID_ARGUMENT,
                AllOf(HasSubstr("but found an existing job with different "
                                "parameters: "),
-                     HasSubstr("Existing processing mode: <>"),
+                     ContainsRegex("Existing processing mode: <\\w*/*\\w* *>"),
                      HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
 

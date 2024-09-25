@@ -60,10 +60,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/tracing.h"
 #include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
@@ -474,7 +474,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     Status status;
   };
   const int num = partitions_.size();
-  gtl::InlinedVector<Call, 4> calls(num);
+  absl::InlinedVector<Call, 4UL> calls(num);
   BlockingCounter done(num);
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
@@ -525,7 +525,7 @@ class RunManyGraphs {
 
   // When the index-th call is done, updates the overall status.
   void WhenDone(int index, const Status& s) {
-    TRACEPRINTF("Partition %d %s", index, s.ToString().c_str());
+    TRACEPRINTF("Partition %d %v", index, s);
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
@@ -588,7 +588,7 @@ class RunManyGraphs {
   }
 
  private:
-  gtl::InlinedVector<Call, 4> calls_;
+  absl::InlinedVector<Call, 4UL> calls_;
 
   BlockingCounter pending_;
   mutable mutex mu_;
@@ -742,7 +742,7 @@ Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
     RunManyGraphs::Call* call = calls.get(i);
-    TRACEPRINTF("Partition %d %s", i, part.name.c_str());
+    TRACEPRINTF("Partition %d %s", i, part.name);
     part.worker->RunGraphAsync(
         &call->opts, call->req.get(), call->resp.get(),
         std::bind(&RunManyGraphs::WhenDone, &calls, i, std::placeholders::_1));
@@ -911,7 +911,7 @@ class CleanupBroadcastHelper {
   // A single request shared between all workers.
   CleanupGraphRequest req_;
   // One response buffer for each worker.
-  gtl::InlinedVector<CleanupGraphResponse, 4> resps_;
+  absl::InlinedVector<CleanupGraphResponse, 4UL> resps_;
 
   mutex mu_;
   // Number of requests remaining to be collected.
@@ -1868,14 +1868,17 @@ Status MasterSession::CreateDebuggerState(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
 
   std::vector<string> input_names;
+  input_names.reserve(req.num_feeds());
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     input_names.push_back(req.feed_name(i));
   }
   std::vector<string> output_names;
+  output_names.reserve(req.num_fetches());
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     output_names.push_back(req.fetch_name(i));
   }
   std::vector<string> target_names;
+  target_names.reserve(req.num_targets());
   for (size_t i = 0; i < req.num_targets(); ++i) {
     target_names.push_back(req.target_name(i));
   }

@@ -21,18 +21,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
-#include "xla/status.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace profiler {
 
-using tensorflow::profiler::XLine;
 using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
 
@@ -144,23 +141,23 @@ PluginTracer::~PluginTracer() {
   }
 }
 
-Status PluginTracer::Start() {
+absl::Status PluginTracer::Start() {
   PLUGIN_Profiler_Start_Args args;
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->start(&args),
                                          profiler_api_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PluginTracer::Stop() {
+absl::Status PluginTracer::Stop() {
   PLUGIN_Profiler_Stop_Args args;
   args.profiler = profiler_;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->stop(&args),
                                          profiler_api_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status PluginTracer::CollectData(XSpace* space) {
+absl::Status PluginTracer::CollectData(XSpace* space) {
   PLUGIN_Profiler_CollectData_Args args;
   args.profiler = profiler_;
   args.buffer = nullptr;
@@ -172,15 +169,10 @@ Status PluginTracer::CollectData(XSpace* space) {
     xspace.ParseFromArray(args.buffer, args.buffer_size_in_bytes);
     for (XPlane& tpu_plane : *xspace.mutable_planes()) {
       XPlane* plane = space->add_planes();
-      if (tpu_plane.name() == tsl::profiler::kHostThreadsPlaneName) {
-        for (XLine& xline : *tpu_plane.mutable_lines()) {
-          xline.set_display_name(absl::StrCat("libtpu:", xline.name()));
-        }
-      }
       plane->Swap(&tpu_plane);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace profiler

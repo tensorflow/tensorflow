@@ -51,12 +51,6 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
   let dependentDialects = ["affine::AffineDialect"];
 }
 
-def TestShapeComponentAnalysis : Pass<"test-print-shape-components",
-                                      "func::FuncOp"> {
-  let summary = "Test pass for analyzing shape components.";
-  let constructor = "createTestShapeComponentAnalysisPass()";
-}
-
 def LowerIndexCastPass
     : Pass<"lower-index-cast", "mlir::func::FuncOp"> {
   let summary = "Lower index cast on tensors to tensor dialect";
@@ -84,15 +78,6 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let options = [
       Option<"alignment_", "alignment", "uint64_t",
              /*default=*/"64", "Memory alignment">,
-  ];
-}
-
-def PropagateStaticShapesToKernelPass : Pass<"propagate-static-shapes", "ModuleOp"> {
-  let summary = "Pass to rewrite statically shaped kernel arguments to a pointer.";
-  let constructor = "createPropagateStaticShapesToKernelPass()";
-  let options = [
-      Option<"ptr_type_opt", "convert_pointer_args", "std::string",
-             /*default=*/"", "Pointer type to convert pointer arguments to">,
   ];
 }
 
@@ -124,11 +109,6 @@ def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
     transformation.
   }];
   let constructor = "hlo::createUnbufferizePass()";
-}
-
-def UnrollLoopsPass : Pass<"unroll-loops"> {
-  let summary = "Unrolls scf.for loops with small static iteration counts.";
-  let constructor = "hlo::createUnrollLoopsPass()";
 }
 
 def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {

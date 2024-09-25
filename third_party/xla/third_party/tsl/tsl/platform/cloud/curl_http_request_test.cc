@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -151,8 +153,8 @@ class FakeLibCurl : public LibCurl {
       posted_content_ = "";
       do {
         bytes_read = read_callback_(buffer, 1, sizeof(buffer), read_data_);
-        posted_content_ =
-            strings::StrCat(posted_content_, StringPiece(buffer, bytes_read));
+        posted_content_ = strings::StrCat(
+            posted_content_, absl::string_view(buffer, bytes_read));
       } while (bytes_read > 0);
     }
     if (write_data_ || write_callback_) {
@@ -366,7 +368,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_ResponseTooLarge) {
 
   http_request.SetUri("http://www.testuri.com");
   http_request.SetResultBufferDirect(scratch.data(), scratch.size());
-  const Status& status = http_request.Send();
+  const absl::Status& status = http_request.Send();
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
       "Error executing an HTTP request: libcurl code 23 meaning "
@@ -495,9 +497,11 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
   const auto& status = http_request.Send();
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
-      "Error executing an HTTP request: libcurl code 6 meaning "
-      "'Couldn't resolve host name', error details: Could not resolve host "
-      "'metadata'",
+      absl::StrCat(
+          "Error executing an HTTP request: libcurl code 6 meaning ",
+          (kIsOpenSource ? "'Couldn't resolve host name', error details: "
+                         : "'Could not resolve hostname', error details: "),
+          "Could not resolve host ", "'metadata'"),
       status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
@@ -770,7 +774,7 @@ class TestStats : public HttpRequest::RequestStats {
 
   void RecordResponse(const HttpRequest* request, const string& uri,
                       HttpRequest::RequestMethod method,
-                      const Status& result) override {
+                      const absl::Status& result) override {
     has_recorded_response_ = true;
     record_response_request_ = request;
     record_response_uri_ = uri;
@@ -787,7 +791,7 @@ class TestStats : public HttpRequest::RequestStats {
   string record_response_uri_ = "http://www.testuri.com";
   HttpRequest::RequestMethod record_response_method_ =
       HttpRequest::RequestMethod::kGet;
-  Status record_response_result_;
+  absl::Status record_response_result_;
 
   bool has_recorded_request_ = false;
   bool has_recorded_response_ = false;
@@ -864,7 +868,7 @@ TEST(CurlHttpRequestTest, StatsGetNotFound) {
   http_request.AddAuthBearerHeader("fake-bearer");
   http_request.SetRange(100, 199);
   http_request.SetResultBuffer(&scratch);
-  Status s = http_request.Send();
+  absl::Status s = http_request.Send();
 
   // Check interaction with stats.
   ASSERT_TRUE(stats.has_recorded_request_);

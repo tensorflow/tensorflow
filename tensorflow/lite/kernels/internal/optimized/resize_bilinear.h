@@ -45,7 +45,7 @@ namespace resize_bilinear {
 // (a) Optimizations can be tried experimentally.
 // (b) Optimizations can be specialized for architectures, eg Intel vs ARM.
 
-inline int16x8_t Load8IntoLowerS16(const uint8* data_ptr) {
+inline int16x8_t Load8IntoLowerS16(const uint8_t* data_ptr) {
   return vreinterpretq_s16_u16(vmovl_u8(vld1_u8(data_ptr)));
 }
 
@@ -54,7 +54,7 @@ inline uint16x8_t Move8IntoUpperU16(const uint8x8_t vec_val) {
   return vshlq_n_u16(vmovl_u8(vec_val), 8);
 }
 
-inline uint16x8_t Load8IntoUpperU16(const uint8* data_ptr) {
+inline uint16x8_t Load8IntoUpperU16(const uint8_t* data_ptr) {
   return Move8IntoUpperU16(vld1_u8(data_ptr));
 }
 
@@ -107,7 +107,7 @@ struct op_int16x8_t {
   // This really selects vshlq_n_s16, but requires a longer implementation to
   // convert the shift argument back to a constant. In some compiles are macros
   // requiring constant args.
-  inline op_int16x8_t operator<<=(int32 left_shift) {
+  inline op_int16x8_t operator<<=(int32_t left_shift) {
     switch (left_shift) {
       case 1:
         val = vshlq_n_s16(val, 1);
@@ -127,7 +127,7 @@ struct op_int16x8_t {
   // This really selects vshrq_n_u16, but requires a longer implementation to
   // convert the shift argument back to a constant. In some compiles are macros
   // requiring constant args.
-  inline op_int16x8_t operator>>=(int32 right_shift) {
+  inline op_int16x8_t operator>>=(int32_t right_shift) {
     switch (right_shift) {
       case 1:
         val = vshrq_n_s16(val, 1);
@@ -154,11 +154,11 @@ struct op_int16x8_t {
     lhs -= rhs;
     return lhs;
   }
-  friend inline op_int16x8_t operator<<(op_int16x8_t lhs, int32 left_shift) {
+  friend inline op_int16x8_t operator<<(op_int16x8_t lhs, int32_t left_shift) {
     lhs <<= left_shift;
     return lhs;
   }
-  friend inline op_int16x8_t operator>>(op_int16x8_t lhs, int32 right_shift) {
+  friend inline op_int16x8_t operator>>(op_int16x8_t lhs, int32_t right_shift) {
     lhs >>= right_shift;
     return lhs;
   }
@@ -191,7 +191,7 @@ struct op_uint16x8_t {
   // This really selects vshlq_n_s16, but requires a longer implementation to
   // convert the shift argument back to a constant. In some compiles are macros
   // requiring constant args.
-  inline op_uint16x8_t operator<<=(int32 left_shift) {
+  inline op_uint16x8_t operator<<=(int32_t left_shift) {
     switch (left_shift) {
       case 1:
         val = vshlq_n_u16(val, 1);
@@ -211,7 +211,7 @@ struct op_uint16x8_t {
   // This really selects vshrq_n_u16, but requires a longer implementation to
   // convert the shift argument back to a constant. In some compiles are macros
   // requiring constant args.
-  inline op_uint16x8_t operator>>=(int32 right_shift) {
+  inline op_uint16x8_t operator>>=(int32_t right_shift) {
     switch (right_shift) {
       case 1:
         val = vshrq_n_u16(val, 1);
@@ -238,11 +238,13 @@ struct op_uint16x8_t {
     lhs -= rhs;
     return lhs;
   }
-  friend inline op_uint16x8_t operator<<(op_uint16x8_t lhs, int32 left_shift) {
+  friend inline op_uint16x8_t operator<<(op_uint16x8_t lhs,
+                                         int32_t left_shift) {
     lhs <<= left_shift;
     return lhs;
   }
-  friend inline op_uint16x8_t operator>>(op_uint16x8_t lhs, int32 right_shift) {
+  friend inline op_uint16x8_t operator>>(op_uint16x8_t lhs,
+                                         int32_t right_shift) {
     lhs >>= right_shift;
     return lhs;
   }
@@ -262,20 +264,20 @@ inline op_uint16x8_t VReinterpretQU16S16(const op_int16x8_t& other) {
 //
 // This optimization is for the half_pixel_centers == true version, for uint8.
 // There are versions for NEON and non-NEON compilation.
-inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
-                                   int32 input_width, int32 depth,
-                                   const uint8* input_data,
-                                   uint8* output_data) {
+inline void ResizeBilinear888Uint8(int32_t batches, int32_t input_height,
+                                   int32_t input_width, int32_t depth,
+                                   const uint8_t* input_data,
+                                   uint8_t* output_data) {
   TFLITE_DCHECK_GE(input_height, 1);
   TFLITE_DCHECK_GE(input_width, 1);
   TFLITE_DCHECK_EQ(depth % 8, 0);
 
-  const int32 input_row_stride = input_width * depth;
-  const int32 output_row_stride = input_row_stride * 8;
+  const int32_t input_row_stride = input_width * depth;
+  const int32_t output_row_stride = input_row_stride * 8;
   for (int b = 0; b < batches; ++b) {
-    const uint8* input_base_ptr =
+    const uint8_t* input_base_ptr =
         input_data + b * input_row_stride * input_height;
-    uint8* output_base_ptr =
+    uint8_t* output_base_ptr =
         output_data + b * output_row_stride * input_height * 8;
 
 #ifdef USE_NEON
@@ -361,24 +363,24 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
     }
     // Fill out remainder of top margin.
     std::memcpy(output_base_ptr + output_row_stride, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
     std::memcpy(output_base_ptr + output_row_stride * 2, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
     std::memcpy(output_base_ptr + output_row_stride * 3, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
     output_base_ptr += output_row_stride * 4;
 
     // Main rows.
     for (int k = 0; k < (input_height - 1); ++k) {
       for (int c_block = 0; c_block < depth; c_block += 8) {
-        uint8* output_base_ptr_0 = output_base_ptr;
-        uint8* output_base_ptr_1;
-        uint8* output_base_ptr_2;
-        uint8* output_base_ptr_3;
-        uint8* output_base_ptr_4;
-        uint8* output_base_ptr_5;
-        uint8* output_base_ptr_6;
-        uint8* output_base_ptr_7;
+        uint8_t* output_base_ptr_0 = output_base_ptr;
+        uint8_t* output_base_ptr_1;
+        uint8_t* output_base_ptr_2;
+        uint8_t* output_base_ptr_3;
+        uint8_t* output_base_ptr_4;
+        uint8_t* output_base_ptr_5;
+        uint8_t* output_base_ptr_6;
+        uint8_t* output_base_ptr_7;
 
         op_uint16x8_t accum_0_c_v;
         op_uint16x8_t accum_1_c_v;
@@ -774,11 +776,11 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
     }
     // Fill out remainder of bottom margin.
     std::memcpy(output_base_ptr + output_row_stride, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
     std::memcpy(output_base_ptr + output_row_stride * 2, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
     std::memcpy(output_base_ptr + output_row_stride * 3, output_base_ptr,
-                output_row_stride * sizeof(uint8));
+                output_row_stride * sizeof(uint8_t));
 
 #else  // USE_NEON
     for (int c_block = 0; c_block < depth; c_block += 8) {
@@ -1227,7 +1229,7 @@ inline void ResizeBilinear888Uint8(int32 batches, int32 input_height,
 }  // namespace resize_bilinear
 
 #ifdef USE_NEON
-inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
+inline void ResizeBilinearKernel(const float* input_ptr, int32_t depth,
                                  float scale, float* output_ptr) {
   int ic = 0;
   // Handle 32 input channels at a time.
@@ -1323,21 +1325,22 @@ inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
 }
 #endif
 
-inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
-                                    int32 x, int32 y, int32 depth, int32 batch,
+inline void ResizeBilinearKernel2x2(int32_t x0, int32_t x1, int32_t y0,
+                                    int32_t y1, int32_t x, int32_t y,
+                                    int32_t depth, int32_t batch,
                                     const RuntimeShape& input_shape,
                                     const float* input_data,
                                     const RuntimeShape& output_shape,
                                     float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  const int32 input_width = input_shape.Dims(2);
-  const int32 output_width = output_shape.Dims(2);
+  const int32_t input_width = input_shape.Dims(2);
+  const int32_t output_width = output_shape.Dims(2);
 
-  const int32 input_x_offset = (x1 - x0) * depth;
-  const int32 input_y_offset = (y1 - y0) * depth * input_width;
-  const int32 output_x_offset = depth;
-  const int32 output_y_offset = depth * output_width;
+  const int32_t input_x_offset = (x1 - x0) * depth;
+  const int32_t input_y_offset = (y1 - y0) * depth * input_width;
+  const int32_t output_x_offset = depth;
+  const int32_t output_y_offset = depth * output_width;
 
 #ifdef USE_NEON
   TFLITE_DCHECK(x1 >= x0);
@@ -1440,7 +1443,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
   }
   // Handle one input channel at a time.
   for (; ic < depth; ic++) {
-    const int32 input_offset = Offset(input_shape, batch, y0, x0, ic);
+    const int32_t input_offset = Offset(input_shape, batch, y0, x0, ic);
 
     float x0y0 = input_data[input_offset];
     float x1y0 = input_data[input_offset + input_x_offset];
@@ -1448,7 +1451,7 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
     float x1y1 = input_data[input_offset + input_x_offset + input_y_offset];
 
     // Top left corner.
-    const int32 output_offset = Offset(output_shape, batch, y, x, ic);
+    const int32_t output_offset = Offset(output_shape, batch, y, x, ic);
     output_data[output_offset] = x0y0;
 
     // Top right corner.
@@ -1489,9 +1492,9 @@ inline void ResizeBilinearKernel2x2(int32 x0, int32 x1, int32 y0, int32 y1,
 #endif
 }
 
-inline void ResizeBilinear2x2(int32 batches, int32 input_height,
-                              int32 input_width, int32 depth,
-                              int32 output_height, int32 output_width,
+inline void ResizeBilinear2x2(int32_t batches, int32_t input_height,
+                              int32_t input_width, int32_t depth,
+                              int32_t output_height, int32_t output_width,
                               const RuntimeShape& input_shape,
                               const float* input_data,
                               const RuntimeShape& output_shape,
@@ -1499,8 +1502,8 @@ inline void ResizeBilinear2x2(int32 batches, int32 input_height,
   for (int b = 0; b < batches; b++) {
     for (int y0 = 0, y = 0; y <= output_height - 2; y += 2, y0++) {
       for (int x0 = 0, x = 0; x <= output_width - 2; x += 2, x0++) {
-        int32 x1 = std::min(x0 + 1, input_width - 1);
-        int32 y1 = std::min(y0 + 1, input_height - 1);
+        int32_t x1 = std::min(x0 + 1, input_width - 1);
+        int32_t y1 = std::min(y0 + 1, input_height - 1);
         ResizeBilinearKernel2x2(x0, x1, y0, y1, x, y, depth, b, input_shape,
                                 input_data, output_shape, output_data);
       }
@@ -1509,32 +1512,32 @@ inline void ResizeBilinear2x2(int32 batches, int32 input_height,
 }
 
 inline void ResizeBilinearGeneric(
-    int32 batches, int32 input_height, int32 input_width, int32 depth,
-    int32 output_height, int32 output_width, float height_scale,
+    int32_t batches, int32_t input_height, int32_t input_width, int32_t depth,
+    int32_t output_height, int32_t output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const float* input_data,
     const RuntimeShape& output_shape, float* output_data,
     const bool half_pixel_centers) {
   memset(output_data, 0,
          batches * output_height * output_width * depth * sizeof(float));
 
-  int32 output_offset = 0;
+  int32_t output_offset = 0;
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
       float input_y;
-      int32 y0, y1;
+      int32_t y0, y1;
       reference_ops::ComputeInterpolationValues(
           y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
           &y1);
       for (int x = 0; x < output_width; ++x) {
         float input_x;
-        int32 x0, x1;
+        int32_t x0, x1;
         reference_ops::ComputeInterpolationValues(
             x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
             &x1);
         float* output_ptr = &output_data[output_offset];
 
         // Run kernel on the 4 corners of the bilinear resize algorithm.
-        int32 input_offset = Offset(input_shape, b, y0, x0, 0);
+        int32_t input_offset = Offset(input_shape, b, y0, x0, 0);
         float scale = (1 - (input_y - y0)) * (1 - (input_x - x0));
         const float* input_ptr = &input_data[input_offset];
         ResizeBilinearKernel(input_ptr, depth, scale, output_ptr);
@@ -1562,8 +1565,8 @@ inline void ResizeBilinearGeneric(
 
 template <typename T>
 inline void ResizeBilinearGenericSmallChannel(
-    int32 batches, int32 input_height, int32 input_width, int32 depth,
-    int32 output_height, int32 output_width, float height_scale,
+    int32_t batches, int32_t input_height, int32_t input_width, int32_t depth,
+    int32_t output_height, int32_t output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
     const RuntimeShape& output_shape, T* output_data,
     const bool half_pixel_centers) {
@@ -1573,21 +1576,21 @@ inline void ResizeBilinearGenericSmallChannel(
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
       float input_y;
-      int32 y0, y1;
+      int32_t y0, y1;
       reference_ops::ComputeInterpolationValues(
           y, height_scale, half_pixel_centers, input_height, &input_y, &y0,
           &y1);
       for (int x = 0; x < output_width; ++x) {
         float input_x;
-        int32 x0, x1;
+        int32_t x0, x1;
         reference_ops::ComputeInterpolationValues(
             x, width_scale, half_pixel_centers, input_width, &input_x, &x0,
             &x1);
 
-        int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
-                                 Offset(input_shape, b, y0, x1, 0),
-                                 Offset(input_shape, b, y1, x0, 0),
-                                 Offset(input_shape, b, y1, x1, 0)};
+        int32_t input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
+                                   Offset(input_shape, b, y0, x1, 0),
+                                   Offset(input_shape, b, y1, x0, 0),
+                                   Offset(input_shape, b, y1, x1, 0)};
         float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
                           (1 - (input_y - y0)) * (input_x - x0),
                           (input_y - y0) * (1 - (input_x - x0)),
@@ -1610,7 +1613,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
                            const float* input_data,
                            const RuntimeShape& output_size_shape,
-                           const int32* output_size_data,
+                           const int32_t* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            float* output_data) {
   ruy::profiler::ScopeLabel label("ResizeBilinear");
@@ -1623,14 +1626,14 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32_t input_height = input_shape.Dims(1);
+  int32_t input_width = input_shape.Dims(2);
+  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
+  int32_t output_height = output_size_data[0];
+  int32_t output_width = output_size_data[1];
 
   // Specialize for 2x2 upsample.
   if (!op_params.align_corners && !op_params.half_pixel_centers &&
@@ -1659,11 +1662,11 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
 // or int16 arithmetic.
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
-                           const uint8* input_data,
+                           const uint8_t* input_data,
                            const RuntimeShape& output_size_shape,
-                           const int32* output_size_data,
+                           const int32_t* output_size_data,
                            const RuntimeShape& unextended_output_shape,
-                           uint8* output_data) {
+                           uint8_t* output_data) {
   ruy::profiler::ScopeLabel label("ResizeBilinearUint8");
   // If half_pixel_centers is True, align_corners must be False.
   TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
@@ -1674,18 +1677,18 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
   const RuntimeShape output_shape =
       RuntimeShape::ExtendedShape(4, unextended_output_shape);
 
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
+  int32_t batches = MatchingDim(input_shape, 0, output_shape, 0);
+  int32_t input_height = input_shape.Dims(1);
+  int32_t input_width = input_shape.Dims(2);
+  int32_t depth = MatchingDim(input_shape, 3, output_shape, 3);
 
   TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
+  int32_t output_height = output_size_data[0];
+  int32_t output_width = output_size_data[1];
 
   if (!op_params.align_corners && op_params.half_pixel_centers &&
       ((depth % 8) == 0)) {
-    const int32 scale = output_height / input_height;
+    const int32_t scale = output_height / input_height;
     // Restricting the minimum output dimensions may not be necessary, but
     // ensures that kernels can use unrolling with minimal code size.
     if ((output_height >= 8) && (output_width >= 8) &&
@@ -1709,7 +1712,7 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
           ? (static_cast<float>(input_width - 1) / (output_width - 1))
           : (static_cast<float>(input_width) / output_width);
 
-  ResizeBilinearGenericSmallChannel<uint8>(
+  ResizeBilinearGenericSmallChannel<uint8_t>(
       batches, input_height, input_width, depth, output_height, output_width,
       height_scale, width_scale, input_shape, input_data, output_shape,
       output_data, op_params.half_pixel_centers);
@@ -1718,11 +1721,11 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
 // TODO(b/180609127) Create optimized int8 version from uint8. Call from here.
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
-                           const int8* input_data,
+                           const int8_t* input_data,
                            const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
+                           const int32_t* output_size_data,
                            const RuntimeShape& unextended_output_shape,
-                           int8* output_data) {
+                           int8_t* output_data) {
   reference_ops::ResizeBilinearInteger(op_params, unextended_input_shape,
                                        input_data, unextended_output_size_shape,
                                        output_size_data,

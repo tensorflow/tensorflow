@@ -736,8 +736,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       original_gdef: GraphDef. The graph def before TensorRT conversion.
       converted_gdef: GraphDef. The graph def after TensorRT conversion.
       default_max_batch_size: The default maximum batch size to use if no node
-        inside a segment is annoted with a customized max batch size. This value
-        is None when the graph is converted to TF-TRT with dynamic engines.
+        inside a segment is annotated with a customized max batch size. This
+        value is None when the graph is converted to TF-TRT with dynamic
+        engines.
       expected_max_batch_sizes: Optional. A sequence of max batch sizes for all
         the engines. `None` if does not check enforce max batch sizes.
     """
@@ -769,7 +770,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
       It is incorrect to use the output shapes to find the batch size of an
       operation, as the segmenter actually uses the input shapes. However, it is
-      a simplication and works for most of the cases for the test purposes.
+      a simplification and works for most of the cases for the test purposes.
 
       Args:
         node_def: `tf.NodeDef`. The target node for analysis.

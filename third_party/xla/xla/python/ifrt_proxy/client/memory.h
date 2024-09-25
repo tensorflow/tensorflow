@@ -23,6 +23,7 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
@@ -31,34 +32,30 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
-class Memory : public xla::ifrt::Memory {
+class Client;
+
+class Memory : public llvm::RTTIExtends<Memory, xla::ifrt::Memory> {
  public:
-  Memory(int id, std::string memory_space_kind, std::string debug_string,
-         std::string to_string)
+  Memory(int id, std::string memory_space_kind, int kind_id,
+         std::string debug_string, std::string to_string)
       : id_(id),
-        memory_space_kind_(std::move(memory_space_kind)),
+        kind_(std::move(memory_space_kind)),
         debug_string_(std::move(debug_string)),
         to_string_(std::move(to_string)) {}
 
   // Not copyable or movable: IFRT expects `string_view` from
-  // `memory_space_kind()` to be stable throughout the client's lifetime.
+  // `kind()` to be stable throughout the client's lifetime.
   Memory(const Memory& other) = delete;
   Memory& operator=(const Memory& other) = delete;
 
-  PjRtClient* client() const override { return nullptr; }
+  MemoryId Id() const override { return MemoryId(id_); }
+  const MemoryKind& Kind() const override { return kind_; }
 
-  absl::Span<xla::ifrt::Device* const> devices() const override {
+  absl::Span<xla::ifrt::Device* const> Devices() const override {
     return devices_;
   }
 
-  int id() const override { return id_; }
-
-  absl::string_view memory_space_kind() const override {
-    return memory_space_kind_;
-  }
-
   absl::string_view DebugString() const override { return debug_string_; }
-
   absl::string_view ToString() const override { return to_string_; }
 
  private:
@@ -66,7 +63,7 @@ class Memory : public xla::ifrt::Memory {
 
   int id_;
   std::vector<xla::ifrt::Device*> devices_;
-  std::string memory_space_kind_;
+  MemoryKind kind_;
   std::string debug_string_;
   std::string to_string_;
 };

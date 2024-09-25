@@ -294,6 +294,7 @@ py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
@@ -393,6 +394,7 @@ py_strict_library(
         "//tensorflow/python/tpu:tpu_py",
         "//tensorflow/python/util:compat",
     ] + if_google([
+        "//learning/brain/contrib/hub/public/file:tfhub_file_register",
         "//tensorflow/core/tfrt/tfrt_session",
         "//tensorflow_text:tensorflow_text",
     ]),
@@ -429,6 +431,9 @@ py_strict_test(
     ],
     python_version = "PY3",
     srcs_version = "PY3",
+    tags = [
+        "noasan",  # TODO(b/222716501)
+    ],
     deps = [
         ":saved_model_cli_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -617,5 +622,10 @@ tf_cc_test(
 # gensignature(
 #     name = "inspect_checkpoint.par_sig",
 #     srcs = [":inspect_checkpoint.par"],
+# )
+#
+# gensignature(
+#     name = "saved_model_cli.par_sig",
+#     srcs = [":saved_model_cli.par"],
 # )
 # copybara:uncomment_end

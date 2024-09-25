@@ -56,6 +56,7 @@ using ::testing::Pointee;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
 using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EquivToProto;
@@ -159,8 +160,8 @@ TEST_F(CompilerTest, Compile) {
   std::vector<MockDevice> devices(2);
 
   MockClient client;
-  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](int id) {
-    return &devices[id];
+  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
+    return &devices[id.value()];
   }));
 
   Compiler compiler(&client, rpc_helper_);
@@ -171,10 +172,9 @@ TEST_F(CompilerTest, Compile) {
              loaded_executable_handle: 1234
              name: "foo-executable"
              num_devices: 2
-             addressable_device_logical_ids { replica: 0 partition: 0 }
-             addressable_device_logical_ids { replica: 0 partition: 1 }
              addressable_device_ids: [ 0, 1 ]
              fingerprint_value: "fingerprint"
+             ready_future_handle: 5678
            })pb",
       &response));
   EXPECT_CALL(*session_,
@@ -184,6 +184,21 @@ TEST_F(CompilerTest, Compile) {
                        })pb")))))
       .WillOnce(MockClientSessionReturnResponse(response));
 
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            response_metadata {
+                                              status {
+                                                code: 2  # UNKNOWN
+                                                message: "injected error"
+                                              }
+                                            }
+                                          )pb",
+                                          &response));
+  EXPECT_CALL(*session_,
+              Enqueue(Pointee(Partially(EquivToProto(R"pb(check_future_request {
+                                                            future_handle: 5678
+                                                          })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
       compiler.Compile(std::make_unique<TestProgram>(),
@@ -191,12 +206,12 @@ TEST_F(CompilerTest, Compile) {
 
   EXPECT_EQ(executable->name(), "foo-executable");
   EXPECT_EQ(executable->num_devices(), 2);
-  EXPECT_THAT(executable->addressable_device_logical_ids(),
-              ElementsAre(FieldsAre(0, 0), FieldsAre(0, 1)));
   EXPECT_THAT(executable->addressable_devices(),
               ElementsAre(&devices[0], &devices[1]));
   EXPECT_THAT(executable->Fingerprint(),
               IsOkAndHolds(Optional(std::string("fingerprint"))));
+  EXPECT_THAT(executable->GetReadyFuture().Await(),
+              StatusIs(absl::StatusCode::kUnknown, "injected error"));
 }
 #endif
 

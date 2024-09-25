@@ -24,20 +24,20 @@ import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.lite import converter_flags_pb2 as _conversion_flags_pb2
+from tensorflow.compiler.mlir.lite import model_flags_pb2 as _model_flags_pb2
+from tensorflow.compiler.mlir.lite import types_pb2 as _types_pb2
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
+from tensorflow.compiler.mlir.lite.python import wrap_converter
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
-from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.python.convert_phase import Component
 from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
-from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
-from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -47,7 +47,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 def _is_quantized_input_stats_required(
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
 ) -> bool:
   """Checks if the `quantized_input_stats` flag is required for conversion.
 
@@ -81,7 +81,7 @@ def convert_tensor_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float16: _types_pb2.FLOAT16,
@@ -125,7 +125,7 @@ def convert_inference_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float32: _types_pb2.FLOAT,
@@ -231,6 +231,7 @@ def mlir_quantize(
     denylisted_nodes=None,
     enable_variable_quantization=False,
     disable_per_channel_for_dense_layers=False,
+    debug_options_str="",
 ):
   """Quantize `input_data_str` with calibration results.
 
@@ -259,12 +260,14 @@ def mlir_quantize(
     disable_per_channel_for_dense_layers: Bool indicating whether to do
       per-channel or per-tensor quantization in Fully Connected layers. Default
       value is False meaning per-channel quantization is enabled.
+    debug_options_str: Serialized proto describing TFLite converter debug
+      options, see `debug/debug_options.proto`.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(
+  return wrap_converter.wrapped_experimental_mlir_quantize(
       input_data_str,
       disable_per_channel,
       fully_quantize,
@@ -277,6 +280,7 @@ def mlir_quantize(
       denylisted_nodes,
       enable_variable_quantization,
       disable_per_channel_for_dense_layers,
+      debug_options_str,
   )
 
 
@@ -290,7 +294,7 @@ def mlir_sparsify(input_data_str):
   Returns:
     Sparsified model in serialized form (e.g. a TFLITE model).
   """
-  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
+  return wrap_converter.wrapped_experimental_mlir_sparsify(input_data_str)
 
 
 def register_custom_opdefs(custom_opdefs_list):
@@ -303,12 +307,12 @@ def register_custom_opdefs(custom_opdefs_list):
   Returns:
     True if the registration is successfully completed.
   """
-  return wrap_toco.wrapped_register_custom_opdefs(custom_opdefs_list)
+  return wrap_converter.wrapped_register_custom_opdefs(custom_opdefs_list)
 
 
 def convert(
     model_flags: _model_flags_pb2.ModelFlags,
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
     input_data_str: Optional[str] = None,
     debug_info_str: Optional[str] = None,
     enable_mlir_converter: bool = True,
@@ -318,7 +322,7 @@ def convert(
   Args:
     model_flags: Proto describing model properties, see `model_flags.proto`.
     conversion_flags: Proto describing conversion properties, see
-      `toco/toco_flags.proto`.
+      `compiler/mlir/lite/converter_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common, or
       it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
@@ -338,7 +342,7 @@ def convert(
   # pipeline surfaces errors instead, and can be safely run in-process.
   if enable_mlir_converter or not _deprecated_conversion_binary:
     try:
-      return wrap_toco.wrapped_toco_convert(
+      return wrap_converter.wrapped_convert(
           model_flags.SerializeToString(),
           conversion_flags.SerializeToString(),
           input_data_str,
@@ -392,7 +396,7 @@ def _run_deprecated_conversion_binary(
     model_flags_str: Serialized proto describing model properties, see
       `model_flags.proto`.
     conversion_flags_str: Serialized proto describing TFLite converter
-      properties, see `toco/toco_flags.proto`.
+      properties, see `compiler/mlir/lite/converter_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
@@ -595,6 +599,9 @@ def build_conversion_flags(
     reduce_type_precision=False,
     qdq_conversion_mode=None,
     disable_per_channel_quantization_for_dense_layers=False,
+    enable_composite_direct_lowering=False,
+    model_origin_framework=lite_constants.UNSET,
+    canonicalizing_inf_as_min_max_float=True,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -724,13 +731,19 @@ def build_conversion_flags(
     disable_per_channel_quantization_for_dense_layers: If set, disables per
       channel end enables per tensor integer quantization for weights in Dense
       layers. The flag works only for integer quantized model.
+    enable_composite_direct_lowering: If set, attempts to lower composite ops
+      directly to tflite ops.
+    model_origin_framework: A str specifying the framework of the original
+      model. Can be {TENSORFLOW, KERAS, JAX, PYTORCH}
+    canonicalizing_inf_as_min_max_float: When set to true, convert +Inf/-Inf to
+      MIN/MAX float value and output of converter only contains finite values.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
   Raises:
     ValueError, if the input tensor type is unknown.
   """
-  conversion_flags = _conversion_flags_pb2.TocoFlags()
+  conversion_flags = _conversion_flags_pb2.ConverterFlags()
   conversion_flags.inference_type = convert_inference_tf_type_to_tflite_type(
       inference_type, usage="inference_type flag"
   )
@@ -843,6 +856,17 @@ def build_conversion_flags(
     conversion_flags.qdq_conversion_mode = qdq_conversion_mode
   conversion_flags.disable_per_channel_quantization_for_dense_layers = (
       disable_per_channel_quantization_for_dense_layers
+  )
+  conversion_flags.enable_composite_direct_lowering = (
+      enable_composite_direct_lowering
+  )
+  conversion_flags.model_origin_framework = (
+      _conversion_flags_pb2.ConverterFlags.ModelOriginFramework.Value(
+          model_origin_framework
+      )
+  )
+  conversion_flags.canonicalizing_inf_as_min_max_float = (
+      canonicalizing_inf_as_min_max_float
   )
   return conversion_flags
 

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
@@ -85,8 +86,8 @@ class HloModuleConfig {
   explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Convert an HloModuleConfig to or from a proto.
-  StatusOr<HloModuleConfigProto> ToProto() const;
-  static StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
+  HloModuleConfigProto ToProto() const;
+  static absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateFromProto(
       const HloModuleConfigProto& proto);
 
   // Assigns the repeated ShardableValueUpdatePairProto field to the given
@@ -169,7 +170,7 @@ class HloModuleConfig {
     return param_requires_broadcast_via_collectives_;
   }
   void set_param_requires_broadcast_via_collectives(
-      const std::vector<bool> require_broadcast) {
+      std::vector<bool> require_broadcast) {
     param_requires_broadcast_via_collectives_ = std::move(require_broadcast);
   }
 
@@ -195,16 +196,16 @@ class HloModuleConfig {
   }
 
   void set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t> mesh_shape) {
-    auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+    auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_shape() const {
     return auto_spmd_partitioning_mesh_shape_;
   }
 
   void set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t> mesh_ids) {
-    auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+    auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   }
-  std::vector<int64_t> auto_spmd_partitioning_mesh_ids() const {
+  const std::vector<int64_t>& auto_spmd_partitioning_mesh_ids() const {
     return auto_spmd_partitioning_mesh_ids_;
   }
 
@@ -226,6 +227,7 @@ class HloModuleConfig {
   std::string compilation_cache_key() const;
 
   const DebugOptions& debug_options() const { return debug_options_; }
+  DebugOptions& mutable_debug_options() { return debug_options_; }
   void set_debug_options(const DebugOptions& debug_options) {
     debug_options_ = debug_options;
   }
@@ -250,6 +252,22 @@ class HloModuleConfig {
   }
   void set_static_device_assignment(const DeviceAssignment& device_assignment) {
     static_device_assignment_ = device_assignment;
+  }
+
+  // Checks if this config has a simulated device assignment.
+  bool has_pre_simulation_device_assignment() const {
+    return pre_simulation_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& pre_simulation_device_assignment() const {
+    CHECK(pre_simulation_device_assignment_.has_value());
+    return *pre_simulation_device_assignment_;
+  }
+
+  void set_pre_simulation_device_assignment(
+      const DeviceAssignment& device_assignment) {
+    pre_simulation_device_assignment_ = device_assignment;
   }
 
   bool allow_separate_sharding_programs() const {
@@ -324,8 +342,16 @@ class HloModuleConfig {
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
+  absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters() const {
+    return allow_spmd_sharding_propagation_to_parameters_;
+  }
   absl::Span<const bool> allow_spmd_sharding_propagation_to_output() const {
     return allow_spmd_sharding_propagation_to_output_;
+  }
+  void set_allow_spmd_sharding_propagation_to_parameters(
+      absl::Span<const bool> data) {
+    return allow_spmd_sharding_propagation_to_parameters_.assign(data.begin(),
+                                                                 data.end());
   }
   void set_allow_spmd_sharding_propagation_to_output(
       absl::Span<const bool> data) {
@@ -365,6 +391,11 @@ class HloModuleConfig {
   int64_t device_memory_size() const { return device_memory_size_; }
   void set_device_memory_size(int64_t device_memory_size) {
     device_memory_size_ = device_memory_size;
+  }
+
+  bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
+  void set_use_shardy_partitioner(bool use_shardy_partitioner) {
+    use_shardy_partitioner_ = use_shardy_partitioner;
   }
 
  private:
@@ -415,6 +446,9 @@ class HloModuleConfig {
   // Compile-time known device assignment.
   std::optional<DeviceAssignment> static_device_assignment_;
 
+  // Compile-time known device assignment.
+  std::optional<DeviceAssignment> pre_simulation_device_assignment_;
+
   bool allow_separate_sharding_programs_ = false;
 
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
@@ -453,6 +487,18 @@ class HloModuleConfig {
   // config across functions during compilation.
   int phase_index_ = 0;
 
+  // Allows sharding propagation to propagate to the parameters. This changes
+  // the input shape of the computation (which is undesirable), but it can be
+  // used to allow to run partial compilation to determine what would be the
+  // input sharding of a computation if XLA would be allowed to propagate the
+  // sharding which can be used by higher level framework as a way to query
+  // intermediate sharding of operations when multiple computation would be
+  // chained and merged together.
+  // This is a vector of bool, because the user can control which parameters can
+  // have the sharding substituted. If only one boolean value is passed in the
+  // vector that is interpreted as the value to be applied for every parameter.
+  absl::InlinedVector<bool, 1> allow_spmd_sharding_propagation_to_parameters_ =
+      {false};
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
   // to allow to run partial compilation to determine what would be the output
@@ -481,6 +527,8 @@ class HloModuleConfig {
   std::string fdo_profile_;
 
   int64_t device_memory_size_ = 0;
+
+  bool use_shardy_partitioner_ = false;
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };
 

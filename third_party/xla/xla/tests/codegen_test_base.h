@@ -29,14 +29,14 @@ namespace xla {
 class CodegenTestBase : public HloTestBase {
  protected:
   // Compiles hlo_module with the JIT compiler.
-  StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
       std::unique_ptr<HloModule> hlo_module,
       bool run_optimization_passes = true);
 
   // Compiles hlo_module with the AOT compiler.
-  StatusOr<std::unique_ptr<AotCompilationResult>> CompileToAotCompilationResult(
-      std::unique_ptr<HloModule> hlo_module,
-      const AotCompilationOptions& options);
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  CompileToAotCompilationResult(std::unique_ptr<HloModule> hlo_module,
+                                const AotCompilationOptions& options);
 };
 
 }  // namespace xla

@@ -44,7 +44,7 @@ Status ValidateNonRefOutput(const Node* node, int idx) {
   return IsRefType(dt)
              ? InvalidArgument("Output ", idx, " of node '", node->name(),
                                "' has a reference type ", DataTypeString(dt))
-             : OkStatus();
+             : absl::OkStatus();
 }
 
 // Converts `ninputs` and `inputs` into `inputs_tensors` and `input_nodes` and
@@ -83,7 +83,7 @@ Status ProcessInputs(
       indices.push_back(idx);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts `noutputs` and `outputs` into `outputs_tensors` and does various
@@ -105,7 +105,7 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
                                     fn_name, "'");
     output_tensors->emplace_back(node, idx);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates `body_nodes` with the nodes that will become function's body.
@@ -142,7 +142,7 @@ Status ComputeBodyNodes(
       body_nodes->push_back(node);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -294,7 +294,7 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
     func->record = new tensorflow::FunctionRecord(lib.function(i), {}, false);
     funcs[i] = func;
   }
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   return len;
 }
 
@@ -315,7 +315,7 @@ TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
 
   TF_Function* func = new TF_Function();
   func->record = new tensorflow::FunctionRecord(std::move(fdef), {}, false);
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
   return func;
 }
 
@@ -338,7 +338,7 @@ void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
 
   (*(fdef_or.value()->mutable_attr()))[string(attr_name)] = attr_value;
 
-  status->status = ::tensorflow::OkStatus();
+  status->status = absl::OkStatus();
 }
 
 void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,

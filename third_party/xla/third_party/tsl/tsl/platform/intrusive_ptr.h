@@ -32,7 +32,7 @@ class IntrusivePtr {
   // object needs to be externally managed.
   IntrusivePtr(T* h, bool add_ref) { reset(h, add_ref); }
   IntrusivePtr(const IntrusivePtr& o) { reset(o.handle_, /*add_ref=*/true); }
-  IntrusivePtr(IntrusivePtr&& o) { *this = std::move(o); }
+  IntrusivePtr(IntrusivePtr&& o) noexcept { *this = std::move(o); }
   IntrusivePtr() {}
   void reset(T* h, bool add_ref) {
     if (h != handle_) {
@@ -45,7 +45,7 @@ class IntrusivePtr {
     reset(o.handle_, /*add_ref=*/true);
     return *this;
   }
-  IntrusivePtr& operator=(IntrusivePtr&& o) {
+  IntrusivePtr& operator=(IntrusivePtr&& o) noexcept {
     if (handle_ != o.handle_) {
       // Must clear o.handle_ before calling reset to capture the case where
       // handle_->member == o. In this case, calling handle_->Unref first would

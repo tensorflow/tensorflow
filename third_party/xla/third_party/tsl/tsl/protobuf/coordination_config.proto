@@ -67,4 +67,8 @@ message CoordinationServiceConfig {
   // not specify any config. This field allows users to explicitly disable
   // coordination service under all situations.
   bool force_disable = 12;
+
+  // Use long polling to get error from coordination service as the error
+  // propagation mechanism.
+  bool poll_for_error_from_service_at_startup = 13;
 }

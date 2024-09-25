@@ -64,6 +64,16 @@ docker exec xla ./configure.py --backend=CUDA
 docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
+**NB:** please note that with hermetic CUDA rules, you don't have to build XLA
+in Docker. You can build XLA for GPU on your machine without GPUs and without
+NVIDIA driver installed:
+
+```sh
+./configure.py --backend=CUDA
+
+bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
+```
+
 Your first build will take quite a while because it has to build the entire
 stack, including XLA, MLIR, and StableHLO.
 
@@ -75,4 +85,4 @@ When you're ready to send changes for review, create a
 [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests).
 
 To learn about the XLA code review philosophy, see
-[Code reviews](code_reviews.md).
+[Review Process](contributing.md#review-process).

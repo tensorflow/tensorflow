@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "xla/service/all_reduce_key.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_domain_map.h"
 
 namespace xla {
 
@@ -32,7 +40,8 @@ std::optional<AllReduceKey> GetAllReduceKey(const HloInstruction* instruction,
 
   if (instruction->to_apply()->instruction_count() != 3 ||
       instruction->to_apply()->num_parameters() != 2) {
-    VLOG(1) << "Skipping due to non-trivial reduction function.";
+    VLOG(1) << "Skipping due to non-trivial reduction function: "
+            << instruction->to_apply()->ToString();
     return std::nullopt;
   }
 

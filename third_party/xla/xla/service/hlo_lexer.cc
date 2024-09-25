@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "xla/service/hlo_lexer.h"
 
+#include <cstdint>
 #include <cstring>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "xla/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/primitive_util.h"
 #include "xla/util.h"
 #include "tsl/platform/numbers.h"
 
@@ -347,6 +352,13 @@ TokKind HloLexer::LexIdentifier() {
       token_state_.str_val.assign(token_state_.token_start, current_ptr_);
       return TokKind::kDimLabels;
     }
+    static LazyRE2 sparsity_desc_pattern = {
+        R"(([LR]\.[0-9]+@[0-9]+:[0-9]+_?)+)"};
+    if (RE2::Consume(&consumable, *sparsity_desc_pattern)) {
+      current_ptr_ = consumable.data();
+      token_state_.str_val.assign(token_state_.token_start, current_ptr_);
+      return TokKind::kSparsityDesc;
+    }
   }
 
   token_state_.str_val = std::string(identifier);
@@ -638,6 +650,8 @@ std::string TokKindToString(TokKind kind) {
       return "kDxD";
     case TokKind::kPad:
       return "kPad";
+    case TokKind::kSparsityDesc:
+      return "kSparsityDesc";
     case TokKind::kIdent:
       return "kIdent";
     case TokKind::kString:

@@ -51,7 +51,7 @@ func.func @MulNoNan_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %
         %cast = tensor.cast %28 : tensor<?xelem_type> to tensor<*xelem_type>
         scf.yield %cast : tensor<*xelem_type>
       } else {
-        %22:2 = chlo.minimum_broadcast_shapes %6, %7 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
+        %22:2 = mhlo.minimum_broadcast_shapes %6, %7 : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>, tensor<?xindex>
         %23 = shape.rank %22#0 : tensor<?xindex> -> index
         %24 = shape.rank %22#1 : tensor<?xindex> -> index
         %25 = arith.cmpi sgt, %23, %24 : index

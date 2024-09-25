@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/ChloOps.h"
 
 namespace mlir {
@@ -49,10 +50,10 @@ static ElementsAttr getSplat(Builder* b, RankedTensorType ty, T constant) {
   if (elementTy.isSignlessInteger())
     return DenseElementsAttr::get(ty, b->getIntegerAttr(elementTy, constant));
 
-  if (elementTy.isa<FloatType>())
+  if (mlir::isa<FloatType>(elementTy))
     return DenseElementsAttr::get(ty, b->getFloatAttr(elementTy, constant));
 
-  if (auto complexTy = elementTy.dyn_cast<ComplexType>()) {
+  if (auto complexTy = mlir::dyn_cast<ComplexType>(elementTy)) {
     auto complexElementTy = complexTy.getElementType();
     if (complexElementTy.isF32())
       return DenseElementsAttr::get(ty,
@@ -66,7 +67,7 @@ static ElementsAttr getSplat(Builder* b, RankedTensorType ty, T constant) {
 
 template <typename T>
 static ElementsAttr getSplat(Builder* b, Value val, T constant) {
-  return getSplat(b, val.getType().cast<RankedTensorType>(), constant);
+  return getSplat(b, mlir::cast<RankedTensorType>(val.getType()), constant);
 }
 
 // Returns DenseElementsAttr of rank zero with the given element type and the
@@ -119,9 +120,9 @@ static Value getConstantLike(OpBuilder& b, Location loc, T constant,
                              Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
   auto getAttr = [&]() -> Attribute {
-    if (ty.isa<IntegerType>()) return b.getIntegerAttr(ty, constant);
-    if (ty.isa<FloatType>()) return b.getFloatAttr(ty, constant);
-    if (auto complexTy = ty.dyn_cast<ComplexType>())
+    if (mlir::isa<IntegerType>(ty)) return b.getIntegerAttr(ty, constant);
+    if (mlir::isa<FloatType>(ty)) return b.getFloatAttr(ty, constant);
+    if (auto complexTy = mlir::dyn_cast<ComplexType>(ty))
       return complex::NumberAttr::get(complexTy, constant, 0);
     llvm_unreachable("unhandled element type");
   };

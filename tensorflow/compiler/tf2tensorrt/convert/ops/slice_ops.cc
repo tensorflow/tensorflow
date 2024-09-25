@@ -275,7 +275,7 @@ Status HandleDynamicStridedSliceInput(
     begin_tensor = (*begin_corrected)->getOutput(0);
   }
 
-  // Calculate the final size of the slice dynamicaly.
+  // Calculate the final size of the slice dynamically.
   nvinfer1::ITensor* size_tensor;
   {
     StatusOr<nvinfer1::IElementWiseLayer*> num =

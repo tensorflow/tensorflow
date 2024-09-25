@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/log/check.h"
 #include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {

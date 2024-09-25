@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/regexp.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_schema.h"
@@ -46,6 +47,12 @@ std::optional<int> GetTensorCoreId(absl::string_view plane_name) {
   }
 
   return std::nullopt;
+}
+
+std::optional<int> GetSparseCoreId(absl::string_view plane_name) {
+  std::optional<int> core_id;
+  RE2::FullMatch(plane_name, {kSparseCorePlaneRegex}, &core_id);
+  return core_id;
 }
 
 }  // namespace profiler

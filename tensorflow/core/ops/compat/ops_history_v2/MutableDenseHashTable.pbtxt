@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MutableDenseHashTable"
   input_arg {
     name: "empty_key"

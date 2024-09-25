@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "pybind11/attr.h"  // from @pybind11
-#include "tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "Python.h"
@@ -537,7 +537,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
         TensorHandleFromInterface(abstract_tensor_handle));
   }
 
-  StatusOr<std::string> hlo_str;
+  absl::StatusOr<std::string> hlo_str;
   std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
   Device* selected_device =
       GetDevice(context, device_name, platform_name, devices);
@@ -902,7 +902,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             tensorflow::FunctionDef function_def;
             return function_def;
           }
-          status->status = ::tensorflow::OkStatus();
+          status->status = absl::OkStatus();
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return *ctx_function_def;
         });
@@ -1005,7 +1005,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           TFE_ContextSetServerDefWithTimeoutAndRetries(
               tensorflow::InputTFE_Context(ctx), keep_alive_secs,
               buf.get()->data, buf.get()->length, timeout, retries,
-              status.get());
+              status.get(), /*clear_existing_contexts=*/false);
           Py_END_ALLOW_THREADS;
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });

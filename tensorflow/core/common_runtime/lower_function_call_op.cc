@@ -18,9 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
@@ -86,6 +88,20 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
   std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(std::move(fdef), n->attrs(), &flib_def, &fbody));
+
+  if (flags::Global().enable_function_pruning_before_inlining.value()) {
+    // TODO(b/341325107): Enable this path by default and remove the flag.
+    VLOG(2) << "Pruning enabled before inlining";
+    // NOTE(mrry): We pass `fbody->arg_nodes` as an additional set of roots,
+    // because otherwise the `FunctionBody` state will become inconsistent.
+    // The unused `Identity` nodes will be colocated with the arguments, and
+    // pruned in a subsequent pass.
+    PruneFunctionBody(
+        fbody->record->fdef(), fbody->graph,
+        absl::Span<Node*>(fbody->arg_nodes.data(), fbody->arg_nodes.size()));
+  } else {
+    VLOG(2) << "Pruning disabled before inlining";
+  }
 
   Status can_inline_function_call =
       ValidateInlining(n, fbody.get(), inline_options);

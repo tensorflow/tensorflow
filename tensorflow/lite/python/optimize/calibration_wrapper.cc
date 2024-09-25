@@ -25,7 +25,7 @@ limitations under the License.
 // (non-virtual) accessor methods and API functions to be declared.
 // The code here uses those methods, so we need to make sure that we get
 // the mutable variant of this header.
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
 // clang-format on
@@ -114,6 +114,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;
     case kTfLiteFloat16:
       return TensorType_FLOAT16;
+    case kTfLiteBFloat16:
+      return TensorType_BFLOAT16;
     case kTfLiteFloat64:
       return TensorType_FLOAT64;
     case kTfLiteInt32:

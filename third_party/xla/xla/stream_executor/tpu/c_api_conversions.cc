@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -235,6 +234,12 @@ SE_DeviceMemoryAllocator ToC(
   return se_allocator;
 }
 
+stream_executor::DeviceMemoryAllocator* FromC(
+    const SE_DeviceMemoryAllocator& c_allocator) {
+  return reinterpret_cast<stream_executor::DeviceMemoryAllocator*>(
+      c_allocator.ctx);
+}
+
 SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceMemory* mem) {
   SE_MaybeOwningDeviceMemory se_mem;
   se_mem.device_ordinal = mem->device_ordinal();
@@ -388,6 +393,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
       c_layout->element_size_in_bits, c_layout->memory_space,
+      /*split_configs=*/{},
       /*physical_shape=*/nullptr,
       c_layout->dynamic_shape_metadata_prefix_bytes);
 }
@@ -430,8 +436,7 @@ XLA_ShapeIndex ToC(const xla::ShapeIndex& xla_shape) {
 }
 
 xla::ShapeIndex FromC(XLA_ShapeIndex* c_shape) {
-  return xla::ShapeIndex(&c_shape->indices[0],
-                         &c_shape->indices[c_shape->count]);
+  return xla::ShapeIndex(c_shape->indices, c_shape->indices + c_shape->count);
 }
 
 void ToC(const xla::LiteralSlice& literal, XLA_Literal* c_literal) {
@@ -499,7 +504,7 @@ XLA_HloModule ToC(const xla::HloModule& module) {
   return c_module;
 }
 
-xla::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> FromC(
     const XLA_HloModule& c_module) {
   xla::HloModuleProto module_proto =
       stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
@@ -534,6 +539,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  CreateVector(config.allow_spmd_sharding_propagation_to_parameters(),
+               &hlo_config.allow_spmd_sharding_propagation_to_parameters);
   CreateVector(config.allow_spmd_sharding_propagation_to_output(),
                &hlo_config.allow_spmd_sharding_propagation_to_output);
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
@@ -547,7 +554,7 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
 
   if (config.has_static_device_assignment()) {
     xla::DeviceAssignmentProto dev_proto;
-    config.static_device_assignment().Serialize(&dev_proto).IgnoreError();
+    config.static_device_assignment().Serialize(&dev_proto);
     hlo_config.static_device_assignment =
         stream_executor::tpu::SerializeProto(dev_proto);
   }
@@ -582,17 +589,18 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  config.set_allow_spmd_sharding_propagation_to_parameters(
+      MakeSpan(c_config.allow_spmd_sharding_propagation_to_parameters));
   config.set_allow_spmd_sharding_propagation_to_output(
       MakeSpan(c_config.allow_spmd_sharding_propagation_to_output));
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
-  std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),
-                                  mesh_shape_span.end());
-  config.set_auto_spmd_partitioning_mesh_shape(mesh_shape);
+  config.set_auto_spmd_partitioning_mesh_shape(
+      std::vector<int64_t>(mesh_shape_span.begin(), mesh_shape_span.end()));
   absl::Span<const int64_t> mesh_ids_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_ids);
-  std::vector<int64_t> mesh_ids(mesh_ids_span.begin(), mesh_ids_span.end());
-  config.set_auto_spmd_partitioning_mesh_ids(mesh_ids);
+  config.set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t>(mesh_ids_span.begin(), mesh_ids_span.end()));
   if (c_config.has_static_device_assignment) {
     auto device_assignment = xla::DeviceAssignment::Deserialize(
         stream_executor::tpu::DeserializeProto<xla::DeviceAssignmentProto>(

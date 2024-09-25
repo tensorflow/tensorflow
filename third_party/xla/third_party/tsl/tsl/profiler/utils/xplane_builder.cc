@@ -25,6 +25,7 @@ limitations under the License.
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/math_utils.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tsl {
 namespace profiler {
@@ -144,6 +145,16 @@ XLineBuilder XPlaneBuilder::GetOrCreateLine(int64_t line_id) {
     line->set_id(line_id);
   }
   return XLineBuilder(line, this);
+}
+
+XEventBuilder XLineBuilder::AddEvent(const Timespan& timespan,
+                                     const XEventMetadata& metadata) {
+  XEvent* event = line_->add_events();
+  event->set_metadata_id(metadata.id());
+  XEventBuilder builder(line_, plane_, event);
+  builder.SetOffsetPs(timespan.begin_ps());
+  builder.SetDurationPs(timespan.duration_ps());
+  return builder;
 }
 
 XEventBuilder XLineBuilder::AddEvent(const XEventMetadata& metadata) {

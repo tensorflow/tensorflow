@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tsl {
 
-string RocmRoot() {
+std::string RocmRoot() {
 #if TENSORFLOW_USE_ROCM
   if (const char* rocm_path_env = std::getenv("ROCM_PATH")) {
     VLOG(3) << "ROCM root = " << rocm_path_env;
@@ -40,6 +40,12 @@ string RocmRoot() {
 #endif
 }
 
-string RocdlRoot() { return io::JoinPath(RocmRoot(), "amdgcn/bitcode"); }
+std::string RocdlRoot() {
+  if (const char* device_lib_path_env = std::getenv("HIP_DEVICE_LIB_PATH")) {
+    return device_lib_path_env;
+  } else {
+    return io::JoinPath(RocmRoot(), "amdgcn/bitcode");
+  }
+}
 
 }  // namespace tsl

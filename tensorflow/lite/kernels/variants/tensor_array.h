@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/util.h"
 

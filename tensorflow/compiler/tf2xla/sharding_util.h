@@ -33,24 +33,24 @@ namespace tensorflow {
 // - explicit_sharding if explicit_sharding.has_value()
 // - a non-value if there is no assigned core or
 // - a sharding set as per xla::sharding_builder::AssignDevice.
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding = std::nullopt,
     std::optional<xla::OpMetadata> metadata = std::nullopt);
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata);
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata);
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata);
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 
 // Get sharding inforamtion from node.
-StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
+absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata);
 
 }  // namespace tensorflow

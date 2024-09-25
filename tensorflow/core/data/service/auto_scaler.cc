@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -143,7 +144,7 @@ absl::Status AutoScaler::ReportProcessingTime(const std::string& worker_address,
   tsl::mutex_lock l(mu_);
   worker_throughputs_[worker_address] = worker_throughput;
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status AutoScaler::ReportTargetProcessingTime(
@@ -160,7 +161,7 @@ absl::Status AutoScaler::ReportTargetProcessingTime(
   tsl::mutex_lock l(mu_);
   consumption_rates_[consumer_id] = consumption_rate;
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status AutoScaler::RemoveWorker(const std::string& worker_address)
@@ -172,7 +173,7 @@ absl::Status AutoScaler::RemoveWorker(const std::string& worker_address)
 
   worker_throughputs_.erase(worker_address);
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
@@ -184,7 +185,7 @@ absl::Status AutoScaler::RemoveConsumer(int64_t consumer_id)
 
   consumption_rates_.erase(consumer_id);
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 void MultipleIterationsAutoScaler::EnsureIterationIsRegistered(
@@ -201,7 +202,7 @@ absl::Status MultipleIterationsAutoScaler::UnregisterIteration(
     return absl::NotFoundError(absl::StrCat("AutoScaler for iteration_id ",
                                             iteration_id, " does not exist"));
   auto_scalers_.erase(iteration_id);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric(
@@ -239,7 +240,7 @@ absl::Status MultipleIterationsAutoScaler::UpdateOptimalNumberOfWorkersMetric(
   metrics::RecordTFDataServiceOptimalNumberOfWorkers(
       bound_optimal_number_of_workers);
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 std::optional<int64_t> MultipleIterationsAutoScaler::GetOptimalNumberOfWorkers()

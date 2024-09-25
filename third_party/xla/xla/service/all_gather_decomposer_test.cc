@@ -16,17 +16,17 @@ limitations under the License.
 #include "xla/service/all_gather_decomposer.h"
 
 #include <memory>
+#include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

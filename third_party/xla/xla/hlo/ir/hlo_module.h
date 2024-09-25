@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/iterator_util.h"
 #include "xla/printer.h"
@@ -44,14 +46,14 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
 using LayoutCanonicalizationCallback =
-    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+    std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
 
 // Helper class to maintain a copy-on-write storage of an object of the
@@ -163,10 +165,10 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   // Removes an embedded computation.
-  Status RemoveEmbeddedComputation(HloComputation* to_remove);
+  absl::Status RemoveEmbeddedComputation(HloComputation* to_remove);
 
   // Removes unused computations.
-  Status RemoveUnusedComputations();
+  absl::Status RemoveUnusedComputations();
 
   // Marks duplicate fusions with the same name to be able to group them for
   // analysis purposes (e.g. through Xprof).
@@ -451,25 +453,25 @@ class HloModule {
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
-  static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
       const HloModuleProto& proto, const HloModuleConfig& module_config,
       bool prohibit_empty_literal = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  StatusOr<HloModuleProtoWithConfig> ToProtoWithConfig() const;
-  static StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
+  HloModuleProtoWithConfig ToProtoWithConfig() const;
+  static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto,
       bool prohibit_empty_literal = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
-  static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
+  static absl::StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
       const HloModuleProto& module, const DebugOptions& debug_options,
       const ExecutionOptions* execution_options = nullptr);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.
-  static StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
+  static absl::StatusOr<HloModuleConfig> CreateModuleConfigFromShape(
       const ProgramShape& program_shape, const DebugOptions& debug_options,
       const ExecutionOptions* execution_options = nullptr);
 
@@ -490,6 +492,9 @@ class HloModule {
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
 
+  // Returns the NameUniquer for uniquing computation names in this module.
+  NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
+
   // Assign a new unique dense id for an instruction
   int NewUniqueInstructionId() {
     int result = next_unique_id_;
@@ -505,6 +510,9 @@ class HloModule {
   const HloInputOutputAliasConfig& input_output_alias_config() const {
     return input_output_alias_config_;
   }
+  void set_input_output_alias_config(HloInputOutputAliasConfig config) {
+    input_output_alias_config_ = std::move(config);
+  }
 
   // buffer_donor_config_ indicates the set of input buffer donors that are
   // expected from the module.
@@ -512,13 +520,16 @@ class HloModule {
   const HloBufferDonorConfig& buffer_donor_config() const {
     return buffer_donor_config_;
   }
+  void set_buffer_donor_config(HloBufferDonorConfig config) {
+    buffer_donor_config_ = std::move(config);
+  }
 
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
 
   // Sets the schedule of the module to the given schedule.
-  Status set_schedule(HloSchedule schedule);
+  absl::Status set_schedule(HloSchedule schedule);
 
   // Clears the schedule of the module.
   void clear_schedule() { schedule_.reset(); }
@@ -529,6 +540,13 @@ class HloModule {
   // Returns the schedule of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
+
+  HloComputation* AddComputation(std::unique_ptr<HloComputation> computation,
+                                 bool is_entry) {
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/false,
+                                  /*preserve_entry_layouts=*/true);
+  }
 
   HloComputation* AddComputationAndUnifyNamesAndIds(
       std::unique_ptr<HloComputation> computation, bool is_entry) {
@@ -552,7 +570,7 @@ class HloModule {
     computation->UniquifyName(&computation_name_uniquer_);
   }
 
-  Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
+  absl::Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
   // Checks if this config has a list of entry parameters' HLO shardings for
   // SPMD.
@@ -605,13 +623,14 @@ class HloModule {
         CrossProgramPrefetchInfo{parameter, index, alt_memory_offset});
   }
 
-  Status SetCrossProgramPrefetchOffset(int64_t prefetch_index, int64_t offset) {
+  absl::Status SetCrossProgramPrefetchOffset(int64_t prefetch_index,
+                                             int64_t offset) {
     TF_RET_CHECK(prefetch_index < cross_program_prefetches_.size());
     auto& [parameter, index, optional_offset] =
         cross_program_prefetches_[prefetch_index];
     TF_RET_CHECK(!optional_offset.has_value());
     optional_offset = offset;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of program arguments to be prefetch across programs.

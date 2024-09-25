@@ -70,7 +70,7 @@ Status GetDimsFromIx(const Tensor& ix, int* result) {
   result->shape_.assign(shape.begin(), shape.end());
   result->order_.assign(order.begin(), order.end());
   result->dims_ = dims;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */ Status SparseTensor::Create(Tensor ix, Tensor vals,
@@ -257,7 +257,7 @@ Status SparseTensor::IndicesValidHelper() const {
       if (!valid) {
         return errors::InvalidArgument(index,
                                        " is out of bounds: need 0 <= index < [",
-                                       str_util::Join(shape_, ","), "]");
+                                       absl::StrJoin(shape_, ","), "]");
       }
       if (!increasing) {
         return errors::InvalidArgument(
@@ -272,12 +272,12 @@ Status SparseTensor::IndicesValidHelper() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SparseTensor::IndicesValid() const {
   if (shape_.size() == 1 && IndicesValidVectorFastPath()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool standard_order = true;
@@ -293,13 +293,13 @@ Status SparseTensor::IndicesValid() const {
   if (standard_order) {
     if (shape_.size() == 1) {
       if (IndicesValidVectorFastPath()) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     } else if (shape_.size() == 2 &&
                shape_[0] <= std::numeric_limits<int32>::max() &&
                shape_[1] <= std::numeric_limits<int32>::max()) {
       if (IndicesValidMatrix32BitFastPath()) {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     return IndicesValidHelper<true>();

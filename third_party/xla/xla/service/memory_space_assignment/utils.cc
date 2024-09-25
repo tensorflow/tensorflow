@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/service/memory_space_assignment/utils.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -65,19 +70,6 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
               << " in default mem because it is a send/recv buffer used for "
                  "host transfer.";
       return false;
-    }
-
-    // TODO(berkin): disable aliased custom calls until NaN issue is resolved.
-    if (auto* callable =
-            DynCast<HloCallableInstruction>(position.instruction)) {
-      for (const auto& pair : callable->output_to_operand_aliasing()) {
-        if (position.index == pair.first) {
-          VLOG(4) << "Keeping value " << value->ToShortString()
-                  << " in default mem because it is a custom-call/fusion output"
-                     " that aliases an operand buffer.";
-          return false;
-        }
-      }
     }
 
     // If the tensor is pre-colored to a memory space that is neither the

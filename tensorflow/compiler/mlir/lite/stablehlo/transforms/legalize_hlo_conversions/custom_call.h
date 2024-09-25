@@ -16,27 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CUSTOM_CALL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_LEGALIZE_HLO_CONVERSIONS_CUSTOM_CALL_H_
 
-#include <optional>
-
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
 
-class ConvertCustomCallOp : public OpConversionPattern<mhlo::CustomCallOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
+void PopulateCustomCallPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                                ConversionTarget& target);
 
-  LogicalResult matchAndRewrite(
-      mhlo::CustomCallOp mhlo_custom_call, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const final;
-};
-
-// Ops that have a call_target_name starting with the prefix "custom_call." and
-// backend_config of type StringAttr (if specified) should be legalized (i.e.
-// considered to be illegal if still present after this pass is complete).
-std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op);
+void PopulateCustomCallPreparePatterns(MLIRContext* ctx,
+                                       RewritePatternSet& patterns);
 
 }  // namespace odml
 }  // namespace mlir

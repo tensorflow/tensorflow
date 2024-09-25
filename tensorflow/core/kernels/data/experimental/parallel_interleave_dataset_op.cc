@@ -164,7 +164,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
     std::vector<std::pair<size_t, Node*>> inputs;
-    std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>> list_inputs;
+    std::vector<std::pair<size_t, absl::Span<Node* const>>> list_inputs;
     int input_index = 0;
 
     Node* input_node;
@@ -340,8 +340,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             }
             *end_of_sequence = false;
             Status s = current_worker->outputs.front().status;
-            profiler::TraceMe traceme([&] {
-              return profiler::TraceMeEncode(
+            tsl::profiler::TraceMe traceme([&] {
+              return tsl::profiler::TraceMeEncode(
                   "ParallelInterleaveConsume",
                   {{"element_id", current_worker->outputs.front().id}});
             });
@@ -873,10 +873,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                   !worker_thread_states_[thread_index].end_of_sequence) {
                 int64_t& id =
                     worker_thread_states_[thread_index].output_elem.id;
-                profiler::TraceMe traceme(
+                tsl::profiler::TraceMe traceme(
                     [&] {
-                      id = profiler::TraceMe::NewActivityId();
-                      return profiler::TraceMeEncode(
+                      id = tsl::profiler::TraceMe::NewActivityId();
+                      return tsl::profiler::TraceMeEncode(
                           "ParallelInterleaveProduce", {{"element_id", id}});
                     },
                     profiler::kInfo);

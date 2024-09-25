@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -44,7 +44,7 @@ class HloLivenessAnalysis {
 
   // Runs liveness analysis on 'module'. Returns HloLivenessAnalysis object
   // which exports liveness for each {HloInstruction, ShapeIndex} in 'module'.
-  static StatusOr<std::unique_ptr<HloLivenessAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloLivenessAnalysis>> Run(
       const HloModule& module);
 
   // Returns true if output of 'instruction' at 'shape_index' is live.

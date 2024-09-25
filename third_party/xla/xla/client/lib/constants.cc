@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/status/statusor.h"
+#include "xla/client/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -35,7 +38,7 @@ XlaOp Zeros(XlaBuilder* builder, const Shape& shape) {
 
 XlaOp ZerosLike(XlaOp prototype) {
   XlaBuilder* builder = prototype.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     return Zeros(builder, shape);
   });

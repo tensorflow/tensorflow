@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 #define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 
-#include <cstdint>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"

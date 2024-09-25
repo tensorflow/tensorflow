@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -351,8 +352,10 @@ bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
   }
   // Do not change precision for side-effecting instructions, control flow, and
   // bitcast-convert, because this pass might break the interfaces or
-  // assumptions for them.
-  return inst->opcode() == HloOpcode::kCustomCall ||
+  // assumptions for them. It is safe to change precision for AllocateBuffer
+  // since it is merely a buffer allocation and does not have any side effects.
+  return (inst->opcode() == HloOpcode::kCustomCall &&
+          !inst->IsCustomCall("AllocateBuffer")) ||
          inst->opcode() == HloOpcode::kCall ||
          inst->opcode() == HloOpcode::kBitcastConvert ||
          inst->HasSideEffectNoRecurse();
@@ -576,7 +579,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       auto hlo = *inst_it;
       auto adjust_hlo_output = [&](const Shape& /* subshape */,
                                    const ShapeIndex& index) {
-        auto output_type = OutputTypeAfterChange(hlo, index);
+        const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
         VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
                 << " for :" << hlo->ToString() << "\n";
         if (output_type != F32 && output_type != BF16) {
@@ -708,7 +711,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   }
 }
 
-Status BFloat16Propagation::ResolveInconsistentFusions(
+absl::Status BFloat16Propagation::ResolveInconsistentFusions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We could have changed a fusion computation's root shape to have a different
@@ -768,10 +771,10 @@ Status BFloat16Propagation::ResolveInconsistentFusions(
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BFloat16Propagation::ResolveConvertedConstants(
+absl::Status BFloat16Propagation::ResolveConvertedConstants(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We may have converted some constants from F32 to BF16, so adjust the
@@ -800,10 +803,10 @@ Status BFloat16Propagation::ResolveConvertedConstants(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BFloat16Propagation::SkipNoopConversions(
+absl::Status BFloat16Propagation::SkipNoopConversions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto computation : module->computations(execution_threads)) {
@@ -822,7 +825,7 @@ Status BFloat16Propagation::SkipNoopConversions(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -831,7 +834,7 @@ Status BFloat16Propagation::SkipNoopConversions(
 // their users. During the backward pass, the potential changes are stored in
 // changes_to_bf16_ which are subject to further adjustments then applied to the
 // HLOs.
-StatusOr<bool> BFloat16Propagation::Run(
+absl::StatusOr<bool> BFloat16Propagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   consider_using_bfloat16_.clear();
@@ -967,7 +970,7 @@ StatusOr<bool> BFloat16Propagation::Run(
         tuple_simplifier.Run(module, execution_threads).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (!changed_) {
@@ -1017,6 +1020,9 @@ void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
     }
     it->second.erase(
         ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+    if (it->second.empty()) {
+      changes_to_bf16_.erase(it);
+    }
   }
 }
 

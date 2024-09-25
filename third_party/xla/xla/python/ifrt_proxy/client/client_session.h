@@ -20,7 +20,6 @@
 #include <memory>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 
@@ -35,10 +34,7 @@ namespace proxy {
 // `ClientSession` implementation must be thread-safe.
 class ClientSession {
  public:
-  // `Response` represents either an `IfrtResponse` value, or an `absl::Status`
-  // value corresponding to termination of the session stream. Value will never
-  // be a nullptr with OK status.
-  using Response = absl::StatusOr<std::shared_ptr<IfrtResponse>>;
+  using Response = std::shared_ptr<IfrtResponse>;
 
   virtual ~ClientSession() = default;
 

@@ -21,11 +21,15 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "xla/array.h"
+#include "xla/array2d.h"
 #include "xla/client/xla_builder.h"
-#include "xla/test.h"
+#include "xla/error_spec.h"
+#include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

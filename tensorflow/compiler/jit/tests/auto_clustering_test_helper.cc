@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/tests/auto_clustering_test_helper.h"
 
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -33,7 +33,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-StatusOr<string> SummarizeClustering(const GraphDef& auto_clustered_graph_def) {
+absl::StatusOr<string> SummarizeClustering(
+    const GraphDef& auto_clustered_graph_def) {
   testing::ResetClusterSequenceNumber();
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions graph_opts;

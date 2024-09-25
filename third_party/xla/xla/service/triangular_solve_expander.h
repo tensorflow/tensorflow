@@ -36,7 +36,7 @@ class TriangularSolveExpander : public OpExpanderPass {
 
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
   // Performs a triangular solve using an algorithm from MAGMA, which inverts

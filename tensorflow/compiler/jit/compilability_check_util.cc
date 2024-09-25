@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/service/graphcycles/graphcycles.h"
-#include "xla/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -86,10 +86,10 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
+absl::StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
     const Node& node, absl::string_view attr_name,
     absl::string_view call_name) {
   std::vector<NameAttrList> attr_lists;
@@ -235,7 +235,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCase(
     NameAttrList* encapsulating_function,
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
-  StatusOr<std::vector<NodeDef>> calls =
+  absl::StatusOr<std::vector<NodeDef>> calls =
       MakeCallNodesFromAttribute(case_node, "branches", "branch");
   if (!calls.ok()) {
     VLOG(2) << "Rejecting node " << case_node.name() << ": "
@@ -660,7 +660,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::MemoryTypeVector GetInputMemoryTypes(
@@ -734,7 +734,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaVariadicSort",
                                          "XlaWhile"};
 
-static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
+bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
   return node.attr().find(kXlaClusterIdAttr) != node.attr().end() ||
          HasBoolAttr(node, kXlaMustCompileAttr) ||
          HasBoolAttr(node, kXlaCompileAttr) ||

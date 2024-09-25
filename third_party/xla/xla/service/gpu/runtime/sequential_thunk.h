@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +35,7 @@ class SequentialThunk : public Thunk {
 
   ThunkSequence& thunks() { return thunks_; }
   const ThunkSequence& thunks() const { return thunks_; }
-  std::string ToStringExtra(int indent) const override;
+  std::string ToString(int indent) const override;
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;

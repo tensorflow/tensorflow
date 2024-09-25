@@ -21,6 +21,10 @@ include "mlir/Pass/PassBase.td"
 def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
   let summary = "Pass to transform a gpu module to nvvm.";
   let dependentDialects = ["LLVM::LLVMDialect", "NVVM::NVVMDialect"];
+  let options = [
+      Option<"useBarePtrCallConv", "use-bare-ptr-call-conv", "bool",
+             /*default=*/"false", "Use bare pointer memref to llvm lowering">,
+  ];
   let constructor = "createGpuKernelToNvvmPass()";
 }
 

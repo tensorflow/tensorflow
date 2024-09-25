@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "NonDeterministicInts"
   input_arg {
     name: "shape"

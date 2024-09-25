@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using llvm::cl::opt;
 
 // TODO(jpienaar): Revise the command line option parsing here.
@@ -166,6 +168,12 @@ opt<bool> enable_hlo_to_tf_conversion(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+opt<bool> disable_hlo_to_tfl_conversion(
+    "disable-hlo-to-tfl-conversion",
+    llvm::cl::desc("Whether to disable the hlo to tfl ops conversion."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 opt<bool> preserve_assert_op(
     "preserve-assert-op",
     llvm::cl::desc("Preserve AssertOp during tfl legalization."),
@@ -193,7 +201,7 @@ opt<bool> legalize_custom_tensor_list_ops(
 // NOLINTNEXTLINE
 opt<bool> serialize_stablehlo_ops(
     "serialize-stablehlo-ops",
-    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::desc("Whether serialize stablehlo ops or not"),
     llvm::cl::init(true));
 
 // NOLINTNEXTLINE

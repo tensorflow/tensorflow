@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/source_code.h"
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace generator {
@@ -46,7 +49,7 @@ void SourceCode::DecreaseIndent() { current_indent_--; }
 
 void SourceCode::ValidateAndAddLine(int indent, const string& raw_line) {
   StringPiece line(raw_line);
-  bool had_trailing_newline = str_util::ConsumeSuffix(&line, "\n");
+  bool had_trailing_newline = absl::ConsumeSuffix(&line, "\n");
 
   if (absl::StrContains(line, '\n')) {
     LOG(ERROR) << "Attempt to add multiple lines; bad formatting is likely.";

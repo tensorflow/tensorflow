@@ -71,7 +71,7 @@ bool IsIllegalType(Type type) {
 // If input is not TF qint types, returns the original type.
 Type ToLegalType(Type type) {
   if (IsTFQintType(type)) return GetIntTypeFromTFQint(type);
-  if (auto shaped = type.dyn_cast<ShapedType>()) {
+  if (auto shaped = mlir::dyn_cast<ShapedType>(type)) {
     Type elem = shaped.getElementType();
     if (IsTFQintType(elem)) return shaped.clone(ToLegalType(elem));
   }
@@ -202,10 +202,13 @@ class TFQuantTypePattern : public ConversionPattern {
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_results, op->getAttrs(), op->getSuccessors());
     for (Region &region : op->getRegions()) {
-      Region &new_region = *state.addRegion();
-      rewriter.inlineRegionBefore(region, new_region, new_region.begin());
-      if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
+      auto new_region = std::make_unique<Region>(op);
+      rewriter.inlineRegionBefore(region, *new_region, new_region->begin());
+      if (failed(rewriter.convertRegionTypes(new_region.get(),
+                                             *getTypeConverter()))) {
         return failure();
+      }
+      state.addRegion(std::move(new_region));
     }
     rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
@@ -289,7 +292,7 @@ class TFConstOpQuantToIntPattern : public OpConversionPattern<TF::ConstOp> {
     }
     auto dense_attr_or = GetDenseAttrFromTensorProtoAttr(
         tensor_proto_attr.getValue(),
-        ToLegalType(op.getOutput().getType()).dyn_cast<TensorType>());
+        mlir::dyn_cast<TensorType>(ToLegalType(op.getOutput().getType())));
     if (failed(dense_attr_or)) {
       op->emitError("failed to get DenseElementAttr.");
       return failure();

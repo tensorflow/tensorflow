@@ -295,11 +295,9 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
-  size_t alloc_bytes = num_bytes;
+  // This buffer may be consumed by XNNPack.
+  size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
   // TODO(b/145340303): Tensor data should be aligned.
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  alloc_bytes += 16;  // XNNPACK_EXTRA_BYTES = 16
-#endif
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(alloc_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -370,6 +368,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteBFloat16:
+      return "BFLOAT16";
     case kTfLiteFloat64:
       return "FLOAT64";
     case kTfLiteResource:

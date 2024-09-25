@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -41,16 +42,16 @@ static SmallVector<int64_t> getInversePermutation(
 
 bool isCanonicalScatter(ScatterOp scatterOp) {
   if (llvm::any_of(scatterOp.getOperandTypes(), [](Type operandType) {
-        return !operandType.isa<RankedTensorType>();
+        return !mlir::isa<RankedTensorType>(operandType);
       }))
     return false;
 
   ScatterDimensionNumbersAttr dimsAttrs =
       scatterOp.getScatterDimensionNumbers();
   auto indicesType =
-      scatterOp.getScatterIndices().getType().cast<RankedTensorType>();
+      mlir::cast<RankedTensorType>(scatterOp.getScatterIndices().getType());
   auto operandType =
-      scatterOp.getOperands().front().getType().cast<RankedTensorType>();
+      mlir::cast<RankedTensorType>(scatterOp.getOperands().front().getType());
 
   return indicesType.getRank() == 2 && dimsAttrs.getIndexVectorDim() == 1 &&
          dimsAttrs.getInsertedWindowDims().empty() &&
@@ -86,7 +87,7 @@ Value insertDegenerateDimensions(OpBuilder& b, Location loc, Value tensor,
                                  ArrayRef<int64_t> dimsToInsert) {
   assert(llvm::is_sorted(dimsToInsert) && "dimsToInsert must be sorted");
   if (dimsToInsert.empty()) return tensor;
-  TensorType type = tensor.getType().cast<TensorType>();
+  TensorType type = mlir::cast<TensorType>(tensor.getType());
   SmallVector<int64_t> newShape{type.getShape()};
   for (int64_t dim : dimsToInsert) newShape.insert(newShape.begin() + dim, 1);
   auto newType = RankedTensorType::get(newShape, type.getElementType());
@@ -104,7 +105,7 @@ Value insertDegenerateDimensions(OpBuilder& b, Location loc, Value tensor,
 static Value ensureIndexVectorDimPosition(OpBuilder& b, Location loc,
                                           Value indices,
                                           int64_t indexVectorDim) {
-  int64_t indicesRank = indices.getType().cast<TensorType>().getRank();
+  int64_t indicesRank = mlir::cast<TensorType>(indices.getType()).getRank();
   if (indexVectorDim == indicesRank - 1) return indices;
   if (indexVectorDim == indicesRank)
     return insertDegenerateDimensions(b, loc, indices, {indicesRank});
@@ -121,7 +122,7 @@ Value canonicalizeStartIndices(OpBuilder& b, Location loc, Value indices,
                                int64_t indexVectorDim) {
   indices = ensureIndexVectorDimPosition(b, loc, indices, indexVectorDim);
 
-  int64_t indicesRank = indices.getType().cast<TensorType>().getRank();
+  int64_t indicesRank = mlir::cast<TensorType>(indices.getType()).getRank();
 
   if (indicesRank == 2) return indices;
   if (indicesRank == 1) return insertDegenerateDimensions(b, loc, indices, {0});

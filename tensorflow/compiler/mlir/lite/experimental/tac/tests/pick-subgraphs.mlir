@@ -93,12 +93,12 @@ module {
   }
 
 // CHECK:       func @main([[VAL_0:%.*]]: tensor<1x200x200x200xf32>) -> tensor<2x1x200x200x200xf32> attributes {tf.entry_function = {inputs = "Placeholder", outputs = "mul_1"}} {
-// CHECK:           [[VAL_1:%.*]] = "tfl.pseudo_const"() {value = dense<0.962260901> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK:           [[VAL_1:%.*]] = "tfl.pseudo_const"() <{value = dense<0.962260901> : tensor<1xf32>}> : () -> tensor<1xf32>
 // CHECK:           [[VAL_2:%.*]] = call @func_0_GPU_FLOAT([[VAL_0]], [[VAL_1]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x200x200x200xf32>, tensor<1xf32>) -> tensor<1x200x200x200xf32>
-// CHECK:           [[VAL_3:%.*]] = "tfl.pseudo_const"() {value = dense<0.895973444> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK:           [[VAL_3:%.*]] = "tfl.pseudo_const"() <{value = dense<0.895973444> : tensor<1xf32>}> : () -> tensor<1xf32>
 // CHECK:           [[VAL_4:%.*]] = call @func_1_GPU_FLOAT([[VAL_0]], [[VAL_3]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<1x200x200x200xf32>, tensor<1xf32>) -> tensor<1x200x200x200xf32>
 // CHECK:           [[VAL_5:%.*]] = call @func_2_GPU_FLOAT([[VAL_4]], [[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} : (tensor<1x200x200x200xf32>, tensor<1x200x200x200xf32>) -> tensor<2x1x200x200x200xf32>
-// CHECK:           [[VAL_6:%.*]] = "tfl.pseudo_const"() {value = dense<0.0778453499> : tensor<1xf32>} : () -> tensor<1xf32>
+// CHECK:           [[VAL_6:%.*]] = "tfl.pseudo_const"() <{value = dense<0.0778453499> : tensor<1xf32>}> : () -> tensor<1xf32>
 // CHECK:           [[VAL_7:%.*]] = call @func_3_GPU_FLOAT([[VAL_5]], [[VAL_6]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_3"} : (tensor<2x1x200x200x200xf32>, tensor<1xf32>) -> tensor<2x1x200x200x200xf32>
 // CHECK:           return [[VAL_7]] : tensor<2x1x200x200x200xf32>
 // CHECK:         }

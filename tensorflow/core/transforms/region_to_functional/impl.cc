@@ -518,7 +518,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
   // For each argument and result, lookup a name and regenerate output shapes.
   const auto build_attrs = [&](ArrayAttr attr, auto &it,
                                std::optional<ValueRange> args) {
-    NamedAttrList attrs(attr ? attr[it.index()].template cast<DictionaryAttr>()
+    NamedAttrList attrs(attr ? mlir::cast<DictionaryAttr>(attr[it.index()])
                              : DictionaryAttr());
     // If no name was preserved, try to find one.
     if (!attrs.get(ids_.tfg_name)) {
@@ -548,7 +548,7 @@ NamedAttrList BasePattern::BuildAttributes(RegionAttr preserved,
 StringAttr BasePattern::TryFindName(Value value,
                                     std::optional<ValueRange> args) const {
   // If this is an op result, return the op's name.
-  if (auto result = value.dyn_cast<OpResult>()) {
+  if (auto result = mlir::dyn_cast<OpResult>(value)) {
     Operation *op = result.getOwner();
     if (auto name =
             op->getAttrOfType<StringAttr>(dialect_.getNameAttrIdentifier())) {
@@ -558,7 +558,7 @@ StringAttr BasePattern::TryFindName(Value value,
     return {};
   }
 
-  auto arg = value.cast<BlockArgument>();
+  auto arg = mlir::cast<BlockArgument>(value);
   Operation *parent = arg.getOwner()->getParentOp();
   auto iface = dyn_cast<ControlArgumentInterface>(parent);
   if (!iface) return {};
@@ -904,12 +904,11 @@ LogicalResult ConvertCaseLikeOp<CaseLikeRegionOp, CaseLikeOp>::matchAndRewrite(
     // Get the preserved attributes, if there are any.
     RegionAttr preserved =
         op.getRegionAttrs()
-            ? op.getRegionAttrsAttr()[idx].template cast<RegionAttr>()
+            ? mlir::cast<RegionAttr>(op.getRegionAttrsAttr()[idx])
             : nullptr;
     DictionaryAttr attrs =
-        branch_func_attrs
-            ? branch_func_attrs[idx].template cast<DictionaryAttr>()
-            : nullptr;
+        branch_func_attrs ? mlir::cast<DictionaryAttr>(branch_func_attrs[idx])
+                          : nullptr;
     branch_regions.push_back(BasePattern::RegionFunction{
         it.value(), preserved, attrs, ("case_function_" + Twine(idx)).str()});
   }

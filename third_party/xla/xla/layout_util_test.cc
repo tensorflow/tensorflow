@@ -593,5 +593,27 @@ TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
   EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
 }
 
+TEST_F(LayoutUtilTest, MaxSplitSize) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2})
+                                .add_split_configs(SplitConfig(0, {30}))
+                                .add_split_configs(SplitConfig(1, {40, 130}));
+
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 0), 150);
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 1), 90);
+  EXPECT_EQ(LayoutUtil::MaxSplitSize(shape, 2), 70);
+}
+
+TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
+  Shape shape = ShapeUtil::MakeShape(F32, {150, 200, 100});
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 200 * 100);
+
+  *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2})
+                                .add_split_configs(SplitConfig(0, {30}))
+                                .add_split_configs(SplitConfig(1, {40, 130}));
+  EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
+}
+
 }  // namespace
 }  // namespace xla

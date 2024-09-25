@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_backward_spatial_convolutions.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tsl/framework/convolution/eigen_spatial_convolutions.h"
 
 // Returns true if TF_CONV2D_USE_FP16_ACCUMULATE == 1, false otherwise.
 static bool Conv2dUseFp16Accumulate() {
@@ -551,7 +551,7 @@ struct NCHWToNHWC {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension1And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Converts a tensor from:
@@ -561,7 +561,7 @@ struct SwapDimension1And2InTensor3 {
 template <typename Device, typename T, bool conjugate = false>
 struct SwapDimension0And2InTensor3 {
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& input_dims, T* out);
+                  const absl::Span<const int64_t>& input_dims, T* out);
 };
 
 // Transforms back filter from OIHW or OHWI to HWOI format to reverse effect of

@@ -15,25 +15,25 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
+#include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
-#include <utility>
-#include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/hlo_pass_fix.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -346,5 +346,36 @@ ENTRY %main_outer (p0: u32[]) -> u32[] {
                         op::Constant(LiteralUtil::CreateR0<uint32_t>(2))));
   }
 }
+
+TEST_F(CallInlinerTest, InlineCompositeCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule composite
+
+  %add (lhs: f32[]) -> f32[] {
+    %lhs = f32[] parameter(0)
+    %rhs = f32[] constant(2)
+    ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+  }
+
+  ENTRY %main () -> f32[] {
+    %lhs = f32[] constant(42)
+    ROOT %call = f32[] call(f32[] %lhs), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  CallInliner call_inliner(/*single_call_site=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  ASSERT_EQ(module->entry_computation()->instruction_count(), 3);
+  auto inst = module->entry_computation()->instructions().begin();
+  EXPECT_THAT(*inst, op::Constant());
+  ++inst;
+  EXPECT_THAT(*inst, op::Constant());
+  ++inst;
+  EXPECT_THAT(*inst, op::Add());
+  EXPECT_TRUE((*inst)->frontend_attributes().map().empty());
+}
+
 }  // namespace
 }  // namespace xla

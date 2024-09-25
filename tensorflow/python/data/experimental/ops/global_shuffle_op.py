@@ -17,6 +17,7 @@
 from typing import Optional, Union
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.framework import tensor
 from tensorflow.python.ops import gen_dataset_ops
@@ -41,13 +42,11 @@ def _global_shuffle(  # pylint: disable=unused-private-name
     dataset if it cannot be determined at runtime.
 
   TODO(b/325112575): Move the API to dataset_ops.py.
-  TODO(b/325112575): Support reshuffle_each_iteration.
-  TODO(b/325112575): Support checkpoints.
 
   Args:
     input_dataset: The dataset to be shuffled.
-    seed: A `tf.int64` scalar `tf.Tensor` to control the shuffle order. If
-      `None`, a random seed will be used.
+    seed: An int or `tf.int64` scalar `tf.Tensor` to control the shuffle order.
+      If `None`, a random seed will be used.
     reshuffle_each_iteration: A boolean, which if True, indicates that a
       different shuffle order should be generated for each iteration of the
       dataset. (Defaults to `True`.)
@@ -57,8 +56,9 @@ def _global_shuffle(  # pylint: disable=unused-private-name
     A new `Dataset` where elements are produced in a globally shuffled order.
 
   Raises:
-    InvalidArgumentError if the input dataset does not support random access, or
-    it has infinite or unknown cardinality.
+    - InvalidArgumentError if the input dataset does not support random access,
+      or it has infinite or unknown cardinality.
+    - FailedPreconditionError for batching with `drop_remainder=False`.
   """
   return _GlobalShuffleDataset(
       input_dataset,
@@ -76,6 +76,14 @@ class _GlobalShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
       seed: Optional[Union[int, tensor.Tensor]] = None,
       reshuffle_each_iteration: bool = True,
       name: Optional[str] = None):
+
+    options = options_lib.Options()
+    # Currently, prefetching threads cannot access the runtime context required
+    # for global shuffling when `warm_start` is enabled. Supporting it will be
+    # future work.
+    options.experimental_warm_start = False
+    input_dataset = input_dataset.with_options(options)
+
     self._input_dataset = input_dataset
     self._seed, self._seed2 = random_seed.get_seed(seed)
     self._reshuffle_each_iteration = reshuffle_each_iteration

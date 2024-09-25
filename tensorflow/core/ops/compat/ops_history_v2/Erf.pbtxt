@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Erf"
   input_arg {
     name: "x"

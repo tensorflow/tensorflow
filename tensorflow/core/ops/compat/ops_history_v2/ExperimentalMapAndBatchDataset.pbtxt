@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ExperimentalMapAndBatchDataset"
   input_arg {
     name: "input_dataset"

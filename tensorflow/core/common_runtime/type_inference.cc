@@ -124,8 +124,8 @@ Status update_inferred_type(Node* target, const FullTypeDef& t, bool& updated) {
   return absl::OkStatus();
 }
 
-StatusOr<FullTypeDef> run_inference(const string& fn_name,
-                                    const TypeRefVector& in_types) {
+absl::StatusOr<FullTypeDef> run_inference(const string& fn_name,
+                                          const TypeRefVector& in_types) {
   // TODO(b/224776031): Things remaining to implement:
   //  * look up function by name
   //  * execute pass on its graph

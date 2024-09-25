@@ -64,14 +64,14 @@ func.func @while_multi_operands(%arg0: tensor<3xi32>) -> tuple<tensor<i32>, tens
     // CHECK-NEXT: %[[VAL_13:.*]] = mhlo.constant dense<1> : tensor<i32>
     // CHECK: %[[VAL_14:.*]] = mhlo.add %[[VAL_10]], %[[VAL_13]] : tensor<i32>
     // CHECK: %[[VAL_15:.*]] = mhlo.convert %[[VAL_10]] : tensor<i32>
-    // CHECK: %[[VAL_16:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_15]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>) -> tensor<3xi32>
+    // CHECK: %[[VAL_16:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_15]]) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<3xi32>
     // CHECK: %[[VAL_17:.*]] = mhlo.add %[[VAL_11]], %[[VAL_16]] : tensor<3xi32>
     // CHECK: scf.yield %[[VAL_14]], %[[VAL_17]] : tensor<i32>, tensor<3xi32>
     %4 = mhlo.constant dense<false> : tensor<i1>
     %5 = mhlo.constant dense<1> : tensor<i32>
     %6 = mhlo.add %arg1, %5 : tensor<i32>
     %7 = mhlo.convert %arg1 : (tensor<i32>) -> tensor<i32>
-    %8 = "mhlo.broadcast_in_dim"(%7) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<i32>) -> tensor<3xi32>
+    %8 = "mhlo.broadcast_in_dim"(%7) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<3xi32>
     %9 = mhlo.add %arg2, %8 : tensor<3xi32>
     "mhlo.return"(%6, %9) : (tensor<i32>, tensor<3xi32>) -> ()
   }) : (tensor<i32>, tensor<3xi32>) -> (tensor<i32>, tensor<3xi32>)

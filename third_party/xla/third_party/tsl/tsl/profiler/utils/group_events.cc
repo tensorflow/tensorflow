@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_cat.h"
-#include "tsl/lib/gtl/map_util.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/types.h"

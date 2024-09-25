@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 #define XLA_SERVICE_GPU_IR_EMITTER_NESTED_H_
 
+#include <vector>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 namespace gpu {

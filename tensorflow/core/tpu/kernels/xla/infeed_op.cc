@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -82,10 +83,10 @@ Status UpdateInfeedLayout(xla::Shape* shape,
             "(--transpose_tpu_infeed=false) and report to XLA team.");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   *shape = GetTPUInfeedLayout(*shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(pbar) Work out if we need to Infeed Tuples - if so then

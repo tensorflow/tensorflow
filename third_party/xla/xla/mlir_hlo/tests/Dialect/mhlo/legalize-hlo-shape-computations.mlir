@@ -2,7 +2,7 @@
 
  // CHECK-LABEL: func @get_dimension_size
 func.func @get_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<i32>) {
-  %1 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<?x?xf32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
@@ -16,7 +16,7 @@ func.func @get_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<i32>) {
 
  // CHECK-LABEL: func @reshape_dimension_size
 func.func @reshape_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<1xi32>) {
-  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  %0 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<?x?xf32>) -> tensor<i32>
   %1 = "mhlo.reshape"(%0) : (tensor<i32>) -> tensor<1xi32>
   func.return %1 : tensor<1xi32>
 }
@@ -32,7 +32,7 @@ func.func @reshape_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<1xi32>) {
 // CHECK-LABEL: func @multiply_dimension_size
 func.func @multiply_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<i32>) {
   %0 = mhlo.constant dense<2> : tensor<i32>
-  %1 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<?x?xf32>) -> tensor<i32>
   %2 = "mhlo.multiply"(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
   func.return %2 : tensor<i32>
 }
@@ -50,10 +50,10 @@ func.func @multiply_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<i32>) {
 
 // CHECK-LABEL: func @concat_dimension_size
 func.func @concat_dimension_size(%arg0: tensor<?x?xf32>) -> (tensor<2xi32>) {
-  %0 = "mhlo.get_dimension_size"(%arg0) {dimension = 1 : i64} : (tensor<?x?xf32>) -> tensor<i32>
+  %0 = "mhlo.get_dimension_size"(%arg0) <{dimension = 1 : i64}> : (tensor<?x?xf32>) -> tensor<i32>
   %1 = "mhlo.reshape"(%0) : (tensor<i32>) -> tensor<1xi32>
   %2 = mhlo.constant dense<2> : tensor<1xi32>
-  %3 = "mhlo.concatenate"(%1, %2) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+  %3 = "mhlo.concatenate"(%1, %2) <{dimension = 0 : i64}> : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
   func.return %3 : tensor<2xi32>
 }
 

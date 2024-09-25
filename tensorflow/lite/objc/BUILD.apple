@@ -1,8 +1,8 @@
 # TensorFlow Lite for Objective-C
 
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

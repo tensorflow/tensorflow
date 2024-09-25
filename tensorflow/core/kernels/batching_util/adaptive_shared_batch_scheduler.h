@@ -633,13 +633,13 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     const internal::ASBSBatch<TaskType>* batch,
     AdaptiveSharedBatchScheduler<TaskType>::BatchProcessor callback,
     bool is_express) {
-  profiler::TraceMeConsumer trace_me(
+  tsl::profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
                              {"_r", 2} /*root_event*/});
       },
-      profiler::ContextType::kAdaptiveSharedBatchScheduler,
+      tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
   const int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
@@ -792,13 +792,13 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
       // Annotate each task (corresponds to one call of schedule) with a
       // TraceMeProducer.
-      profiler::TraceMeProducer trace_me(
+      tsl::profiler::TraceMeProducer trace_me(
           [task_size = task->size()] {
             return profiler::TraceMeEncode(
                 "ASBSQueue::Schedule",
                 {{"batching_input_task_size", task_size}});
           },
-          profiler::ContextType::kAdaptiveSharedBatchScheduler,
+          tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
           this->current_batch_->traceme_context_id());
       current_batch_->AddTask(std::move(task));
       num_enqueued_tasks_++;

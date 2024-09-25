@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CHANNEL_TRACKER_H_
 #define XLA_SERVICE_CHANNEL_TRACKER_H_
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -33,7 +33,7 @@ class ChannelTracker {
 
   // Creates a new Channel object and returns the corresponding
   // ChannelHandle for it.
-  StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
+  absl::StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
 
  private:
   // Guards the channel mapping.

@@ -20,11 +20,15 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
 #include "tensorflow/core/runtime_fallback/kernel/tensor_util.h"
+#include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
-#include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/tensor/conversion_registry.h"  // from @tf_runtime

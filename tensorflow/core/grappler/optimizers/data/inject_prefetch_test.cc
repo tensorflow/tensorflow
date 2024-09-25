@@ -64,8 +64,8 @@ TEST_P(InjectPrefetchParameterizedTest, TestAutotuneSetting) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("Sink", "Identity", {"range"}, {})});
 
   item.fetch.push_back("Sink");
@@ -90,8 +90,8 @@ TEST(InjectPrefetchTest, FromFunctionDef) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("Sink", "_Retval", {"range"}, {})});
 
   item.fetch.push_back("Sink");
@@ -108,8 +108,8 @@ TEST(InjectPrefetchTest, AlreadyPrefetched) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("prefetch", kPrefetchDataset, {"range"}, {}),
        NDef("Sink", "Identity", {"prefetch"}, {})});
 
@@ -128,12 +128,12 @@ TEST(InjectPrefetchTest, AlreadyParallelMap) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("parallel_map", kParallelMapDataset, {"range"},
             {{"f", "__inference_Dataset_map_normalize_8232"},
-             {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+             {"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("Sink", "Identity", {"parallel_map"}, {})});
 
   item.fetch.push_back("Sink");
@@ -151,14 +151,14 @@ TEST(InjectPrefetchTest, OptionsFollowedByPrefetched) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("prefetch", kPrefetchDataset, {"range"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("options", kOptionsDataset, {"prefetch"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("Sink", "Identity", {"options"}, {})});
 
   item.fetch.push_back("Sink");

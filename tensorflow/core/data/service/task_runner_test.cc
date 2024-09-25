@@ -289,7 +289,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
 TEST(FirstComeFirstServedTaskRunnerTest, Error) {
   FirstComeFirstServedTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::InvalidArgument("Invalid argument"),
               tstring("Second element"), errors::Aborted("Aborted")}));
@@ -445,7 +445,7 @@ TEST(CachingTaskRunnerTest, Errors) {
   size_t num_readers = 10;
   CachingTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::Cancelled("Cancelled"),
               tstring("Second element"),
@@ -467,7 +467,7 @@ TEST(CachingTaskRunnerTest, Errors) {
           GetElementRequest request;
           request.set_trainer_id(absl::StrCat("Trainer_", i));
           while (true) {
-            StatusOr<tstring> element =
+            absl::StatusOr<tstring> element =
                 GetNextFromTaskRunner<tstring>(runner, request);
             if (element.ok()) {
               result.push_back(*element);

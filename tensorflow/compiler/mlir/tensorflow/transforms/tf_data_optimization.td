@@ -25,7 +25,7 @@ def FuseMapAndBatch : Pat<
   (TF_BatchDatasetV2Op
      (TF_MapDatasetOp $input_dataset, $other_arguments, $f, $output_types,
         $output_shapes, $use_inter_op_parallelism, $preserve_cardinality,
-        $map_dataset_metadata),
+        $force_synchronous, $map_dataset_metadata),
      $batch_size, $drop_remainder, $parallel_copy, $batch_output_types,
      $batch_output_shapes, $unused_batch_dataset_metadata),
   (TF_MapAndBatchDatasetOp $input_dataset, $other_arguments, $batch_size,

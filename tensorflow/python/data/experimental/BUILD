@@ -12,6 +12,8 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/data/experimental/ops:dataset_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/experimental/ops:iterator_model_ops",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/ops:parsing_ops",

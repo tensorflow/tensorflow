@@ -36,8 +36,8 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -244,6 +244,11 @@ XLA_TEST_F(MultiOutputFusionTest,
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
+#ifdef XLA_TEST_BACKEND_GPU
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() > 0) {
+    GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
+  }
+#endif
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 

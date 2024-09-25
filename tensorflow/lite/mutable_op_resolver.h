@@ -80,19 +80,25 @@ class MutableOpResolver : public OpResolver {
 
   /// Registers the specified `version` of the specified builtin operator `op`.
   /// Replaces any previous registration for the same operator version.
+  /// Warning: use of this method in new code is discouraged: for new code,
+  /// we recommend using tflite::AddOp (from mutable_op_resolver_utils.h)
+  /// rather than tflite::MutableOpResolver::AddCustom.
   void AddCustom(const char* name, const TfLiteRegistration* registration,
                  int version = 1);
 
   /// Registers the specified version range (versions `min_version` to
   /// `max_version`, inclusive) of the specified custom operator `name`.
   /// Replaces any previous registration for the same operator version.
+  /// Warning: use of this method in new code is discouraged: for new code,
+  /// we recommend using tflite::AddOp (from mutable_op_resolver_utils.h)
+  /// rather than tflite::MutableOpResolver::AddCustom.
   void AddCustom(const char* name, const TfLiteRegistration* registration,
                  int min_version, int max_version);
 
   /// Registers all operator versions supported by another MutableOpResolver.
   /// Replaces any previous registrations for the same operator versions,
-  /// except that registrations made with `AddBuiltin` or `AddCustom` always
-  /// take precedence over registrations made with `ChainOpResolver`.
+  /// except that registrations made with `AddOp`, `AddBuiltin` or `AddCustom`
+  /// always take precedence over registrations made with `ChainOpResolver`.
   void AddAll(const MutableOpResolver& other);
 
   OpResolver::TfLiteDelegateCreators GetDelegateCreators() const final {

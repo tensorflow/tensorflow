@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/memory_space_assignment/repacking.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace memory_space_assignment {
@@ -62,7 +62,8 @@ class MemorySpaceAssignmentBestFitRepacker
         slice_time_permutation_iterator_type_(
             slice_time_permutation_iterator_type) {}
 
-  StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override;
+  absl::StatusOr<bool> Repack(
+      absl::Span<AllocationBlock*> allocations) override;
 
  private:
   BestFitRepackOptions options_;

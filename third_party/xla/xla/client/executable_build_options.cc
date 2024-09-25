@@ -22,19 +22,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/execution_options_util.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -110,14 +109,14 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_use_auto_spmd_partitioning(
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_shape(
     std::vector<int64_t> mesh_shape) {
-  auto_spmd_partitioning_mesh_shape_ = mesh_shape;
+  auto_spmd_partitioning_mesh_shape_ = std::move(mesh_shape);
   return *this;
 }
 
 ExecutableBuildOptions&
 ExecutableBuildOptions::set_auto_spmd_partitioning_mesh_ids(
     std::vector<int64_t> mesh_ids) {
-  auto_spmd_partitioning_mesh_ids_ = mesh_ids;
+  auto_spmd_partitioning_mesh_ids_ = std::move(mesh_ids);
   return *this;
 }
 
@@ -144,7 +143,8 @@ std::string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, num_replicas_);
 }
 
-StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
+absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
+    const {
   ExecutableBuildOptionsProto output;
   output.set_device_ordinal(device_ordinal());
   if (result_layout()) {
@@ -171,11 +171,16 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   output.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning());
   output.set_deduplicate_hlo(deduplicate_hlo());
   if (has_device_assignment()) {
-    TF_RETURN_IF_ERROR(
-        device_assignment().Serialize(output.mutable_device_assignment()));
+    device_assignment().Serialize(output.mutable_device_assignment());
   }
   output.set_alias_passthrough_params(alias_passthrough_params());
   output.set_run_backend_only(run_backend_only());
+  if (!allow_spmd_sharding_propagation_to_parameters().empty()) {
+    output.mutable_allow_spmd_sharding_propagation_to_parameters()->Clear();
+    for (bool v : allow_spmd_sharding_propagation_to_parameters()) {
+      output.mutable_allow_spmd_sharding_propagation_to_parameters()->Add(v);
+    }
+  }
   if (!allow_spmd_sharding_propagation_to_output().empty()) {
     output.mutable_allow_spmd_sharding_propagation_to_output()->Clear();
     for (bool v : allow_spmd_sharding_propagation_to_output()) {
@@ -190,10 +195,11 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   for (int64_t s : auto_spmd_partitioning_mesh_ids()) {
     output.mutable_auto_spmd_partitioning_mesh_ids()->Add(s);
   }
+  output.set_use_shardy_partitioner(use_shardy_partitioner());
   return output;
 }
 
-StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
+absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     const ExecutableBuildOptionsProto& input) {
   xla::ExecutableBuildOptions output;
   if (input.device_ordinal() != -1) {
@@ -224,6 +230,8 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   }
   output.set_alias_passthrough_params(input.alias_passthrough_params());
   output.set_run_backend_only(input.run_backend_only());
+  output.set_allow_spmd_sharding_propagation_to_parameters(
+      input.allow_spmd_sharding_propagation_to_parameters());
   output.set_allow_spmd_sharding_propagation_to_output(
       input.allow_spmd_sharding_propagation_to_output());
   *output.mutable_fdo_profile() = input.fdo_profile();
@@ -234,6 +242,7 @@ StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_auto_spmd_partitioning_mesh_ids(
       std::vector<int64_t>(input.auto_spmd_partitioning_mesh_ids().begin(),
                            input.auto_spmd_partitioning_mesh_ids().end()));
+  output.set_use_shardy_partitioner(input.use_shardy_partitioner());
   return output;
 }
 
@@ -266,6 +275,15 @@ ExecutionOptions CreateExecutionOptions(
     execution_options.mutable_auto_spmd_partitioning_mesh_ids()->Add(t);
   }
   execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
+  if (!build_options.allow_spmd_sharding_propagation_to_parameters().empty()) {
+    execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()
+        ->Clear();
+    for (bool v :
+         build_options.allow_spmd_sharding_propagation_to_parameters()) {
+      execution_options.mutable_allow_spmd_sharding_propagation_to_parameters()
+          ->Add(v);
+    }
+  }
   if (!build_options.allow_spmd_sharding_propagation_to_output().empty()) {
     execution_options.mutable_allow_spmd_sharding_propagation_to_output()
         ->Clear();
@@ -275,14 +293,16 @@ ExecutionOptions CreateExecutionOptions(
     }
   }
   if (build_options.has_device_assignment()) {
-    TF_CHECK_OK(build_options.device_assignment().Serialize(
-        execution_options.mutable_device_assignment()));
+    build_options.device_assignment().Serialize(
+        execution_options.mutable_device_assignment());
   }
   execution_options.set_alias_passthrough_params(
       build_options.alias_passthrough_params());
   execution_options.set_fdo_profile(build_options.fdo_profile().data(),
                                     build_options.fdo_profile().size());
   execution_options.set_device_memory_size(build_options.device_memory_size());
+  execution_options.set_use_shardy_partitioner(
+      build_options.use_shardy_partitioner());
   return execution_options;
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/logging.h"
@@ -41,11 +42,10 @@ namespace gpu {
 }
 
 /*static*/ std::string HloOpProfiles::GetProfileName(
-    const se::DeviceDescription* device_info) {
-  if (device_info != nullptr) {
-    if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-            &device_info->gpu_compute_capability()))
-      return absl::StrCat("sm_", ptr->major, ptr->minor);
+    const se::DeviceDescription& device_info) {
+  if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
+          &device_info.gpu_compute_capability())) {
+    return absl::StrCat("sm_", ptr->major, ptr->minor);
   }
   return "<unknown>";
 }
@@ -71,7 +71,7 @@ namespace gpu {
 }
 
 const HloOpProfiles::HloOpProfile& HloOpProfiles::GetProfile(
-    const se::DeviceDescription* device_info) const {
+    const se::DeviceDescription& device_info) const {
   auto it = profiles_.find(GetProfileName(device_info));
   if (it != profiles_.end()) return it->second;
   return default_profile_;

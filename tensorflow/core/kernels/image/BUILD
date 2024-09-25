@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -8,11 +7,12 @@ load(
     "tf_cc_tests",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # TODO(rmlarsen): Remove ASAP.
 package_group(
@@ -197,7 +197,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ]),
 )
 
@@ -206,7 +206,7 @@ tf_kernel_library(
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -407,6 +407,17 @@ tf_cuda_cc_test(
     ] + IMAGE_TEST_DEPS,
 )
 
+tf_cc_test(
+    name = "scale_and_translate_op_benchmark_test",
+    srcs = ["scale_and_translate_op_benchmark_test.cc"],
+    deps = [
+        ":scale_and_translate_op",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ] + IMAGE_TEST_DEPS,
+)
+
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
@@ -455,7 +466,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

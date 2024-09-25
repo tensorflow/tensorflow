@@ -18,18 +18,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/service/gpu/nccl_api.h"
-#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
+absl::StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
     const gpu::NcclCliqueKey& key) {
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.

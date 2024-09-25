@@ -244,7 +244,7 @@ TEST_F(XlaCompilerTest, Simple) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
-StatusOr<std::unique_ptr<xla::HloModule>> LoadModuleFromHloProto(
+absl::StatusOr<std::unique_ptr<xla::HloModule>> LoadModuleFromHloProto(
     const xla::HloModuleProto& module_proto) {
   TF_ASSIGN_OR_RETURN(auto module_config,
                       xla::HloModule::CreateModuleConfigFromProto(
@@ -268,15 +268,12 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = TensorShape({2});
-  args[0].value_bound = Tensor(DT_INT32, std::get<0>(args[0].shape));
-  Tensor dynamism_tensor(DT_BOOL);
-  TF_ASSERT_OK(LiteralToHostTensor(xla::LiteralUtil::CreateR1<bool>({true}),
-                                   DT_BOOL, &dynamism_tensor));
-  args[0].value_dynamism = dynamism_tensor;
+  args[0].shape =
+      xla::ShapeUtil::MakeShape(/*element_type=*/xla::S32, /*dimensions=*/{2},
+                                /*dynamic_dimensions=*/{true});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = TensorShape({2});
+  args[1].shape = TensorShape(/*dimensions=*/{2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -364,7 +361,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType dt, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -410,7 +407,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForFastMemVar) {
   shape_determination_fns.shape_representation_fn =
       [&fast_mem_arg_count](
           const TensorShape& shape, DataType dt, bool use_fast_memory,
-          XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+          XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -465,7 +462,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType dt, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1225,7 +1222,7 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType type, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1268,7 +1265,7 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType type, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::Shape xla_shape;
     TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
     *xla_shape.mutable_layout() = xla::LayoutUtil::MakeLayout({0, 1});
@@ -1367,7 +1364,7 @@ TEST_F(XlaCompilerTest, ReturnResourceHandle) {
   RunAndCheckVariablesComputation(client_, result);
 }
 
-StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
+absl::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
@@ -1404,7 +1401,7 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType type, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
     return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
@@ -1477,7 +1474,7 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
   shape_determination_fns.shape_representation_fn =
       [](const TensorShape& shape, DataType type, bool use_fast_memory,
-         XlaLayoutPreference layout_preference) -> StatusOr<xla::Shape> {
+         XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
     return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 namespace mhlo {
@@ -136,7 +137,7 @@ struct HloCanonicalizeReductionPass
       if (dimsToReduce.empty()) return;
 
       // suppose reduce input is a ranked tensor
-      auto ty = op.getOperand(0).getType().dyn_cast<RankedTensorType>();
+      auto ty = mlir::dyn_cast<RankedTensorType>(op.getOperand(0).getType());
       if (!ty) return signalPassFailure();
       int rank = ty.getRank();
       int ndimsToReduce = dimsToReduce.size();
@@ -222,7 +223,7 @@ struct HloCanonicalizeReductionPass
       }
       SmallVector<Type> elementTypes{llvm::map_range(
           op.getBody().front().getTerminator()->getOperands(), [](Value v) {
-            return v.getType().cast<ShapedType>().getElementType();
+            return mlir::cast<ShapedType>(v.getType()).getElementType();
           })};
       auto newOp = b.create<ReduceOp>(loc, newOperands, op.getInitValues(),
                                       attr, elementTypes);

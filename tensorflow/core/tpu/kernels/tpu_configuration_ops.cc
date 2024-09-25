@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -118,7 +119,8 @@ Status CreateTpuCompilationCache(
       });
 }
 
-StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(OpKernelContext* ctx) {
+absl::StatusOr<std::vector<int32_t>> ConstructDevicesPerHost(
+    OpKernelContext* ctx) {
   std::vector<int32_t> num_devices_per_host;
   int chips_per_host = -1;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -146,7 +148,7 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "ConfigureDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
 
-  StatusOr<std::vector<int32_t>> num_devices_per_host =
+  absl::StatusOr<std::vector<int32_t>> num_devices_per_host =
       ConstructDevicesPerHost(ctx);
   OP_REQUIRES_OK(ctx, num_devices_per_host.status());
   ResourceMgr* rmgr = GetTPUConfigResourceMgr();

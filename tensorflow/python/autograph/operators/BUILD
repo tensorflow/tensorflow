@@ -30,9 +30,7 @@ py_strict_library(
 py_strict_library(
     name = "exceptions",
     srcs = ["exceptions.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:control_flow_assert",
@@ -59,9 +57,7 @@ py_strict_library(
 py_strict_library(
     name = "logical",
     srcs = ["logical.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops:cond",
@@ -94,9 +90,7 @@ py_strict_library(
 py_strict_library(
     name = "conditional_expressions",
     srcs = ["conditional_expressions.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":control_flow",
         "//tensorflow/python/autograph/utils:tensors",
@@ -139,9 +133,7 @@ py_strict_library(
 py_strict_library(
     name = "slices",
     srcs = ["slices.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",

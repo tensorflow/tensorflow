@@ -41,7 +41,7 @@ int64_t GetNumberOf32bitUnits(const Shape& shape) {
   return num_elems * (bit_width / 32);
 }
 
-StatusOr<HloInstruction*> ConvertSmallFpRngToF32Rng(HloInstruction* rng) {
+absl::StatusOr<HloInstruction*> ConvertSmallFpRngToF32Rng(HloInstruction* rng) {
   CHECK_EQ(rng->opcode(), HloOpcode::kRng);
   PrimitiveType primitive_type = rng->shape().element_type();
   CHECK(primitive_type == F16 || primitive_type == BF16);
@@ -71,7 +71,7 @@ StatusOr<HloInstruction*> ConvertSmallFpRngToF32Rng(HloInstruction* rng) {
   return new_rng;
 }
 
-StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
+absl::StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
   XlaBuilder builder("rng");
   const Shape u64_shape = ShapeUtil::MakeShape(xla::U64, {});
   const Shape u128_shape = ShapeUtil::MakeShape(xla::U64, {2});
@@ -129,7 +129,8 @@ bool RngExpander::InstructionMatchesPattern(HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kRng;
 }
 
-StatusOr<HloInstruction*> RngExpander::ExpandInstruction(HloInstruction* rng) {
+absl::StatusOr<HloInstruction*> RngExpander::ExpandInstruction(
+    HloInstruction* rng) {
   VLOG(2) << "Expand rng instruction " << rng->ToString();
   PrimitiveType old_primitive_type = rng->shape().element_type();
   if (primitive_util::BitWidth(old_primitive_type) < 32) {

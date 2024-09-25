@@ -69,6 +69,7 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status:statusor",
     ] + if_google([
         "//tensorflow/tools/proto_splitter:merge",
     ]) + if_not_mobile([
@@ -500,6 +501,7 @@ cc_library(
         "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core/util/tensor_bundle:naming",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -542,9 +544,7 @@ cc_library(
     name = "fingerprinting_utils",
     srcs = ["fingerprinting_utils.cc"],
     hdrs = ["fingerprinting_utils.h"],
-    visibility = [
-        "//tensorflow:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":constants",
         "//tensorflow/core:lib",
@@ -588,12 +588,12 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

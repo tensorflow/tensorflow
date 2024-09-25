@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -104,7 +105,7 @@ XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
 
 XlaOp Any(XlaOp predicates) {
   XlaBuilder* builder = predicates.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     auto f = ConstantR0<bool>(builder, false);
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
@@ -142,7 +143,7 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
 
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
   XlaBuilder* builder = input.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
     XlaOp value_init_value;
     if (is_min) {
@@ -172,10 +173,6 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
 
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis) {
   return ArgMinMax(input, output_type, axis, /*is_min=*/false);
-}
-
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
 }
 
 }  // namespace xla

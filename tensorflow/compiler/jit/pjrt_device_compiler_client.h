@@ -33,19 +33,19 @@ class PjRtDeviceCompilerClient
   explicit PjRtDeviceCompilerClient(xla::PjRtClient* client)
       : client_(client) {}
 
-  StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> BuildExecutable(
+  absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> BuildExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) override;
 
   // Returns a platform-specific serialization of `executable`. The
   // serialization is not guaranteed to be stable over time. `executable` must
   // have been produced by this client.
-  StatusOr<std::string> SerializeExecutable(
+  absl::StatusOr<std::string> SerializeExecutable(
       const xla::PjRtLoadedExecutable& executable) override;
 
   // PjRt doesn't support AOT compilation yet. Builds a PjRtLoadedExecutable and
   // serializes it to string.
-  StatusOr<std::string> BuildSerializedExecutable(
+  absl::StatusOr<std::string> BuildSerializedExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result) override;
 
@@ -57,7 +57,7 @@ class PjRtDeviceCompilerClient
   // is currently only implemented for TfrtTpuPjrtClient and hence, this
   // function doesn't use PjRtClient::LoadSerializedExecutable() and uses
   // PjRtClient::DeserializeExecutable() instead.
-  StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> LoadExecutable(
+  absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> LoadExecutable(
       const XlaCompiler::Options& options,
       const XlaCompiler::CompilationResult& result,
       const std::string& serialized_executable) override;

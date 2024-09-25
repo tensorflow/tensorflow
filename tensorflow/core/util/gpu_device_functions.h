@@ -70,23 +70,23 @@ using cudaError_t = int;
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }
 #endif
 
-#define TF_RETURN_IF_CUDA_ERROR(result)                   \
-  do {                                                    \
-    cudaError_t error(result);                            \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {         \
-      return errors::Internal("Cuda call failed with ",   \
-                              cudaGetErrorString(error)); \
-    }                                                     \
+#define TF_RETURN_IF_CUDA_ERROR(result)                                       \
+  do {                                                                        \
+    cudaError_t error(result);                                                \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                             \
+      return absl::InternalError(                                             \
+          absl::StrCat("Cuda call failed with ", cudaGetErrorString(error))); \
+    }                                                                         \
   } while (0)
 
-#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                   \
-  do {                                                                 \
-    cudaError_t error(result);                                         \
-    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                      \
-      context->SetStatus(errors::Internal("Cuda call failed with",     \
-                                          cudaGetErrorString(error))); \
-      return;                                                          \
-    }                                                                  \
+#define TF_OP_REQUIRES_CUDA_SUCCESS(context, result)                          \
+  do {                                                                        \
+    cudaError_t error(result);                                                \
+    if (!SE_PREDICT_TRUE(error == cudaSuccess)) {                             \
+      context->SetStatus(absl::InternalError(                                 \
+          absl::StrCat("Cuda call failed with", cudaGetErrorString(error)))); \
+      return;                                                                 \
+    }                                                                         \
   } while (0)
 
 namespace tensorflow {

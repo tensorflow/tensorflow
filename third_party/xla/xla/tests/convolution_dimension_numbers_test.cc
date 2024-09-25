@@ -17,12 +17,12 @@ limitations under the License.
 #include <array>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
 #include "xla/client/padding.h"
 #include "xla/client/xla_builder.h"
 #include "xla/reference_util.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -31,7 +31,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
+absl::StatusOr<ConvolutionDimensionNumbers> CreateConvDimensionNumbers(
     int64_t input_batch, int64_t input_feature, int64_t input_first_spatial,
     int64_t input_second_spatial, int64_t output_batch, int64_t output_feature,
     int64_t output_first_spatial, int64_t output_second_spatial,

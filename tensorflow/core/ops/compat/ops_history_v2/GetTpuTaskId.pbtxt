@@ -1,0 +1,7 @@
+op {
+  name: "GetTpuTaskId"
+  output_arg {
+    name: "tpu_task_id"
+    type: DT_INT32
+  }
+}

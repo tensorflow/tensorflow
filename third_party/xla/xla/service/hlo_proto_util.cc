@@ -39,7 +39,7 @@ HloProto MakeHloProto(const HloModule& module) {
   return proto;
 }
 
-StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool is_module_post_optimizations) {
   VLOG(4) << proto.ShortDebugString();
@@ -53,7 +53,7 @@ StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
   return module;
 }
 
-StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
+absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
@@ -70,7 +70,7 @@ StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
   return parameter_shapes;
 }
 
-StatusOr<const ShapeProto*> EntryComputationOutputShape(
+absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");

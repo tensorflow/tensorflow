@@ -61,6 +61,10 @@ std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
   if (metadata.preserve_layout()) {
     result.push_back(absl::StrCat("preserve_layout=true"));
   }
+  if (!metadata.scheduling_name().empty()) {
+    result.push_back(
+        absl::StrCat("scheduling_name=\"", metadata.scheduling_name(), "\""));
+  }
   return absl::StrJoin(result, " ");
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/lib/constants.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -94,8 +94,8 @@ struct Eigh2x2 {
 //   rt1 = w_tl - t * w_tr
 //   rt2 = w_br + t * w_tr
 //   return rt1, rt2, c, s
-StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
-                                                 XlaOp w_br) {
+absl::StatusOr<Eigh2x2> HermitianEigenDecomposition2x2(XlaOp w_tl, XlaOp w_tr,
+                                                       XlaOp w_br) {
   TF_ASSIGN_OR_RETURN(Shape w_tl_shape, w_tl.builder()->GetShape(w_tl));
   bool is_complex = primitive_util::IsComplexType(w_tl_shape.element_type());
 
@@ -236,9 +236,9 @@ void PermuteColumnsInRow(XlaOp& left, XlaOp& right) {
 // implicit way of computing a tournament for n players such that each player
 // plays every other player exactly once in n - 1 rounds. See the Brent/Luk
 // paper for more details.
-Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
-                      XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
-                      XlaOp& v_br) {
+absl::Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
+                            XlaOp& w_br, XlaOp& v_tl, XlaOp& v_tr, XlaOp& v_bl,
+                            XlaOp& v_br) {
   TF_ASSIGN_OR_RETURN(Eigh2x2 rotation,
                       HermitianEigenDecomposition2x2(w_tl, w_tr, w_br));
 
@@ -260,7 +260,7 @@ Status ApplyRotations(int64_t n, XlaOp& w_tl, XlaOp& w_tr, XlaOp& w_bl,
   ApplyJacobiRotationOverRows(rotation, v_tl, v_tr, v_bl, v_br);
   PermuteRowsInColumn(v_tl, v_bl);
   PermuteRowsInColumn(v_tr, v_br);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct FrobeniusNorms {
@@ -268,8 +268,8 @@ struct FrobeniusNorms {
   XlaOp frobenius_sq_norm;
 };
 
-StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
-                                               XlaOp w_bl, XlaOp w_br) {
+absl::StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
+                                                     XlaOp w_bl, XlaOp w_br) {
   XlaBuilder* builder = w_tl.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w_tl));
   const int64_t num_dims = shape.rank();
@@ -299,12 +299,11 @@ StatusOr<FrobeniusNorms> ComputeFrobeniusNorms(XlaOp w_tl, XlaOp w_tr,
   return norms;
 }
 
-StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
-                                    int64_t n, int max_iters,
-                                    PrimitiveType index_type,
-                                    XlaBuilder* builder) {
+absl::StatusOr<std::vector<XlaOp>> Sweeps(
+    absl::Span<const XlaOp> initial_values, int64_t n, int max_iters,
+    PrimitiveType index_type, XlaBuilder* builder) {
   auto while_cond_fn = [&](absl::Span<const XlaOp> values,
-                           XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
+                           XlaBuilder* cond_builder) -> absl::StatusOr<XlaOp> {
     auto iter_cond = Lt(values[0], ScalarLike(values[0], max_iters));
 
     XlaOp w_tl, w_tr, w_bl, w_br;
@@ -322,14 +321,14 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
 
   auto while_body_fn =
       [&](absl::Span<const XlaOp> values,
-          XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+          XlaBuilder* body_builder) -> absl::StatusOr<std::vector<XlaOp>> {
     std::vector<XlaOp> sweep_values(values.begin() + 1, values.end());
     TF_ASSIGN_OR_RETURN(
         sweep_values,
         ForEachIndex(
             n - 1, S32,
             [&](XlaOp iter, absl::Span<const XlaOp> values,
-                XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+                XlaBuilder* builder) -> absl::StatusOr<std::vector<XlaOp>> {
               XlaOp tol, w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br;
               std::tie(tol, w_tl, w_tr, w_bl, w_br, v_tl, v_tr, v_bl, v_br) =
                   std::make_tuple(values[0], values[1], values[2], values[3],
@@ -352,7 +351,7 @@ StatusOr<std::vector<XlaOp>> Sweeps(absl::Span<const XlaOp> initial_values,
 
 }  // namespace
 
-Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
+absl::Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
   XlaBuilder* builder = v.builder();
   TF_ASSIGN_OR_RETURN(Shape v_shape, builder->GetShape(v));
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(w));
@@ -371,7 +370,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
            num_dims - 1);
   w = GetMatrixDiagonal(GetTupleElement(sort_result, 0));
   v = GetTupleElement(sort_result, 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // This is the cyclic Jacobi iteration.
@@ -430,7 +429,7 @@ Status EighExpander::SortByEigenvalues(XlaOp& v, XlaOp& w) {
 XlaOp EighExpander::BuildEigh(XlaOp a, bool lower, int64_t max_iter, float tol,
                               bool sort_eigenvalues) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int64_t num_dims = a_shape.rank();
     if (num_dims < 2) {
@@ -543,7 +542,7 @@ bool EighExpander::InstructionMatchesPattern(HloInstruction* instruction) {
          instruction->custom_call_target() == kEighCustomCallName;
 }
 
-StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> EighExpander::ExpandInstruction(
     HloInstruction* instruction) {
   const std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),

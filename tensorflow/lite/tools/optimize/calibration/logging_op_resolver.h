@@ -18,9 +18,12 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 
 namespace tflite {

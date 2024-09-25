@@ -50,9 +50,8 @@ def ConvertLiteralToNumpyArray(literal):
       numpy_reshaper = lambda arr: arr.reshape(numpy_shape, order='C')
     else:
       raise NotImplementedError('Unsupported layout: {0}'.format(layout_order))
-    ndarray = _np.array(
+    ndarray = _np.asarray(
         getattr(literal, type_record.literal_field_name),
-        copy=False,
         dtype=type_record.numpy_dtype)
     return numpy_reshaper(ndarray)
 

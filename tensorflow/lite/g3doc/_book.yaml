@@ -140,8 +140,10 @@ upper_tabs:
           path: /lite/android/delegates/gpu_native.md
       - title: "NNAPI delegate"
         path: /lite/android/delegates/nnapi
+        status: deprecated
       - title: "Hexagon delegate"
         path: /lite/android/delegates/hexagon
+        status: deprecated
 
       - heading: "Models with metadata"
       - title: "Overview"

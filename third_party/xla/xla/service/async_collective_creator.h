@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -31,28 +31,30 @@ class AsyncCollectiveCreator : public HloModulePass {
   // Function to query the shape of the "context" for collectives that use
   // HLO async-start/async-done.
   using ContextShapeQuery =
-      std::function<std::vector<Shape>(const HloInstruction*)>;
+      std::function<std::vector<Shape>(const HloInstruction *)>;
   struct CollectiveCreatorConfig {
     HloPredicate convert_all_reduce = HloPredicateFalse;
     HloPredicate convert_all_gather = HloPredicateFalse;
+    HloPredicate convert_collective_broadcast = HloPredicateFalse;
     HloPredicate convert_collective_permute = HloPredicateFalse;
     HloPredicate convert_all_to_all = HloPredicateFalse;
     HloPredicate convert_reduce_scatter = HloPredicateFalse;
-    ContextShapeQuery get_context_shapes = [](const HloInstruction*) {
+    ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
       return std::vector<Shape>{};
     };
+    int64_t all_reduce_min_threshold_in_bytes = 0;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}
   absl::string_view name() const override { return "async-collective-creator"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  absl::StatusOr<bool> Run(
+      HloModule *module,
+      const absl::flat_hash_set<absl::string_view> &execution_threads) override;
 
   std::vector<HloInstruction *> MatchCollectives(HloComputation *computation);
-  StatusOr<bool> ReplaceCollectives(
+  absl::StatusOr<bool> ReplaceCollectives(
       HloComputation *computation,
       std::vector<HloInstruction *> &supported_collectives);
   const CollectiveCreatorConfig *config() const { return &config_; }

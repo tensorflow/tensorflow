@@ -593,7 +593,7 @@ Status PermuteSingle(absl::string_view location,
   for (V& element : *values) {
     element = elements[permutation[index++]];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Permutes two elements at a time according to permutation and replaces the
@@ -616,7 +616,7 @@ Status PermuteDouble(absl::string_view location,
     (*values)[i] = elements[permutation_index * 2];
     (*values)[i + 1] = elements[permutation_index * 2 + 1];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string GetDeviceName(const NodeDef& node);

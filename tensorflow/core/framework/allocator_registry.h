@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/framework/allocator_registry.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
-#include "tsl/framework/allocator_registry.h"
 
 namespace tensorflow {
 

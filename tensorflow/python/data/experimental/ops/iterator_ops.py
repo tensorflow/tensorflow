@@ -95,3 +95,5 @@ def make_saveable_from_iterator(iterator, external_state_policy=None):
       iterator._iterator_resource,  # pylint: disable=protected-access
       iterator._iterator_resource.name,  # pylint: disable=protected-access
       external_state_policy=policy_enum)
+
+

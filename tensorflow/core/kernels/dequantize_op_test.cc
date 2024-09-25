@@ -255,9 +255,10 @@ static void BM_DequantizeMinCombinedCpu(::testing::benchmark::State& state) {
   inputs.reserve(num_values);
   for (int i = 0; i < num_values; ++i) inputs.push_back(i);
 
-  ops::Dequantize(root, test::AsTensor<T>(inputs), test::AsScalar<float>(-1.5f),
-                  test::AsScalar<float>(20.5f),
-                  ops::Dequantize::Attrs().Mode("MIN_COMBINED"));
+  ops::Dequantize give_me_a_name(root, test::AsTensor<T>(inputs),
+                                 test::AsScalar<float>(-1.5f),
+                                 test::AsScalar<float>(20.5f),
+                                 ops::Dequantize::Attrs().Mode("MIN_COMBINED"));
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
@@ -299,9 +300,10 @@ static void BM_DequantizeBfloat16MinCombinedCpu(
   inputs.reserve(num_values);
   for (int i = 0; i < num_values; ++i) inputs.push_back(i);
 
-  ops::Dequantize(root, test::AsTensor<T>(inputs), test::AsScalar<float>(-1.5f),
-                  test::AsScalar<float>(20.5f),
-                  ops::Dequantize::Attrs().Dtype(DT_BFLOAT16));
+  ops::Dequantize give_me_a_name(root, test::AsTensor<T>(inputs),
+                                 test::AsScalar<float>(-1.5f),
+                                 test::AsScalar<float>(20.5f),
+                                 ops::Dequantize::Attrs().Dtype(DT_BFLOAT16));
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));

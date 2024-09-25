@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -29,7 +31,7 @@ namespace toco {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kReshape) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* op = static_cast<const TensorFlowReshapeOperator*>(base_op);
 
@@ -39,17 +41,17 @@ namespace toco {
   // We require constant inputs.
   if (!IsConstantParameterArray(*model, op->inputs[0]) ||
       !IsConstantParameterArray(*model, op->inputs[1])) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const Array& input_array = model->GetArray(op->inputs[0]);
@@ -57,7 +59,7 @@ namespace toco {
     AddMessageF("Constant reshape is non-trivial (%s -> %s)",
                 ShapeToString(input_array.shape()),
                 ShapeToString(output_array.shape()));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK(!output_array.buffer);
@@ -101,7 +103,7 @@ namespace toco {
     default:
       LOG(FATAL) << "Unsupported data type: "
                  << ArrayDataTypeName(input_array.data_type);
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
   }
 
   AddMessageF("Resolving constant reshape of %s", LogName(*op));
@@ -110,7 +112,7 @@ namespace toco {
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

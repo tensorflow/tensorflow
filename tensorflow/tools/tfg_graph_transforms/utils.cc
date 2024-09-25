@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/image_format/internal_api.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace mlir {
@@ -28,9 +30,9 @@ namespace graph_transforms {
 
 namespace {
 
-tsl::StringPiece GetNameWithoutExtension(tsl::StringPiece filename) {
+absl::string_view GetNameWithoutExtension(absl::string_view filename) {
   auto pos = filename.rfind('.');
-  if (pos == tsl::StringPiece::npos) return filename;
+  if (pos == absl::string_view::npos) return filename;
   return filename.substr(0, pos);
 }
 

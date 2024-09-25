@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "If"
   input_arg {
     name: "cond"

@@ -18,18 +18,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
-// Returns a pre-compiled custom kernel for a given data type and problem size.
-absl::StatusOr<CustomKernel> GetCutlassGemmKernel(
-    std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
+// Returns pre-compiled custom kernels for a given data type and problem size.
+absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
+    std::string name, PrimitiveType dot_type, PrimitiveType lhs_type,
+    PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device);
 

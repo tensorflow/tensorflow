@@ -19,16 +19,17 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
@@ -37,18 +38,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_bridge_pass_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/framework/device_type.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -87,17 +90,6 @@ bool HasDevice(mlir::ModuleOp module) {
   mlir::TF::RuntimeDevices devices;
   if (failed(GetDevicesFromOp(module.getOperation(), &devices))) return false;
   return !devices.device_names().empty();
-}
-
-bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
-  bool has_tpu_partitioned_call = false;
-  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
-    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
-      has_tpu_partitioned_call = true;
-    });
-    if (has_tpu_partitioned_call) break;
-  }
-  return has_tpu_partitioned_call;
 }
 
 // V1 Compat Bridge extracts out a program into a submodule and runs clustering
@@ -143,9 +135,8 @@ MlirOptimizationPassState GetPassStateImpl(
     bool is_supported_by_replicated_brige, const ConfigProto& config_proto,
     const Graph& graph, const FunctionLibraryDefinition& function_library) {
   // Skip MLIR TF/XLA Bridge if no XLA-compilable ops are found.
-  // TODO(b/324474356): also check the called function in the library.
   if (!is_supported_by_replicated_brige &&
-      !IsSupportedByNonReplicatedBridge(graph, /*function_library*/ nullptr)) {
+      !IsSupportedByNonReplicatedBridge(graph, &function_library)) {
     VLOG(3) << "Skipping MLIR Bridge, graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;
   }
@@ -170,20 +161,32 @@ MlirOptimizationPassState GetPassStateImpl(
     case MlirBridgeRolloutPolicy::kDisabledByUser: {
       VLOG(1) << "Skipping MLIR "
               << (is_supported_by_replicated_brige ? "Replicated"
-                                                   : "Non-Replicated")
+                                                   : "Non-replicated")
               << " Bridge, disabled by user. "
                  "The fallback will evaluate.";
       metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-          is_supported_by_replicated_brige ? "tpu" : "cpu/gpu", "v2", true,
-          "disabled_by_user");
+          /*bridge_type*/ is_supported_by_replicated_brige
+              ? mlir::TF::kMlirPh1BridgeCounterReplicated
+              : mlir::TF::kMlirPh1BridgeCounterNonReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV2,
+          /*device_type*/
+          is_supported_by_replicated_brige
+              ? mlir::TF::kMlirPh1BridgeCounterTpu
+              : mlir::TF::kMlirPh1BridgeCounterNonTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     }
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
       // Graph analysis only runs on TPU graph.
       VLOG(1) << "Skipping MLIR TPU Bridge, disabled because the "
                  "graph has unsupported features. The fallback will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v2", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV2,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.
@@ -208,9 +211,21 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     return MlirOptimizationPassState::Disabled;
   }
 
+  // TODO(b/328084279): when MlirBridgePass::GetPassState() returns
+  // MlirOptimizationPassState::FallbackEnabled or
+  // MlirOptimizationPassState::Enabled, Tensorflow imports a Graph to an
+  // MLIR module, calls MlirBridgePass::Run(), and exports the MLIR module to a
+  // Graph. The Graph->MLIR module->Graph round trip will not happen if
+  // MlirOptimizationPassState::Disabled is returned. Some input graphs with a
+  // TPU device in device_set yet without replication depends on the round
+  // trip, which does not always produce the same Graph. Call
+  // HasTPUDevice(*device_set) to ensure such graps work. Note
+  // MlirBridgePass::Run() will still reject such graphs that they do not go
+  // through the Phase 1 Bridge.
   return GetPassStateImpl(
       /*is_supported_by_replicated_brige*/ IsSupportedByReplicatedBridge(
-          graph, &function_library),
+          graph, &function_library) ||
+          HasTPUDevice(*device_set),
       config_proto, graph, function_library);
 }
 
@@ -236,7 +251,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     VLOG(1) << "Skipping MLIR TF2XLA Bridge. This is an inference graph, "
                "Session V1 Bridge should be used during execution of "
                "TPUPartitionedCall.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
@@ -251,7 +266,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     // when the pass state was originally calculated and now, so this check is
     // required to reflect any possible changes.
     VLOG(1) << "MlirBridgePass is disabled and will not run.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -267,7 +282,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
                        /*is_v1_compat=*/false);
       fallback_enabled = true;
     }
-    VLOG(1) << "Running MLIR TPU Bridge";
+    VLOG(1) << "Running MLIR Replicated Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
 
     TF_RETURN_IF_ERROR(
@@ -279,7 +294,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
             module, tsl::DeviceType(DEVICE_TPU_XLA_JIT), function_name));
   } else {
-    VLOG(1) << "Running GPU/CPU Bridge";
+    VLOG(1) << "Running MLIR Non-replicated Bridge";
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ false,
@@ -314,17 +329,27 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
     case MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis:
       return MlirOptimizationPassState::FallbackEnabled;
     case MlirBridgeRolloutPolicy::kDisabledByUser:
-      VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, MLIR TPU bridge disabled "
-                 "by user. Old bridge will evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "disabled_by_user");
+      VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
+                 "bridge disabled "
+                 "by user. Fallback will evaluate.";
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "disabled_by_user");
       return MlirOptimizationPassState::Disabled;
     case MlirBridgeRolloutPolicy::kDisabledAfterGraphAnalysis:
-      VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, MLIR TPU bridge disabled "
+      VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, MLIR Replicated "
+                 "bridge disabled "
                  "because graph has unsupported features. Old bridge will "
                  "evaluate.";
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter("tpu", "v1", true,
-                                                   "invalid_graph");
+      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+          /*bridge_type*/ mlir::TF::kMlirPh1BridgeCounterReplicated,
+          /*bridge_version*/ mlir::TF::kMlirPh1BridgeCounterV1,
+          /*device_type*/ mlir::TF::kMlirPh1BridgeCounterTpu,
+          /*fallback_enabled*/ true,
+          /*result*/ "invalid_graph");
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
       // args.
@@ -343,13 +368,13 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
   // Skip function graphs as MlirBridgePass will be used instead.
-  if (options.is_function_graph) return OkStatus();
+  if (options.is_function_graph) return absl::OkStatus();
 
-  // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
+  // Skip MLIR Replicated Bridge if no eligible ops found.
   if (!IsSupportedByReplicatedBridge(module)) {
-    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, no eligible ops "
                "found";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MlirOptimizationPassState pass_state =
@@ -363,9 +388,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     // pass is not disabled. However, the graph may have been updated between
     // when the pass state was originally calculated and now, so this check is
     // required to reflect any possible changes.
-    VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat, session flag not "
+               "enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // 1) If the MLIR module contains a TPUPartitionedCall, we skip here
@@ -373,10 +399,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // part of PRE_PLACEMENT optimization
   // 3) This MLIR bridge version is V1 Compat
   if (HasTPUPartitionedCallOpInModule(module)) {
-    VLOG(1)
-        << "Skipping MLIR TPU Bridge V1 Compat. This is an inference graph, V1 "
-           "Compat should be used during execution of TPUPartitionedCall.";
-    return OkStatus();
+    VLOG(1) << "Skipping MLIR Replicated Bridge V1 Compat. This is an "
+               "inference graph, V1 "
+               "Compat should be used during execution of TPUPartitionedCall.";
+    return absl::OkStatus();
   }
 
   bool fallback_enabled = false;
@@ -392,7 +418,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     fallback_enabled = true;
   }
 
-  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
+  VLOG(1) << "Running MLIR Replicated Bridge V1 Compat";
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   TF_RETURN_IF_ERROR(tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(
       module, fallback_enabled));

@@ -17,18 +17,18 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/lib/constants.h"
+#include "xla/client/value_inference.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -138,6 +138,7 @@ class ReshapeOp : public XlaOpKernel {
     std::vector<bool> dims_are_dynamic;
     const auto& dims = shape.dims();
     dims_are_dynamic.reserve(dims);
+    output_dim_sizes.reserve(dims);
     for (int64_t i = 0; i < dims; ++i) {
       output_dim_sizes.push_back(
           xla::Reshape(xla::Slice(ctx->Input(1), {i}, {i + 1}, {1}), {}));

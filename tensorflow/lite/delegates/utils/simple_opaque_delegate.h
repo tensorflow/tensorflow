@@ -85,8 +85,8 @@ class SimpleOpaqueDelegateInterface {
 
   // Returns true if 'node' is supported by the delegate. False otherwise.
   virtual bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node, TfLiteOpaqueContext* context) const = 0;
+      const TfLiteOperator* registration_external, const TfLiteOpaqueNode* node,
+      TfLiteOpaqueContext* context) const = 0;
 
   // Initialize the delegate before finding and replacing TfLite nodes with
   // delegate kernels, for example, retrieving some TFLite settings from

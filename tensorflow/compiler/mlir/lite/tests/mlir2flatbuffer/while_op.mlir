@@ -70,14 +70,14 @@
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 5,
-// CHECK-NEXT:       name: "arg0",
+// CHECK-NEXT:       name: "cond_arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       buffer: 6,
-// CHECK-NEXT:       name: "arg1",
+// CHECK-NEXT:       name: "cond_arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -113,14 +113,14 @@
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       type: INT32,
 // CHECK-NEXT:       buffer: 9,
-// CHECK-NEXT:       name: "arg0",
+// CHECK-NEXT:       name: "body_arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [  ],
 // CHECK-NEXT:       buffer: 10,
-// CHECK-NEXT:       name: "arg1",
+// CHECK-NEXT:       name: "body_arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }

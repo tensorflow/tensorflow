@@ -21,8 +21,10 @@
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -34,7 +36,7 @@ class ConvertMemoryPlacementToInternalAnnotations : public HloModulePass {
     return "convert-memory-placement-to-internal-annotations";
   }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

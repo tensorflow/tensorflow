@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -57,13 +58,14 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     auto reshape_op = llvm::dyn_cast_or_null<ReshapeOp>(user);
     if (!reshape_op) return failure();
 
-    auto reshape_type = reshape_op.getOutput().getType().cast<ShapedType>();
+    auto reshape_type =
+        mlir::cast<ShapedType>(reshape_op.getOutput().getType());
 
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
-    auto input_type = op.getInput().getType().cast<ShapedType>();
-    auto output_type = op.getOutput().getType().cast<ShapedType>();
+    auto input_type = mlir::cast<ShapedType>(op.getInput().getType());
+    auto output_type = mlir::cast<ShapedType>(op.getOutput().getType());
 
     if (!input_type.hasRank() || !output_type.hasRank()) return failure();
 

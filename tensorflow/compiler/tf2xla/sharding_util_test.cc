@@ -83,7 +83,8 @@ TEST_P(ShardingWithMetadataTest, GetShardingFromNode) {
 
   auto test_sharding_metadata =
       [&check_metadata](
-          const std::function<StatusOr<std::optional<xla::OpSharding>>()>& fn) {
+          const std::function<absl::StatusOr<std::optional<xla::OpSharding>>()>&
+              fn) {
         auto status_or_sharding = fn();
         TF_ASSERT_OK(status_or_sharding.status());
         ASSERT_TRUE(status_or_sharding.value().has_value());

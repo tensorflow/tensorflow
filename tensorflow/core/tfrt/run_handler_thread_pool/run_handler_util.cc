@@ -78,7 +78,7 @@ std::vector<int> ParamFromEnvWithDefault(const char* var_name,
 
 bool ParamFromEnvBoolWithDefault(const char* var_name, bool default_value) {
   const char* val = std::getenv(var_name);
-  return (val) ? tensorflow::str_util::Lowercase(val) == "true" : default_value;
+  return (val) ? absl::AsciiStrToLower(val) == "true" : default_value;
 }
 
 }  // namespace tf

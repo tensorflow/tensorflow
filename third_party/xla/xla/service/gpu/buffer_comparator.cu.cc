@@ -25,6 +25,11 @@ using bfloat16 = __nv_bfloat16;
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_fp16.h>
 
+#include "rocm/rocm_config.h"
+#if TF_ROCM_VERSION >= 60200
+#include <hip/hip_fp8.h>
+#endif  // TF_ROCM_VERSION >= 60200
+
 using bfloat16 = hip_bfloat16;
 #define BF16_TO_F32 float
 
@@ -96,6 +101,52 @@ __global__ void xla_fp8_e5m2_comparison(__nv_fp8_storage_t* buffer_a,
     atomicAdd(mismatch_count, 1);
 }
 #endif  // GOOGLE_CUDA
+
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
+__global__ void xla_fp8_e4m3fnuz_comparison(__hip_fp8_storage_t* buffer_a,
+                                            __hip_fp8_storage_t* buffer_b,
+                                            float rel_error_threshold,
+                                            uint64_t buffer_length,
+                                            int* mismatch_count) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx >= buffer_length) return;
+  __hip_fp8_e4m3_fnuz elem_a_fp8, elem_b_fp8;
+  elem_a_fp8.__x = buffer_a[idx];
+  elem_b_fp8.__x = buffer_b[idx];
+  float elem_a = static_cast<float>(elem_a_fp8);
+  float elem_b = static_cast<float>(elem_b_fp8);
+  elem_a = Canonicalize(elem_a);
+  elem_b = Canonicalize(elem_b);
+  if (isnan(elem_a) && isnan(elem_b)) return;
+
+  float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) + 1);
+
+  if (rel_error > rel_error_threshold || isnan(rel_error))
+    atomicAdd(mismatch_count, 1);
+}
+
+__global__ void xla_fp8_e5m2fnuz_comparison(__hip_fp8_storage_t* buffer_a,
+                                            __hip_fp8_storage_t* buffer_b,
+                                            float rel_error_threshold,
+                                            uint64_t buffer_length,
+                                            int* mismatch_count) {
+  int idx = threadIdx.x + blockIdx.x * blockDim.x;
+  if (idx >= buffer_length) return;
+  __hip_fp8_e5m2_fnuz elem_a_fp8, elem_b_fp8;
+  elem_a_fp8.__x = buffer_a[idx];
+  elem_b_fp8.__x = buffer_b[idx];
+  float elem_a = static_cast<float>(elem_a_fp8);
+  float elem_b = static_cast<float>(elem_b_fp8);
+  elem_a = Canonicalize(elem_a);
+  elem_b = Canonicalize(elem_b);
+  if (isnan(elem_a) && isnan(elem_b)) return;
+
+  float rel_error = abs(elem_a - elem_b) / (max(abs(elem_a), abs(elem_b)) + 1);
+
+  if (rel_error > rel_error_threshold || isnan(rel_error))
+    atomicAdd(mismatch_count, 1);
+}
+#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
 
 __global__ void xla_fp16_comparison(__half* buffer_a, __half* buffer_b,
                                     float rel_error_threshold,
@@ -205,6 +256,16 @@ void* fp8_e5m2_comparison() {
   return reinterpret_cast<void*>(&xla_fp8_e5m2_comparison);
 }
 #endif
+
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
+void* fp8_e4m3fnuz_comparison() {
+  return reinterpret_cast<void*>(&xla_fp8_e4m3fnuz_comparison);
+}
+
+void* fp8_e5m2fnuz_comparison() {
+  return reinterpret_cast<void*>(&xla_fp8_e5m2fnuz_comparison);
+}
+#endif  // TENSORFLOW_USE_ROCM && TF_ROCM_VERSION >= 60200
 
 void* fp16_comparison() {
   return reinterpret_cast<void*>(&xla_fp16_comparison);

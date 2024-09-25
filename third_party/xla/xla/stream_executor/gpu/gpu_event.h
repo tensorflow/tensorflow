@@ -16,41 +16,46 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace gpu {
 
-// GpuEvent wraps a GpuEventHandle in the platform-independent EventInterface
-// interface.
-class GpuEvent : public internal::EventInterface {
+class GpuContext;
+
+// GpuEvent wraps a GpuEventHandle in the platform-independent Event interface.
+class GpuEvent : public Event {
  public:
-  explicit GpuEvent(GpuExecutor* parent);
+  explicit GpuEvent(Context* context);
 
   ~GpuEvent() override;
 
   // Populates the CUDA-platform-specific elements of this object.
-  absl::Status Init();
+  absl::Status Init(bool allow_timing);
 
   // Deallocates any platform-specific elements of this object. This is broken
   // out (not part of the destructor) to allow for error reporting.
   absl::Status Destroy();
 
   // Inserts the event at the current position into the specified stream.
-  absl::Status Record(GpuStream* stream);
-
-  // Polls the CUDA platform for the event's current status.
-  Event::Status PollForStatus();
+  absl::Status Record(GpuStreamHandle stream_handle);
 
   // The underlying CUDA event element.
   GpuEventHandle gpu_event();
 
+  absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+
+ protected:
+  Context* context() const { return context_; }
+
  private:
   // The Executor used to which this object and GpuEventHandle are bound.
-  GpuExecutor* parent_;
+  Context* context_;
 
   // The underlying CUDA event element.
   GpuEventHandle gpu_event_;

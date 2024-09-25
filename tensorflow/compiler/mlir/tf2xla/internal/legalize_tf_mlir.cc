@@ -59,7 +59,7 @@ constexpr char kBridgeComponent[] = "TFXLABridge";
 using tpu::MlirToHloArgs;
 using tpu::ShardingAndIndex;
 
-tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
+absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     bool lower_to_xla_hlo, const MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
@@ -103,7 +103,7 @@ tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
   return compiled_mlir;
 }
 
-tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
+absl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
     const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,
@@ -119,7 +119,7 @@ tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
   // Enabling op fallback also enables whole graph fallback if op by op
   // fallback failed.
 
-  tsl::StatusOr<std::string> mlir_bridge_status = CompileFromMlirToXlaHlo(
+  absl::StatusOr<std::string> mlir_bridge_status = CompileFromMlirToXlaHlo(
       /*lower_to_xla_hlo=*/true, computation, metadata, device_type,
       shape_determination_fns, use_tuple_args, compilation_result,
       custom_legalization_passes, arg_shapes, arg_core_mapping,

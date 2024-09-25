@@ -297,11 +297,10 @@ class SaturateCastTest(test.TestCase):
 
         # Ensure that we are at most one representable input element away from
         # the true answer.
-        np_out_type = out_type.as_numpy_dtype
         np_in_type = in_type.as_numpy_dtype
-        expected = np.clip(x, out_type.min, out_type.max).astype(np_out_type)
+        expected = np.clip(x, out_type.min, out_type.max).astype(np_in_type)
         u = y.astype(np_in_type)
-        v = expected.astype(np_in_type)
+        v = expected
         self.assertTrue(np.all(v == np.nextafter(u, v)))
 
   @test_util.disable_xla("Clamp is not implemented for C128 in XLA")
@@ -324,6 +323,27 @@ class SaturateCastTest(test.TestCase):
                 out_type.real_dtype.min,
                 np.minimum(out_type.real_dtype.max, np.imag(x)))
         self.assertAllEqual(correct, y)
+
+  @test_util.with_forward_compatibility_horizons([2024, 11, 2])
+  def testSaturateHandlesInfs(self):
+    for in_type in [
+        dtypes.float64,
+        dtypes.float32,
+        dtypes.float16,
+        dtypes.bfloat16,
+    ]:
+      for out_type in [
+          dtypes.float64,
+          dtypes.float32,
+          dtypes.float16,
+          dtypes.bfloat16,
+      ]:
+        inf = float("inf")
+        nan = float("nan")
+        x = constant_op.constant([inf, -inf, nan, -nan], dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertAllEqual(math_ops.is_finite(y), [True, True, False, False])
+
 
 if __name__ == "__main__":
   test.main()

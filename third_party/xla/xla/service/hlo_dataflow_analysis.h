@@ -25,11 +25,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,28 +43,37 @@ limitations under the License.
 #include "xla/service/hlo_phi_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 // Identifies one array input of an HloInstruction.
 struct HloOperandIndex {
-  // The operand number in which the array value appears.
-  int64_t operand_number;
+  using MyTuple = std::tuple<int64_t, const ShapeIndex&>;
 
-  // The shape index within the operand in which the array value appears.
-  ShapeIndex operand_index;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloOperandIndex& hlo_operand_index) {
+    return H::combine(std::move(h), hlo_operand_index.ToTuple());
+  }
 
-  bool operator==(const HloOperandIndex& other) const {
-    return operand_number == other.operand_number &&
-           operand_index == other.operand_index;
+  friend bool operator==(const HloOperandIndex& lhs,
+                         const HloOperandIndex& rhs) {
+    return lhs.ToTuple() == rhs.ToTuple();
   }
 
   bool operator!=(const HloOperandIndex& other) const {
     return !(*this == other);
   }
+
+  MyTuple ToTuple() const {
+    return std::make_tuple(operand_number, std::cref(operand_index));
+  }
+
+  // The operand number in which the array value appears.
+  int64_t operand_number;
+
+  // The shape index within the operand in which the array value appears.
+  ShapeIndex operand_index;
 };
 
 // Analysis which identifies all HLO values and their uses in an HLO module.
@@ -110,7 +123,7 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
-  static StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
@@ -226,7 +239,7 @@ class HloDataflowAnalysis {
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
   // Verifies various invariants of the dataflow analysis.
-  Status Verify() const;
+  absl::Status Verify() const;
 
  private:
   static bool AreTransitiveUsesElementwiseOrTuple(const HloInstruction* inst);
@@ -264,7 +277,7 @@ class HloDataflowAnalysis {
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
   // then propagated throughout the HLO graph by calling Propagate.
-  Status InitializeInstructionValueSets();
+  absl::Status InitializeInstructionValueSets();
 
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).
@@ -368,6 +381,26 @@ class HloDataflowAnalysis {
 
   ForwardsValue forwards_value_ = nullptr;
 };
+
+// Removes layers of tuple indirection introduced via 'tuple' and
+// 'get-tuple-element' instructions to more directly identify the source of the
+// given HLO value (identified by the given `ShapeIndex` into the output of the
+// given `HloInstruction`).
+//
+// e.g. for the following:
+//    %x = some-op(...)
+//    %foo = get-tuple-element(%x), index=0
+//    %bar = tuple(%y, %foo)
+//
+// ... FollowTupleIndirection(%bar, {1}) == {%x, {0}} (output 1 of 'bar' comes
+// from output 0 of %x).
+//
+// Note that all 'tuple' instructions are followed before all
+// 'get-tuple-element' instructions are followed. This is because it is assumed
+// that tupling a value and then extracting it from the tuple again will not
+// occur in properly-optimized IR.
+std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
+    const HloInstruction* instruction, ShapeIndex operand_index);
 
 }  // namespace xla
 

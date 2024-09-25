@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_DIAGNOSTICS_H_
 
+#include <string>
 #include <tuple>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace gpu {

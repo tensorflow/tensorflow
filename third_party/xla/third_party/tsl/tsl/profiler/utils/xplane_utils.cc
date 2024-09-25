@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/util/stats_calculator.h"
 
 namespace tsl {
 namespace profiler {
@@ -223,6 +223,16 @@ const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
   int i =
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });
   return (i != -1) ? &plane.lines(i) : nullptr;
+}
+std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id) {
+  std::vector<int> indices = FindAll(
+      plane.lines(), [id](const XLine* line) { return line->id() == id; });
+  std::vector<const XLine*> lines;
+  lines.reserve(indices.size());
+  for (int index : indices) {
+    lines.push_back(&plane.lines(index));
+  }
+  return lines;
 }
 
 const XLine* FindLineWithName(const XPlane& plane, absl::string_view name) {
@@ -560,7 +570,7 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
                            : event.EndTimestampPs();
       const auto& group_stat = event.GetStat(StatType::kGroupId);
       int64_t group_id =
-          group_stat.has_value() ? group_stat->IntOrUintValue() : 0;
+          group_stat.has_value() ? group_stat->IntOrUintValue() : kint64max;
 
       StatByEvent& line_stats = stats[line.Id()][group_id];
       line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
@@ -598,15 +608,19 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
     for (const auto& [group_id, stat_by_event] : stats_by_group) {
       for (const auto& [event_id, event_stat] : stat_by_event) {
+        const auto& src_event_metadata = *plane.GetEventMetadata(event_id);
         XEventMetadata& event_metadata =
-            *aggregated_plane.GetOrCreateEventMetadata(event_id);
-        CopyEventMetadata(*plane.GetEventMetadata(event_id), plane,
-                          event_metadata, aggregated_plane);
+            *aggregated_plane.GetOrCreateEventMetadata(
+                src_event_metadata.name());
+        CopyEventMetadata(src_event_metadata, plane, event_metadata,
+                          aggregated_plane);
         XEventBuilder aggregated_event =
             aggregated_line.AddEvent(event_metadata);
         aggregated_event.SetNumOccurrences(event_stat.stat.count());
         aggregated_event.SetDurationPs(event_stat.stat.sum());
-        aggregated_event.AddStatValue(*kGroupId, group_id);
+        if (group_id != kint64max) {
+          aggregated_event.AddStatValue(*kGroupId, group_id);
+        }
         if (event_stat.stat.count() > 1) {
           aggregated_event.AddStatValue(*kMinDurationPs, event_stat.stat.min());
         }

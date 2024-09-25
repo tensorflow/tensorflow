@@ -55,7 +55,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     // reorder doesn't create race conditions for other ops that may be
     // concurrently reading the indices and values tensors.
 
-    gtl::InlinedVector<int64, 8> std_order(input_rank);
+    absl::InlinedVector<int64, 8UL> std_order(input_rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<int64_t> concat_order;

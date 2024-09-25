@@ -21,12 +21,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
-#include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
@@ -53,13 +52,13 @@ class HostPlatform : public Platform {
 
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
 
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-
-  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
-
  private:
+  // Returns a device constructed with ordinal without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      int ordinal);
+
   // This platform's name.
   std::string name_;
 

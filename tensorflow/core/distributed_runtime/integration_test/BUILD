@@ -20,8 +20,8 @@ tf_cuda_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_error_util",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],
     alwayslink = 1,
 )
@@ -52,7 +52,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -105,8 +105,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:env",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -139,8 +139,8 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
-        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
 
@@ -168,6 +168,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:env",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

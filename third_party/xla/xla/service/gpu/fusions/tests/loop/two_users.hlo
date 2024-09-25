@@ -1,0 +1,30 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s
+
+// We have two users of add and sub, but they use consistent indexing, so they
+// can be generated as a single function (fusion_atan2).
+fusion {
+  %p0 = f32[2] parameter(0)
+  %p1 = f32[2] parameter(1)
+  %add = f32[2] add(%p0, %p1)
+  %sub = f32[2] subtract(%p0, %p1)
+  %mul = f32[2] multiply(%add, %sub)
+  %div = f32[2] divide(%add, %sub)
+  ROOT %atan2 = f32[2] atan2(%mul, %div)
+}
+
+// CHECK: func.func @main
+// CHECK-NEXT: gpu.thread_id
+// CHECK:      pure_call @fusion_atan2
+// CHECK-NEXT: tensor.insert
+// CHECK:      return
+
+// CHECK: func.func private @fusion_atan2
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: tensor.extract
+// CHECK-NEXT: addf
+// CHECK-NEXT: subf
+// CHECK-NEXT: mulf
+// CHECK-NEXT: divf
+// CHECK-NEXT: atan2
+// CHECK-NEXT: return

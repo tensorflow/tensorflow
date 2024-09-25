@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/error_spec.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -73,7 +73,8 @@ TEST_F(GpuSliceInputFusionTest, InputFusionWithATupleOfSlices) {
 )"
                                          : R"(
 ; CHECK-LABEL: define void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
@@ -120,7 +121,8 @@ TEST_F(GpuSliceInputFusionTest, ConcatThenSplit) {
 )"
                                          : R"(
 ; CHECK-LABEL: define void @{{[a-z_]*}}fusion
-; CHECK: slice2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
+; CHECK: store half %{{.*}}, ptr %{{.*}}, align 2
 ; CHECK: }
 )";
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,

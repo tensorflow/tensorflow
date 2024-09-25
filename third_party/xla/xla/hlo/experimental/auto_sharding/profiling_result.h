@@ -104,8 +104,7 @@ class ProfilingResult {
   // Estimate the cost by linear interpolation between the two closest points.
   double EstimateInternal(
       const std::vector<std::vector<int64_t>>& replica_groups, int64_t size,
-      const std::string& dtype,
-      const StableHashMap<Key, Value>& cost_dict) const {
+      const std::string& dtype, const StableMap<Key, Value>& cost_dict) const {
     Key key(Group2Str(replica_groups), dtype);
     Value cost_list = cost_dict.at(key);
 
@@ -147,9 +146,9 @@ class ProfilingResult {
   }
 
   bool enabled_;
-  StableHashMap<Key, Value> all_reduce_cost_dict_;
-  StableHashMap<Key, Value> all_gather_cost_dict_;
-  StableHashMap<Key, Value> reduce_scatter_cost_dict_;
+  StableMap<Key, Value> all_reduce_cost_dict_;
+  StableMap<Key, Value> all_gather_cost_dict_;
+  StableMap<Key, Value> reduce_scatter_cost_dict_;
 };
 
 }  // namespace spmd

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/framework/device.h"
-#include "tsl/framework/allocator.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

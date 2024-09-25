@@ -104,9 +104,10 @@ inline SymbolRepositoryRegistry& GetGlobalSymbolRepositoryRegistry() {
 
 // Entry points start here.
 
-inline StatusOr<std::unique_ptr<HloModuleAndMetadata>> LookupSymbolInRepository(
-    absl::string_view repository, absl::string_view symbol_reference,
-    BackendType backend) {
+inline absl::StatusOr<std::unique_ptr<HloModuleAndMetadata>>
+LookupSymbolInRepository(absl::string_view repository,
+                         absl::string_view symbol_reference,
+                         BackendType backend) {
   if (SymbolRepository* repo =
           GetGlobalSymbolRepositoryRegistry().repo(repository);
       repo != nullptr) {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 
 namespace xla {

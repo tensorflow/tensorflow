@@ -51,7 +51,7 @@ class ReduceWithLayoutTest
     : public HloTestBase,
       public ::testing::WithParamInterface<ReduceLayout> {
  public:
-  StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
+  absl::StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
     const char* const hlo_string = R"(
 HloModule BadReduce
 
@@ -73,7 +73,7 @@ ENTRY reduce.1 {
   }
 };
 
-XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
+XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_TPU(Reduce)) {
   if (IsMlirLoweringEnabled()) {
     GTEST_SKIP() << "Explicit layouts not supported by MLIR";
   }

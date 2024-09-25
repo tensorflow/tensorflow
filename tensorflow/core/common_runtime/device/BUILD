@@ -34,7 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/framework:device_id",
+        "@local_xla//xla/tsl/framework:device_id",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -50,7 +50,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@local_tsl//tsl/framework:device_id_impl",
+        "@local_xla//xla/tsl/framework:device_id_impl",
     ],
 )
 
@@ -70,8 +70,8 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "@local_tsl//tsl/framework:device_id",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@local_xla//xla/tsl/framework:device_id",
     ],
 )
 
@@ -83,7 +83,7 @@ filegroup(
         "device_id.h",
         "device_id_manager.h",
         "device_mem_allocator.h",
-        "@local_tsl//tsl/framework:device_runtime_headers",
+        "@local_xla//xla/tsl/framework:device_runtime_headers",
     ],
 )
 
@@ -170,7 +170,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
-        "@local_tsl//tsl/framework:device_id",
+        "@local_xla//xla/tsl/framework:device_id",
     ] + if_cuda_or_rocm([
         "@local_xla//xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core/common_runtime:dma_helper",

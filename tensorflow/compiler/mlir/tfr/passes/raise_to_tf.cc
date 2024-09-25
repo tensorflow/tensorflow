@@ -136,7 +136,7 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
   // by the frontend correctly.
   Value CastToNonDerivedType(PatternRewriter& rewriter, Location loc,
                              CastOp cast_op, Type input_tfr_type) const {
-    auto tensor_type = input_tfr_type.dyn_cast<TFRTensorType>();
+    auto tensor_type = mlir::dyn_cast<TFRTensorType>(input_tfr_type);
     if (!tensor_type) return cast_op.getArg();
 
     auto attr_names = tensor_type.getAttrKeys();
@@ -150,7 +150,7 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
     }
 
     Type original_input_type =
-        cast_op.getInputElementType().cast<TypeAttr>().getValue();
+        mlir::cast<TypeAttr>(cast_op.getInputElementType()).getValue();
     if (result_elt_type != original_input_type) {
       UnrankedTensorType result_type = UnrankedTensorType::get(result_elt_type);
       return rewriter.create<TF::CastOp>(loc, result_type, cast_op.getArg());
@@ -166,10 +166,10 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
                             llvm::SmallVectorImpl<Value>& input_values) const {
     if (input_types.size() <= 1) return;
 
-    Type target_input_type = input_types[0].cast<TypeAttr>().getValue();
+    Type target_input_type = mlir::cast<TypeAttr>(input_types[0]).getValue();
     auto result_type = UnrankedTensorType::get(target_input_type);
     for (auto i = 1; i < input_types.size(); ++i) {
-      Type current_input_type = input_types[i].cast<TypeAttr>().getValue();
+      Type current_input_type = mlir::cast<TypeAttr>(input_types[i]).getValue();
       if (current_input_type != target_input_type) {
         input_values[i] =
             rewriter.create<TF::CastOp>(loc, result_type, input_values[i]);
@@ -189,7 +189,7 @@ LogicalResult RewriteTFRCallOp::AddDerivedAttrs(
     llvm::StringMap<Attribute>* derived_attrs) const {
   // If there is an attribute associated to the input in the signature, we
   // store it as an derived attribute.
-  if (auto tensor_type = input_tfr_type.dyn_cast<TFRTensorType>()) {
+  if (auto tensor_type = mlir::dyn_cast<TFRTensorType>(input_tfr_type)) {
     auto attr_names = tensor_type.getAttrKeys();
     if (attr_names.empty()) return success();
 
@@ -201,7 +201,7 @@ LogicalResult RewriteTFRCallOp::AddDerivedAttrs(
 
   // If there is an attribute associated to the input in the signature,
   // we store it as an derived attribute.
-  if (auto list_type = input_tfr_type.dyn_cast<TFRTensorListType>()) {
+  if (auto list_type = mlir::dyn_cast<TFRTensorListType>(input_tfr_type)) {
     auto attr_names = list_type.getAttrKeys();
     if (attr_names.empty()) return success();
 
@@ -314,7 +314,7 @@ Attribute RewriteTFRCallOp::ProcessAttributeValue(Attribute attr,
   if (!attr_type) return attr;
 
   if (attr_type.getValue() == "tensor") {
-    if (auto f = attr.dyn_cast<FloatAttr>()) {
+    if (auto f = mlir::dyn_cast<FloatAttr>(attr)) {
       RankedTensorType type = RankedTensorType::get({}, f.getType());
       return DenseFPElementsAttr::get(type, attr);
     }
@@ -332,13 +332,13 @@ LogicalResult RewriteTFRCallOp::DeriveOutputTypes(
     const llvm::StringMap<Attribute>& attrs,
     SmallVectorImpl<Type>* output_types) const {
   for (auto res : llvm::enumerate(signature.getResults())) {
-    if (auto tensor_type = res.value().dyn_cast<TFRTensorType>()) {
+    if (auto tensor_type = mlir::dyn_cast<TFRTensorType>(res.value())) {
       // tfr.tensor should only have one attribute attached.
       auto attr_key = tensor_type.getAttrKeys().front();
       Builder builder(signature.getContext());
       if (auto attr = attrs.lookup(attr_key.getValue())) {
         output_types->push_back(
-            UnrankedTensorType::get(attr.cast<TypeAttr>().getValue()));
+            UnrankedTensorType::get(mlir::cast<TypeAttr>(attr).getValue()));
       } else if (Type element_type =
                      GetFixedElementType(attr_key.getValue(), builder)) {
         output_types->push_back(UnrankedTensorType::get(element_type));
@@ -350,16 +350,18 @@ LogicalResult RewriteTFRCallOp::DeriveOutputTypes(
       continue;
     }
 
-    if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
+    if (auto list_type = mlir::dyn_cast<TFRTensorListType>(res.value())) {
       // There are two cases: N*T or list(dtype)
       auto attr_keys = list_type.getAttrKeys();
       // N*T case
       if (attr_keys.size() == 2) {
         // The first one is N, and the second one is T
         int list_size =
-            attrs.lookup(attr_keys[0].getValue()).cast<IntegerAttr>().getInt();
+            mlir::cast<IntegerAttr>(attrs.lookup(attr_keys[0].getValue()))
+                .getInt();
         Type list_type =
-            attrs.lookup(attr_keys[1].getValue()).cast<TypeAttr>().getValue();
+            mlir::cast<TypeAttr>(attrs.lookup(attr_keys[1].getValue()))
+                .getValue();
         for (int i = 0; i < list_size; ++i) {
           output_types->push_back(UnrankedTensorType::get(list_type));
         }
@@ -398,11 +400,12 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
   SmallVector<Value, 4> new_results;
   for (auto res : llvm::enumerate(call_op.getResultTypes())) {
     Type res_type = res.value();
-    if (res_type.dyn_cast<TFRTensorType>()) {
+    if (mlir::dyn_cast<TFRTensorType>(res_type)) {
       Value new_res = new_op->getResult(res.index());
       auto casted = rewriter.create<CastOp>(loc, res_type, new_res);
       new_results.push_back(casted.getOut());
-    } else if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
+    } else if (auto list_type =
+                   mlir::dyn_cast<TFRTensorListType>(res.value())) {
       SmallVector<Value, 4> tensor_list;
       for (int i = res.index(); i < new_op->getNumResults(); i++) {
         Value new_res = new_op->getResult(i);

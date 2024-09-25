@@ -20,17 +20,15 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal.h"
-#include "xla/service/shape_inference.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -43,7 +41,7 @@ class ZeroSizedHloEliminationTest : public HloTestBase {
             builder_.AddInstruction(HloInstruction::CreateParameter(
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
-  StatusOr<bool> RunZeroSizedElimination() {
+  absl::StatusOr<bool> RunZeroSizedElimination() {
     auto module = CreateNewVerifiedModule("zero_sized_elimination_test_module");
     module->AddEntryComputation(builder_.Build());
     return ZeroSizedHloElimination{}.Run(module.get());

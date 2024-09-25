@@ -29,10 +29,10 @@ limitations under the License.
 
 #include <assert.h>
 
+#include "xla/tsl/lib/random/weighted_picker.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/random/weighted_picker.h"
 
 namespace tensorflow {
 namespace random {

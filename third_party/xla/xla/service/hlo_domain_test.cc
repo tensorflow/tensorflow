@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -121,10 +121,10 @@ class OpNameDomainCreator {
   }
 };
 
-Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
-                              const DomainMetadata* metadata) {
+absl::Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
+                                    const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST_F(HloDomainTest, CheckDomainWithCallInlining) {

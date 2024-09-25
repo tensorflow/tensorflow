@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_FORMAT_PICKER_H_
 #define XLA_SERVICE_SHARDING_FORMAT_PICKER_H_
 
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -32,7 +32,7 @@ class ShardingFormatPicker : public HloModulePass {
       : sharding_type_(sharding_type) {}
   absl::string_view name() const override { return "sharding-format-picker"; }
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

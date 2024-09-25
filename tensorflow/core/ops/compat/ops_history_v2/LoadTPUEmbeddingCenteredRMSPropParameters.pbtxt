@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "LoadTPUEmbeddingCenteredRMSPropParameters"
   input_arg {
     name: "parameters"

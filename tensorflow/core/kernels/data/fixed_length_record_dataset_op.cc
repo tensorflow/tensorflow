@@ -478,6 +478,7 @@ void FixedLengthRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     metrics::RecordTFDataFilename(kDatasetType, filenames[i]);
   }
+  LogFilenames(filenames);
 
   int64_t header_bytes = -1;
   OP_REQUIRES_OK(

@@ -24,27 +24,31 @@ limitations under the License.
 extern "C" {
 #endif
 
-#define PJRT_API_GPU_EXTENSION_VERSION 1
+#define PJRT_API_GPU_EXTENSION_VERSION 2
 
 struct PJRT_Gpu_Register_Custom_Call_Args {
   size_t struct_size;
   const char* function_name;
   size_t function_name_size;
   int api_version;  // 0 for an untyped call, 1 -- for typed
-  void* custom_call_function;
+  void* handler_instantiate;
+  void* handler_prepare;
+  void* handler_initialize;
+  void* handler_execute;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Register_Custom_Call_Args,
-                          custom_call_function);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Register_Custom_Call_Args, handler_execute);
 
 // Registers a custom call.
 typedef PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args);
 
 typedef struct PJRT_Gpu_Custom_Call {
+  size_t struct_size;
   PJRT_Extension_Type type;
-  const void* next;
+  PJRT_Extension_Base* next;
   PJRT_Gpu_Register_Custom_Call* custom_call;
 } PJRT_Gpu_Custom_Call;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Gpu_Custom_Call, custom_call);
 
 #ifdef __cplusplus
 }

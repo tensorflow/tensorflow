@@ -18,13 +18,13 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -33,7 +33,7 @@ namespace xla {
 namespace {
 
 // Simplifies floating-point conversions `A -> B -> C -> D` as `A -> D`.
-StatusOr<bool> RunOnComputation(HloComputation& computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation& computation) {
   bool changed = false;
   for (HloInstruction* instruction : computation.MakeInstructionPostOrder()) {
     HloInstruction* input = instruction;
@@ -64,7 +64,7 @@ StatusOr<bool> RunOnComputation(HloComputation& computation) {
 
 }  // namespace
 
-StatusOr<bool> SimplifyFPConversions::Run(
+absl::StatusOr<bool> SimplifyFPConversions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

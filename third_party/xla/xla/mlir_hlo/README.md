@@ -2,12 +2,15 @@
 
 The code here exists in two places:
 
-*   https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla/mlir_hlo;
+*   https://github.com/openxla/xla/tree/main/xla/mlir_hlo:
     this is the canonical location and where contributions should be made using
     GitHub pull-requests.
-*   https://github.com/tensorflow/mlir-hlo; this is a standalone repository with
-    a view to the same code to allow other projects to use this without
-    depending on the entire TF monorepo.
+*   **(DEPRECATED)** https://github.com/tensorflow/mlir-hlo; this is a
+    standalone repository with a view to the same code to allow other projects
+    to use this without depending on the entire XLA monorepo. This repository is
+    [slated for deletion](https://groups.google.com/a/openxla.org/g/openxla-discuss/c/Mppuv1Edv1s).
+    All dependencies on MHLO should go through XLA. Users of MHLO should migrate
+    to [StableHLO](https://github.com/openxla/stablehlo) whenever possible.
 
 This implements a self-contained compiler for a linear algebra set of operations
 inspired by XLA
@@ -164,7 +167,7 @@ The latter could be implemented by adding the op and a legalization of the op to
 other known ops, from which a helper function can get generated that could be
 used as regular.
 
-Status: Exists but need to be cleaned up.
+absl::Status: Exists but need to be cleaned up.
 
 ### Meta HLO Dialect `mhlo`
 
@@ -207,7 +210,7 @@ intermediate optimization dialect/format. It is also where we can experiment
 cheaply with new ops. This format will be where the representation would differ
 from existing endpoints.
 
-Status: Exists but need to be cleaned up and evolved, in particular with respect
+absl::Status: Exists but need to be cleaned up and evolved, in particular with respect
 to supporting dynamic shapes.
 
 MHLO differs from XLA HLO op set in multiple ways, including:

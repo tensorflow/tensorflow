@@ -19,23 +19,54 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 
-StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int> device_mapping) {
+absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
+  if (auto* sharding_param_sharding =
+          llvm::dyn_cast<xla::ifrt::ShardingParamSharding>(&sharding)) {
+    return ToOpSharding(sharding_param_sharding->sharding_param(),
+                        sharding_param_sharding->devices());
+  } else {
+    return absl::InvalidArgumentError(
+        "Only conversion from `ShardingParamSharding` to `OpSharding` is "
+        "supported.");
+  }
+}
+
+absl::StatusOr<OpSharding> ToOpSharding(
+    const ShardingParam& sharding_param,
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping) {
   OpSharding op_sharding;
+  {
+    bool all_dim_replicated = true;
+    for (const int64_t dim_shard : sharding_param.dim_shards()) {
+      if (dim_shard != 1) {
+        all_dim_replicated = false;
+        break;
+      }
+    }
+    if (all_dim_replicated) {
+      op_sharding.set_type(OpSharding::REPLICATED);
+      return op_sharding;
+    }
+  }
   op_sharding.set_type(OpSharding::OTHER);
 
   // Populate tile_assignment_dimensions.
@@ -56,21 +87,28 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   }
 
   // Populate tile_assignment_devices.
-  llvm::SmallVector<int, 4> devices;
-  sharding_param.minor_to_major().ToDeviceList(devices);
+  llvm::SmallVector<int> logical_device_ids;
+  sharding_param.minor_to_major().ToDeviceList(logical_device_ids);
   auto* tile_assignment_devices = op_sharding.mutable_tile_assignment_devices();
-  tile_assignment_devices->Reserve(devices.size());
-  for (const int device : devices) {
-    if (device < 0 || device >= device_mapping.size()) {
-      return absl::OutOfRangeError(absl::StrCat("Can't map device ", device));
+  tile_assignment_devices->Reserve(logical_device_ids.size());
+  const absl::Span<Device* const> device_mapping_devices =
+      device_mapping->devices();
+  for (const int logical_device_id : logical_device_ids) {
+    if (logical_device_id < 0 ||
+        logical_device_id >= device_mapping_devices.size()) {
+      return absl::OutOfRangeError(
+          absl::StrCat("Can't map device with logical id ", logical_device_id,
+                       ". The logical device id should be within [0, ",
+                       device_mapping_devices.size(), ")."));
     }
-    tile_assignment_devices->Add(device_mapping[device]);
+    tile_assignment_devices->Add(
+        device_mapping_devices[logical_device_id]->Id().value());
   }
 
   return op_sharding;
 }
 
-StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
+absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   auto axis_sizes = sharding_param.minor_to_major().axis_sizes;
   llvm::SmallVector<int64_t> reshape_dims;
   reshape_dims.reserve(axis_sizes.size());
@@ -81,7 +119,7 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   }
   if (device_count == 1) {
     // Generate single-device sharding as TileMaximal.
-    return HloSharding::AssignDevice(0);
+    return HloSharding::Replicate();
   }
   int64_t cum_size = 1;
   llvm::SmallVector<int64_t> dims;
@@ -90,19 +128,26 @@ StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
     cum_size *= dim_shard;
     dims.push_back(dim_shard);
   }
+  // Applies the inverse of the transposes from `ToShardingParam`.
+  llvm::SmallVector<int, 4> permutation;
+  int num_axis = sharding_param.minor_to_major().permutation.size();
+  permutation.reserve(num_axis);
+  for (const int axis_id :
+       llvm::reverse(sharding_param.minor_to_major().permutation)) {
+    permutation.push_back(num_axis - axis_id - 1);
+  }
   if (device_count != cum_size) {
     // Add the replicated dimension.
     dims.push_back(device_count / cum_size);
-    return HloSharding::PartialTile(TileAssignment(
-        dims, reshape_dims, sharding_param.minor_to_major().permutation));
+    return HloSharding::PartialTile(
+        TileAssignment(dims, reshape_dims, permutation));
   } else {
-    return HloSharding::IotaTile(dims, reshape_dims,
-                                 sharding_param.minor_to_major().permutation);
+    return HloSharding::IotaTile(dims, reshape_dims, permutation);
   }
 }
 
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        int rank, int num_devices) {
+absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                              int rank, int num_devices) {
   // `dim_shards` has size equal to the rank of the array, with each entry
   // representing the number of shards for the corresponding dimension.
   // `minor_to_major.permutation` and `minor_to_major.axis_sizes` must be
@@ -159,8 +204,16 @@ StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
            llvm::reverse(tile_assignment.iota()->reshape_dims())) {
         minor_to_major.axis_sizes.push_back(reshape_dim);
       }
-      for (int axis_id : tile_assignment.iota()->transpose_perm()) {
-        minor_to_major.permutation.push_back(axis_id);
+      // The devices generated by HloSharding
+      // np.arange(ndevices).reshape(reshape_dims).transpose(transpose_perm)
+      // must be equal to the devices ShardingParam
+      // np.arange(ndevices).reshape(reverse(axis_size)).T.transpose(perm).T
+      // Step 1: Compute transpose(transpose_perm).T.
+      // Step 2: Compute T.transpose(transpose_perm).T.
+      int num_axis = tile_assignment.iota()->transpose_perm().size();
+      for (int axis_id :
+           llvm::reverse(tile_assignment.iota()->transpose_perm())) {
+        minor_to_major.permutation.push_back(num_axis - axis_id - 1);
       }
     }
     return ShardingParam(dim_shards, std::move(minor_to_major));

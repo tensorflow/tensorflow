@@ -43,9 +43,8 @@ TEST(ObtainRegistrationFromContext, ProducesValidResult) {
   TfLiteContext* context = interpreter->primary_subgraph().context();
   const TfLiteRegistration* registration = tflite::ops::builtin::Register_ADD();
 
-  TfLiteRegistrationExternal* registration_external =
-      CommonOpaqueConversionUtil::ObtainRegistrationExternal(context,
-                                                             registration, 42);
+  TfLiteOperator* registration_external =
+      CommonOpaqueConversionUtil::ObtainOperator(context, registration, 42);
 
   ASSERT_EQ(registration_external->builtin_code, kTfLiteBuiltinAdd);
   ASSERT_EQ(registration_external->version, registration->version);
@@ -66,11 +65,9 @@ TEST(ObtainRegistrationFromContext, CachingWorks) {
   const TfLiteRegistration* registration = tflite::ops::builtin::Register_ADD();
 
   // Call it twice, and verify that we get the same result back.
-  TfLiteRegistrationExternal* registration_external1 =
-      CommonOpaqueConversionUtil::ObtainRegistrationExternal(context,
-                                                             registration, 0);
-  TfLiteRegistrationExternal* registration_external2 =
-      CommonOpaqueConversionUtil::ObtainRegistrationExternal(context,
-                                                             registration, 1);
+  TfLiteOperator* registration_external1 =
+      CommonOpaqueConversionUtil::ObtainOperator(context, registration, 0);
+  TfLiteOperator* registration_external2 =
+      CommonOpaqueConversionUtil::ObtainOperator(context, registration, 1);
   ASSERT_EQ(registration_external1, registration_external2);
 }

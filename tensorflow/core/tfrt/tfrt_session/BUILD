@@ -128,6 +128,10 @@ tf_cc_shared_test(
 # tf_py_strict_test(
 #     name = "tfrt_session_python_test",
 #     srcs = ["tfrt_session_python_test.py"],
+#     exec_properties = select({
+#         "//tools/cpp:asan_build": {"cpp_link.mem": "16g"},
+#         "//conditions:default": None,
+#     }),
 #     python_version = "PY3",
 #     deps = [
 #         ":tfrt_session_py",

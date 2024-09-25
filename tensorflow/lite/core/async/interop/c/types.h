@@ -107,6 +107,14 @@ typedef enum TfLiteBufferAttrKey {
   kTfLiteBufferAttrKeyOffset = 4,
   /// Buffer size (padded size if applicable), size_t
   kTfLiteBufferAttrKeySize = 5,
+  /// Buffer current host coherency state, bool
+  kTfLiteBufferAttrKeyCurrentHostCoherencyState = 6,
+  /// Buffer preferred host coherency state, bool
+  kTfLiteBufferAttrKeyPreferredHostCoherencyState = 7,
+  /// Buffer current host cache state, bool
+  kTfLiteBufferAttrKeyCurrentHostCacheState = 8,
+  /// Buffer preferred cache state, bool
+  kTfLiteBufferAttrKeyPreferredHostCacheState = 9,
 } TfLiteBufferAttrKey;
 
 /// General synchronization attribute keys that are recognizable by TFLite.

@@ -1,17 +1,18 @@
 """OSS versions of Bazel macros that can't be migrated to TSL."""
 
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
+    "@local_xla//xla/tsl:tsl.bzl",
+    "if_libtpu",
 )
 load(
-    "//third_party/mkl:build_defs.bzl",
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load(
-    "@local_tsl//tsl:tsl.bzl",
-    "if_libtpu",
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
 )
 
 def tf_tpu_dependencies():
@@ -28,11 +29,13 @@ def tf_additional_binary_deps():
         # core.
         Label("//tensorflow/core/kernels:lookup_util"),
         Label("//tensorflow/core/util/tensor_bundle"),
-    ] + if_rocm([
+    ] + if_cuda([
+        Label("@local_xla//xla/stream_executor:cuda_platform"),
+    ]) + if_rocm([
         "@local_xla//xla/stream_executor:rocm_platform",
         "@local_xla//xla/stream_executor/rocm:rocm_rpath",
     ]) + if_mkl_ml([
-        Label("//third_party/mkl:intel_binary_blob"),
+        Label("@local_xla//xla/tsl/mkl:intel_binary_blob"),
     ])
 
 def tf_protos_all():

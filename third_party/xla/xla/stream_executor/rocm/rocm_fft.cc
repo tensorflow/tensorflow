@@ -18,21 +18,24 @@ limitations under the License.
 #include <complex>
 
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {
+
+using rocm::ROCMComplex;
 
 namespace wrap {
 
@@ -46,39 +49,39 @@ namespace wrap {
   struct WrapperShim__##__name {                                 \
     template <typename... Args>                                  \
     hipfftResult operator()(GpuExecutor *parent, Args... args) { \
-      gpu::ScopedActivateExecutorContext sac{parent};            \
+      ScopedActivateContext sac{parent};                         \
       return ::__name(args...);                                  \
     }                                                            \
   } __name;
 
 #else
 
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                        \
-  struct DynLoadShim__##__name {                                   \
-    static const char *kName;                                      \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
-    static void *GetDsoHandle() {                                  \
-      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();    \
-      return s.value();                                            \
-    }                                                              \
-    static FuncPtrT LoadOrDie() {                                  \
-      void *f;                                                     \
-      auto s = tsl::Env::Default()                                 \
-          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
-      CHECK(s.ok()) << "could not find " << kName                  \
-                    << " in rocfft DSO; dlerror: " << s.message(); \
-      return reinterpret_cast<FuncPtrT>(f);                        \
-    }                                                              \
-    static FuncPtrT DynLoad() {                                    \
-      static FuncPtrT f = LoadOrDie();                             \
-      return f;                                                    \
-    }                                                              \
-    template <typename... Args>                                    \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {   \
-      gpu::ScopedActivateExecutorContext sac{parent};              \
-      return DynLoad()(args...);                                   \
-    }                                                              \
-  } __name;                                                        \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                         \
+    static const char *kName;                                            \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
+    static void *GetDsoHandle() {                                        \
+      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();          \
+      return s.value();                                                  \
+    }                                                                    \
+    static FuncPtrT LoadOrDie() {                                        \
+      void *f;                                                           \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                         kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                        \
+                    << " in rocfft DSO; dlerror: " << s.message();       \
+      return reinterpret_cast<FuncPtrT>(f);                              \
+    }                                                                    \
+    static FuncPtrT DynLoad() {                                          \
+      static FuncPtrT f = LoadOrDie();                                   \
+      return f;                                                          \
+    }                                                                    \
+    template <typename... Args>                                          \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
+      ScopedActivateContext sac{parent};                                 \
+      return DynLoad()(args...);                                         \
+    }                                                                    \
+  } __name;                                                              \
   const char *DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -424,7 +427,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
+        if (stream->Memcpy(&allocated.value(), input, input.size()).ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
@@ -434,8 +437,8 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
   }
 
   InputT *ip = const_cast<InputT *>(GpuMemory(input_maybe_copy));
-  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(), GpuComplex(ip),
-                        GpuComplex(GpuMemoryMutable(output)));
+  auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(), ROCMComplex(ip),
+                        ROCMComplex(GpuMemoryMutable(output)));
 
   if (ret != HIPFFT_SUCCESS) {
     LOG(ERROR) << "failed to run rocFFT routine: " << ret;
@@ -461,8 +464,8 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   }
 
   auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(const_cast<InputT *>(GpuMemory(input))),
-                        GpuComplex(GpuMemoryMutable(output)),
+                        ROCMComplex(const_cast<InputT *>(GpuMemory(input))),
+                        ROCMComplex(GpuMemoryMutable(output)),
                         rocm_fft_plan->GetFftDirection());
 
   if (ret != HIPFFT_SUCCESS) {
@@ -509,7 +512,7 @@ void initialize_rocfft() {
     absl::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
             rocm::kROCmPlatformId, "rocFFT",
-            [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
+            [](StreamExecutor *parent) -> fft::FftSupport * {
               gpu::GpuExecutor *rocm_executor =
                   dynamic_cast<gpu::GpuExecutor *>(parent);
               if (rocm_executor == nullptr) {

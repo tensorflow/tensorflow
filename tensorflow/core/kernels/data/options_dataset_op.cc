@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/options_dataset_op.h"
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -45,6 +46,10 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
                     "Could not parse ", OptionsDatasetOp::kSerializedOptions,
                     " as valid Options.")));
     set_options(options);
+    random_indexing_compatible_ = absl::OkStatus();
+    if (input_ != nullptr) {
+      random_indexing_compatible_ = input_->RandomIndexingCompatible();
+    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -89,6 +94,10 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
+  absl::Status RandomIndexingCompatible() const override {
+    return random_indexing_compatible_;
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -106,6 +115,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
  private:
   const DatasetBase* input_;
   const tstring serialized_options_;
+  absl::Status random_indexing_compatible_;
 };
 
 void OptionsDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {

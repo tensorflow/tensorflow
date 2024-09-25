@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_FUNCTION_H_
 #define XLA_SERVICE_CPU_IR_FUNCTION_H_
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -56,6 +56,19 @@ class IrFunction {
              llvm::Function::LinkageTypes linkage,
              const HloModuleConfig& module_config, llvm::Module* llvm_module,
              llvm::IRBuilder<>* b, int64_t num_dynamic_loop_bounds);
+
+  // Initialize an llvm::Function with existing function, created somewhere
+  // else, omit any extra work.
+  IrFunction(llvm::IRBuilder<>* b, llvm::Module* llvm_module,
+             int64_t num_dynamic_loop_bounds, llvm::Function* function,
+             // Function argument IR values.
+             // llvm::Argument* result_arg, llvm::Value* exec_run_options_arg,
+             // llvm::Value* parameters_arg, llvm::Value* buffer_table_arg,
+             llvm::Value* dynamic_loop_bounds_arg,
+             // llvm::Value* profile_counters_arg, llvm::Value* status_arg,
+             //  Basic block containing return.
+             llvm::BasicBlock* return_block);
+
   ~IrFunction();
 
   // Emit IR to read and return the set of IR values representing the dynamic
@@ -145,7 +158,7 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
 
 // Emits a call to a runtime fork/join function which dispatches parallel
 // calls to 'parallel_function' (and joins threads before returning).
-Status EmitCallToParallelForkJoin(
+absl::Status EmitCallToParallelForkJoin(
     const std::vector<llvm::Value*>& arguments, const Shape& shape,
     absl::Span<const int64_t> dimension_partition_counts, llvm::IRBuilder<>* b,
     llvm::Function* parallel_function, absl::string_view name);

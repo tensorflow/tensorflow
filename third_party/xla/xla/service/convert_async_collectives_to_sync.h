@@ -18,9 +18,15 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -36,11 +42,11 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  virtual Status ConvertAsyncInstructionsToSync(
+  virtual absl::Status ConvertAsyncInstructionsToSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
       const {
@@ -49,7 +55,7 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
 
   // Helper utility to replace a list of pairs of async-start/done ops in a
   // computation with their synchronous variants and update the schedule.
-  static Status ReplaceAsyncInstructionsWithSync(
+  static absl::Status ReplaceAsyncInstructionsWithSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>>
           async_pairs);
@@ -58,7 +64,7 @@ class ConvertAsyncCollectivesToSync : public HloModulePass {
       "async_collective_name";
 
  private:
-  StatusOr<bool> RunOnComputation(HloComputation* computation);
+  absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
   HloPredicate is_nop_;
 };
 }  // namespace xla

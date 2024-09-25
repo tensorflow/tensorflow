@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,7 +38,7 @@ namespace {
 using ::testing::NotNull;
 using ::testing::SizeIs;
 
-class ConstantFoldingTest : public QuantizationTestBase {};
+using ConstantFoldingTest = ::mlir::quant::QuantizationTestBase;
 
 TEST_F(ConstantFoldingTest, FoldLargeConstant) {
   constexpr absl::string_view kModuleCode = R"mlir(

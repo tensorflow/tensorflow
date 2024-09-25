@@ -78,7 +78,7 @@ class DeviceLookup {
  public:
   DeviceLookup() = default;
 
-  static StatusOr<DeviceLookup> FromGraph(Graph* graph) {
+  static absl::StatusOr<DeviceLookup> FromGraph(Graph* graph) {
     DeviceLookup lookup;
     for (Node* n : graph->op_nodes()) {
       string device;

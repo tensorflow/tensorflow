@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/monitoring/metric_def.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

@@ -17,11 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_WEAKREF_LRU_CACHE_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "nanobind/nanobind.h"
 
 namespace jax {
 
-void BuildWeakrefLRUCacheAPI(pybind11::module& m);
+void BuildWeakrefLRUCacheAPI(nanobind::module_& m);
 
 }  // namespace jax
 

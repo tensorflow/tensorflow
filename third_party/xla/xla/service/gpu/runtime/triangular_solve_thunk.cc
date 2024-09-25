@@ -15,13 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/triangular_solve_thunk.h"
 
+#include <complex>
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/make_batch_pointers.h"
+#include "xla/service/gpu/runtime/thunk.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

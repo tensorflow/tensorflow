@@ -42,7 +42,7 @@ Status GetAttrValuesFromOperation(
 // ShapedType for the leading values with ShapedType in the results of the
 // nodes. Set it to true if the returned NodeDef will be executed by the linked
 // TF Eager runtime.
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs);
 

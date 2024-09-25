@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BatchMatrixDiagPart"
   input_arg {
     name: "input"

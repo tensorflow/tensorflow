@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/client/sharding_builder.h"
@@ -27,10 +28,11 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
@@ -653,12 +655,11 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
     }
     se::StreamExecutor* executor =
         local_client_->platform()->ExecutorForDevice(d).value();
-    se::Stream stream(executor);
-    stream.Init();
+    TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
-    auto result =
-        ExecuteLocallyOrDie(computation, {}, DefaultExecutableBuildOptions(),
-                            DefaultExecutableRunOptions().set_stream(&stream));
+    auto result = ExecuteLocallyOrDie(
+        computation, {}, DefaultExecutableBuildOptions(),
+        DefaultExecutableRunOptions().set_stream(stream.get()));
     // As a check to verify that the computation ran of the device associated
     // with the stream. This is a weak check, but stronger verification is hard.
     EXPECT_EQ(d, result.device_ordinal());
@@ -673,16 +674,16 @@ XLA_TEST_F(LocalClientExecuteTest,
   // Try to run a computation on a stream for a platform (CPU) which does not
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
-      se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .value();
-  se::Stream wrong_stream(wrong_platform->ExecutorForDevice(0).value());
-  wrong_stream.Init();
+      se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto wrong_stream,
+      wrong_platform->ExecutorForDevice(0).value()->CreateStream());
 
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
   auto execute_status = ExecuteLocally(
       builder.Build().value(), {}, DefaultExecutableBuildOptions(),
-      DefaultExecutableRunOptions().set_stream(&wrong_stream));
+      DefaultExecutableRunOptions().set_stream(wrong_stream.get()));
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("stream is for platform .*, but service targets"));
@@ -691,8 +692,7 @@ XLA_TEST_F(LocalClientExecuteTest,
 XLA_TEST_F(LocalClientExecuteTest,
            DISABLED_ON_CPU(AllocatorDoesNotMatchPlatform)) {
   se::Platform* wrong_platform =
-      se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId)
-          .value();
+      se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
   TestAllocator allocator(wrong_platform);
 
   XlaBuilder builder(TestName());
@@ -704,27 +704,6 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_FALSE(execute_status.ok());
   EXPECT_THAT(execute_status.status().message(),
               ContainsRegex("allocator platform .* does not match service"));
-}
-
-XLA_TEST_F(LocalClientExecuteTest, RunOnUninitializedStream) {
-  // Try to run a computation on a stream that has not been initialized.
-  XlaBuilder builder(TestName());
-  ConstantR0<float>(&builder, 42.0f);
-
-  LOG(INFO) << "default device = " << local_client_->default_device_ordinal();
-  se::StreamExecutor* executor =
-      local_client_->platform()
-          ->ExecutorForDevice(local_client_->default_device_ordinal())
-          .value();
-  se::Stream stream(executor);
-  // Don't call stream.Init().
-
-  auto execute_status = ExecuteLocally(
-      builder.Build().value(), {}, DefaultExecutableBuildOptions(),
-      DefaultExecutableRunOptions().set_stream(&stream));
-  EXPECT_FALSE(execute_status.ok());
-  EXPECT_THAT(execute_status.status().message(),
-              ContainsRegex("stream is uninitialized or in an error state"));
 }
 
 XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
@@ -988,7 +967,7 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().fdo_profile(), kFdoProfile);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().fdo_profile(), kFdoProfile);
 }
 
@@ -1012,8 +991,31 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   const HloModule& compiled_module =
       executables.front()->executable()->module();
   EXPECT_EQ(compiled_module.config().device_memory_size(), kDeviceMemorySize);
-  TF_ASSERT_OK_AND_ASSIGN(auto proto, compiled_module.ToProtoWithConfig());
+  auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().device_memory_size(), kDeviceMemorySize);
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_use_shardy_partitioner(true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_EQ(compiled_module.config().use_shardy_partitioner(), true);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_EQ(proto.config().use_shardy_partitioner(), true);
 }
 
 BENCHMARK(BM_LocalClientOverhead);

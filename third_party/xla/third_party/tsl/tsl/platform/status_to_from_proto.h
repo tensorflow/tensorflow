@@ -28,11 +28,11 @@ namespace tsl {
 // Symbol not found: tensorflow11StatusProtoC1EPN6protobuf5ArenaEb
 
 // Converts a `Status` to a `StatusProto`.
-tensorflow::StatusProto StatusToProto(const Status& s);
+tensorflow::StatusProto StatusToProto(const absl::Status& s);
 
 #if defined(PLATFORM_GOOGLE)
 // Constructs a `Status` from a `StatusProto`.
-Status StatusFromProto(
+absl::Status StatusFromProto(
     const tensorflow::StatusProto& proto,
     absl::SourceLocation loc = absl::SourceLocation::current());
 #else

@@ -49,6 +49,31 @@ TEST(RequestCostTest, RecordCost) {
                                    Pair("tpu_v2", absl::Milliseconds(22)),
                                    Pair("cpu_v1", absl::Milliseconds(33)),
                                    Pair("cpu_v2", absl::Milliseconds(44))));
+
+  request_cost.ScaleCosts(2);
+  EXPECT_THAT(request_cost.GetCosts(),
+              UnorderedElementsAre(Pair("tpu_v1", absl::Milliseconds(22)),
+                                   Pair("tpu_v2", absl::Milliseconds(44)),
+                                   Pair("cpu_v1", absl::Milliseconds(66)),
+                                   Pair("cpu_v2", absl::Milliseconds(88))));
+}
+
+TEST(RequestCostTest, RecordMetrics) {
+  RequestCost request_cost;
+
+  request_cost.RecordMetrics({{"metric_v1", 1}, {"metric_v2", 3.14}});
+  EXPECT_THAT(
+      request_cost.GetMetrics(),
+      UnorderedElementsAre(Pair("metric_v1", 1), Pair("metric_v2", 3.14)));
+
+  request_cost.RecordMetrics({{"metric_v1", 11},
+                              {"metric_v2", 3.14159},
+                              {"other_metric_v1", 3},
+                              {"other_metric_v2", 4}});
+  EXPECT_THAT(request_cost.GetMetrics(),
+              UnorderedElementsAre(
+                  Pair("metric_v1", 11), Pair("metric_v2", 3.14159),
+                  Pair("other_metric_v1", 3), Pair("other_metric_v2", 4)));
 }
 
 TEST(RequestCostTest, RecordBatchMetrics) {
@@ -75,6 +100,18 @@ TEST(RequestCostTest, RecordBatchMetrics) {
               4, 2, 1,
               UnorderedElementsAre(Pair("gcu", absl::Milliseconds(40)),
                                    Pair("tpu", absl::Milliseconds(80))))));
+
+  request_cost.ScaleBatchCosts(4);
+  EXPECT_THAT(
+      request_cost.GetBatchMetrics(),
+      ElementsAre(
+          FieldsAre(8, 8, 0,
+                    UnorderedElementsAre(Pair("gcu", absl::Milliseconds(320)),
+                                         Pair("tpu", absl::Milliseconds(640)))),
+          FieldsAre(
+              4, 2, 1,
+              UnorderedElementsAre(Pair("gcu", absl::Milliseconds(160)),
+                                   Pair("tpu", absl::Milliseconds(320))))));
 }
 
 }  // namespace

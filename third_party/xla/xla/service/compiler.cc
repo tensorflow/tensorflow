@@ -30,8 +30,8 @@ namespace xla {
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
 Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
-    : device_description(s->GetDeviceDescription().ToGpuProto()),
-      platform_name(s->platform()->Name()),
+    : device_description(s->GetDeviceDescription()),
+      platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
   se::dnn::DnnSupport* dnn = s->AsDnn();
   if (dnn != nullptr) {
@@ -71,7 +71,7 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 }
 
 // Define a default version where metadata is not used.
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
     std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& options,
@@ -108,7 +108,7 @@ Compiler::GetPlatformCompilers() {
   (*factories)[platform_id] = std::move(compiler_factory);
 }
 
-/* static */ StatusOr<Compiler*> Compiler::GetForPlatform(
+/* static */ absl::StatusOr<Compiler*> Compiler::GetForPlatform(
     const se::Platform* platform) {
   absl::MutexLock lock(&platform_compiler_mutex_);
 

@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/mkl_heuristics.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/util.h"
 
@@ -243,7 +244,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
  public:
   MklLayoutRewritePass() : num_intra_threads_(port::MaxParallelism()) {
     // NOTE: names are alphabetically sorted.
-    csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
     csinfo_.avg_pool3d = "AvgPool3D";
@@ -282,11 +282,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_depthwise_conv2d = "_FusedDepthwiseConv2dNative";
     csinfo_.fused_matmul = "_FusedMatMul";
     csinfo_.fused_pad_conv2d = "FusedPadConv2D";
-    csinfo_.identity = "Identity";
     csinfo_.leakyrelu = "LeakyRelu";
     csinfo_.leakyrelu_grad = "LeakyReluGrad";
-    csinfo_.lrn = "LRN";
-    csinfo_.lrn_grad = "LRNGrad";
     csinfo_.matmul = "MatMul";
     csinfo_.max_pool = "MaxPool";
     csinfo_.max_pool_grad = "MaxPoolGrad";
@@ -369,33 +366,16 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.requantize = "Requantize";
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
-    csinfo_.reshape = "Reshape";
-    csinfo_.slice = "Slice";
+    csinfo_.sparse_matrix_matmul = "SparseMatrixMatMul";
     csinfo_.softmax = "Softmax";
-    csinfo_.split = "Split";
     csinfo_.transpose = "Transpose";
     // Element-wise ops. Ensure you also add any new ops to IsOpElementWise
-    // in the MklUtil.h (IsMklElementWiseOp method) to ensure that the
-    // MklInputConversion op is added before it.
-    csinfo_.add = "Add";
-    csinfo_.add_v2 = "AddV2";
-    csinfo_.maximum = "Maximum";
-    csinfo_.mul = "Mul";
-    csinfo_.squared_difference = "SquaredDifference";
-    csinfo_.sub = "Sub";
+    // in the MklUtil.h
     csinfo_.sigmoid = "Sigmoid";
     // End - element-wise ops. See note above.
 
     const bool native_fmt = NativeFormatEnabled();
     // NOTE: names are alphabetically sorted.
-    rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.add, mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
-                      GetRewriteCause()});
-    rinfo_.push_back(
-        {csinfo_.add_v2, mkl_op_registry::GetMklOpName(csinfo_.add_v2),
-         CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
@@ -529,17 +509,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back(
         {csinfo_.fused_pad_conv2d, csinfo_.mkl_native_pad_with_conv2d,
          CopyAttrsAllCheckConstFilter, AlwaysRewrite, kRewriteForOpNameChange});
-    rinfo_.push_back(
-        {csinfo_.identity, mkl_op_registry::GetMklOpName(csinfo_.identity),
-         CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.lrn, mkl_op_registry::GetMklOpName(csinfo_.lrn),
-                      CopyAttrsAll, LrnRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.lrn_grad,
-                      mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
-                      CopyAttrsAll, LrnGradRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.matmul,
                       mkl_op_registry::GetMklOpName(csinfo_.matmul),
                       CopyAttrsAll, MatMulRewrite, kRewriteForOpNameChange});
+#ifdef ENABLE_ONEDNN_V3
+    rinfo_.push_back(
+        {csinfo_.sparse_matrix_matmul,
+         mkl_op_registry::GetMklOpName(csinfo_.sparse_matrix_matmul),
+         CopyAttrsAll, SparseMatrixMatMulRewrite, kRewriteForOpNameChange});
+#endif
     rinfo_.push_back({csinfo_.leakyrelu,
                       mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
                       CopyAttrsAll, LeakyReluRewrite, GetRewriteCause()});
@@ -558,12 +536,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool3d_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
                       CopyAttrsAll, Maxpool3DGradRewrite, GetRewriteCause()});
-    rinfo_.push_back(
-        {csinfo_.maximum, mkl_op_registry::GetMklOpName(csinfo_.maximum),
-         CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.mul, mkl_op_registry::GetMklOpName(csinfo_.mul),
-                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
-                      GetRewriteCause()});
     rinfo_.push_back({csinfo_.pad_with_conv2d,
                       native_fmt ? csinfo_.mkl_native_pad_with_conv2d
                                  : csinfo_.mkl_pad_with_conv2d,
@@ -709,29 +681,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.tanh_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.tanh_grad),
                       CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back({csinfo_.reshape,
-                      mkl_op_registry::GetMklOpName(csinfo_.reshape),
-                      CopyAttrsAll, AlwaysRewrite, GetRewriteCause()});
-    rinfo_.push_back(
-        {csinfo_.slice, mkl_op_registry::GetMklOpName(csinfo_.slice),
-         CopyAttrsAll, RewriteIfAtleastOneMklInput, GetRewriteCause()});
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsAll, RewriteIfX86, GetRewriteCause()});
-
-    rinfo_.push_back({csinfo_.squared_difference,
-                      mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
-                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
-                      GetRewriteCause()});
-    rinfo_.push_back({csinfo_.sub, mkl_op_registry::GetMklOpName(csinfo_.sub),
-                      CopyAttrsAll, RewriteIfAtleastOneMklInput,
-                      GetRewriteCause()});
     rinfo_.push_back({csinfo_.transpose,
                       mkl_op_registry::GetMklOpName(csinfo_.transpose),
                       CopyAttrsAll, RewriteIfX86, kRewriteForOpNameChange});
 
     // Add info about which ops to add workspace edge to and the slots.
-    wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});
     wsinfo_.push_back(
         {csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
@@ -873,9 +830,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   /// Structure to store all constant strings
   /// NOTE: names are alphabetically sorted.
   typedef struct {
-    string addn;
-    string add;
-    string add_v2;
     string avg_pool;
     string avg_pool_grad;
     string avg_pool3d;
@@ -911,17 +865,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_conv3d;
     string fused_depthwise_conv2d;
     string fused_matmul;
-    string identity;
     string leakyrelu;
     string leakyrelu_grad;
-    string lrn;
-    string lrn_grad;
     string matmul;
     string max_pool;
     string max_pool_grad;
     string max_pool3d;
     string max_pool3d_grad;
-    string maximum;
     string mkl_conv2d;
     string mkl_conv2d_grad_input;
     string mkl_conv2d_grad_filter;
@@ -946,7 +896,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_pad_with_conv2d;
     string mkl_pad_with_fused_conv2d;
     string mkl_swish;
-    string mul;
     string pad;
     string pad_with_conv2d;
     string pad_with_fused_conv2d;
@@ -984,12 +933,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string tanh;
     string tanh_grad;
     string transpose;
-    string reshape;
-    string slice;
+    string sparse_matrix_matmul;
     string softmax;
-    string split;
-    string squared_difference;
-    string sub;
   } ConstStringsInfo;
 
  private:
@@ -1541,6 +1486,49 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
     return false;
   }
+
+  static bool SparseMatrixMatMulRewrite(const Node* n) {
+    DataType T;
+    Tensor tensor;
+    bool adjoint_a, adjoint_b, transpose_a, transpose_b, transpose_out;
+
+    // Check the environment variable.
+    if (!UseOnednnSpmm()) {
+      VLOG(2) << "TF_ENABLE_ONEDNN_SPMM is disabled";
+      return false;
+    } else {
+      VLOG(2) << "TF_ENABLE_ONEDNN_SPMM is enabled";
+    }
+
+    // Check the datatype.
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
+    if (T != DT_FLOAT) {
+      VLOG(2) << "_MklSparseMatrixMatMul only supports DT_FLOAT";
+      return false;
+    }
+
+    // Check for adjointing.
+    TF_CHECK_OK(GetNodeAttr(n->def(), "adjoint_a", &adjoint_a));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "adjoint_b", &adjoint_b));
+    if (adjoint_a || adjoint_b) {
+      VLOG(2)
+          << "_MklNativeSparseMatrixMatMul doesn't support adjointing matrices";
+      return false;
+    }
+
+    // Check for transposing.
+    TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &transpose_a));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_b", &transpose_b));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_output", &transpose_out));
+    if (transpose_a || transpose_b || transpose_out) {
+      VLOG(2) << "_MklNativeSparseMatrixMatMul doesn't support transposing "
+                 "matrices";
+      return false;
+    }
+
+    return true;
+  }
+
   // For oneDNN, only int32 is supported for axis data type
   static bool ConcatV2Rewrite(const Node* n) {
     DataType T;
@@ -1621,45 +1609,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
 
     return false;
-  }
-
-  // If the depth_radius of LRN is not 2, then MKL DNN takes unoptimized
-  // path. The unoptimized path is slow. Thus we don't rewrite the node
-  // and use default Eigen. But for depth_radius=2, MKL DNN optimized
-  // path is taken, i.e., eigen node is rewritten by MKl DNN node.
-  static bool LrnRewrite(const Node* n) {
-    DCHECK(n);
-
-    int depth_radius;
-    TF_CHECK_OK(GetNodeAttr(n->def(), "depth_radius", &depth_radius));
-
-    // if the depth_radius of LRN is not 2, don't rewrite the node by MKL DNN
-    // and use eigen node instead
-    if (depth_radius == 2) {
-      return true;
-    }
-    VLOG(1) << "LrnRewrite: The model sets depth_radius as not 2 which"
-            << "case is not optimized by Intel MKL, thus using Eigen op"
-            << "for LRN ";
-
-    return false;
-  }
-
-  static bool LrnGradRewrite(const Node* n) {
-    DCHECK(n);
-    bool do_rewrite = false;
-
-    for (const Edge* e : n->in_edges()) {
-      // Rewrite only if there is corresponding LRN, i.e workspace is available
-      if (e->dst()->type_string() == csinfo_.lrn_grad && e->dst_input() == 2 &&
-          e->src()->type_string() ==
-              mkl_op_registry::GetMklOpName(csinfo_.lrn) &&
-          e->src_output() == 0) {
-        do_rewrite = true;
-        break;
-      }
-    }
-    return do_rewrite;
   }
 
   // MKL-DNN's LeakyRelu(feature) = feature          (if feature > 0), or

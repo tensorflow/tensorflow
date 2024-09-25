@@ -29,8 +29,8 @@ namespace xla {
 // Example:
 //   input: indices = tensor<4x2x3xi32>, index_vector_dim = 1
 //   output: tensor<12x2xi32>
-StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
-                                                int64_t index_vector_dim);
+absl::StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
+                                                      int64_t index_vector_dim);
 
 // Given a map from index vector positions to dimension numbers, returns a pair
 // of permutations that when applied to the operand, let you replace the map
@@ -40,17 +40,18 @@ StatusOr<HloInstruction*> TransformStartIndices(HloInstruction* indices,
 std::pair<std::vector<int64_t>, std::vector<int64_t>>
 MakeOperandStartIndexPermutations(absl::Span<const int64_t>, int operand_rank);
 
-StatusOr<HloInstruction*> MaybeTranspose(HloInstruction* operand,
-                                         absl::Span<const int64_t> permutation);
+absl::StatusOr<HloInstruction*> MaybeTranspose(
+    HloInstruction* operand, absl::Span<const int64_t> permutation);
 
-StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
+absl::StatusOr<std::vector<HloInstruction*>> MaybeTranspose(
     absl::Span<HloInstruction* const> operands,
     const std::vector<int64_t>& operand_permutation);
 
 // Moves the given dimension to the last dimension.
 // Example: MoveDimensionToEnd(tensor<1x2x3xi1>, 0): tensor<2x3x1xi1>.
-StatusOr<HloInstruction*> MoveDimensionToEnd(HloInstruction* operand,
-                                             size_t dimension, size_t rank);
+absl::StatusOr<HloInstruction*> MoveDimensionToEnd(HloInstruction* operand,
+                                                   size_t dimension,
+                                                   size_t rank);
 
 }  // namespace xla
 

@@ -25,15 +25,34 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/service/computation_placer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
 // Implementation notes:
@@ -108,14 +127,14 @@ uint32_t constexpr kOutfeedCidShutdown = 0;
 // Encapsulates data received from a device outfeed.
 class OutfeedData {
  public:
-  OutfeedData(PjRtDevice* device, uint32_t consumer_id, Shape shape)
+  OutfeedData(ifrt::PjRtDevice* device, uint32_t consumer_id, Shape shape)
       : device_(device),
         consumer_id_(consumer_id),
         shape_(shape),
         literal_(nullptr),
         literal_size_bytes_(0) {}
 
-  PjRtDevice* device() { return device_; }
+  ifrt::PjRtDevice* device() { return device_; }
   uint32_t consumer_id() const { return consumer_id_; }
   Shape shape() const { return shape_; }
   std::unique_ptr<Literal> literal() {
@@ -130,7 +149,7 @@ class OutfeedData {
   std::string DebugString() const;
 
  private:
-  PjRtDevice* device_;
+  ifrt::PjRtDevice* device_;
   uint32_t consumer_id_;
   Shape shape_;
   std::unique_ptr<Literal> literal_;
@@ -158,7 +177,8 @@ std::string OutfeedData::DebugString() const {
 class OutfeedReceiverImpl {
  public:
   OutfeedReceiverImpl(
-      OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
+      OutfeedReceiver::Callback callback,
+      absl::Span<ifrt::PjRtClient* const> clients,
       ssize_t max_callback_queue_size_bytes,
       const std::optional<ExecutableBuildOptions>& executable_build_options);
 
@@ -171,10 +191,12 @@ class OutfeedReceiverImpl {
 
   void Start();
 
-  StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
-                                      uint32_t consumer_id,
-                                      std::vector<XlaOp> arrays,
-                                      uint32_t device_idx);
+  absl::StatusOr<XlaOp> AddOutfeedToBuilder(XlaBuilder* builder, XlaOp token,
+                                            uint32_t consumer_id,
+                                            std::vector<XlaOp> arrays,
+                                            uint32_t device_idx);
+
+  absl::Status RegisterOutfeed(uint32_t consumer_id, const Shape& shape);
 
  private:
   bool CallbackQueueHasSpace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -189,11 +211,11 @@ class OutfeedReceiverImpl {
   void DeviceListenerThreadLoop(int device_idx);
 
   // Enqueues to a device an outfeed operation with a shutdown consumer ID.
-  Status SendShutdownOutfeedHeader(int device_idx);
+  absl::Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(PjRtDevice* device,
-                                                           const Shape& shape);
+  absl::StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
+      ifrt::PjRtDevice* device, const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(uint32_t device_idx,
@@ -206,7 +228,7 @@ class OutfeedReceiverImpl {
 
   OutfeedReceiver::Callback callback_;
   // The devices on which we are listening.
-  std::vector<PjRtDevice*> devices_;
+  std::vector<ifrt::PjRtDevice*> devices_;
   // Maximum bytes capacity of the ensemble of callback queues.
   uint64_t max_callback_queue_size_bytes_;
   std::optional<ExecutableBuildOptions> executable_build_options_;
@@ -233,7 +255,8 @@ class OutfeedReceiverImpl {
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
-    OutfeedReceiver::Callback callback, absl::Span<PjRtClient* const> clients,
+    OutfeedReceiver::Callback callback,
+    absl::Span<ifrt::PjRtClient* const> clients,
     ssize_t max_callback_queue_size_bytes,
     const std::optional<ExecutableBuildOptions>& executable_build_options)
     : executable_build_options_(executable_build_options) {
@@ -241,7 +264,7 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
     for (auto device : client->addressable_devices()) {
-      devices_.push_back(device);
+      devices_.push_back(tensorflow::down_cast<ifrt::PjRtDevice*>(device));
     }
   }
   CHECK_GT(devices_.size(), 0);
@@ -297,7 +320,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
     absl::MutexLock lock(&mu_);
     ++num_listening_threads_;
   }
-  PjRtDevice* device = devices_[device_idx];
+  ifrt::PjRtDevice* device = devices_[device_idx];
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
@@ -352,15 +375,17 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
   callback_queues_[device_idx].push(std::move(received));
 }
 
-StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    PjRtDevice* device, const Shape& shape) {
+absl::StatusOr<std::unique_ptr<Literal>>
+OutfeedReceiverImpl::ReceiveRawFromOutfeed(ifrt::PjRtDevice* device,
+                                           const Shape& shape) {
   auto literal = std::make_unique<Literal>(shape);
-  TF_RETURN_IF_ERROR(device->TransferFromOutfeed(literal.get()));
+  TF_RETURN_IF_ERROR(
+      device->client()->TransferFromOutfeed(device, literal.get()));
   return literal;
 }
 
 void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
-  const PjRtDevice* device = devices_[device_idx];
+  const ifrt::PjRtDevice* device = devices_[device_idx];
   {
     absl::MutexLock lock(&mu_);
     num_working_callback_threads_++;
@@ -402,8 +427,8 @@ void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
   }
 }
 
-Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
-  const PjRtDevice* device = devices_[device_idx];
+absl::Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
+  const ifrt::PjRtDevice* device = devices_[device_idx];
   constexpr int consumer_id = kOutfeedCidShutdown;
   VLOG(2) << "[" << device->DebugString()
           << "] SendSpecialHeader cons=" << consumer_id;
@@ -428,21 +453,42 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_num_replicas(1);
   compile_options.executable_build_options.set_num_partitions(1);
   DeviceAssignment device_assignment(1, 1);
-  device_assignment(0, 0) = device->id();
+  device_assignment(0, 0) = device->Id().value();
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                      devices_[device_idx]->client()->Compile(
+                      devices_[device_idx]->client()->pjrt_client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
+absl::Status OutfeedReceiverImpl::RegisterOutfeed(uint32_t consumer_id,
+                                                  const Shape& shape) {
+  VLOG(2) << "RegisterShape cons=" << consumer_id
+          << "; shape=" << shape.ToString();
+  {
+    absl::MutexLock lock(&mu_);
+    auto found = shape_registry_.find(consumer_id);
+    if (found != shape_registry_.end()) {
+      if (!ShapeUtil::Equal(shape, found->second)) {
+        return InvalidArgument(
+            "Shape %s does not match previous shape %s used "
+            "for consumer id %d",
+            shape.DebugString(), found->second.DebugString(), consumer_id);
+      }
+    } else {
+      shape_registry_.insert({consumer_id, shape});
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
     std::vector<XlaOp> arrays, uint32_t device_idx) {
   XlaOp data = Tuple(builder, std::move(arrays));
@@ -453,23 +499,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
           LayoutUtil::SetToDefaultLayout(subshape);
         }
       });
-  VLOG(2) << "RegisterShape cons=" << consumer_id
-          << "; shape=" << shape_with_layout.ToString();
-  {
-    absl::MutexLock lock(&mu_);
-    auto found = shape_registry_.find(consumer_id);
-    if (found != shape_registry_.end()) {
-      if (!ShapeUtil::Equal(shape_with_layout, found->second)) {
-        return InvalidArgument(
-            "Shape %s does not match previous shape %s used "
-            "for consumer id %d",
-            shape_with_layout.DebugString(), found->second.DebugString(),
-            consumer_id);
-      }
-    } else {
-      shape_registry_.insert({consumer_id, shape_with_layout});
-    }
-  }
+  TF_RETURN_IF_ERROR(RegisterOutfeed(consumer_id, shape_with_layout));
 
   std::vector<uint32_t> header{kOutfeedHeaderStart, consumer_id};
   XlaOp header_op = ConstantR1<uint32_t>(builder, header);
@@ -486,7 +516,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 }
 
 OutfeedReceiver::OutfeedReceiver(
-    Callback callback, absl::Span<PjRtClient* const> clients,
+    Callback callback, absl::Span<ifrt::PjRtClient* const> clients,
     ssize_t max_callback_queue_size_bytes,
     const std::optional<ExecutableBuildOptions>& executable_build_options) {
   p_impl_ = std::make_unique<OutfeedReceiverImpl>(callback, clients,
@@ -498,17 +528,24 @@ OutfeedReceiver::~OutfeedReceiver() = default;
 
 void OutfeedReceiver::Start() { p_impl_->Start(); }
 
-StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(XlaBuilder* builder,
-                                                     XlaOp token,
-                                                     uint32_t consumer_id,
-                                                     std::vector<XlaOp> arrays,
-                                                     uint32_t device_idx) {
+absl::StatusOr<XlaOp> OutfeedReceiver::AddOutfeedToBuilder(
+    XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
+    std::vector<XlaOp> arrays, uint32_t device_idx) {
   if (consumer_id == kOutfeedCidShutdown) {
     return InvalidArgument("Consumer ID cannot be a reserved value: %d",
                            consumer_id);
   }
   return p_impl_->AddOutfeedToBuilder(builder, token, consumer_id, arrays,
                                       device_idx);
+}
+
+absl::Status OutfeedReceiver::RegisterOutfeed(uint32_t consumer_id,
+                                              const Shape& shape) {
+  if (consumer_id == kOutfeedCidShutdown) {
+    return InvalidArgument("Consumer ID cannot be a reserved value: %d",
+                           consumer_id);
+  }
+  return p_impl_->RegisterOutfeed(consumer_id, shape);
 }
 
 }  // namespace xla

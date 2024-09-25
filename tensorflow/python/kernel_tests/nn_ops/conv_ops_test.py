@@ -30,7 +30,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -3538,13 +3537,15 @@ class Conv2DBenchmark(test.Benchmark):
       timesteps = 600
       features = 1
 
-      inputs = random_ops.random_uniform(
-          [batch_size, 1, timesteps, features], seed=1234)
+      x = random_ops.random_uniform(
+          [batch_size, 1, timesteps, features], seed=1234
+      )
       num_outputs_list = [512] * 40 + [1]
-      kernel_w = 3
-      x = inputs
       for num_outputs in num_outputs_list:
-        x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
+        kernel = random_ops.random_uniform(
+            [1, 3, features, num_outputs], seed=1234
+        )
+        x = nn_ops.conv2d(x, kernel)
       outputs = x
 
       self.evaluate(variables.global_variables_initializer())

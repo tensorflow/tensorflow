@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -56,9 +57,9 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                            bool /*retry_on_failure*/,
-                                            int64_t /*memory_space*/) override {
+  absl::StatusOr<se::OwningDeviceMemory> Allocate(
+      int device_ordinal, uint64_t size, bool /*retry_on_failure*/,
+      int64_t /*memory_space*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
       return se::OwningDeviceMemory();
@@ -69,9 +70,10 @@ class TestAllocator : public se::DeviceMemoryAllocator {
                                   device_ordinal, this);
   }
 
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
+  absl::Status Deallocate(int device_ordinal,
+                          se::DeviceMemoryBase mem) override {
     if (mem.is_null()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto it = allocations_.find({device_ordinal, mem.opaque()});
@@ -81,12 +83,12 @@ class TestAllocator : public se::DeviceMemoryAllocator {
       free(mem.opaque());
       allocations_.erase(it);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
 
-  StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+  absl::StatusOr<se::Stream*> GetStream(int device_ordinal) override {
     LOG(FATAL) << "Not implemented";
   }
 

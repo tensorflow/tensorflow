@@ -371,6 +371,11 @@ struct InferenceOptions {
   InferencePriority priority2 = InferencePriority::AUTO;
 
   InferencePriority priority3 = InferencePriority::AUTO;
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  // Number of times to invoke the inference in GPU delegate, to collect more
+  // accurate latency result. Default as 1, which is the original behavior.
+  int gpu_invoke_loop_times = 1;
+#endif
 };
 
 // Returns a position number for the priority. If priority is missing,

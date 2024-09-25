@@ -24,23 +24,23 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -54,7 +54,7 @@ class FusionInterface {
   virtual ~FusionInterface() = default;
 
   virtual absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const = 0;
 };
 
@@ -92,12 +92,12 @@ class KernelFusionInterface : public FusionInterface {
 
  protected:
   // Returns the default mapping for the given launch dimensions: linearizes
-  // the thread index and then reshapes it into the output layout.
+  // the thread index and then reshapes it into the given layout.
   // Populates the ranges for d0, d1, d2, d3, d4, d5 from the thread counts and
   // block sizes in the given launch dimensions.
-  static IndexingMap GetDefaultThreadIdToOutputIndexingMap(
+  static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& output_shape, mlir::MLIRContext* ctx);
+      const Shape& shape, mlir::MLIRContext* ctx);
 };
 
 // Base class for fusions that are implemented using a single kernel, which is
@@ -105,13 +105,13 @@ class KernelFusionInterface : public FusionInterface {
 class KernelFusionEmitterBase : public KernelFusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
 
  protected:
   // Creates initializer thunks that need to run before the main kernel.
   virtual absl::StatusOr<FusionEmissionResult> EmitInitializers(
-      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const {
     // No initializers by default.
     return FusionEmissionResult{};
@@ -134,6 +134,25 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilder<>* builder);
+absl::StatusOr<
+    std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+               std::vector<llvm_ir::IrArray> /*outputs*/>>
+BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& unique_name,
+                                   absl::Span<const KernelArgument> arguments,
+                                   size_t num_inputs,
+                                   const LaunchDimensions& launch_dimensions,
+                                   llvm::IRBuilder<>* builder);
+
+// Compute the kernel name. The opcode string may contain "-" which cannot be
+// in a PTX function name, so sanitize the name before uniquifying it.
+std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
+                                   const std::string& suggested_name);
+
+absl::Status AnnotateKernelLaunchDimensions(
+    const se::DeviceDescription& device_info,
+    const LaunchDimensions& launch_dims, const std::string& kernel_name,
+    llvm::Module* llvm_module);
 
 }  // namespace gpu
 }  // namespace xla

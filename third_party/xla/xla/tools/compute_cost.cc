@@ -21,9 +21,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/status.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -34,7 +41,7 @@ The input file can be obtained from XProf graph viewer by clicking
 
 Usage:
 
-  bazel run compute_cost -- -input=path/to/hlo_module -format=[hlo|pb|pbtxt]
+  bazel run compute_cost -- --input=path/to/hlo_module --format=[hlo|pb|pbtxt]
 )";
 }  // namespace
 
@@ -64,6 +71,6 @@ int main(int argc, char** argv) {
 
   std::cout << std::setw(5) << std::setprecision(4)
             << analysis.flop_count() / (1e9) << " GFLOPS. "
-            << analysis.bytes_accessed() / (1e6) << " MiB." << std::endl;
+            << analysis.bytes_accessed() / (1e6) << " MB." << std::endl;
   return 0;
 }
