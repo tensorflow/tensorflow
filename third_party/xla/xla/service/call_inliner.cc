@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

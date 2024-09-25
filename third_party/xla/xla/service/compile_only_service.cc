@@ -19,17 +19,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "xla/debug_options_flags.h"
-#include "xla/service/backend.h"
-#include "xla/service/computation_layout.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/compiler.h"
 #include "xla/service/dump.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

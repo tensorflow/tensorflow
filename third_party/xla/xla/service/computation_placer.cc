@@ -21,21 +21,21 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/literal.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/global_device_id.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 using absl::StrAppend;
 using absl::StrCat;

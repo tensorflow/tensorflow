@@ -15,19 +15,13 @@ limitations under the License.
 
 #include "xla/service/conditional_canonicalizer.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace {

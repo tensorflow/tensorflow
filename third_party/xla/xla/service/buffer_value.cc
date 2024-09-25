@@ -18,8 +18,12 @@ limitations under the License.
 #include <iosfwd>
 #include <ostream>
 
-#include "xla/hlo/ir/hlo_computation.h"
+#include "absl/algorithm/container.h"
+#include "third_party/protobuf/repeated_field.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
