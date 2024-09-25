@@ -2310,9 +2310,11 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
             << " graph optimizer";
     return absl::OkStatus();
   }
-  // Check if CPU supports FP16
+  // Check if CPU supports FP16, oneDNN supports FP16 on
+  // some platforms by converting to and from FP32
   if (mode_ == AutoMixedPrecisionMode::FP16_CPU &&
-      !IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF)) {
+      !IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF) &&
+      !IsAVXConvertSupportedByOneDNNOnThisCPU()) {
     VLOG(1) << "No support for " << name() << " graph optimizer on CPU";
     return absl::OkStatus();
   }
