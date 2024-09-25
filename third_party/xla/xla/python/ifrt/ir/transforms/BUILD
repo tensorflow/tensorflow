@@ -32,6 +32,7 @@ cc_library(
         "ifrt_duplicated_callee_elimination_pass.cc",
         "ifrt_merge_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
+        "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_reshard_to_copy_arrays_pass.cc",
         "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",

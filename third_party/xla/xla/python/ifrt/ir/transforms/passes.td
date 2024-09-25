@@ -203,6 +203,68 @@ Verify that each `!ifrt.array` has sharding attribute that is not of type
   let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
 }
 
+def IfrtPopulateAtomProgramMetadataPass :
+    Pass<"ifrt-populate-atom-program-metadata", "mlir::ModuleOp"> {
+  let summary = "Populate metadata from call site to atom functions";
+  let description = [{
+For every CallOp, this pass
+  1. clones the callee's parent ModuleOp
+  2. adds `ifrt.num_devices` attribute to the callee's parent ModuleOp
+  2. attaches shardings and devices to the inputs and outputs of the callee's
+     main FuncOp
+  3. attaches `tf.aliasing_output` attr to the callee main FuncOp's inputs
+     according to `io_aliases`
+For CallOps with the same callee, a different clone will be created for each
+CallOp, even if the populated metadata are the same. User may want to run
+`ifrt-duplicated-callee-elimination` pass to dedup the clones.
+
+For example, the following code
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0, 1]
+    {io_aliases=[array<i32: 1, 0>]}
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>,
+       !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @callee {
+  func.func private @main(%arg0: tensor<2x2xi32>, %arg1: tensor<4x4xi32>)
+      -> tensor<4x4xi32> {}
+}
+```
+
+will be replaced by
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @new_callee::@main(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @new_callee attributes {ifrt.num_devices = 2} {
+  func.func private @new_callee(
+      %arg0: tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>},
+      %arg1: tensor<4x4xi32> {
+        ifrt.sharding = #ifrt.sharding_param<1x2 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>
+        tf.aliasing_output = 0 : i32})
+      -> (tensor<4x4xi32> {
+        ifrt.sharding = #ifrt.sharding_param<1x2 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>})
+      {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtPopulateAtomProgramMetadataPass()";
+}
+
 def IfrtReshardToCopyArraysPass :
     Pass<"ifrt-reshard-to-copy-arrays", "mlir::ModuleOp"> {
   let summary = "Replaces `ifrt.Reshard` with `ifrt.CopyArrays`";

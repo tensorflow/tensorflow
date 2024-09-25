@@ -50,6 +50,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtVerifyShardingSpecifiedPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtPopulateAtomProgramMetadataPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtReshardToCopyArraysPass();
 
 // Generated definitions. This should be placed after all Pass creations.
