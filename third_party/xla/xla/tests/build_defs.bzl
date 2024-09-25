@@ -133,6 +133,7 @@ def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, back
         if "cuda-only" not in gpu_backend_tags:
             new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("notap")
+        new_backend_tags[backend].append("rocm-only")
 
     return new_backends, new_disabled_backends, new_backend_tags, backend_args
 
