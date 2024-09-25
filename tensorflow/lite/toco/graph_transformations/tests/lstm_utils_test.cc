@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
 
