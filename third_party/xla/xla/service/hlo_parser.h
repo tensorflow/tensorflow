@@ -30,19 +30,17 @@ namespace xla {
 
 class HloParserOptions {
  public:
-  // If the entry computation parameter layout is not set, set the layout to be
-  // the default (e.g. {3,2,1,0}).
-  HloParserOptions& set_fill_missing_module_parameter_layouts(bool value) {
-    fill_missing_module_parameter_layouts_ = value;
+  // When a shape layout is not set (e.g. in the entry computation layout or
+  // instruction layout), set the layout to be the default (e.g. {3,2,1,0}).
+  HloParserOptions& set_fill_missing_layouts(bool value) {
+    fill_missing_layouts_ = value;
     return *this;
   }
 
-  bool fill_missing_module_parameter_layouts() const {
-    return fill_missing_module_parameter_layouts_;
-  }
+  bool fill_missing_layouts() const { return fill_missing_layouts_; }
 
  private:
-  bool fill_missing_module_parameter_layouts_ = true;
+  bool fill_missing_layouts_ = true;
 };
 
 // Given a string in the HloModule::ToString() format, parses the string and

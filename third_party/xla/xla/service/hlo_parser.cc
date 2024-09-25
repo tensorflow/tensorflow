@@ -547,7 +547,7 @@ class HloParserImpl : public HloParser {
   bool ParseJsonDict(std::string* result);
   bool ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
-  bool ParseShape(Shape* result, bool set_to_default_layout = true);
+  bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
@@ -915,7 +915,7 @@ bool HloParserImpl::ParseComputationLayout(
   }
   while (lexer_.GetKind() != TokKind::kRparen) {
     Shape param;
-    if (!ParseShape(&param, options_.fill_missing_module_parameter_layouts())) {
+    if (!ParseShape(&param)) {
       return false;
     }
     computation_layout->add_parameter_layout(ShapeLayout(param));
@@ -935,7 +935,7 @@ bool HloParserImpl::ParseComputationLayout(
     return false;
   }
   Shape result;
-  if (!ParseShape(&result, options_.fill_missing_module_parameter_layouts())) {
+  if (!ParseShape(&result)) {
     return false;
   }
   *computation_layout->mutable_result_layout() = ShapeLayout(result);
@@ -6097,7 +6097,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
+bool HloParserImpl::ParseShape(Shape* result) {
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -6106,7 +6106,7 @@ bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
       // shape (',' shape)*
       do {
         shapes.emplace_back();
-        if (!ParseShape(&shapes.back(), set_to_default_layout)) {
+        if (!ParseShape(&shapes.back())) {
           return false;
         }
       } while (EatIfPresent(TokKind::kComma));
@@ -6132,7 +6132,7 @@ bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
-  if (set_to_default_layout || ShapeUtil::IsScalar(*result)) {
+  if (options_.fill_missing_layouts() || ShapeUtil::IsScalar(*result)) {
     LayoutUtil::SetToDefaultLayout(result);
   }
   // We need to lookahead to see if a following open brace is the start of a

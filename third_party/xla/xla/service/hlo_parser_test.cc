@@ -3435,8 +3435,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
-          original, {},
-          HloParserOptions().set_fill_missing_module_parameter_layouts(false));
+          original, {}, HloParserOptions().set_fill_missing_layouts(false));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
@@ -3460,8 +3459,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
-          original, {},
-          HloParserOptions().set_fill_missing_module_parameter_layouts(true));
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -3489,8 +3487,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
-          original, {},
-          HloParserOptions().set_fill_missing_module_parameter_layouts(true));
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
   TF_ASSERT_OK(module.status());
   EXPECT_THAT(module.value()
                   ->entry_computation_layout()
@@ -3498,6 +3495,73 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
                   .layout()
                   .minor_to_major(),
               ElementsAre(2, 1, 0));
+}
+
+TEST_F(HloParserTest, DoNotFallBackToDefaultLayoutIfDisabled) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80] dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(false));
+  TF_ASSERT_OK(module.status());
+  EXPECT_FALSE(module.value()
+                   ->entry_computation()
+                   ->root_instruction()
+                   ->shape()
+                   .has_layout());
+}
+
+TEST_F(HloParserTest, FallBackToDefaultLayoutIfEnabled) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80] dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(3, 2, 1, 0));
+}
+
+TEST_F(HloParserTest, FallBackToDefaultLayoutIfAlreadySet) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80]{1,2,0,3} dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 2, 0, 3));
 }
 
 TEST_F(HloParserTest, NoEntry) {
