@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
 
@@ -25,7 +26,9 @@ bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return CallInliner::IsInlineableCallOp(instruction) &&
          !instruction->has_backend_config() &&
          !(instruction->GetModule()->config().use_shardy_partitioner() &&
-           absl::StrContains(instruction->to_apply()->name(), "shmap_body"));
+           (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
+            absl::StartsWith(instruction->to_apply()->name(),
+                             sdy::kManualComputationBodyFuncName)));
 }
 
 }  // namespace xla

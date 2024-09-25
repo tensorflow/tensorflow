@@ -107,7 +107,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -119,11 +118,15 @@ cc_library(
         ":export_ops",
         ":export_shardings",
         ":import_shardings",
+        ":shard_map_export",
+        ":shard_map_import",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
 )
