@@ -1151,18 +1151,21 @@ std::vector<int64_t> ToTransposeDimensions(const Layout& l) {
 
 }  // namespace
 
+IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
+                              mlir::MLIRContext* mlir_context) {
+  return IndexingMap::FromTensorSizes(
+      AffineMap::getMultiDimIdentityMap(dimensions.size(), mlir_context),
+      /*dim_upper_bounds=*/dimensions, /*symbol_upper_bounds=*/{},
+      /*is_simplified=*/dimensions.empty());
+}
+
 IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* mlir_context) {
   if (shape.IsTuple()) {
     // Should happen only for variadic reduce. In that case all tuple shapes are
     // equal.
     return CreateIdentityMap(shape.tuple_shapes(0), mlir_context);
   }
-
-  auto dimensions = shape.dimensions();
-  IndexingMap identity_map = IndexingMap::FromTensorSizes(
-      AffineMap::getMultiDimIdentityMap(dimensions.size(), mlir_context),
-      dimensions, {}, /*is_simplified=*/dimensions.empty());
-  return identity_map;
+  return CreateIdentityMap(shape.dimensions(), mlir_context);
 }
 
 llvm::SmallVector<AffineExpr, 4> DelinearizeInBoundsIndex(

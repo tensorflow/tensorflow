@@ -163,6 +163,8 @@ std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
                               mlir::MLIRContext* mlir_context);
+IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
+                              mlir::MLIRContext* mlir_context);
 
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
     mlir::AffineExpr linear, absl::Span<const int64_t> sizes);

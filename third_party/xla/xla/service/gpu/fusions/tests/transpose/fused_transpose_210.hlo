@@ -12,10 +12,9 @@ fusion {
 // CHECK-SAME:   }, %[[OUT:.*]]: tensor<170x160x20xf32>
 //
 // CHECK:      %[[SHMEM:.*]] = xla_gpu.allocate_shared : tensor<32x1x33xf32>
-// CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.loop
-// CHECK-SAME:     iter_args(%[[SHMEM_:.*]] = %[[SHMEM]])
-// CHECK:        %[[EXP:.*]] = xla_gpu.pure_call @fusion_exp
-// CHECK:        tensor.insert %[[EXP]] into %[[SHMEM_]]
+// CHECK:      %[[MATERIALIZED:.*]] = xla_gpu.materialize @fusion_exp
+// CHECK:      %[[SHMEM_WITH_VALS:.*]] = xla_gpu.insert %[[MATERIALIZED]]
+// CHECK-SAME:   into %[[SHMEM]] at #indexing_map
 
 // CHECK:      %[[SYNC:.*]] = xla_gpu.sync_threads %[[SHMEM_WITH_VALS]]
 
