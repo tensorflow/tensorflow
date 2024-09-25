@@ -792,7 +792,6 @@ class TFLiteConverterBase:
         "allow_custom_ops": self.allow_custom_ops,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
         "unfold_batchmatmul": self.unfold_batchmatmul,

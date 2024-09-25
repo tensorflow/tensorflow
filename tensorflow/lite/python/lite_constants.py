@@ -60,12 +60,6 @@ _tf_export(v1=["lite.constants.TFLITE"]).export_constant(__name__, "TFLITE")
 _tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(
     __name__, "GRAPHVIZ_DOT")
 
-# Currently the default mode of operation is to shell to another python process
-# to protect against crashes. However, it breaks some dependent targets because
-# it forces us to depend on an external py_binary. The experimental API doesn't
-# have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
-
 
 _allowed_symbols = [
     "FLOAT",
@@ -85,6 +79,5 @@ _allowed_symbols = [
     "KERAS",
     "JAX",
     "PYTORCH",
-    "EXPERIMENTAL_USE_TOCO_API_DIRECTLY",
 ]
 remove_undocumented(__name__, _allowed_symbols)

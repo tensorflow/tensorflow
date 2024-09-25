@@ -154,7 +154,6 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_success(),
         mock.call.export_metrics(),
         mock.call.set_converter_param('input_format', '1'),
-        mock.call.set_converter_param('enable_mlir_converter', 'True'),
         mock.call.set_converter_param('allow_custom_ops', 'False'),
         mock.call.set_converter_param('api_version', '1'),
     ], any_order=True)  # pyformat: disable
@@ -275,7 +274,6 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
         mock.call.increase_counter_converter_success(),
         mock.call.set_converter_latency(2000),
         mock.call.export_metrics(),
-        mock.call.set_converter_param('enable_mlir_converter', 'True'),
     ], any_order=True)  # pyformat: disable
 
   def disable_converter_counter_metrics(self, tflite_metrics):

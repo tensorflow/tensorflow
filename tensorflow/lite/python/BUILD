@@ -490,7 +490,6 @@ pytype_strict_library(
         "//tensorflow/lite/tools:flatbuffer_utils",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
