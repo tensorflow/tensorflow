@@ -790,9 +790,12 @@ absl::Status RunOptimizationPasses(
     // AlgebraicSimplifier may add contracting dimensions to a dot.
     pipeline.AddPass<DotDimensionSorter>();
     pipeline.AddPass<DotDecomposer>();
-    // Only merge "smallish" dots.  This threshold was not set carefully, but
-    // so far we know that 1mb is too small.
-    pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{32} << 20);
+    // Only merge "smallish" dots.  This threshold defaults to 32MB today, with
+    // a flag to override.
+    pipeline.AddPass<DotMerger>(
+        /*max_size_to_merge=*/int64_t{
+            debug_options.xla_gpu_dot_merger_threshold_mb()}
+        << 20);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();

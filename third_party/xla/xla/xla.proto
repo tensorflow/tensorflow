@@ -978,7 +978,10 @@ message DebugOptions {
   // for collectives in the given HLO.
   bool xla_experimental_ignore_channel_id = 330;
 
-  // Next id: 331
+  // DotMerger pass threshold size to be used in MB.
+  int32 xla_gpu_dot_merger_threshold_mb = 331;
+
+  // Next id: 332
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
