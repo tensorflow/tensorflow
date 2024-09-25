@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <numeric>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"

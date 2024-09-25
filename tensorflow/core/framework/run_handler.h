@@ -16,11 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_H_
 
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "Eigen/src/Core/util/MaxSizeVector.h"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace Eigen {

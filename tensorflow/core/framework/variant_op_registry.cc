@@ -17,11 +17,16 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/framework/register_types.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {

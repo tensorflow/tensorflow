@@ -17,9 +17,11 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
 
 namespace tensorflow {
