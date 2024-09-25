@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 namespace tensorflow {
 namespace eager {
 

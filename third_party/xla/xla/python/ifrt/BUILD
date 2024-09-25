@@ -651,10 +651,10 @@ xla_cc_test(
         ":serdes",
         ":serdes_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

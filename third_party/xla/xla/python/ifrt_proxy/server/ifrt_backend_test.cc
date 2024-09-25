@@ -70,6 +70,7 @@
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/status.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -79,7 +80,6 @@
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
-#include "tsl/protobuf/status.pb.h"
 
 namespace xla {
 namespace ifrt {

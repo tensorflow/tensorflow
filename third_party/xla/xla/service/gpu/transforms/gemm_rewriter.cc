@@ -63,13 +63,13 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {

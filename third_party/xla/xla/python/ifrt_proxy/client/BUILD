@@ -433,6 +433,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_proto_cc",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -441,7 +442,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:unbounded_work_queue",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

@@ -21,6 +21,7 @@ import functools
 import os
 import threading
 
+from xla.tsl.protobuf import coordination_config_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -50,7 +51,6 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-from tsl.protobuf import coordination_config_pb2
 
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")

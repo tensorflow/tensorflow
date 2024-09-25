@@ -20,10 +20,6 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-*   TensorFlow now supports and is compiled with NumPy 2.0 by default.
-    Compatibility with NumPy 1.26 will be maintained until 2025, aligning with
-    community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
-
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -74,6 +70,10 @@ This release contains contributions from many people at Google, as well as:
     * SignatureRunner is now supported for models with no signatures.
 
 * TensorRT support is disabled in CUDA builds for code health improvement.
+
+* TensorFlow now supports and is compiled with NumPy 2.0 by default. Please see the [NumPy 2 release notes](https://numpy.org/doc/stable/release/2.0.0-notes.html) and the [NumPy 2 migration guide](https://numpy.org/devdocs/numpy_2_0_migration_guide.html#numpy-2-migration-guide).
+  * Note that NumPy's type promotion rules have been changed(See [NEP 50](https://numpy.org/neps/nep-0050-scalar-promotion.html#nep50)for details). This may change the precision at which computations happen, leading either to type errors or to numerical changes to results.
+  * Tensorflow will continue to support NumPy 1.26 until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
 
 * Hermetic CUDA support is added.
 

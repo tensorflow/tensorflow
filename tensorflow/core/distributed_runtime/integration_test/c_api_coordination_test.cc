@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {

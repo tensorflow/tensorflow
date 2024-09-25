@@ -75,6 +75,7 @@ constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 void ConvertEndianShort(std::string* bytes) {
   CHECK_EQ(bytes->size() % 2, 0);
   for (int64_t i = 0, end = bytes->size(); i < end; i += 2) {
+    // Test comment!
     std::swap((*bytes)[i], (*bytes)[i + 1]);
   }
 }

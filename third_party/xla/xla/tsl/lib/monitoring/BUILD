@@ -72,6 +72,7 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         "//xla/tsl/lib/histogram",
+        "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform",
@@ -80,7 +81,6 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -100,9 +100,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        "//xla/tsl/protobuf:histogram_proto_cc",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -115,6 +115,7 @@ cc_library(
         ":collected_metrics",
         ":metric_def",
         ":types",
+        "//xla/tsl/protobuf:histogram_proto_cc",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
@@ -123,7 +124,6 @@ cc_library(
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -135,7 +135,7 @@ cc_library(
     deps = [
         ":metric_def",
         ":types",
-        "@local_tsl//tsl/protobuf:histogram_proto_cc",
+        "//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -201,12 +201,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:histogram_proto_cc",
     ],
 )
 

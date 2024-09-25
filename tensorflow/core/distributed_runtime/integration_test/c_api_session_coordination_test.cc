@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
