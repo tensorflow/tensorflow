@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -505,9 +506,9 @@ void CoordinationServiceStandaloneImpl::CheckHeartbeatTimeout() {
 }
 
 void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
-  const bool has_service_to_client_connection = client_cache_ != nullptr;
   absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
   uint64_t current_time_micros = Env::Default()->NowMicros();
+  std::optional<std::string> shutdown_error;
   {
     absl::MutexLock l(&state_mu_);
     // Gather barriers which have timed out.
@@ -521,46 +522,40 @@ void CoordinationServiceStandaloneImpl::CheckBarrierTimeout() {
     for (const auto& [barrier_id, barrier] : expired_barriers) {
       std::string pending_tasks;
       int pending_task_count = 0;
+      // Count and track pending tasks that have not reached the barrier.
       for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
         if (at_barrier) {
           continue;
         }
         ++pending_task_count;
-        if (pending_task_count > kPendingTaskLogLimit) {
-          break;
+        if (pending_task_count < kPendingTaskLogLimit) {
+          absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
         }
-        absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
       }
+      const int64_t tasks_at_barrier =
+          barrier->tasks_at_barrier.size() - pending_task_count;
       std::string error_message = absl::StrFormat(
-          "Barrier timed out. This usually happens because a task "
-          "triggered the barrier unexpectedly early, or some tasks are "
-          "too slow. Please look at the other task logs to debug "
-          "further. Barrier_id: %s. The first task at the barrier: "
-          "%s. ",
-          barrier_id, GetTaskName(barrier->initiating_task));
-      if (pending_task_count > kPendingTaskLogLimit) {
-        absl::StrAppend(
-            &error_message, "Too many tasks have timed out. The first ",
-            kPendingTaskLogLimit, " timed out task names:\n", pending_tasks);
-      } else {
-        absl::StrAppend(&error_message,
-                        "Total Number of tasks already at the barrier: ",
-                        barrier->tasks_at_barrier.size() - pending_task_count,
-                        "/", barrier->tasks_at_barrier.size(),
-                        ". Timed out task names:\n", pending_tasks);
+          "Barrier timed out. Id: %s. This usually happens because a task "
+          "triggered the barrier too early or too slowly. Please look at the "
+          "task logs (both timed out and first task) to debug further.\n"
+          "# of tasks that reached the barrier: %d/%d.\nThe first "
+          "task at the barrier: %s. Some timed out task names:\n%s",
+          barrier_id, tasks_at_barrier, barrier->tasks_at_barrier.size(),
+          GetTaskName(barrier->initiating_task), pending_tasks);
+      if (barrier_id == shutdown_barrier_id_) {
+        shutdown_error = error_message;
       }
       const absl::Status error =
           MakeCoordinationError(absl::DeadlineExceededError(error_message));
       PassBarrier(barrier_id, error, barrier);
     }
   }
-  if (!has_service_to_client_connection &&
-      expired_barriers.contains(shutdown_barrier_id_)) {
+  const bool has_service_to_client_connection = client_cache_ != nullptr;
+  if (!has_service_to_client_connection && shutdown_error) {
     // Error cannot be propagated through service-to-client connection.
     SendErrorPollingResponseOrStopService(
-        MakeCoordinationError(absl::DeadlineExceededError(
-            "Shutdown barrier timed out. Check the task logs for an "
-            "earlier error.")));
+        MakeCoordinationError(absl::DeadlineExceededError(absl::StrCat(
+            "Shutdown barrier timed out. Error: ", *shutdown_error))));
   }
 }
 
@@ -815,8 +810,8 @@ absl::Status CoordinationServiceStandaloneImpl::DisconnectTask(
   for (const auto& barrier_id :
        cluster_state_[task_name]->GetOngoingBarriers()) {
     absl::Status error = MakeCoordinationError(absl::InternalError(absl::StrCat(
-        "Barrier failed from a disconnected task. Barrier Id: ", barrier_id,
-        ", Task: ", task_name)));
+        "Barrier failed because a task has disconnected. Barrier Id: ",
+        barrier_id, ", Task: ", task_name)));
     PassBarrier(barrier_id, error, &barriers_[barrier_id]);
   }
 
@@ -1161,10 +1156,11 @@ void CoordinationServiceStandaloneImpl::SetTaskError(std::string_view task_name,
   cluster_state_[task_name]->SetError(error);
   for (const auto& barrier_id :
        cluster_state_[task_name]->GetOngoingBarriers()) {
-    absl::Status error = MakeCoordinationError(absl::InternalError(absl::StrCat(
-        "Barrier failed from a task error. Barrier Id: ", barrier_id,
-        ", Task: ", task_name)));
-    PassBarrier(barrier_id, error, &barriers_[barrier_id]);
+    absl::Status barrier_error =
+        MakeCoordinationError(absl::InternalError(absl::StrCat(
+            "Barrier failed beacuse a task is in error. Barrier Id: ",
+            barrier_id, ", Task: ", task_name, "Error: ", error.message())));
+    PassBarrier(barrier_id, barrier_error, &barriers_[barrier_id]);
   }
 
   LOG(ERROR) << task_name
@@ -1452,9 +1448,9 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
                     "an earlier error to identify the root cause.";
     }
     absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
-        absl::StrCat("Shutdown barrier has been passed with status: '",
-                     barrier->result.ToString(),
-                     "', but this task is not at the barrier yet.")));
+        absl::StrCat("Shutdown barrier has failed, but this task is not at the "
+                     "barrier yet.\nBarrier result: '",
+                     barrier->result.message())));
     for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
       if (at_barrier) {
         // Disconnect tasks that reached the barrier.
