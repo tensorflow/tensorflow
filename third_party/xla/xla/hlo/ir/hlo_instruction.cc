@@ -1218,6 +1218,11 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (instruction->opcode() == HloOpcode::kWhile) {
         instruction->while_body()->SetWhileCallInstruction(instruction.get());
       }
+      if (instruction->opcode() == HloOpcode::kConditional) {
+        for (HloComputation* branch : instruction->branch_computations()) {
+          branch->SetConditionalCallInstruction(instruction.get());
+        }
+      }
 
       TF_RET_CHECK(!proto.has_precision_config())
           << instruction->opcode() << proto.DebugString();
@@ -2624,6 +2629,13 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateConditional(shape, new_operands[0],
                                 absl::MakeSpan(branch_computations()),
                                 new_operands.subspan(1));
+      // Repoint each branch back at the original conditional instruction.
+      // If a context was passed, the body will be cloned and the clone will
+      // point to the copied instruction.
+      for (HloComputation* branch : branch_computations()) {
+        branch->SetConditionalCallInstruction(
+            const_cast<HloInstruction*>(this));
+      }
       break;
     case HloOpcode::kAfterAll:
       if (new_operands.empty()) {
@@ -2663,6 +2675,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     });
     if (opcode() == HloOpcode::kWhile) {
       clone->while_body()->SetWhileCallInstruction(clone.get());
+    }
+    if (opcode() == HloOpcode::kConditional) {
+      for (HloComputation* branch : clone->branch_computations()) {
+        branch->SetConditionalCallInstruction(clone.get());
+      }
     }
   }
 

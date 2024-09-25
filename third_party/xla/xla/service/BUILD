@@ -5732,9 +5732,17 @@ cc_library(
     srcs = ["conditional_canonicalizer.cc"],
     hdrs = ["conditional_canonicalizer.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 

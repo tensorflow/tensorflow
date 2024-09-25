@@ -2776,13 +2776,18 @@ TEST_F(HloInstructionTest,
   module->AddEntryComputation(main_builder.Build());
   // Should find conditional branch computations in the graph and it should
   // point to the conditional instruction.
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (comp->IsConditionalBranchComputation()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_EQ(comp->ConditionalCallInstruction(), conditional);
     }
+  }
+  for (HloComputation* branch : conditional->branch_computations()) {
+    EXPECT_TRUE(branch->IsConditionalBranchComputation());
+    HloInstruction* back_pointer = branch->ConditionalCallInstruction();
+    EXPECT_EQ(back_pointer, conditional);
   }
   EXPECT_EQ(num_conditional_branch_comp, 2);
 }
@@ -2851,13 +2856,18 @@ TEST_F(HloInstructionTest,
   module->AddEntryComputation(main_builder.Build());
   // Should find conditional branch computations in the graph and it should
   // point to the conditional instruction.
+  HloInstruction* conditional = module->entry_computation()->root_instruction();
   int num_conditional_branch_comp = 0;
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     if (comp->IsConditionalBranchComputation()) {
       num_conditional_branch_comp += 1;
-      EXPECT_EQ(comp->ConditionalCallInstruction(),
-                module->entry_computation()->root_instruction());
+      EXPECT_EQ(comp->ConditionalCallInstruction(), conditional);
     }
+  }
+  for (HloComputation* branch : conditional->branch_computations()) {
+    EXPECT_TRUE(branch->IsConditionalBranchComputation());
+    HloInstruction* back_pointer = branch->ConditionalCallInstruction();
+    EXPECT_EQ(back_pointer, conditional);
   }
   EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());
 }
