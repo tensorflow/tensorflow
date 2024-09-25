@@ -213,9 +213,9 @@ def nvidia_gpu_build_with_compute_capability(
       image_url=_DEFAULT_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu")
+      test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only")
       + extra_gpu_tags,
-      build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu"),
+      build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu", "-rocm-only"),
       options={
           "run_under": "//tools/ci_build/gpu_build:parallel_gpu_execute",
           "repo_env": f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",

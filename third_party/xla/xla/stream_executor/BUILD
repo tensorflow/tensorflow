@@ -925,14 +925,25 @@ xla_cc_test(
 alias(
     name = "cuda_platform",
     actual = "//xla/stream_executor/cuda:all_runtime",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 alias(
     name = "rocm_platform",
     actual = "//xla/stream_executor/rocm:all_runtime",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
 )
 
 alias(
     name = "sycl_platform",
     actual = "//xla/stream_executor/sycl:all_runtime",
+    tags = [
+        "gpu",
+    ],
 )

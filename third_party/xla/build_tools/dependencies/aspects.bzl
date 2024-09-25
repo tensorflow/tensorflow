@@ -80,3 +80,11 @@ validate_cuda_only_tag = aspect(
     implementation = _cuda_only_tag_violation_aspect_impl,
     attr_aspects = ["deps"],
 )
+
+def _rocm_only_tag_violation_aspect_impl(target, ctx):
+    return _dependency_violation_aspect_impl(target, ctx, "rocm-only")
+
+validate_rocm_only_tag = aspect(
+    implementation = _rocm_only_tag_violation_aspect_impl,
+    attr_aspects = ["deps"],
+)
