@@ -95,6 +95,16 @@ inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 inline constexpr llvm::StringRef kManualComputationBodyFuncName =
     "xla.sdy.manual_computation_body";
 
+// The target name of the custom call that changes operands from global to local
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kGlobalToLocalShapeCallTargetName =
+    "xla.sdy.GlobalToLocalShape";
+
+// The target name of the custom call that changes results from local to global
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kLocalToGlobalShapeCallTargetName =
+    "xla.sdy.LocalToGlobalShape";
+
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
 

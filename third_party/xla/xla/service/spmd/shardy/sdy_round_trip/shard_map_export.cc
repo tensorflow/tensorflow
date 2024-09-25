@@ -92,7 +92,7 @@ class SdyRoundTripShardMapExportPass
       if (!operands.empty()) {
         fullToShard = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualCompBodyArgTypes, operands);
-        fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
+        fullToShard.setCallTargetName(kGlobalToLocalShapeCallTargetName);
         operands = fullToShard->getResults();
       }
 
@@ -109,7 +109,7 @@ class SdyRoundTripShardMapExportPass
       if (!results.empty()) {
         auto shardToFull = rewriter.create<stablehlo::CustomCallOp>(
             loc, manualComputation.getResultTypes(), callOp->getResults());
-        shardToFull.setCallTargetName(kSPMDShardToFullShapeCallTargetName);
+        shardToFull.setCallTargetName(kLocalToGlobalShapeCallTargetName);
         results = shardToFull->getResults();
       }
       sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(

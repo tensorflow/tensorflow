@@ -94,7 +94,7 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       operands = fullToShard->getOperands();
       CHECK(fullToShard);
       CHECK(fullToShard.getCallTargetName() ==
-            kSPMDFullToShardShapeCallTargetName);
+            kGlobalToLocalShapeCallTargetName);
     }
     mlir::TypeRange resultTypes = callOp->getResultTypes();
     stablehlo::CustomCallOp shardToFull;
@@ -104,7 +104,7 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       shardToFull = mlir::cast<stablehlo::CustomCallOp>(
           *callOp->getResult(0).getUsers().begin());
       CHECK(shardToFull.getCallTargetName() ==
-            kSPMDShardToFullShapeCallTargetName);
+            kLocalToGlobalShapeCallTargetName);
       resultTypes = shardToFull->getResultTypes();
     }
 
