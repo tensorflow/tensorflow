@@ -19,7 +19,7 @@ func.func @row_reduction(%arg0: tensor<128x1027xf32>)
   return %0 : tensor<128xf32>
 }
 
-// CHECK: #[[$PAD_AND_RESHAPE:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3) -> (d0, d1 * 128 + d2 * 32 + d3),
+// CHECK: #[[$PAD_AND_RESHAPE:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3) -> (d0, d1 * 128 + d2 * 32 + d3),
 // CHECK-SAME: domain: d0 in [0, 127], d1 in [0, 8], d2 in [0, 3], d3 in [0, 31], d1 * 128 + d2 * 32 + d3 in [0, 1026]
 // CHECK-LABEL: @row_reduction
 // CHECK-SAME:    %[[IN:.*]]: tensor<128x1027xf32>
@@ -77,9 +77,9 @@ func.func @column(%arg0: tensor<2x32x32xf32>)
   return %0 : tensor<2x32xf32>
 }
 
-// CHECK:       #[[$RESHAPE:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3) -> (d0, d1 * 4 + d2, d3)
+// CHECK:       #[[$RESHAPE:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3) -> (d0, d1 * 4 + d2, d3)
 // CHECK-SAME:    d1 * 4 + d2 in [0, 31]
-// CHECK:       #[[$TRANSPOSE:.*]] = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0, d2, d1)
+// CHECK:       #[[$TRANSPOSE:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2) -> (d0, d2, d1)
 // CHECK-LABEL: @column
 // CHECK-SAME:    %[[IN:.*]]: tensor<2x32x32xf32>
 // CHECK:         %[[C0:.*]] = arith.constant 0.00
