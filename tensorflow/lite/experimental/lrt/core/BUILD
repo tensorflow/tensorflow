@@ -14,19 +14,19 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
 cc_library(
     name = "api_internal",
     srcs = ["lite_rt_common.cc"],
     hdrs = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_common.h",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_compiler_plugin.h",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_model.h",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_op_code.h",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_support.h",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_support.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_common.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_model.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_op_code.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_support.h",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_support.h",
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
@@ -56,8 +56,8 @@ cc_library(
     deps = [
         ":api_internal",
         ":model",
-        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        "//tensorflow/lite:allocation",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/c:c_api_types",
@@ -75,7 +75,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":lite_rt_model_init",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
@@ -104,7 +104,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":model",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

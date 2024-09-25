@@ -14,7 +14,7 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
 cc_library(
@@ -24,8 +24,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
     ],
 )
 

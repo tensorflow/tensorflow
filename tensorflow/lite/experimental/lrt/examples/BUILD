@@ -21,16 +21,16 @@ cc_library(
     name = "mul_op_plugin",
     srcs = ["mul_op_plugin.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
     ],
 )
 
 cc_shared_library(
     name = "mul_op_plugin_so",
     shared_lib_name = "mul_op_plugin.so",
-    visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [":mul_op_plugin"],
 )
 
@@ -40,11 +40,11 @@ cc_test(
     tags = ["no_oss"],
     deps = [
         ":mul_op_plugin",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],

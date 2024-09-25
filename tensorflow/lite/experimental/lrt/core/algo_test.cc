@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/algo.h"
+#include "tensorflow/lite/experimental/lrt/core/algo.h"
 
 #include <memory>
 #include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
+#include "tensorflow/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
 
 namespace {
 

@@ -14,7 +14,7 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
 # TODO: b/365295276 - Make custom rule and move to `.sh`.
@@ -37,7 +37,7 @@ genrule(
     srcs = glob(["*.mlir"]),
     outs = [s.removesuffix(".mlir") + ".tflite" for s in glob(["*.mlir"])],
     cmd = CMD,
-    tools = ["//tensorflow/compiler/mlir/lite:tf_tfl_translate"],
+    tools = [CONVERTER],
 )
 
 cc_library(
@@ -46,10 +46,10 @@ cc_library(
     hdrs = ["test_data_util.h"],
     data = [":tflite_test_data"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:lite_rt_model_init",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/core:model",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform",
     ],

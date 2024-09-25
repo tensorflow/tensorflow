@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_
 
 // NOLINTNEXTLINE
 #include <filesystem>
@@ -21,9 +21,9 @@
 #include <string_view>
 
 #include "absl/log/check.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tsl/platform/platform.h"
 
 #define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
@@ -46,7 +46,7 @@
 
 inline std::string GetTestFilePath(std::string_view filename) {
   static constexpr std::string_view kTestDataDir =
-      "tensorflow/compiler/mlir/lite/experimental/lrt/"
+      "tensorflow/lite/experimental/lrt/"
       "test_data/";
 
   std::filesystem::path result_path;
@@ -68,4 +68,4 @@ inline UniqueLrtModel LoadTestFileModel(std::string_view filename) {
   return UniqueLrtModel(model);
 }
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_

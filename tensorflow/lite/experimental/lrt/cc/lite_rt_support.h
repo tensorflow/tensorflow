@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
 
 #include <stdio.h>
 
 #include <memory>
 #include <variant>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
 #ifndef NDEBUG
 #include <iostream>  // IWYU pragma: keep
 #endif
@@ -191,4 +191,4 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_RESULT(decl, expr, ty) \
   _ASSIGN_OR_RETURN_RESULT(decl, expr, ty, _CONCAT_NAME(_result, __COUNTER__))
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_

@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
 
 #include <stdio.h>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,4 +58,4 @@ extern "C" {
 }  // extern "C"
 #endif
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_

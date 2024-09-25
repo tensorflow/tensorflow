@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,4 +66,4 @@ LrtStatus StatusOk();
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMMON_H_

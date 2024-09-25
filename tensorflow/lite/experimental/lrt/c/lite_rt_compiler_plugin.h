@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
 
 #include <stddef.h>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,4 +92,4 @@ LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
