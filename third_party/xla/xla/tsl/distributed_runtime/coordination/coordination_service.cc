@@ -174,7 +174,6 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       ABSL_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(std::string_view task_name, absl::Status error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void AggregateClusterDevices() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   absl::Status DisconnectTask(const CoordinatedTask& task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
@@ -195,6 +194,12 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   };
   void PassBarrier(std::string_view barrier_id, absl::Status result,
                    BarrierState* barrier)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Post-barrier hook to aggregate device info.
+  void AggregateClusterDevices() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Post-shutdown barrier hook to disconnect tasks that acked and propagate
+  // errors to those that have not.
+  void CompleteShutdownAfterBarrier(absl::Status result, BarrierState* barrier)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Check if participating tasks are specified correctly across barrier calls.
   bool ValidateTaskArgs(
@@ -1435,36 +1440,10 @@ void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
     cluster_state_[GetTaskName(task)]->ExitBarrier(barrier_id);
   }
 
-  // Special hook for shutdown barrier to disconnect tasks at the barrier.
+  // Special hook for shutdown barrier to disconnect tasks at the barrier and
+  // propagate errors to those that have not.
   if (barrier_id == shutdown_barrier_id_) {
-    if (result.ok()) {
-      LOG(INFO) << "Shutdown barrier in coordination service has passed.";
-    } else {
-      LOG(ERROR) << "Shutdown barrier in coordination service has failed:\n"
-                 << result
-                 << "\nThis suggests that the workers are out of sync. Either "
-                    "at least one worker is too fast in its execution / "
-                    "crashed early or too slow / hanging. Check the logs for "
-                    "an earlier error to identify the root cause.";
-    }
-    absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
-        absl::StrCat("Shutdown barrier has failed, but this task is not at the "
-                     "barrier yet.\nBarrier result: '",
-                     barrier->result.message())));
-    for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
-      if (at_barrier) {
-        // Disconnect tasks that reached the barrier.
-        absl::Status disconnect_status = DisconnectTask(task);
-        if (!disconnect_status.ok()) {
-          LOG(ERROR) << disconnect_status;
-        }
-      } else {
-        // Propagate errors to straggling tasks that have not reached the
-        // barrier. The barrier must have failed if any task did not reach the
-        // barrier.
-        ReportServiceErrorToTaskAsync(task, shutdown_error);
-      }
-    }
+    CompleteShutdownAfterBarrier(result, barrier);
   }
   barrier->tasks_at_barrier.clear();
   ongoing_barriers_.erase(barrier_id);
@@ -1555,6 +1534,38 @@ void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
 
   if (post_aggregate_device_fn_ != nullptr) {
     cluster_devices_ = post_aggregate_device_fn_(cluster_devices_);
+  }
+}
+
+void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
+    absl::Status result, BarrierState* barrier) {
+  if (result.ok()) {
+    LOG(INFO) << "Shutdown barrier in coordination service has passed.";
+  } else {
+    LOG(ERROR) << "Shutdown barrier in coordination service has failed:\n"
+               << result
+               << "\nThis suggests that the workers are out of sync. Either "
+                  "at least one worker is too fast in its execution / "
+                  "crashed early or too slow / hanging. Check the logs for "
+                  "an earlier error to identify the root cause.";
+  }
+  absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
+      absl::StrCat("Shutdown barrier has failed, but this task is not at the "
+                   "barrier yet.\nBarrier result: '",
+                   barrier->result.message())));
+  for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
+    if (at_barrier) {
+      // Disconnect tasks that reached the barrier.
+      absl::Status disconnect_status = DisconnectTask(task);
+      if (!disconnect_status.ok()) {
+        LOG(ERROR) << disconnect_status;
+      }
+    } else {
+      // Propagate errors to straggling tasks that have not reached the
+      // barrier. The barrier must have failed if any task did not reach the
+      // barrier.
+      ReportServiceErrorToTaskAsync(task, shutdown_error);
+    }
   }
 }
 }  // namespace
