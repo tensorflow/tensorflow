@@ -621,6 +621,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(collective_ops, ", ", Formatter());
   };
 
+  // Custom parser for `xla_gpu_enable_while_loop_unrolling` flag.
+  auto setter_for_xla_gpu_enable_while_loop_unrolling =
+      [&debug_options](absl::string_view input) {
+        DebugOptions::WhileLoopUnrolling unroll_strategy;
+        bool parsed = DebugOptions::WhileLoopUnrolling_Parse(
+            absl::AsciiStrToUpper(input), &unroll_strategy);
+        if (!parsed) return false;
+        debug_options->set_xla_gpu_enable_while_loop_unrolling(unroll_strategy);
+        return true;
+      };
+
   // Custom parser for xla_gpu_disable_async_collectives.
   auto setter_for_xla_gpu_disable_async_collectives =
       [debug_options](const absl::string_view& input) {
@@ -1161,6 +1172,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       " synchronous ones. By default, this is empty which indicates enabling"
       " async execution for all collectives. A sample usage is: "
       " --xla_gpu_disable_async_collectives=ALLREDUCE,REDUCESCATTER"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_while_loop_unrolling",
+      setter_for_xla_gpu_enable_while_loop_unrolling,
+      DebugOptions::WhileLoopUnrolling_Name(
+          debug_options->xla_gpu_enable_while_loop_unrolling()),
+      "Enables while loop unrolling features. "
+      "`WHILE_LOOP_UNROLLING_DOUBLE_BUFFER` unrolls the loop by factor of 2, "
+      "`WHILE_LOOP_UNROLLING_FULL_UNROLL` will unroll the entire loop "
+      "`WHILE_LOOP_UNROLLING_AUTO_UNROLL` unrolls by a factor of 2, if there is"
+      " any collective present within a while loop."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_combine_threshold_bytes",
       int64_setter_for(

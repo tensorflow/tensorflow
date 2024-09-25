@@ -740,6 +740,9 @@ message DebugOptions {
     WHILE_LOOP_UNROLLING_DOUBLE_BUFFER = 1;
     // Enables full loop unrolling using the same strategy as `DOUBLE_BUFFER`.
     WHILE_LOOP_UNROLLING_FULL_UNROLL = 2;
+    // Enables loop unrolling when we have at least one collective within a
+    // while loop.
+    WHILE_LOOP_UNROLLING_AUTO_UNROLL = 3;
   }
 
   // Determine the while loop unrolling scheme.
@@ -981,7 +984,12 @@ message DebugOptions {
   // DotMerger pass threshold size to be used in MB.
   int32 xla_gpu_dot_merger_threshold_mb = 331;
 
-  // Next id: 332
+  // If enabled, in the absence of user provided knobs might tune pass
+  // configurations based on the HLO. For example it decides to unroll the while
+  // loop by a factor of two if a collective op is present.
+  bool xla_gpu_enable_heuristic_pass_configuration = 332;
+
+  // Next id: 333
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

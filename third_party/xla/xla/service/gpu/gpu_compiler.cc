@@ -1095,6 +1095,12 @@ absl::Status RunPostFusionPasses(
            "`xla_gpu_enable_while_loop_double_buffering` flag.";
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
   }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+          DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
+      opts.xla_gpu_enable_heuristic_pass_configuration() &&
+      !opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
+  }
   if (unroll_strategy != std::nullopt) {
     pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();

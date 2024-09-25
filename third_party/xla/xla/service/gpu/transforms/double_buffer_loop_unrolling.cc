@@ -523,6 +523,23 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   return true;  // changed
 }
 
+// Function performs double buffering unrolling strategy iff there is any
+// collective operation within a body computation.
+absl::StatusOr<bool> AutoUnroll(HloInstruction* while_instr,
+                                HloModule* module) {
+  CHECK_EQ(while_instr->opcode(), HloOpcode::kWhile);
+
+  bool any_collective_present = absl::c_any_of(
+      while_instr->while_body()->MakeInstructionPostOrder(),
+      [](HloInstruction* instr) {
+        return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
+      });
+  if (any_collective_present) {
+    return DoubleBufferingUnroll(while_instr, module);
+  }
+  return false;  // IR not changed.
+}
+
 }  // namespace
 
 absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
@@ -555,6 +572,8 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
       TF_ASSIGN_OR_RETURN(changed, FullyUnroll(while_instr, module));
     } else if (unroll_strategy_ == UnrollStrategy::kDoubleBuffer) {
       TF_ASSIGN_OR_RETURN(changed, DoubleBufferingUnroll(while_instr, module));
+    } else if (unroll_strategy_ == UnrollStrategy::kAuto) {
+      TF_ASSIGN_OR_RETURN(changed, AutoUnroll(while_instr, module));
     } else {
       LOG(FATAL) << absl::StrCat("Unhandled unrolling strategy: ",
                                  unroll_strategy_);
