@@ -437,12 +437,14 @@ tsl_cc_test(
     srcs = ["curl_http_request_test.cc"],
     deps = [
         ":curl_http_request",
+        "//tsl/platform",
         "//tsl/platform:env_impl",
         "//tsl/platform:path",
         "//tsl/platform:platform_port",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
