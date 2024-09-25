@@ -1102,6 +1102,7 @@ absl::Status RunPostFusionPasses(
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
   }
   if (unroll_strategy != std::nullopt) {
+    pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<HloDCE>();
