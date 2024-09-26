@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -61,6 +62,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   absl::Status status =
       tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_ALLOW_DELETE_BEFORE_FULFILL", true,
                               &allow_delete_before_fulfill_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to read XLA_PJRT_GPU_ALLOW_DELETE_BEFORE_FULFILL: "
+               << status;
+  }
 
   local_hardware_id_ = executor_->device_ordinal();
   local_device_id_ =
