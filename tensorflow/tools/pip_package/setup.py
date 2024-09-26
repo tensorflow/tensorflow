@@ -86,7 +86,7 @@ REQUIRED_PACKAGES = [
     'packaging',
     # pylint:disable=line-too-long
     (
-        'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
+        'protobuf>=3.20.3,<6.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
     ),
     'requests >= 2.21.0, < 3',
     'setuptools',
