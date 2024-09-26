@@ -348,3 +348,60 @@ func.func @dus(%arg0: tensor<20x30xf32>, %arg1: tensor<5x6xf32>, %arg2: i32, %ar
 // CHECK-SAME: xla.range = [0 : index, 19 : index]
 // CHECK: arith.addi
 // CHECK-SAME: xla.range = [0 : index, 29 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 2147483647 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 2147483647 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32 {xla.range = [-31 : i32, 17 : i32]}) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 31 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 31 : index]
+
+// -----
+
+module {
+  func.func @annotate_range_abs_index(%v: i32 {xla.range = [-5 : i32, 3 : i32]}) -> index {
+    %c0_i32 = arith.constant 0 : i32
+    %0 = arith.cmpi sge, %v, %c0_i32 : i32
+    %1 = arith.subi %c0_i32, %v : i32
+    %2 = arith.select %0, %v, %1 : i32
+    %3 = arith.index_cast %2 : i32 to index
+    return %3: index
+  }
+}
+
+// CHECK-LABEL: @annotate_range_abs
+// CHECK: arith.select
+// CHECK-SAME: xla.range = [0 : index, 5 : index]
+// CHECK-NEXT: arith.index_cast
+// CHECK-SAME: xla.range = [0 : index, 5 : index]

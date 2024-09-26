@@ -650,6 +650,7 @@ lit_test_suite(
             "transpose_210.hlo",
             "transpose_210_extra_output.hlo",
             "triton_naming.hlo",
+            "zero_clamp_abs_index.hlo",
         ],
         include = [
             "*.hlo",
