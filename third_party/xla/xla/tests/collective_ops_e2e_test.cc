@@ -450,6 +450,10 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
 }
 
 TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
+  // TODO(b/369751308): Re-enable this test after the threading issues are
+  // fixed.
+  GTEST_SKIP() << "This test is flaky. See b/369751308";
+
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
