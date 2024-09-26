@@ -1,7 +1,6 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -537,12 +536,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
     ],
-)
-
-# TODO(b/244780257): Remove this config.
-bool_flag(
-    name = "enable_xlir",
-    build_setting_default = if_google(True, False),
 )
 
 cc_library(
