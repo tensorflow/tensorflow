@@ -19,11 +19,23 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
+#include "absl/log/log.h"
+#include "third_party/grpc/include/grpcpp/alarm.h"
+#include "third_party/grpc/include/grpcpp/completion_queue.h"
+#include "third_party/grpc/include/grpcpp/server_builder.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/eager_service.grpc.pb.h"
+#include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
 namespace eager {

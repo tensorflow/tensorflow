@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace eager {
