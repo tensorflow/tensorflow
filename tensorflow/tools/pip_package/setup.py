@@ -109,8 +109,8 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.18.0.a',
-    'keras-nightly >= 3.2.0.dev',
+    'tensorboard >= 2.18, < 2.19',
+    'keras >= 3.5.0',
     # TODO(b/367877753): Update the upper bound to <2.2.0 once the compatibility
     # issues with numpy 2.1.0 is fixed.
     'numpy >= 1.26.0, < 2.1.0',
