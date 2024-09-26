@@ -11,6 +11,7 @@ lit_test_suite(
         [
             "attributes.hlo",
             "bool_compare.hlo",
+            "call_with_backend_config.hlo",
             "case_conditional.hlo",
             "composite_call.hlo",
             "custom_call.hlo",

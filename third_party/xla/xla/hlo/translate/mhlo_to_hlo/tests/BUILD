@@ -12,6 +12,7 @@ lit_test_suite(
         [
             "add.mlir",
             "attributes.mlir",
+            "call_with_backend_config.mlir",
             "case.mlir",
             "composite.mlir",
             "dynamic.mlir",
