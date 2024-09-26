@@ -957,9 +957,9 @@ VariableConstraints GetConstraintsForVariables(const IndexingMap& map) {
   for (const auto& constraint : map.GetConstraints()) {
     constraint.first.walk([&](mlir::AffineExpr leaf) {
       if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(leaf)) {
-        result.constraints_for_dims[dim.getPosition()].push_back(constraint);
+        result.constraints_for_dims[dim.getPosition()].insert(constraint);
       } else if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf)) {
-        result.constraints_for_symbols[sym.getPosition()].push_back(constraint);
+        result.constraints_for_symbols[sym.getPosition()].insert(constraint);
       }
     });
   }
