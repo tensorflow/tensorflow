@@ -34,6 +34,8 @@ namespace profiler {
 
 // The name of OpMetrics to represent the idle time.
 TF_CONST_INIT extern const absl::string_view kIdle;
+// The core index to add to sparse core index in op metrics.
+TF_CONST_INIT extern const uint32_t kSparseCoreIndexStart;
 
 // Helps build an op metrics database (borrowed).
 // Enables fast lookup of existing ops and prevents the creation of duplicate

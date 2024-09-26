@@ -548,7 +548,8 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   uint64_t last_op_end_ps = 0;
 
   plane.ForEachLine([&](const XLineVisitor& line) {
-    if (line.Name() == kStepLineName) {
+    if (line.Name() == kStepLineName ||
+        line.Name() == kSparseCoreStepLineName) {
       XLineBuilder aggregated_line =
           aggregated_plane.GetOrCreateLine(line.Id());
       aggregated_line.SetName(kStepLineName);

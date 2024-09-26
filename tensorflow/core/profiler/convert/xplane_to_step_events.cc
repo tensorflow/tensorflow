@@ -281,11 +281,14 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents device_step_events;
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   std::optional<int> tpu_core_id = tsl::profiler::GetTensorCoreId(plane.Name());
+  std::optional<int> sc_core_id = tsl::profiler::GetSparseCoreId(plane.Name());
   plane.ForEachLine([&](const XLineVisitor& line) {
     int64_t line_id = line.Id();
     if (line_id == kThreadIdStepInfo ||
         (tpu_core_id.has_value() &&
-         line.Name() == tsl::profiler::kStepLineName)) {
+         line.Name() == tsl::profiler::kStepLineName) ||
+        (sc_core_id.has_value() &&
+         line.Name() == tsl::profiler::kSparseCoreStepLineName)) {
       StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
       UnionCombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
@@ -299,6 +302,10 @@ StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
         // the common step numbers.
         stream_step_events =
             ConvertTpuDeviceTraceXLineToStepEvents(*tpu_core_id, line);
+        IntersectCombineStepEvents(stream_step_events, &device_step_events);
+      } else if (sc_core_id.has_value()) {
+        stream_step_events = ConvertTpuDeviceTraceXLineToStepEvents(
+            kSparseCoreIndexStart + *sc_core_id, line);
         IntersectCombineStepEvents(stream_step_events, &device_step_events);
       } else {
         stream_step_events =

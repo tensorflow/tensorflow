@@ -46,11 +46,13 @@ limitations under the License.
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
+#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+using tsl::profiler::FindPlanesWithPrefix;
 using tsl::profiler::FindTensorCorePlanes;
 
 std::string Hostname(const XSpace& space) {
@@ -179,11 +181,6 @@ void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options) {
-  std::vector<const XPlane*> device_planes = FindTensorCorePlanes(space);
-  bool is_tpu = !device_planes.empty();
-  if (!is_tpu) {
-    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
-  }
   OpStats op_stats;
   StepEvents step_events;
   PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
@@ -194,6 +191,14 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   KernelReportMap reports;
 
+  // Handle device planes first. device_planes will contain either GPU or TPU.
+  std::vector<const XPlane*> device_planes =
+      FindPlanesWithPrefix(space, kTpuPlanePrefix);
+  const bool is_gpu = device_planes.empty();
+  if (is_gpu) {
+    device_planes = FindPlanesWithPrefix(space, kGpuPlanePrefix);
+  }
+  const bool is_tpu = !is_gpu;
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
     XPlane aggregated_xplane;

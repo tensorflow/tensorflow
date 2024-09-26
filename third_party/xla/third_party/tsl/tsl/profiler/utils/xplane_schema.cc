@@ -49,6 +49,7 @@ const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
+const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";
 const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
 const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
@@ -340,6 +341,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"cuda_graph_id", kCudaGraphId},
       {"cuda_graph_exec_id", kCudaGraphExecId},
       {"cuda_graph_orig_id", kCudaGraphOrigId},
+      {"step_idle_time_ps", kStepIdleTimePs},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
