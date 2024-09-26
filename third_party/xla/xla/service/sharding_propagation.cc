@@ -1383,7 +1383,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
     const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector) {
+        allow_spmd_sharding_propagation_to_parameters_vector,
+    bool remove_unknown_shardings) {
   bool changed = false;
 
   const bool use_shard_group = instruction_to_shard_group_id &&
@@ -1475,7 +1476,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
 
         bool replaced_with_copy =
             replace_sharding_with_copy &&
-            (!original_sharding.IsUnknown() ||
+            (!original_sharding.IsUnknown() || remove_unknown_shardings ||
              instruction->operand(0)->opcode() == HloOpcode::kParameter);
         // Replace the sharding instruction with a copy node so that it does not
         // need special handling.

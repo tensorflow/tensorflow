@@ -68,11 +68,16 @@ class AutoShardingImplementation {
       const absl::flat_hash_map<std::string, HloSharding>&
           sharding_propagation_solution = {});
 
+  struct SaveShardingAnnotationsResult {
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>
+        preserved_shardings;
+    bool module_is_changed;
+  };
+
   // Returns sharding annotations that need to be preserved in a map (for
   // verification after auto-sharding is done), and removes any sharding
-  // anotations that need to be removed.
-  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
-  SaveAndRemoveShardingAnnotation(
+  // annotations that need to be removed.
+  absl::StatusOr<SaveShardingAnnotationsResult> SaveAndRemoveShardingAnnotation(
       HloModule* module,
       const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
