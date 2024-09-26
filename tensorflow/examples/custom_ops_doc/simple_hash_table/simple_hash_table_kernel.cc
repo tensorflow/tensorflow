@@ -70,7 +70,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     const K key_val = key.flat<K>()(0);
     auto value_val = value->flat<V>();
     value_val(0) = gtl::FindWithDefault(table_, key_val, default_val);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Remove(const Tensor& key) {
