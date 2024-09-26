@@ -160,6 +160,7 @@ CallInliner::Inline(HloInstruction* call) {
 
 bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return instruction->opcode() == HloOpcode::kCall &&
+         !instruction->has_backend_config() &&
          !instruction->parent()->IsAsyncComputation();
 }
 
