@@ -73,7 +73,7 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<\"" << getIndexingMap().ToString() << "\">";
+  printer << "<\"" << ToString(getIndexingMap()) << "\">";
 }
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
@@ -135,7 +135,7 @@ mlir::Attribute LayoutAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 
 void LayoutAttr::print(mlir::AsmPrinter& printer) const {
   printer << "<\"" << stringifyMemorySpace(getMemorySpace().getValue())
-          << "\", \"" << getThreadMap().getIndexingMap().ToString() << "\">";
+          << "\", \"" << ToString(getThreadMap().getIndexingMap()) << "\">";
 }
 
 }  // namespace gpu

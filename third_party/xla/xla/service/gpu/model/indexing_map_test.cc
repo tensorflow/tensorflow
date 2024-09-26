@@ -33,7 +33,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
@@ -58,7 +57,6 @@ class IndexingMapTest : public HloTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  AffineMapPrinter printer_;
 };
 
 std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {
@@ -89,7 +87,8 @@ TEST_F(IndexingMapTest, VariableKind) {
 }
 
 TEST_F(IndexingMapTest, RTVar) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  auto zero_dim_map =
+      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
   std::vector<RTVar> rt_vars{RTVar{Interval{0, 2},
                                    /*instr=*/nullptr, zero_dim_map},
                              RTVar({Interval{0, 7},
@@ -100,10 +99,8 @@ TEST_F(IndexingMapTest, RTVar) {
                      &mlir_context_),
       {DimVar{{0, 99}}, DimVar{{0, 43}}}, {RangeVar{{-99, 99}}},
       std::move(rt_vars));
-  printer_.SetSymbolName(0, "range");
-  printer_.SetSymbolName(1, "rt_0");
-  printer_.SetSymbolName(2, "rt_1");
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map, {"d0", "d1"}, {"range", "rt_0", "rt_1"}),
+              MatchIndexingString(R"(
                 (d0, d1)[range, rt_0, rt_1] -> (d1, d0, range + rt_0, rt_0),
                 domain:
                 d0 in [0, 99],
@@ -111,10 +108,10 @@ TEST_F(IndexingMapTest, RTVar) {
                 range in [-99, 99],
                 rt_0 in [0, 2],
                   hlo: NULL,
-                  () -> (),
+                  (d0, d1) -> (),
                 rt_1 in [0, 7],
                   hlo: NULL,
-                  () -> (),
+                  (d0, d1) -> (),
                 is_simplified: false
               )"));
 }
@@ -263,7 +260,8 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
 }
 
 TEST_F(IndexingMapTest, Composition_RTVar) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  auto zero_dim_map =
+      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
   std::vector<RTVar> rt_vars{
       RTVar{Interval{0, 0},
             /*instr=*/nullptr, zero_dim_map},
@@ -279,13 +277,10 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s0] -> (0, d1, s0)", &mlir_context_),
       {DimVar{{0, 0}}, DimVar{{0, 1}}}, {RangeVar{0, 31}}, {});
-  printer_.SetSymbolName(0, "s");
-  printer_.SetSymbolName(1, "rt_0");
-  printer_.SetSymbolName(2, "rt_1");
-  printer_.SetSymbolName(3, "rt_2");
 
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(composed.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(composed, {"d0", "d1"}, {"s", "rt_0", "rt_1", "rt_2"}),
+              MatchIndexingString(R"(
     (d0, d1)[s, rt_0, rt_1, rt_2] -> (rt_0, d1 + rt_1, s + rt_2),
     domain:
     d0 in [0, 0],
@@ -293,19 +288,20 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
     s in [0, 31],
     rt_0 in [0, 0],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     rt_1 in [0, 1],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     rt_2 in [0, 226],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     is_simplified: false
   )"));
 }
 
 TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  auto zero_dim_map =
+      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
 
   IndexingMap producer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
@@ -322,13 +318,10 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
       {RTVar({Interval{0, 25}, /*instr=*/nullptr, zero_dim_map}),
        RTVar({Interval{0, 16}, /*instr=*/nullptr, zero_dim_map})});
 
-  printer_.SetSymbolName(0, "ps_0");
-  printer_.SetSymbolName(1, "ps_1");
-  printer_.SetSymbolName(2, "cs_0");
-  printer_.SetSymbolName(3, "cs_1");
-
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(composed.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(
+      ToString(composed, {"d0", "d1"}, {"ps_0", "ps_1", "cs_0", "cs_1"}),
+      MatchIndexingString(R"(
     (d0, d1)[ps_0, ps_1, cs_0, cs_1] ->
       (d0 + cs_0 * 2 + ps_0, d1 + cs_1 * 3 + ps_1 * 4),
     domain:
@@ -336,16 +329,16 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
     d1 in [0, 15],
     ps_0 in [0, 2],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     ps_1 in [0, 1],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     cs_0 in [0, 25],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     cs_1 in [0, 16],
       hlo: NULL,
-      () -> (),
+      (d0, d1) -> (),
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15],
     is_simplified: false
@@ -604,7 +597,8 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
 }
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  auto zero_dim_map =
+      AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, &mlir_context_);
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                      &mlir_context_),
@@ -624,7 +618,7 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
                               s0 in [0, 1],
                               s1 in [0, 3],
                                 hlo: NULL,
-                                () -> (),
+                                (d0) -> (),
                               d0 * 4 + s0 + s1 in [24, 459],
                               is_simplified: false
                             )"));
@@ -664,7 +658,7 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [0, 99],
@@ -685,7 +679,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0, s1] -> (d0 * 6 + s0 * 3 + s1),
                           domain:
                           d0 in [0, 99],
@@ -719,7 +713,7 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum_GcdGreaterOne) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0] -> (d0 * 6 + s0 * 3),
                           domain:
                           d0 in [0, 99],
@@ -738,7 +732,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [40, 95],
@@ -757,7 +751,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0] -> (d0),
                           domain:
                           d0 in [0, 99],
@@ -777,7 +771,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0] -> (d0),
                           domain:
                           d0 in [0, 99],
@@ -796,7 +790,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [2, 4],
@@ -815,7 +809,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0] -> (d0),
                           domain:
                           d0 in [0, 99],
@@ -835,7 +829,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0] -> (d0),
                           domain:
                           d0 in [0, 99],
@@ -858,7 +852,7 @@ TEST_F(IndexingMapTest, ConstraintMerge_Mod) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0)[s0, s1] -> (d0, s1, s0),
                           domain:
                           d0 in [0, 3],
@@ -879,7 +873,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                   (d0) -> (5),
                                                   domain:
                                                   d0 in [5, 5],
@@ -927,7 +921,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivRegression) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  (d0, d1) -> (d0 floordiv 6),
                                                  domain:
                                                  d0 in [0, 11],
@@ -944,7 +938,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ModIsSub) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  (d0) -> (d0 - 42),
                                                  domain:
                                                  d0 in [53, 71],
@@ -960,7 +954,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ModIsAdd) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  (d0) -> (d0 + 5),
                                                  domain:
                                                  d0 in [-5, -1],
@@ -986,7 +980,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  (d0)[s0] -> (d0 + s0 mod 3),
                                                  domain:
                                                  d0 in [0, 1],
@@ -1004,7 +998,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                 (d0)[s0] -> (d0 + (s0 mod 3) * 4 + s0 * 3),
                 domain:
                 d0 in [0, 1],
@@ -1022,7 +1016,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                 (d0)[s0] -> (d0 + (s0 + 1) mod 3),
                 domain:
                 d0 in [0, 1],
@@ -1041,7 +1035,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                   (d0, d1) -> (d0, d1),
                                                   domain:
                                                   d0 in [0, 7],
@@ -1062,7 +1056,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithMultipliers) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                   (d0, d1, d2) -> (d0, d1, d2),
                                                   domain:
                                                   d0 in [0, 8],
@@ -1084,7 +1078,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
     (d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8,
                      (d1 * 4 + d2) mod 8),
     domain:
@@ -1105,7 +1099,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsAndModsWithReverse) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  (d0, d1) -> (d0, d1),
                                                  domain:
                                                  d0 in [0, 7],
@@ -1122,7 +1116,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0] -> (s0 * 128),
       domain:
       s0 in [0, 127],
@@ -1140,7 +1134,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape2) {
   )");
   ;
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0, d1) -> (d0 * 128 + d1),
       domain:
       d0 in [0, 1023],
@@ -1159,7 +1153,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape3) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0, d1) -> (d0 * 4 + d1 * 512),
       domain:
       d0 in [0, 127],
@@ -1177,7 +1171,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_FALSE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0) -> ((-d0) mod 2),
       domain:
       d0 in [0, 127],
@@ -1200,7 +1194,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyBitcastAndBack) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0, d1) -> (d0 * 512 + d1 * 4),
       domain:
       d0 in [0, 3071],
@@ -1218,7 +1212,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SimplifyReshape_Regression) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0] -> (((s0 * 64) floordiv 715) * 715 + (s0 * 128) mod 715),
       domain:
       s0 in [0, 127],
@@ -1234,7 +1228,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                                                  ()[s0] -> (s0),
                                                  domain:
                                                  s0 in [0, 1233],
@@ -1251,7 +1245,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0, s1] -> ((s0 * 128 + s1) floordiv 192),
       domain:
       s0 in [0, 1233],
@@ -1268,7 +1262,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivSumConstant) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0] -> ((s0 * 2 + 3) floordiv 6),
       domain:
       s0 in [0, 1233],
@@ -1312,7 +1306,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ExtractFromMod) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0, s1, s2, s3] -> (
         ((s0 * 114688 + s3 * 128 + s2) mod 5000) * 4 + s1
       ),
@@ -1336,7 +1330,7 @@ TEST_F(IndexingMapTest,
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       ()[s0, s1] -> (
         s0 * 4 + s1 floordiv 32
       ),
@@ -1359,7 +1353,7 @@ TEST_F(IndexingMapTest, RescaleSymbols_Simple) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
         d0 in [0, 3],
@@ -1384,7 +1378,7 @@ TEST_F(IndexingMapTest, RescaleSymbols_WithShift) {
   // [BEFORE] Allowed values for s0: 3, 9, 15, ..., 39 = (6 * 6 + 3)
   // [AFTER] Allowed values for s0: 0, 1, 2, ..., 6
   EXPECT_TRUE(indexing_map.RescaleSymbols());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0 * 6 + 3),
       domain:
         d0 in [0, 3],
@@ -1408,7 +1402,7 @@ TEST_F(IndexingMapTest, RescaleSymbols_TwoModConstraints) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
         d0 in [0, 3],
@@ -1432,7 +1426,7 @@ TEST_F(IndexingMapTest, RescaleSymbols_RescaledSymbolInOtherNonModConstraint) {
     is_simplified: false
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0 * 6 + 3),
       domain:
         d0 in [0, 3],
@@ -1687,8 +1681,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ScalarConstant) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_),
-              MatchIndexingString("() -> (42)"));
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString("() -> (42)"));
 }
 
 TEST_F(IndexingMapTest, ReplaceConstantRTVars_StaticIndexIntoTensorConstant) {
@@ -1714,8 +1707,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_StaticIndexIntoTensorConstant) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_),
-              MatchIndexingString("() -> (13)"));
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString("() -> (13)"));
 }
 
 TEST_F(IndexingMapTest, ReplaceConstantRTVars_NonFoldableTensor) {
@@ -1764,7 +1756,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Iota) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, d0),
               domain:
               d0 in [0, 255],
@@ -1795,7 +1787,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_IotaAsConstant) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, 7),
               domain:
               d0 in [0, 255],
@@ -1828,7 +1820,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ConstraintsGetUpdated) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, d0),
               domain:
               d0 in [0, 254],
@@ -1863,7 +1855,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Broadcast) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, 11),
               domain:
               d0 in [0, 31],
@@ -1906,7 +1898,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ChainedNoncomputeOps) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, (d0 floordiv 12) * -4 + 8),
               domain:
               d0 in [0, 35],
@@ -1940,7 +1932,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
 
   EXPECT_TRUE(indexing_map.Simplify());
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0)[s0] -> (d0, s0),
               domain:
               d0 in [0, 23],
@@ -1979,7 +1971,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Add) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, d0 * 2 + 42),
               domain:
               d0 in [0, 11],
@@ -2020,7 +2012,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Multiply) {
   EXPECT_TRUE(indexing_map.Simplify());
   indexing_map.RemoveUnusedSymbols();
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0) -> (d0, (-d0 + 11) * d0),
               domain:
               d0 in [0, 11],
@@ -2057,7 +2049,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
 
   EXPECT_TRUE(indexing_map.Simplify());
 
-  EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
               (d0)[s0] -> (d0, d0 * 2 + s0),
               domain:
               d0 in [0, 11],

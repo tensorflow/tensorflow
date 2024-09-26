@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,8 +48,14 @@ namespace {
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using llvm::StringRef;
+using mlir::AffineBinaryOpExpr;
+using mlir::AffineConstantExpr;
+using mlir::AffineDimExpr;
 using mlir::AffineExpr;
+using mlir::AffineExprKind;
 using mlir::AffineMap;
+using mlir::AffineMapAttr;
+using mlir::AffineSymbolExpr;
 using mlir::ArrayRef;
 using mlir::MLIRContext;
 
@@ -376,16 +387,172 @@ bool ParseAffineExprsWithMLIR(ArrayRef<std::string> dim_var_names,
     llvm::errs() << "Failed to parse affine map: " << ss.str() << "\n";
     return false;
   }
-  mlir::AffineMap affine_map =
-      mlir::cast<mlir::AffineMapAttr>(affine_map_attr).getValue();
+  AffineMap affine_map = mlir::cast<AffineMapAttr>(affine_map_attr).getValue();
   affine_exprs = llvm::to_vector(affine_map.getResults());
   return true;
+}
+
+std::string GetSymbolName(int64_t symbol_id,
+                          absl::Span<const std::string> symbol_names = {}) {
+  if (symbol_names.empty()) {
+    return absl::StrCat("s", symbol_id);
+  }
+  return symbol_names.at(symbol_id);
+}
+
+std::string GetDimensionName(int64_t dim_id,
+                             absl::Span<const std::string> dim_names = {}) {
+  if (dim_names.empty()) {
+    return absl::StrCat("d", dim_id);
+  }
+  return dim_names.at(dim_id);
+}
+
+void PrintAffineExprImpl(const AffineExpr affine_expr,
+                         absl::Span<const std::string> dim_names,
+                         absl::Span<const std::string> symbol_names,
+                         bool add_parentheses, llvm::raw_ostream& os) {
+  const char* binopSpelling = nullptr;
+  switch (affine_expr.getKind()) {
+    case AffineExprKind::SymbolId: {
+      unsigned symbol_id =
+          mlir::cast<AffineSymbolExpr>(affine_expr).getPosition();
+      os << GetSymbolName(symbol_id, symbol_names);
+      return;
+    }
+    case AffineExprKind::DimId: {
+      unsigned dim_id = mlir::cast<AffineDimExpr>(affine_expr).getPosition();
+      os << GetDimensionName(dim_id, dim_names);
+      return;
+    }
+    case AffineExprKind::Constant:
+      os << mlir::cast<AffineConstantExpr>(affine_expr).getValue();
+      return;
+    case AffineExprKind::Add:
+      binopSpelling = " + ";
+      break;
+    case AffineExprKind::Mul:
+      binopSpelling = " * ";
+      break;
+    case AffineExprKind::FloorDiv:
+      binopSpelling = " floordiv ";
+      break;
+    case AffineExprKind::CeilDiv:
+      binopSpelling = " ceildiv ";
+      break;
+    case AffineExprKind::Mod:
+      binopSpelling = " mod ";
+      break;
+  }
+
+  auto binOp = mlir::cast<AffineBinaryOpExpr>(affine_expr);
+  AffineExpr lhsExpr = binOp.getLHS();
+  AffineExpr rhsExpr = binOp.getRHS();
+
+  // Handle tightly binding binary operators.
+  if (binOp.getKind() != AffineExprKind::Add) {
+    if (add_parentheses) {
+      os << '(';
+    }
+
+    // Pretty print multiplication with -1.
+    auto rhsConst = mlir::dyn_cast<AffineConstantExpr>(rhsExpr);
+    if (rhsConst && binOp.getKind() == AffineExprKind::Mul &&
+        rhsConst.getValue() == -1) {
+      os << "-";
+      PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                          /*add_parentheses=*/true, os);
+      if (add_parentheses) {
+        os << ')';
+      }
+      return;
+    }
+    PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                        /*add_parentheses=*/true, os);
+
+    os << binopSpelling;
+    PrintAffineExprImpl(rhsExpr, dim_names, symbol_names,
+                        /*add_parentheses=*/true, os);
+
+    if (add_parentheses) {
+      os << ')';
+    }
+    return;
+  }
+
+  // Print out special "pretty" forms for add.
+  if (add_parentheses) {
+    os << '(';
+  }
+
+  // Pretty print addition to a product that has a negative operand as a
+  // subtraction.
+  if (auto rhs = mlir::dyn_cast<AffineBinaryOpExpr>(rhsExpr)) {
+    if (rhs.getKind() == AffineExprKind::Mul) {
+      AffineExpr rrhsExpr = rhs.getRHS();
+      if (auto rrhs = mlir::dyn_cast<AffineConstantExpr>(rrhsExpr)) {
+        if (rrhs.getValue() == -1) {
+          PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                              /*add_parentheses=*/false, os);
+          os << " - ";
+          if (rhs.getLHS().getKind() == AffineExprKind::Add) {
+            PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                                /*add_parentheses=*/true, os);
+          } else {
+            PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                                /*add_parentheses=*/false, os);
+          }
+          if (add_parentheses) {
+            os << ')';
+          }
+          return;
+        }
+
+        if (rrhs.getValue() < -1) {
+          PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                              /*add_parentheses=*/false, os);
+          os << " - ";
+          PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                              /*add_parentheses=*/true, os);
+          os << " * " << -rrhs.getValue();
+          if (add_parentheses) {
+            os << ')';
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  // Pretty print addition to a negative number as a subtraction.
+  if (auto rhsConst = mlir::dyn_cast<AffineConstantExpr>(rhsExpr)) {
+    if (rhsConst.getValue() < 0) {
+      PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                          /*add_parentheses=*/false, os);
+      os << " - " << -rhsConst.getValue();
+      if (add_parentheses) {
+        os << ')';
+      }
+      return;
+    }
+  }
+
+  PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, os);
+
+  os << " + ";
+  PrintAffineExprImpl(rhsExpr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, os);
+
+  if (add_parentheses) {
+    os << ')';
+  }
 }
 
 }  // namespace
 
 std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
-                                            mlir::MLIRContext* context) {
+                                            MLIRContext* context) {
   Parser parser(input);
 
   // Parse variable names.
@@ -510,6 +677,137 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   return IndexingMap{
       map,         std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{},
       constraints, is_simplified};
+}
+
+std::string ToString(AffineExpr affine_expr) {
+  return ToString(affine_expr, /*dim_names=*/{}, /*symbol_names=*/{});
+}
+
+std::ostream& operator<<(std::ostream& out, AffineExpr affine_expr) {
+  out << ToString(affine_expr);
+  return out;
+}
+
+std::string ToString(AffineExpr affine_expr,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> symbol_names) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  PrintAffineExprImpl(affine_expr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, ss);
+  return s;
+}
+
+std::string ToString(AffineMap affine_map) {
+  int dim_count = affine_map.getNumDims();
+  SmallVector<std::string, 3> dim_names;
+  dim_names.reserve(affine_map.getNumDims());
+  for (int64_t dim_id = 0; dim_id < dim_count; ++dim_id) {
+    dim_names.push_back(GetDimensionName(dim_id));
+  }
+  int symbol_count = affine_map.getNumSymbols();
+  SmallVector<std::string, 3> symbol_names;
+  symbol_names.reserve(affine_map.getNumSymbols());
+  for (int64_t symbol_id = 0; symbol_id < symbol_count; ++symbol_id) {
+    symbol_names.push_back(GetSymbolName(symbol_id));
+  }
+  return ToString(affine_map, dim_names, symbol_names);
+}
+
+std::ostream& operator<<(std::ostream& out, AffineMap affine_map) {
+  out << ToString(affine_map);
+  return out;
+}
+
+std::string ToString(AffineMap affine_map,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> symbol_names) {
+  CHECK_EQ(dim_names.size(), affine_map.getNumDims());
+  CHECK_EQ(symbol_names.size(), affine_map.getNumSymbols());
+
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+
+  // Dimension identifiers.
+  ss << '(' << absl::StrJoin(dim_names, ", ") << ')';
+  // Symbolic identifiers.
+  if (affine_map.getNumSymbols() != 0) {
+    ss << '[' << absl::StrJoin(symbol_names, ", ") << ']';
+  }
+  // Result affine expressions.
+  ss << " -> (";
+  llvm::interleaveComma(affine_map.getResults(), ss, [&](AffineExpr expr) {
+    PrintAffineExprImpl(expr, dim_names, symbol_names,
+                        /*add_parentheses=*/false, ss);
+  });
+  ss << ')';
+  return s;
+}
+
+std::string ToString(const IndexingMap& indexing_map) {
+  const auto& affine_map = indexing_map.GetAffineMap();
+  int dim_count = affine_map.getNumDims();
+  SmallVector<std::string, 3> dim_names;
+  dim_names.reserve(affine_map.getNumDims());
+  for (int64_t dim_id = 0; dim_id < dim_count; ++dim_id) {
+    dim_names.push_back(GetDimensionName(dim_id));
+  }
+  int symbol_count = affine_map.getNumSymbols();
+  SmallVector<std::string, 3> symbol_names;
+  symbol_names.reserve(affine_map.getNumSymbols());
+  for (int64_t symbol_id = 0; symbol_id < symbol_count; ++symbol_id) {
+    symbol_names.push_back(GetSymbolName(symbol_id));
+  }
+  return ToString(indexing_map, dim_names, symbol_names);
+}
+
+std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
+  out << ToString(indexing_map);
+  return out;
+}
+
+std::string ToString(const IndexingMap& indexing_map,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> symbol_names) {
+  std::stringstream ss;
+  if (indexing_map.IsKnownEmpty()) {
+    ss << "KNOWN EMPTY\n";
+    return ss.str();
+  }
+  const auto& dim_vars = indexing_map.GetDimVars();
+  const auto& range_vars = indexing_map.GetRangeVars();
+  const auto& rt_vars = indexing_map.GetRTVars();
+  ss << ToString(indexing_map.GetAffineMap(), dim_names, symbol_names);
+  if (dim_vars.empty() && range_vars.empty() && rt_vars.empty()) {
+    return ss.str();
+  }
+  ss << ", domain: ";
+  for (const auto& [index, dim_var] : llvm::enumerate(dim_vars)) {
+    ss << dim_names[index] << " in " << dim_var.bounds << ", ";
+  }
+  for (const auto& [index, range_var] : llvm::enumerate(range_vars)) {
+    ss << symbol_names[index] << " in " << range_var.range << ", ";
+  }
+  int64_t num_range_vars = range_vars.size();
+  for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
+    ss << GetSymbolName(num_range_vars + index, symbol_names) << " in "
+       << rt_var.feasible_values << ",  hlo: "
+       << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  "
+       << ToString(rt_var.map) << ", ";
+  }
+  std::vector<std::string> expr_range_strings;
+  const auto& constraints = indexing_map.GetConstraints();
+  expr_range_strings.reserve(constraints.size());
+  for (const auto& [expr, range] : constraints) {
+    expr_range_strings.push_back(absl::StrCat(
+        ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+  }
+  std::sort(expr_range_strings.begin(), expr_range_strings.end());
+  for (const auto& expr_range_string : expr_range_strings) {
+    ss << expr_range_string << ", ";
+  }
+  ss << "is_simplified: " << (indexing_map.IsSimplified() ? "true" : "false");
+  return ss.str();
 }
 
 }  // namespace gpu

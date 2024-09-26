@@ -18,6 +18,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
@@ -27,14 +29,15 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::HasSubstr;
+
 class IndexingMapSerializationTest : public HloTestBase {
  public:
   mlir::MLIRContext mlir_context_;
   void ParseAndCheck(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
     ASSERT_TRUE(indexing_map.has_value());
-    EXPECT_THAT(indexing_map->ToString(),
-                MatchIndexingString(indexing_map_str));
+    EXPECT_THAT(ToString(*indexing_map), MatchIndexingString(indexing_map_str));
   }
 };
 
@@ -130,10 +133,22 @@ TEST_F(IndexingMapSerializationTest, CustomNames) {
   )";
   auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
   ASSERT_TRUE(indexing_map.has_value());
-  EXPECT_THAT(indexing_map->ToString(),
+  EXPECT_THAT(ToString(*indexing_map),
               MatchIndexingString(indexing_map_golden));
 }
 
+TEST_F(IndexingMapSerializationTest, AffineMapPrinterTest) {
+  mlir::AffineExpr d0, d1, s0, s1;
+  mlir::bindDims(&mlir_context_, d0, d1);
+  mlir::bindSymbols(&mlir_context_, s0, s1);
+
+  // (d0, d1)[s0, s1] -> (d0 + d1 floordiv 8, s0 + s1 mod 16).
+  auto map = mlir::AffineMap::get(2, 2, {d0 + d1.floorDiv(8), s0 + s1 % 16},
+                                  &mlir_context_);
+  EXPECT_THAT(ToString(map, {"offset", "d1"}, {"s0", "linear_index"}),
+              HasSubstr("(offset, d1)[s0, linear_index] -> "
+                        "(offset + d1 floordiv 8, s0 + linear_index mod 16)"));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

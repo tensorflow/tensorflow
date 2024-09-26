@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "tsl/platform/test.h"
 
@@ -2679,10 +2680,9 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
   HloInstructionAdaptor log(*computation->GetInstructionWithName("log"),
                             fusion.get());
 
-  EXPECT_THAT(
-      ComputeEpilogueInputToOutputIndexing(transpose, log, &mlir_context_)
-          .ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(ToString(ComputeEpilogueInputToOutputIndexing(transpose, log,
+                                                            &mlir_context_)),
+              MatchIndexingString(R"(
                   (d0, d1) -> (d1 * 1000 + d0),
                   domain:
                   d0 in [0, 999],
@@ -2710,10 +2710,9 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
   HloInstructionAdaptor transpose(*computation->GetInstructionWithName("t"),
                                   fusion.get());
 
-  EXPECT_THAT(
-      ComputeEpilogueInputToOutputIndexing(transpose, transpose, &mlir_context_)
-          .ToString(),
-      MatchIndexingString(R"(
+  EXPECT_THAT(ToString(ComputeEpilogueInputToOutputIndexing(
+                  transpose, transpose, &mlir_context_)),
+              MatchIndexingString(R"(
                   (d0, d1) -> (d0, d1),
                   domain:
                   d0 in [0, 999],

@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1257,33 +1256,25 @@ HloInstructionIndexing HloInstructionIndexing::FromIndexingMaps(
   return instr_indexing;
 }
 
-std::string HloInstructionIndexing::ToString(
-    const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
-  Print(ss, printer);
+std::string HloInstructionIndexing::ToString() const {
+  std::stringstream ss;
+  ss << *this;
   return ss.str();
 }
 
-void HloInstructionIndexing::Print(std::ostream& out,
-                                   const AffineMapPrinter& printer) const {
+std::ostream& operator<<(std::ostream& out,
+                         const HloInstructionIndexing& instr_indexing) {
   for (const auto& [operand_id, indexing_maps] :
-       llvm::enumerate(indexing_maps)) {
+       llvm::enumerate(instr_indexing.indexing_maps)) {
     out << "operand id = " << operand_id << ' ';
     for (const auto& indexing_map : indexing_maps) {
       if (indexing_map.IsUndefined()) {
         out << "unknown indexing";
         continue;
       }
-      indexing_map.Print(out, printer);
+      out << indexing_map;
     }
   }
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const HloInstructionIndexing& instr_indexing) {
-  AffineMapPrinter printer;
-  instr_indexing.Print(out, printer);
   return out;
 }
 

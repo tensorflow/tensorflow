@@ -274,7 +274,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     auto element_type = instr->shape().element_type();
     int64_t n_bytes_total = 0;
     for (const auto& indexing_map : indexing_maps) {
-      VLOG(10) << indexing_map.ToString();
+      VLOG(10) << indexing_map;
 
       int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
 
