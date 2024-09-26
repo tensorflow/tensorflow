@@ -231,6 +231,13 @@ std::unique_ptr<matmul::primitive_desc> CreateMatMulPrimDesc(
 }
 
 template <>
+typename PrimitiveTrait<kOnednnMatmulConfig>::pointer_type
+GetKernelConfig<kOnednnMatmulConfig>(
+    absl::StatusOr<BackendConfig>* backend_config) {
+  return (*backend_config)->mutable_onednn_matmul_config();
+}
+
+template <>
 std::unique_ptr<dnnl::matmul::primitive_desc>
 CreateOneDnnPrimDesc<dnnl::matmul::primitive_desc>(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kCustomCall) {

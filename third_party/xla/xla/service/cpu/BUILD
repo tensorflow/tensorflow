@@ -1761,6 +1761,7 @@ cc_library(
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":backend_config_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@eigen_archive//:eigen3",
