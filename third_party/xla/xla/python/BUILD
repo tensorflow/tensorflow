@@ -1109,11 +1109,9 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
-        ":nb_helpers",
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@nanobind",
