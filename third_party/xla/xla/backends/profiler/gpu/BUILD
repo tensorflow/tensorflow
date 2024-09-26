@@ -11,6 +11,7 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
+    "if_google",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -223,7 +224,10 @@ tsl_gpu_library(
     tags = [
         "gpu",
         "rocm-only",
-    ],
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor/rocm:roctracer_wrapper",
@@ -262,7 +266,10 @@ tsl_gpu_library(
     tags = [
         "gpu",
         "rocm-only",
-    ],
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":rocm_collector",
