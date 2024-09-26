@@ -47,28 +47,6 @@ namespace pywrap {
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 using tsl::profiler::ValidateHostPortPair;
 
-absl::Status Trace(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
-  return tsl::profiler::CaptureRemoteTrace(service_addr, logdir, worker_list,
-                                           include_dataset_ops, duration_ms,
-                                           num_tracing_attempts, options);
-}
-
-absl::Status Monitor(const char* service_addr, int duration_ms,
-                     int monitoring_level, bool display_timestamp,
-                     tensorflow::string* result) {
-  TF_RETURN_IF_ERROR(ValidateHostPortPair(service_addr));
-  {
-    TF_RETURN_IF_ERROR(tsl::profiler::Monitor(service_addr, duration_ms,
-                                              monitoring_level,
-                                              display_timestamp, result));
-  }
-  return absl::OkStatus();
-}
-
 absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
