@@ -130,6 +130,7 @@ namespace wrap {
   __macro(hipHostMalloc)                            \
   __macro(hipHostRegister)                          \
   __macro(hipHostUnregister)                        \
+  __macro(hipHostGetFlags)                          \
   __macro(hipInit)                                  \
   __macro(hipKernelNameRefByPtr)                    \
   __macro(hipLaunchHostFunc)                        \

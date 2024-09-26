@@ -21,6 +21,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #endif
 
 namespace tensorflow {
@@ -39,6 +41,13 @@ class CheckPinnedOp : public OpKernel {
     cudaError_t err =
         cudaHostGetFlags(&unused_flags, const_cast<void*>(tensor.data()));
     if (err != cudaSuccess) {
+      ctx->SetStatus(absl::InvalidArgumentError("not pinned"));
+    }
+#elif TENSORFLOW_USE_ROCM
+    unsigned int unused_flags;
+    hipError_t err =
+        hipHostGetFlags(&unused_flags, const_cast<void*>(tensor.data()));
+    if (err != hipSuccess) {
       ctx->SetStatus(absl::InvalidArgumentError("not pinned"));
     }
 #else
