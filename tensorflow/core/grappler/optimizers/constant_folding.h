@@ -89,8 +89,8 @@ class ConstantFolding : public GraphOptimizer {
                      const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
-                      const gtl::InlinedVector<TensorValue, 4>& inputs,
-                      gtl::InlinedVector<TensorValue, 4>* output) const;
+                      const absl::InlinedVector<TensorValue, 4UL>& inputs,
+                      absl::InlinedVector<TensorValue, 4UL>* output) const;
 
   Status EvaluateOneFoldable(const NodeDef& node, std::vector<NodeDef>* outputs,
                              bool* result_too_large);
@@ -232,7 +232,8 @@ class ConstantFolding : public GraphOptimizer {
   // input dimensions to reduce along are all of size 1 and keep_dims is true).
   bool IsReductionSimplifiableToIdentity(
       const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
-      const gtl::InlinedVector<TensorValue, 4>& reduction_indices_vector) const;
+      const absl::InlinedVector<TensorValue, 4UL>& reduction_indices_vector)
+      const;
   // Changes a reduction into an Identity op, returning true on success.
   bool ReplaceReductionWithIdentity(NodeDef* node) const;
 

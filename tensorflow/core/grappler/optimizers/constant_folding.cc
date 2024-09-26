@@ -61,7 +61,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+using TensorVector = absl::InlinedVector<TensorValue, 4UL>;
 
 // We only fold/materialize constants smaller than 100kB.
 const int64_t kMaxConstantSize = 100 * 1024;
