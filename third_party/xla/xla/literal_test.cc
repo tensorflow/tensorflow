@@ -744,6 +744,24 @@ TEST_F(LiteralUtilTest, IsAllFirst) {
   complex64 c7_9 = {7, 9};
   EXPECT_TRUE(LiteralUtil::CreateR2<complex64>({{c8_9}, {c8_9}}).IsAllFirst());
   EXPECT_FALSE(LiteralUtil::CreateR2<complex64>({{c7_9}, {c8_9}}).IsAllFirst());
+
+#if defined(__x86_64__) && defined(_MM_DENORMALS_ZERO_ON)
+  int old_csr = _mm_getcsr();
+  // Treat denormals as zero. This will make the small numbers below equal to
+  // 0.0, as far as the FP unit is concerned.
+  _mm_setcsr(old_csr | _MM_DENORMALS_ZERO_ON);
+#endif
+  bool eq0 = LiteralUtil::CreateR1<float>({0.0, 1.401298e-45}).IsAllFirst();
+  bool eq1 = LiteralUtil::CreateR1<float>({0.0, 2.802597e-45}).IsAllFirst();
+  bool eq2 =
+      LiteralUtil::CreateR1<float>({4.203895e-45, 7.006492e-45}).IsAllFirst();
+#if defined(__x86_64__) && defined(_MM_DENORMALS_ZERO_ON)
+  _mm_setcsr(old_csr);
+#endif
+
+  EXPECT_FALSE(eq0);
+  EXPECT_FALSE(eq1);
+  EXPECT_FALSE(eq2);
 }
 
 TEST_F(LiteralUtilTest, CountEqualInt) {
