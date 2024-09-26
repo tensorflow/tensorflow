@@ -19,8 +19,8 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
-#include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,19 +28,19 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/layout_util.h"
 #include "xla/service/hlo_module_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"
@@ -49,9 +49,9 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -321,6 +321,21 @@ void HloTestBase::RunAndFilecheckHloModuleGroupRewrite(
     EXPECT_TRUE(filecheck_matches);
     index++;
   }
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::RunAndCheckHloRewrite(
+    absl::string_view hlo_template, HloPassInterface&& hlo_pass,
+    bool expect_change, FixedMapping params) {
+  std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
+  SCOPED_TRACE("Input HLO: " + hlo_string);
+  VLOG(7) << "Input HLO: " << hlo_string;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(hlo_pass, module.get()));
+  VLOG(7) << "Output HLO: "
+          << module->ToString(HloPrintOptions::ShortParsable());
+  EXPECT_EQ(changed, expect_change);
+  return module;
 }
 
 absl::StatusOr<Literal> HloTestBase::Execute(
@@ -665,7 +680,8 @@ HloTestBase::RunAndCompareTwoModulesInternalReplicated(
   auto num_args = module_0->entry_computation()->num_parameters();
   if (num_args != options.arguments.size()) {
     return ::testing::AssertionFailure()
-           << "Mismatch in number of arguments passed while running replicated "
+           << "Mismatch in number of arguments passed while running "
+              "replicated "
               "hlo module. Expected: "
            << num_args << ", actual: " << options.arguments.size();
   }
