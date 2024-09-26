@@ -18,6 +18,24 @@
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
+### Table of Contents
+1. [Introduction](https://github.com/saagar-pat/tensorflow/edit/master/README.md#introduction)
+2. [Installation](https://github.com/saagar-pat/tensorflow/edit/master/README.md#install)
+<br />2.1. [Using pip](https://github.com/saagar-pat/tensorflow/edit/master/README.md#install-using-pip)
+<br />2.2. [Enabling GPU Support](https://github.com/saagar-pat/tensorflow/edit/master/README.md#enabling-gpu-support)
+<br />2.3. [Docker Installation](https://github.com/saagar-pat/tensorflow/edit/master/README.md#docker-installation)
+<br />2.4. [Building from Source](https://github.com/saagar-pat/tensorflow/edit/master/README.md#building-from-source)
+<br />2.5. [Getting Started](https://github.com/saagar-pat/tensorflow/edit/master/README.md#getting-started)
+4. [Contributing](https://github.com/saagar-pat/tensorflow/edit/master/README.md#patching-contributing)
+5. [Patching Guidelines](https://github.com/saagar-pat/tensorflow/edit/master/README.md#patching-guidelines)
+6. [Continuous Build Status](https://github.com/saagar-pat/tensorflow/edit/master/README.md#continuous-build-status)
+7. [Official Builds](https://github.com/saagar-pat/tensorflow/edit/master/README.md#official-builds)
+8. [Resources](https://github.com/saagar-pat/tensorflow/edit/master/README.md#resources)
+9. [Courses](https://github.com/saagar-pat/tensorflow/edit/master/README.md#courses)
+10. [License](https://github.com/saagar-pat/tensorflow/edit/master/README.md#license)
+
+
+## Introduction
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
@@ -31,6 +49,13 @@ the Machine Intelligence team at Google Brain to conduct research in machine
 learning and neural networks. However, the framework is versatile enough to be
 used in other areas as well.
 
+TensorFlow is a powerful tool and is behind some well-known and widely used projects such as:
+*   **Google Translate**: Created by Google and used by numerous real-time translations.
+*   **DeepMind’s AlphaGo**: Google's AI that beat world champions at Go a decade before experts thought possible.
+*   **Snapchat**: Used for facial recognition and interactive filters.
+
+Whether you are a researcher, data scientist, developer, or entrepenuer, TensorFlow gives you the tools necessary to explore the potential of AI and machine learning.
+
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
 non-guaranteed backward compatible API for
@@ -43,12 +68,15 @@ See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
 ## Install
 
+TensorFlow provides multiple installation options depending on your device's setup and requirements. The default installation utilizes the CPU, but GPU support can be enables for larger more processing intensive tasks.
+
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
 [enable GPU support](https://www.tensorflow.org/install/gpu), use a
 [Docker container](https://www.tensorflow.org/install/docker), and
 [build from source](https://www.tensorflow.org/install/source).
 
+### Install Using Pip
 To install the current release, which includes support for
 [CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
 Windows)*:
@@ -69,9 +97,38 @@ $ pip install tensorflow-cpu
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
 commands.
 
+### Enabling GPU Support
+TensorFlow supports [CUDA-enabled GPUs](https://www.tensorflow.org/install/gpu) for acceleration. Ensure that you have the appropriate CUDA and cuDNN libraries installed.
+
+```
+$ pip install tensorflow
+```
+
+### Docker Installation
+Docker is an easy way to run Tensorflow within an isolated enviroment without having to worry about installation conflicts or managing any dependent programs on your local machine. Before installing TensorFlow in a Docker container, be sure to have [Docker](https://docs.docker.com/engine/install/) installed on your system.
+
+To run TensorFlow in a Docker container run:
+```
+$ docker pull tensorflow/tensorflow
+```
+
+For GPU-enabled Docker containers run:
+```
+$ docker pull tensorflow/tensorflow:latest-gpu
+```
+
+### Building From Source
+If you require more control over the build process or need certain features that are not available in the prebuilt libraries you should build [TensorFlow install from Source](https://www.tensorflow.org/install/source).
+
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
 [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
+
+TensorFlow is also able to run in a variety of instances on many different platforms. 
+Please visit any of these links for respective download/installation documentation:
+*   [LiteRT (Formerly known as Tensorflow Lite)](https://ai.google.dev/edge/litert) for mobile devices. 
+*   [TensorFlow Serving](https://www.tensorflow.org/tfx/guide/serving) is made for another instance in which high-performance model and machine learning algorithms on servers.
+*   [TensorFlow.js](https://www.tensorflow.org/js) which is a machine learning library, capable of developing and testing machine learning models, nestled within JavaScript.
 
 #### *Try your first TensorFlow program*
 
@@ -102,7 +159,7 @@ uphold this code.**
 tracking requests and bugs, please see
 [TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
 discussion, and please direct specific questions to
-[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
+[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow). Within GitHub issues, Labels are implemented for clarity, for first time contributors please refer to the [contribution guidelines](CONTRIBUTING.md) document, and we would recommend filtering by the [good-first-issue](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue) label. **
 
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
