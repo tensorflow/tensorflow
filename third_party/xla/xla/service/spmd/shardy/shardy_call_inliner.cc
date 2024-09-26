@@ -23,7 +23,6 @@ namespace xla {
 
 bool ShardyCallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return CallInliner::IsInlineableCallOp(instruction) &&
-         !instruction->has_backend_config() &&
          !(instruction->GetModule()->config().use_shardy_partitioner() &&
            absl::StrContains(instruction->to_apply()->name(), "shmap_body"));
 }

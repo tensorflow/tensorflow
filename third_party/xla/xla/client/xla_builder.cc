@@ -1430,9 +1430,11 @@ XlaOp XlaBuilder::Iota(PrimitiveType type, int64_t size) {
 }
 
 XlaOp XlaBuilder::Call(const XlaComputation& computation,
-                       absl::Span<const XlaOp> operands) {
+                       absl::Span<const XlaOp> operands,
+                       const std::string& backend_config) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
+    instr.set_backend_config(backend_config);
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
@@ -5229,7 +5231,14 @@ void Outfeed(const XlaOp operand, const Shape& shape_with_layout,
 
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands) {
-  return builder->Call(computation, operands);
+  return builder->Call(computation, operands, /*backend_config=*/"");
+}
+
+XlaOp CallWithBackendConfig(XlaBuilder* builder,
+                            const XlaComputation& computation,
+                            absl::Span<const XlaOp> operands,
+                            const std::string& backend_config) {
+  return builder->Call(computation, operands, backend_config);
 }
 
 XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,

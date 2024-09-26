@@ -3541,10 +3541,30 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   // callees, but eventually before lowering call graph is "flattened" to
   // make that true. This is done before lowering because buffer assignment
   // needs this invariant.
+  // Remove the backend_config from the frontend attributes.
+  auto frontend_attrs =
+      call_op->getAttrOfType<mlir::DictionaryAttr>(kMhloFrontendAttributes);
+  if (frontend_attrs) {
+    SmallVector<mlir::NamedAttribute, 4> frontend_attrs_vector;
+    for (auto named_attr : frontend_attrs) {
+      if (named_attr.getName() == kBackendConfig) {
+        continue;
+      }
+      frontend_attrs_vector.push_back(named_attr);
+    }
+    call_op->setAttr(kMhloFrontendAttributes,
+                     mlir::DictionaryAttr::get(call_op->getContext(),
+                                               frontend_attrs_vector));
+  }
   xla::FrontendAttributes fe_attrs = CreateXlaFrontendAttributesFromOp(call_op);
   xla::XlaScopedFrontendAttributesAssignment assignment(builder, fe_attrs);
-  xla::XlaOp call_result =
-      xla::Call(builder, lowered_computation_[callee], operands);
+  std::string backend_config = "";
+  if (frontend_attrs && frontend_attrs.contains(kBackendConfig)) {
+    backend_config =
+        mlir::cast<mlir::StringAttr>(frontend_attrs.get(kBackendConfig)).str();
+  }
+  xla::XlaOp call_result = xla::CallWithBackendConfig(
+      builder, lowered_computation_[callee], operands, backend_config);
   // Use GetTupleElement for multiple outputs
   unsigned num_results = call_op.getNumResults();
   if (num_results > 1) {

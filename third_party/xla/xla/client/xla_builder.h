@@ -729,7 +729,8 @@ class XlaBuilder {
       XlaOp operand, XlaOp token, const Shape& shape_with_layout,
       const std::string& outfeed_config);
   XlaOp Call(const XlaComputation& computation,
-             absl::Span<const XlaOp> operands);
+             absl::Span<const XlaOp> operands,
+             const std::string& backend_config);
 
   XlaOp CompositeCall(
       const XlaComputation& computation, absl::Span<const XlaOp> operands,
@@ -1384,6 +1385,10 @@ class XlaBuilder {
                       const std::string& outfeed_config);
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
+  friend XlaOp CallWithBackendConfig(XlaBuilder* builder,
+                                     const XlaComputation& computation,
+                                     absl::Span<const XlaOp> operands,
+                                     const std::string& backend_config);
 
   friend XlaOp CompositeCall(XlaBuilder* builder,
                              const XlaComputation& computation,
@@ -2318,6 +2323,12 @@ XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
 // Enqueues a call instruction onto the computation.
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands);
+
+// Enqueues a call instruction onto the computation with a backend config.
+XlaOp CallWithBackendConfig(XlaBuilder* builder,
+                            const XlaComputation& computation,
+                            absl::Span<const XlaOp> operands,
+                            const std::string& backend_config);
 
 // Enqueues a composite call instruction onto the computation.
 XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,
