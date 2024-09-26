@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kIdle = "IDLE";
-const uint32_t kSparseCoreIndexStart = 1000;
+const uint32_t kSparseCoreIndexStart = 1000000;
 
 namespace {
 

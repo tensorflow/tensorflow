@@ -154,26 +154,25 @@ ROCMBlas::~ROCMBlas() {
 }
 
 bool ROCMBlas::SetStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
-  ScopedActivateContext sac{parent_};
-
-  rocblas_status ret =
-      wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
-  if (ret != rocblas_status_success) {
+  auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : 0;
+  if (auto ret = wrap::rocblas_set_stream(blas_, handle);
+      ret != rocblas_status_success) {
     LOG(ERROR) << "failed to set stream for rocBLAS calls: " << ToString(ret);
     return false;
   }
-
   return true;
 }
 
-hipStream_t ROCMBlas::ROCMStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
-  ScopedActivateContext sac{parent_};
-  return AsGpuStreamValue(stream);
+absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
+  CHECK(blas_ != nullptr);
+  absl::MutexLock lock{&mu_};
+  GpuStreamHandle handle{};
+  if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
+      ret != rocblas_status_success) {
+    return absl::InternalError("failed to get the current stream value");
+  }
+  return (handle == 0);
 }
 
 namespace {
@@ -351,11 +350,11 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
+  ScopedActivateContext sac{parent_};
   if (!SetStream(stream)) {
     return absl::InternalError("Setting stream failed");
   }
 
-  ScopedActivateContext sac{parent_};
   rocblas_status ret;
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
@@ -383,6 +382,8 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
 #endif
 
   ret = rocblas_func(blas_, std::forward<Args>(args)...);
+  SetStream(nullptr);  // Resetting stream after the function call
+
   if (ret != rocblas_status_success) {
     auto err_str =
         absl::StrFormat("%s failed with: %s", FuncT::kName, ToString(ret));
