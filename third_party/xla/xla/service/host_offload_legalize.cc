@@ -245,7 +245,8 @@ absl::StatusOr<InstructionAndIndex> WalkUpMemoryOffload(
 // instruction at a time, but returns multiple instructions for each conforming
 // user.
 absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
-    const InstructionAndIndex& current_value, const CallGraph& call_graph) {
+    const InstructionAndIndex& current_value, const CallGraph& call_graph,
+    bool for_move_copy_phase) {
   // TODO(maggioni): Verify that set of instructions supported in chain by
   // legalization is in sync with host_offloader.
   VLOG(6) << "Getting users of: \"" << current_value.instruction->ToString()
@@ -348,8 +349,23 @@ absl::StatusOr<std::vector<InstructionAndIndex>> WalkDownMemoryOffload(
         results.emplace_back(user, current_value.index);
         break;
       }
+      case HloOpcode::kAsyncStart: {
+        if (user->async_execution_thread() == HloInstruction::kHostThread) {
+          // For move copy phase, we need to handle the copy even though we
+          // never move the tensor to device yet. For now just throw an error.
+          CHECK(!for_move_copy_phase)
+              << "Transpose copy going into host call is not supported yet.";
+
+          // For first phase to collect copies to move, it's ok to ignore this
+          // path since we don't see copies along the path yet and it's ok to
+          // pass host tensor to the async host call.
+          break;
+        }
+        [[fallthrough]];
+      }
       default: {
-        return absl::InvalidArgumentError("Unrecognized user opcode");
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unrecognized user name: %s", user->name()));
       }
     }
   }
@@ -423,11 +439,12 @@ absl::Status MoveCopy(
         current_instruction_and_shapes.instruction_and_index;
     stack.pop_back();
     VLOG(5) << "Current top of stack: "
-            << current_instruction_and_index.instruction->ToString() << " "
-            << current_instruction_and_index.index;
+            << current_instruction_and_index.instruction->ToString()
+            << ", index: " << current_instruction_and_index.index;
     // Get the users of the current instruction.
     absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
-        WalkDownMemoryOffload(current_instruction_and_index, *call_graph);
+        WalkDownMemoryOffload(current_instruction_and_index, *call_graph,
+                              /*for_move_copy_phase=*/true);
     if (!current_value_down.ok()) {
       VLOG(5) << "WalkDownMemoryOffload failed: "
               << current_value_down.status();
@@ -677,7 +694,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
   std::vector<InstructionAndIndex> stack = {current_value};
   while (!stack.empty()) {
     VLOG(5) << "Current value before down: "
-            << stack.back().instruction->ToString();
+            << stack.back().instruction->ToString() << " "
+            << stack.back().index;
     if (absl::c_linear_search(kUsersOpcodes,
                               stack.back().instruction->opcode()) ||
         stack.back().instruction->IsCustomCall(
@@ -737,7 +755,8 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
       continue;
     }
     absl::StatusOr<std::vector<InstructionAndIndex>> current_value_down =
-        WalkDownMemoryOffload(stack.back(), *call_graph);
+        WalkDownMemoryOffload(stack.back(), *call_graph,
+                              /*for_move_copy_phase=*/false);
     if (!current_value_down.ok()) {
       VLOG(5) << "Current value down failed: " << current_value_down.status();
       break;
@@ -756,6 +775,10 @@ absl::StatusOr<bool> ProcessAnnotationForCopyMovement(
         copies_to_move.push_back(instruction_and_index);
       }
     }
+  }
+
+  if (copies_to_move.empty()) {
+    return false;
   }
 
   // Process all copies one at a time from the last to the first and push it to
