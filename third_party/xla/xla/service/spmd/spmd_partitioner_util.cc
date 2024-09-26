@@ -956,8 +956,7 @@ HloInstruction* ExchangeHaloCompact(
         (i + 1) * input_shard_size + right_halo_size_function.Calculate(i);
     max_window_size = std::max(max_window_size, limit - start);
     while (next_start < limit) {
-      halos[i].emplace_back();
-      Halo& halo = halos[i].back();
+      Halo& halo = halos[i].emplace_back();
       halo.my_index = i;
       halo.halo_offset = next_start - start;
       halo.start = next_start % input_shard_size;
@@ -1038,11 +1037,12 @@ HloInstruction* ExchangeHaloCompact(
   // Sort halos that are from the same src according to halo_offset, so that
   // they are more likely to have similar characteristics.
   for (int64_t i = 0; i < src_to_dst.size(); ++i) {
-    absl::c_sort(src_to_dst[i], [&](const std::pair<int64_t, int64_t>& a,
-                                    const std::pair<int64_t, int64_t>& b) {
-      return halos[a.first][a.second].halo_offset <
-             halos[b.first][b.second].halo_offset;
-    });
+    absl::c_stable_sort(src_to_dst[i],
+                        [&](const std::pair<int64_t, int64_t>& a,
+                            const std::pair<int64_t, int64_t>& b) {
+                          return halos[a.first][a.second].halo_offset <
+                                 halos[b.first][b.second].halo_offset;
+                        });
   }
 
   // Build collective permutes with distinct src/dst values.
