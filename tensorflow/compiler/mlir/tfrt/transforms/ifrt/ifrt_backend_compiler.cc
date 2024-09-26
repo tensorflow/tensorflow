@@ -148,6 +148,12 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
         "Failed to find model context for ifrt serving.");
   }
 
+  if ((*ifrt_model_context)->IsFrozen()) {
+    return absl::FailedPreconditionError(
+        "Cannot compile IFRT programs after the model is frozen. Please make "
+        "sure warmup covers all signatures by following go/tf-model-warmup.");
+  }
+
   mlir::StatusScopedDiagnosticHandler diag_handler(module->getContext());
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_before", module);
