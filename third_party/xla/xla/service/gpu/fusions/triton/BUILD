@@ -261,6 +261,8 @@ xla_test(
         ":triton_test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",

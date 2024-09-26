@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1018,6 +1019,29 @@ ENTRY main {
 
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   EXPECT_TRUE(analysis.has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest, IotaAlwaysHasTileOffsetsIndexingSet) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  ROOT iota = s32[100] iota(), iota_dimension=0
+}
+
+ENTRY main {
+  ROOT fusion = s32[100] fusion(), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tile_parameters=*/{4},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/false));
+
+  const TiledHloInstruction* iota = tiled_hlo_computation.GetRoot();
+  EXPECT_THAT(iota->tile_offsets_indexing().status(), ::tsl::testing::IsOk());
 }
 
 }  // namespace

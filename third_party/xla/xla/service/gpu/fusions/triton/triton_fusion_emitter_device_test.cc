@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/fusions/triton/triton_test_utils.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -1195,6 +1198,72 @@ ENTRY main {
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
+
+TEST_F(TritonEmitterTest, StridedIota4DIsCodegeneratedCorrectly) {
+  constexpr std::string_view kHloText = R"(
+triton_computation {
+  iota = f32[3,4,1000,5] iota(), iota_dimension=2
+  ROOT slice = f32[3,4,182,5] slice(iota), slice={[0:3], [0:4], [91:1000:5], [0:5]}
+}
+
+ENTRY main {
+  ROOT triton_fusion = f32[3,4,182,5] fusion(),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","2","64","8"],
+                                   "num_warps":"1"}}}
+})";
+
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:      %[[RANGE:.*]] = tt.make_range {{.*}} : tensor<64xi32>
+CHECK:      arith.muli{{.*}} %[[RANGE]]
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+class IotaEmitterParametrizedTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(IotaEmitterParametrizedTest, Iota4DIsCodegeneratedCorrectly) {
+  auto data_type = GetParam();
+  const std::string kHloText =
+      absl::Substitute(R"(
+triton_computation {
+  ROOT iota = $0[3,4,1000,5] iota(), iota_dimension=2
+}
+
+ENTRY main {
+  ROOT triton_fusion = $0[3,4,1000,5] fusion(),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","2","64","8"],
+                                   "num_warps":"1"}}}
+})",
+                       primitive_util::LowercasePrimitiveTypeName(data_type));
+
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:      %[[RANGE:.*]] = tt.make_range {{.*}} : tensor<64xi32>
+CHECK:      arith.addi{{.*}} %[[RANGE]]
+            // Omit the data type below, since it depends on a test parameter
+            // and is not abbreviated the same as in HLO.
+CHECK:      tt.broadcast {{.*}} -> tensor<1x2x64x8x
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+INSTANTIATE_TEST_SUITE_P(IotaEmitterParametrizedTestSuite,
+                         IotaEmitterParametrizedTest,
+                         ::testing::ValuesIn({S8, S16, S32, S64, BF16, F16, F32,
+                                              F64}));
 
 }  // namespace
 }  // namespace gpu

@@ -285,6 +285,15 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                      "Only scalar constants are supported in Triton.");
   }
 
+  if (instr.opcode() == HloOpcode::kIota) {
+    PrimitiveType element_type = instr.shape().element_type();
+    return element_type != PrimitiveType::F8E4M3FN &&
+                   element_type != PrimitiveType::F8E5M2
+               ? CodegenDecision::Allow()
+               : CodegenDecision::Forbid(
+                     "F8E4M3FN and F8E5M2 are not supported for iota.");
+  }
+
   if (instr.IsElementwise()) {
     if (!IsTritonSupportedElementwise(
             instr.opcode(),

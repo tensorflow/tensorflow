@@ -345,7 +345,7 @@ void SortTiledHloInstructionsInPostOrder(
                });
 }
 
-}  // namespace
+}  // anonymous namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
     const HloComputation& computation, MLIRContext* ctx,
@@ -562,7 +562,8 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
 
     std::optional<IndexingMap> tile_offset_indexing;
     if (compute_all_tile_offset_indexing_maps ||
-        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo())) {
+        parameters_with_offset_indexing.contains(symbolic_tiled_hlo->hlo()) ||
+        symbolic_tiled_hlo->hlo()->opcode() == HloOpcode::kIota) {
       TF_ASSIGN_OR_RETURN(
           tile_offset_indexing,
           ComputeTileOffsetIndexing(

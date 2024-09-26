@@ -91,7 +91,7 @@ class SymbolicTileAnalysis {
 
   // Returns a graph of HLO instructions tiled with the given tile parameters.
   // The provided tile parameters must satisfy the analysis's constraints.
-  // By default, `ComputetiledHloInstructions` performs a check that the
+  // By default, `ComputeTiledHloInstructions` performs a check that the
   // constraints are satisfied by the chosen tiled parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //

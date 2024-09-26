@@ -928,6 +928,56 @@ Value EmitTiledBroadcast(
                    padded_output_tile_shape);
 }
 
+absl::StatusOr<Value> EmitTiledIota(ImplicitLocOpBuilder& b,
+                                    ValueRange tile_multi_index,
+                                    const TiledHloInstruction& tiled_iota) {
+  const HloIotaInstruction* hlo_iota =
+      ::xla::Cast<HloIotaInstruction>(tiled_iota.hlo());
+  int64_t iota_dim = hlo_iota->iota_dimension();
+
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_iota.tile_sizes());
+
+  // We can treat iota more or less as a parameter load, except that we need to
+  // generate the right values in the right place as opposed to loading them.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_iota.tile_offsets_indexing());
+
+  auto iota_dim_offset = b.create<ma::IndexCastUIOp>(
+      b.getI32Type(), mlir_converter::ApplyIndexing(
+                          tile_offsets_indexing, /*dims=*/tile_multi_index,
+                          /*symbols=*/{}, b)[iota_dim]);
+
+  // First, stride as needed between the iota components.
+  Value range = b.create<ma::MulIOp>(
+      Range(b, padded_tile_sizes[iota_dim]),
+      Splat(b,
+            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
+            padded_tile_sizes[iota_dim]));
+
+  // Then, add the base offset to the iota components.
+  range = b.create<ma::AddIOp>(
+      range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
+
+  // Cast the result to the targeted type.
+  TF_ASSIGN_OR_RETURN(Type iota_element_type,
+                      TritonType(b, hlo_iota->shape().element_type()));
+
+  range = Cast(b, range, iota_element_type);
+
+  // And finally, produce a broadcast along the non-iota dimensions in order to
+  // produce the whole iota tile.
+  for (int i = 0; i < padded_tile_sizes.size() - 1; i++) {
+    if (i < iota_dim) {
+      range = b.create<mt::ExpandDimsOp>(range, /*axis=*/0);
+    } else {
+      range = b.create<mt::ExpandDimsOp>(range, /*axis=*/i + 1);
+    }
+  }
+
+  return Broadcast(b, mlir::cast<TensorValue>(range), padded_tile_sizes);
+}
+
 Value EmitTiledReshape(ImplicitLocOpBuilder& b, ArrayRef<int64_t> tile_sizes,
                        Value input) {
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
@@ -1055,6 +1105,10 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     }
     return absl::UnimplementedError(
         absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
+  }
+
+  if (hlo->opcode() == HloOpcode::kIota) {
+    return EmitTiledIota(b, tile_multi_index, tiled_hlo);
   }
 
   if (hlo->opcode() == HloOpcode::kBroadcast) {
