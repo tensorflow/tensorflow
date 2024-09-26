@@ -167,19 +167,37 @@ PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
   return nullptr;
 }
 
-PJRT_Error* PJRT_GpuDeviceTopology_Create(
-    PJRT_TopologyDescription_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_TopologyDescription_Create_Args",
-      PJRT_TopologyDescription_Create_Args_STRUCT_SIZE, args->struct_size));
+namespace {
 
-  PJRT_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
-                        xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
-                                             /*allowed_devices=*/std::nullopt));
+struct TargetConfigAndDevices {
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  std::vector<int> device_ids;
+};
+
+// Parses the 'target_config' entry in 'options'. The option is
+// parsed as GpuTargetConfigProto. If there is no 'target_config' in
+// 'options', the function falls back to creating a local client,
+// returning the local client's target config.
+absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
+    const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
+  if (auto target_config_it = options.find("target_config");
+      target_config_it != options.end()) {
+    std::string target_config_proto_string =
+        std::get<std::string>(target_config_it->second);
+    stream_executor::GpuTargetConfigProto target_config_proto;
+    if (!tsl::protobuf::TextFormat::ParseFromString(target_config_proto_string,
+                                                    &target_config_proto)) {
+      return absl::FailedPreconditionError(
+          "Failed to parse GpuTargetConfigProto "
+          "from the 'target_config' parameter.");
+    }
+    return {{target_config_proto, {}}};
+  }
+  TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
+                      xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
+                                           /*allowed_devices=*/std::nullopt));
   stream_executor::StreamExecutor* executor =
       xla_client->backend().default_stream_executor();
-  const stream_executor::DeviceDescription& description =
-      executor->GetDeviceDescription();
   std::vector<int> device_ids;
   device_ids.reserve(xla_client->backend().stream_executors().size());
   for (stream_executor::StreamExecutor* executor :
@@ -187,13 +205,43 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     device_ids.push_back(executor->device_ordinal());
   }
   auto gpu_target_config = xla::Compiler::TargetConfig(executor);
-  // TODO(b/341334898): Create a single-host GPU topology. Will be updated for
-  // multi-host support in the future.
-  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      device_ids, description.name(),
-      /*num_slices=*/1,
-      /*num_hosts_per_slice=*/1,
-      /*num_devices_per_host=*/device_ids.size());
+  return {{gpu_target_config.ToProto(), device_ids}};
+}
+
+struct TopologySizes {
+  int num_slices = 0;
+  int num_hosts_per_slice = 0;
+  int num_devices_per_host = 0;
+
+  int GetDeviceCount() {
+    return num_slices * num_hosts_per_slice * num_devices_per_host;
+  }
+
+  static absl::StatusOr<TopologySizes> FromString(
+      std::string_view topology_string) {
+    TopologySizes sizes;
+    std::vector<std::string> topology_components =
+        absl::StrSplit(topology_string, 'x');
+    if (topology_components.size() != 3 ||
+        !absl::SimpleAtoi(topology_components[0], &sizes.num_slices) ||
+        !absl::SimpleAtoi(topology_components[1], &sizes.num_hosts_per_slice) ||
+        !absl::SimpleAtoi(topology_components[2],
+                          &sizes.num_devices_per_host)) {
+      return absl::InternalError(
+          "topology must be of shape "
+          "\"<num-slices>x<num-hosts-per-slice>x<num-devices-per-host>\"");
+    }
+    return sizes;
+  }
+};
+
+}  // namespace
+
+PJRT_Error* PJRT_GpuDeviceTopology_Create(
+    PJRT_TopologyDescription_Create_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_Create_Args",
+      PJRT_TopologyDescription_Create_Args_STRUCT_SIZE, args->struct_size));
 
   // Determine the platform ID and name based on the platform.
   xla::PjRtPlatformId platform_id =
@@ -203,12 +251,47 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
                                                              : xla::CudaName();
 
+  absl::flat_hash_map<std::string, xla::PjRtValueType> create_options =
+      pjrt::ConvertFromPjRtNamedValueList(args->create_options,
+                                          args->num_options);
+
+  PJRT_ASSIGN_OR_RETURN(TargetConfigAndDevices target_config_and_devices,
+                        GetTargetConfigFromOptions(create_options));
+
+  std::vector<int>& device_ids = target_config_and_devices.device_ids;
+  stream_executor::GpuTargetConfigProto& target_config_proto =
+      target_config_and_devices.target_config_proto;
+  TopologySizes sizes{1, 1, static_cast<int>(device_ids.size())};
+
+  if (auto topology_it = create_options.find("topology");
+      topology_it != create_options.end()) {
+    std::string topology_string = std::get<std::string>(topology_it->second);
+    PJRT_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(topology_string));
+  }
+
+  if (sizes.GetDeviceCount() == 0) {
+    // If the user did not specify the topology and we did not
+    // get any devices from the client, then error out because
+    // we do not know how many devices the topology should have.
+    return new PJRT_Error{absl::FailedPreconditionError(
+        "Cannot create topology without an explicit topology shape or without "
+        "a client")};
+  }
+
+  if (sizes.GetDeviceCount() != device_ids.size()) {
+    device_ids.resize(sizes.GetDeviceCount());
+    absl::c_iota(device_ids, sizes.GetDeviceCount());
+  }
+
+  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
+      device_ids, target_config_proto.device_description_str(),
+      sizes.num_slices, sizes.num_hosts_per_slice, sizes.num_devices_per_host);
+
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
           platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config",
-               gpu_target_config.ToProto().SerializeAsString()}});
+              {"target_config", target_config_proto.SerializeAsString()}});
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;
 }
