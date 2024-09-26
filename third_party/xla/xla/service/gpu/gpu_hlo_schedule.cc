@@ -247,17 +247,6 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   return result;
 }
 
-absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, int64_t pointer_size) {
-  return ScheduleModule(
-      module,
-      [pointer_size](const BufferValue& buffer) {
-        return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
-      },
-      ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
-                                            PostProcessSchedule));
-}
-
 // Latency hiding scheduler support.
 
 SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
@@ -531,6 +520,17 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
   return ScheduleMetadata{memory_limit};
+}
+
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size) {
+  return ScheduleModule(
+      module,
+      [pointer_size](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
+      },
+      ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
+                                            PostProcessSchedule));
 }
 
 HloInstructionSequence PostProcessSchedule(

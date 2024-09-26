@@ -37,6 +37,11 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info);
 
+// Schedules a GPU module with `DefaultMemoryScheduler` and
+// `PostProcessSchedule` postprocessing.
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size);
+
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
