@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -308,11 +309,22 @@ absl::StatusOr<bool> ShardyXLA::Run(
                           /*flatten_computation_args_result=*/true));
 
   std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+
+  if (shardyDir == "sponge") {
+    shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    if (shardyDir.empty()) {
+      LOG(WARNING) << "\"sponge\" specified as dump directory but "
+                      "TEST_UNDECLARED_OUTPUTS_DIR is not set!";
+    }
+  }
+
   if (!shardyDir.empty()) {
     shardyDir =
         tsl::io::JoinPath(shardyDir, "shardy",
                           std::string_view(mlirModule->getName().value_or("")));
+    LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
+
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;
