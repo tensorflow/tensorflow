@@ -228,8 +228,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // Bail out on instructions that are known to cause problems down the
   // line. This is not an inherent limitation of the approach, but simply
   // issues to be resolved in the current implementation.
-  if (hlo->opcode() == HloOpcode::kDot ||
-      hlo->opcode() == HloOpcode::kConcatenate) {
+  if (hlo->opcode() == HloOpcode::kConcatenate) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
