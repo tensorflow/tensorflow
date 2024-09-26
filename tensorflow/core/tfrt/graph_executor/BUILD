@@ -12,6 +12,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        # copybara:uncomment "//cloud/ai/platform/prediction/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/serving/servables/tfrt/...",
