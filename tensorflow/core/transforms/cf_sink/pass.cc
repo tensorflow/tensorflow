@@ -18,17 +18,17 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "llvm/ADT/ScopeExit.h"
-#include "llvm/Support/Debug.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dominance.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/ControlFlowSinkUtils.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/interfaces.h"
-#include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
