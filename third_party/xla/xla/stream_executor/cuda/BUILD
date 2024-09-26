@@ -527,12 +527,36 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
+    hdrs = ["cuda_kernel.h"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_test(
+    name = "cuda_kernel_test",
+    srcs = ["cuda_kernel_test.cc"],
+    backends = ["gpu_any"],
+    deps = [
+        ":cuda_kernel",
+        ":cuda_runtime",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_test_kernels_cuda",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 

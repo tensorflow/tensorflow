@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -191,7 +192,7 @@ absl::Status CudaExecutor::LoadModuleFromHsaco(const char* hsaco,
 
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
-  auto cuda_kernel = std::make_unique<GpuKernel>(this);
+  auto cuda_kernel = std::make_unique<CudaKernel>(this);
   CUmodule module;
   const std::string* kernel_name;
 

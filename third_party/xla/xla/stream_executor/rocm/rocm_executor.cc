@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hip/hip_version.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
@@ -71,6 +72,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_driver.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
+#include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_runtime.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
@@ -273,7 +275,7 @@ absl::Status RocmExecutor::Init() {
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
-  auto rocm_kernel = std::make_unique<GpuKernel>(this);
+  auto rocm_kernel = std::make_unique<RocmKernel>(this);
   hipModule_t module = nullptr;
   const std::string* kernel_name;
 

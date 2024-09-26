@@ -12,6 +12,7 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
@@ -219,6 +220,7 @@ cc_library(
 cc_library(
     name = "rocm_kernel",
     srcs = ["rocm_kernel.cc"],
+    hdrs = ["rocm_kernel.h"],
     tags = [
         "gpu",
         "rocm-only",
@@ -228,10 +230,35 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:logging",
     ],
-    alwayslink = True,
+)
+
+xla_test(
+    name = "rocm_kernel_test",
+    srcs = ["rocm_kernel_test.cc"],
+    backends = ["gpu_amd_any"],
+    deps = [
+        ":rocm_kernel",
+        ":rocm_runtime",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
 
 cc_library(
