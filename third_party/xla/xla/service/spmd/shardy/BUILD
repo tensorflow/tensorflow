@@ -30,6 +30,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:call_inliner",
+        "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -44,7 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "stablehlo/dialect/StablehloOps.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -60,8 +60,8 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
+using ::mlir::mhlo::CustomCallOp;
 
-namespace stablehlo = ::mlir::stablehlo;
 namespace sdy = ::mlir::sdy;
 
 // Converts a CallOp calling a @local_xla.sdy.manual_computation_body func with in/out
@@ -86,23 +86,22 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     // we have to take the operands/results of the newly created
     // `ManualComputationOp` differently depending on whether the original had
     // operands/results.
-    stablehlo::CustomCallOp fullToShard;
+    CustomCallOp fullToShard;
     mlir::ValueRange operands = callOp->getOperands();
     if (!operands.empty()) {
-      fullToShard =
-          callOp->getOperand(0).getDefiningOp<stablehlo::CustomCallOp>();
-      operands = fullToShard->getOperands();
+      fullToShard = callOp->getOperand(0).getDefiningOp<CustomCallOp>();
       CHECK(fullToShard);
       CHECK(fullToShard.getCallTargetName() ==
             kGlobalToLocalShapeCallTargetName);
+      operands = fullToShard->getOperands();
     }
     mlir::TypeRange resultTypes = callOp->getResultTypes();
-    stablehlo::CustomCallOp shardToFull;
+    CustomCallOp shardToFull;
     if (!resultTypes.empty()) {
       CHECK(callOp->getResult(0).hasOneUse())
           << "all CallOp results should be used by a single ShardToFull";
-      shardToFull = mlir::cast<stablehlo::CustomCallOp>(
-          *callOp->getResult(0).getUsers().begin());
+      shardToFull =
+          mlir::cast<CustomCallOp>(*callOp->getResult(0).getUsers().begin());
       CHECK(shardToFull.getCallTargetName() ==
             kLocalToGlobalShapeCallTargetName);
       resultTypes = shardToFull->getResultTypes();
@@ -161,8 +160,7 @@ class SdyRoundTripShardMapImportPass
     target.addDynamicallyLegalOp<CallOp>([](CallOp op) {
       return !absl::StartsWith(op.getCallee(), kManualComputationBodyFuncName);
     });
-    target.addLegalOp<sdy::ManualComputationOp, sdy::ReturnOp,
-                      stablehlo::CustomCallOp>();
+    target.addLegalOp<sdy::ManualComputationOp, sdy::ReturnOp, CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ManualComputationPattern>(&context, symbolTable);
     if (mlir::failed(mlir::applyPartialConversion(module, target,
