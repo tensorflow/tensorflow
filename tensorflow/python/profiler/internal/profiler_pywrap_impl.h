@@ -21,7 +21,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tsl/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
 namespace profiler {
