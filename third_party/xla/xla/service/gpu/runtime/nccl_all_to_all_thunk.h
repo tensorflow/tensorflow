@@ -59,8 +59,11 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 
- protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
+  bool has_split_dimension() const { return config_.has_split_dimension; }
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+ protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
                                  NcclCommHandleWrapper comm_wrapper) override;

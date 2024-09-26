@@ -112,12 +112,14 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
     if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
       return config.enabled_commands.contains(DebugOptions::FUSION);
     }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter ||
+        hlo->async_wrapped_opcode() == HloOpcode::kAllToAll) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
   }
 
-  if (hlo->opcode() == HloOpcode::kReduceScatter) {
+  if (hlo->opcode() == HloOpcode::kReduceScatter ||
+      hlo->opcode() == HloOpcode::kAllToAll) {
     return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
   }
 
@@ -138,7 +140,8 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
     if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
       return config.enabled_commands.contains(DebugOptions::FUSION);
     }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter ||
+        hlo->async_wrapped_opcode() == HloOpcode::kAllToAll) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
   }

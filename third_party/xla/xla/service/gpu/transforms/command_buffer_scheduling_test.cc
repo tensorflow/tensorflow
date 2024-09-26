@@ -1072,6 +1072,35 @@ TEST_F(CommandBufferSchedulingTest, AsyncFusion) {
                             });
 }
 
+TEST_F(CommandBufferSchedulingTest, AsyncAlltoAll) {
+  const char* hlo = R"(
+    HloModule m, is_scheduled=true
+    
+    async_computation.1 {
+    param.1 = f32[4,8,128]{2,1,0} parameter(0)
+    ROOT all-to-all.1 = f32[4,8,128]{2,1,0} all-to-all(param.1), channel_id=1, dimensions={1}
+    }
+
+    ENTRY main {
+    param.0 = f32[4,8,128]{2,1,0} parameter(0)
+    all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) async-start(param.0), calls=async_computation.1 
+    ROOT all-to-all-done = f32[4,8,128]{2,1,0} async-done(all-to-all-start)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P:.+]]: f32[4,8,128]) -> f32[4,8,128] {
+    CHECK:   %[[P]] = f32[4,8,128]{2,1,0} parameter(0)
+    CHECK:   %[[S1:.+]] = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}) all-to-all-start(%[[P]]), channel_id=1, replica_groups={}, dimensions={1}
+    CHECK:   ROOT {{.*}} = f32[4,8,128]{2,1,0} all-to-all-done(%[[S1]])
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionDynamicSlicing) {
   if (backend().platform()->Name() == "Host") {
     GTEST_SKIP() << "GPU support required for this test";
