@@ -38,9 +38,11 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     const se::DeviceDescription& gpu_device_info);
 
 // Schedules a GPU module with `DefaultMemoryScheduler` and
-// `PostProcessSchedule` postprocessing.
+// `PostProcessSchedule` postprocessing. If `peak_memory_bytes` is not nullptr,
+// then the it will be set to peak memory usage in bytes.
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
-    const HloModule* module, int64_t pointer_size);
+    const HloModule* module, int64_t pointer_size,
+    int64_t* peak_memory_bytes = nullptr);
 
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
