@@ -718,8 +718,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
       fusion_instruction->set_fusion_kind(kind);
     }
   } else {
-    fusion_instruction = computation->AddInstruction(
-        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    fusion_instruction =
+        computation->AddInstruction(HloInstruction::CreateFusion(
+            consumer->shape(), kind, consumer,
+            absl::StrCat(HloOpcodeString(producer->opcode()), "_",
+                         HloOpcodeString(consumer->opcode()), "_")));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(
