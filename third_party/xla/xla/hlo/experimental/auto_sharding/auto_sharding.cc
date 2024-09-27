@@ -1691,57 +1691,48 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const bool only_allow_divisible, const double replicated_penalty,
     const AutoShardingOption& option, StrategyGroups& strategy_groups,
     const CallGraph& call_graph) {
-  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
-
-  int mesh_nn_dims = VectorGreaterThanOneElementCount(device_mesh.dimensions());
   std::unique_ptr<StrategyGroup> strategy_group = CreateLeafStrategyGroup(
       instruction_id, ins, strategy_map, strategy_groups);
 
-  if (mesh_nn_dims < 2 || !option.allow_mixed_mesh_shape) {
-    const HloInstruction* operand = ins->operand(0);
+  // Create strategies from operands, but do not follow the operand. We
+  // anecdotally observe that following the operands causes regressions.
+  const HloInstruction* operand = ins->operand(0);
+  const StrategyGroup& operand_strategy_group = *strategy_map.at(operand);
+  CHECK(!operand_strategy_group.is_tuple);
 
-    // Create follow strategies
-    const StrategyGroup& src_strategy_group = *strategy_map.at(operand);
-    CHECK(!src_strategy_group.is_tuple);
-    strategy_group->following = &src_strategy_group;
+  for (const ShardingStrategy& operand_strategy :
+       operand_strategy_group.GetStrategies()) {
+    std::optional<HloSharding> output_sharding =
+        hlo_sharding_util::ReshapeSharding(operand->shape(), ins->shape(),
+                                           operand_strategy.output_sharding);
 
-    for (const auto& src_strategy : src_strategy_group.GetStrategies()) {
-      std::optional<HloSharding> output_spec =
-          hlo_sharding_util::ReshapeSharding(operand->shape(), ins->shape(),
-                                             src_strategy.output_sharding);
-
-      if (!output_spec.has_value()) {
-        continue;
-      }
-
-      if (!IsValidTileAssignment(*output_spec)) {
-        continue;
-      }
-
-      if (!TileAssignmentMatchesMesh(*output_spec, device_mesh)) {
-        continue;
-      }
-      const std::string name = ToStringSimple(*output_spec);
-      double compute_cost = 0, communication_cost = 0;
-      double memory_cost =
-          ByteSizeOfShapeWithSharding(ins->shape(), output_spec);
-      std::vector<double> communication_resharding_costs =
-          CommunicationReshardingCostVector(
-              src_strategy_group, operand->shape(),
-              src_strategy.output_sharding, cluster_env);
-      std::vector<double> memory_resharding_costs =
-          MemoryReshardingCostVector(src_strategy_group, operand->shape(),
-                                     src_strategy.output_sharding, cluster_env);
-      strategy_group->AddStrategy(
-          ShardingStrategy({name,
-                            *output_spec,
-                            compute_cost,
-                            communication_cost,
-                            memory_cost,
-                            {communication_resharding_costs},
-                            {memory_resharding_costs}}),
-          {src_strategy.output_sharding});
+    if (!output_sharding.has_value() ||
+        !IsValidTileAssignment(*output_sharding) ||
+        !TileAssignmentMatchesMesh(*output_sharding,
+                                   cluster_env.device_mesh_)) {
+      continue;
     }
+
+    const std::string name = ToStringSimple(*output_sharding);
+    double compute_cost = 0, communication_cost = 0;
+    double memory_cost =
+        ByteSizeOfShapeWithSharding(ins->shape(), output_sharding);
+    std::vector<double> communication_resharding_costs =
+        CommunicationReshardingCostVector(
+            operand_strategy_group, operand->shape(),
+            operand_strategy.output_sharding, cluster_env);
+    std::vector<double> memory_resharding_costs = MemoryReshardingCostVector(
+        operand_strategy_group, operand->shape(),
+        operand_strategy.output_sharding, cluster_env);
+    strategy_group->AddStrategy(
+        ShardingStrategy({name,
+                          *output_sharding,
+                          compute_cost,
+                          communication_cost,
+                          memory_cost,
+                          {communication_resharding_costs},
+                          {memory_resharding_costs}}),
+        {operand_strategy.output_sharding});
   }
 
   if (strategy_group->GetStrategies().empty()) {
@@ -1750,10 +1741,9 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     FillAllStrategiesForArray(
         ins, ins->shape(), cluster_env, strategy_map, option,
         replicated_penalty, call_graph, only_allow_divisible,
-        /* create_replicated_strategies */ true,
-        /* create_partially_replicated_strategies */ true, *strategy_group);
+        /*create_replicated_strategies=*/true,
+        /*create_partially_replicated_strategies=*/true, *strategy_group);
   }
-
   return strategy_group;
 }
 
