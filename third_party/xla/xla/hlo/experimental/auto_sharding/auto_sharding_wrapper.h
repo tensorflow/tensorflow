@@ -41,7 +41,7 @@ namespace spmd {
 
 // A wrapper around the solver that converts the given objects into a
 // combinatorial optimization problem & solves it.
-AutoShardingSolverResult CallSolver(
+AutoShardingSolverResult CreateAutoShardingSolverRequestAndCallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,

@@ -399,7 +399,7 @@ void AddMemoryTerms(
 //    can be a few (usually < 10) edges in the problem with negative costs. This
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
-AutoShardingSolverResult CallORToolsSolver(
+AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
