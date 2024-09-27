@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"

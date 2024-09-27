@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"

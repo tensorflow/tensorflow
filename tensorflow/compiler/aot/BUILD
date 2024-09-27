@@ -96,7 +96,7 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:compile_only_client",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service/cpu:buffer_info_util",
         "@local_xla//xla/service/cpu:cpu_compiler",

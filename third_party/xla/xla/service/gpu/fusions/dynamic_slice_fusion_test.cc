@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"

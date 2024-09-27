@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_QR_EXPANDER_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/client/lib/qr.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/qr.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/service/op_expander_pass.h"
 
 namespace xla {

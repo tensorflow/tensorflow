@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"

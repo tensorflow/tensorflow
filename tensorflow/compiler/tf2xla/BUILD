@@ -161,7 +161,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/client",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
     ],
 )
 
@@ -197,7 +197,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
     ],
 )
 
@@ -433,7 +433,7 @@ cc_library(
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:executable_build_options",
         "@local_xla//xla/client:local_client",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:platform_util",
         "@local_xla//xla/stream_executor:platform",
     ] + if_libtpu(
@@ -539,9 +539,9 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
@@ -570,7 +570,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
     ],
     alwayslink = 1,
 )
@@ -609,8 +609,8 @@ cc_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
     ],
     alwayslink = 1,
 )
@@ -669,8 +669,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:optional",
         "@local_xla//xla/client",
-        "@local_xla//xla/client:value_inference",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:value_inference",
+        "@local_xla//xla/hlo/builder:xla_builder",
     ],
     alwayslink = 1,
 )
@@ -703,7 +703,7 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
     ],
     alwayslink = 1,
 )
@@ -729,10 +729,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla:types",
-        "@local_xla//xla/client:xla_builder",
-        "@local_xla//xla/client:xla_computation",
-        "@local_xla//xla/client/lib:arithmetic",
-        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_computation",
+        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@local_xla//xla/hlo/builder/lib:constants",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
@@ -758,7 +758,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/ir:hlo",
     ],
     alwayslink = 1,
@@ -784,7 +784,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/ir:hlo",
     ],
     alwayslink = 1,
@@ -864,7 +864,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:sharding_builder",
     ],
 )
 
@@ -955,7 +955,7 @@ tf_cc_test(
         "@local_xla//xla:literal_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:cpu_plugin",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
@@ -1024,7 +1024,7 @@ tf_cc_test(
         "@local_xla//xla:status_macros",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/service:cpu_plugin",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/service:hlo_proto_util",
@@ -1500,7 +1500,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
     ],
 )
 

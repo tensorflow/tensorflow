@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/logging.h"

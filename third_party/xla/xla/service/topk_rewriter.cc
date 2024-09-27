@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"

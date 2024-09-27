@@ -21,7 +21,7 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 

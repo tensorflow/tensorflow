@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/array4d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
@@ -1017,12 +1017,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
                            zero_error_spec_, &expected.shape());
 }
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
-#else
-INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
-                        ::testing::ValuesIn(std::vector<bool>{false}));
-#endif
 
 using ReshapeHloTest = HloTestBase;
 

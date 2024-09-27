@@ -133,7 +133,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:mlir_to_hlo",

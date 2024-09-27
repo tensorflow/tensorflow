@@ -34,7 +34,7 @@ limitations under the License.
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/status_casters.h"

@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"

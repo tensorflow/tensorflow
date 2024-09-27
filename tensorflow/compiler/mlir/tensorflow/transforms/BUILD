@@ -687,7 +687,7 @@ cc_library(
         "@local_xla//xla:window_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:sharding_builder",
         "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",

@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/allocation_tracker.h"
 #include "xla/service/backend.h"

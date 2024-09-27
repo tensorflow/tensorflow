@@ -19,8 +19,8 @@ limitations under the License.
 #include "absl/numeric/bits.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {

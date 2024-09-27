@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"

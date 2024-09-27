@@ -19,10 +19,10 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/custom_call_target_registry.h"

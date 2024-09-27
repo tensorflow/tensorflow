@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"

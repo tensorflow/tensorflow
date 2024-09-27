@@ -769,7 +769,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:sharding_builder",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_parser",
     ],
