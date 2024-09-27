@@ -19,6 +19,8 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -84,6 +86,29 @@ TEST_F(IndexingMapTest, VariableKind) {
   EXPECT_EQ(ToString(VariableKind::kBlockX), "block_x");
   EXPECT_EQ(ToString(VariableKind::kBlockY), "block_y");
   EXPECT_EQ(ToString(VariableKind::kBlockZ), "block_z");
+}
+
+TEST_F(IndexingMapTest, VerifyDimensions) {
+  auto indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{10, 10}, /*symbol_upper_bounds=*/{});
+
+  std::stringstream ss;
+  EXPECT_FALSE(indexing_map.Verify(ss));
+  EXPECT_EQ(ss.str(),
+            "dim size must match the number of dimensions in the affine map");
+}
+
+TEST_F(IndexingMapTest, VerifySymbols) {
+  auto indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{10}, /*symbol_upper_bounds=*/{10});
+
+  std::stringstream ss;
+  EXPECT_FALSE(indexing_map.Verify(ss));
+  EXPECT_EQ(ss.str(),
+            "range vars size + rt var size must match the number of symbols in "
+            "the affine map");
 }
 
 TEST_F(IndexingMapTest, RTVar) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -92,15 +93,13 @@ mlir::LogicalResult IndexingMapAttr::verify(
     mlir::AffineMap map, ArrayRef<DimVar> dim_vars,
     ArrayRef<RangeVar> range_vars,
     ArrayRef<std::pair<AffineExpr, Interval>> constraints, bool is_simplified) {
-  if (map.getNumDims() != dim_vars.size()) {
-    return emitError() << "dim size must match the number of dimensions in "
-                          "the affine map";
+  auto indexing_map = IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{},
+                                  constraints, is_simplified);
+  std::stringstream ss;
+  if (!indexing_map.Verify(ss)) {
+    return emitError() << ss.str();
   }
-  if (map.getNumSymbols() != range_vars.size()) {
-    return emitError()
-           << "range size must match the number of symbols in the affine map";
-  }
-  return mlir::success();
+  return success();
 }
 
 IndexingMap IndexingMapAttr::getIndexingMap() const {

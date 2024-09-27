@@ -317,6 +317,9 @@ class IndexingMap {
       absl::Span<const int64_t> symbol_upper_bounds,
       bool is_simplified = false);
 
+  // Returns true if the indexing map is valid.
+  bool Verify(std::ostream& out) const;
+
   // Returns true if the map was simplified.
   bool Simplify();
 

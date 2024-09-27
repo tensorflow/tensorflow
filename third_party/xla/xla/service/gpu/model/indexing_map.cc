@@ -1274,6 +1274,23 @@ IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
   return ComposeIndexingMaps(lhs, rhs);
 }
 
+bool IndexingMap::Verify(std::ostream& out) const {
+  if (IsUndefined()) {
+    return true;
+  }
+  if (affine_map_.getNumDims() != dim_vars_.size()) {
+    out << "dim size must match the number of dimensions in "
+           "the affine map";
+    return false;
+  }
+  if (affine_map_.getNumSymbols() != range_vars_.size() + rt_vars_.size()) {
+    out << "range vars size + rt var size must match the number of "
+           "symbols in the affine map";
+    return false;
+  }
+  return true;
+}
+
 // Simplification of IndexingMap has two main parts.
 // At first we optimized constraints to make the domain as small and simple as
 // possible. And only then we simplify the affine_map, because its
