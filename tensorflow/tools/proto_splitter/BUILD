@@ -53,7 +53,6 @@ cc_library(
 #
 # py_proto_library(
 #     name = "versions_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":versions_proto",
 #     ],
@@ -61,7 +60,6 @@ cc_library(
 #
 # py_proto_library(
 #     name = "chunk_proto_py_pb2",
-#     api_version = 2,
 #     deps = [
 #         ":chunk_proto",
 #     ],
