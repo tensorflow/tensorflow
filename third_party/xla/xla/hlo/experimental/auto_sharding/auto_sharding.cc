@@ -2572,7 +2572,8 @@ absl::Status SaveShardingForInstruction(
     if (!inst->has_sharding()) {
       return absl::OkStatus();
     }
-    if (inst->sharding().IsUnknown()) {
+    if (inst->sharding().IsUnknown() &&
+        (inst->sharding().IsShardLike() || inst->sharding().IsShardAs())) {
       return absl::UnimplementedError(
           "Auto-sharding currently does not support shard_as/shard_like "
           "sharding annotations");
