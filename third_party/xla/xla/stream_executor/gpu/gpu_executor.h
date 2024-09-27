@@ -38,8 +38,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-class StreamExecutor;
-
 namespace gpu {
 
 class GpuStream;
