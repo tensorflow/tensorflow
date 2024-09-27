@@ -38,11 +38,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
@@ -80,14 +80,20 @@ PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
 PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap = GetDeviceCaps(device_plane);
   if (!absl::StartsWith(device_plane.name(), kTpuPlanePrefix)) {
-    return MakePerfEnv(
-        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap)) *
-            cap.num_cores(),
-        // Ideally, the cap should report separate hbm BW, for now set to same.
-        {tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth()),
-         tsl::profiler::UniToGiga(cap.memory_bandwidth())});
+    double peak_tera_flops_per_second =
+        cap.num_cores() *
+        tsl::profiler::GigaToTera(GetFlopMaxThroughputPerSM(cap));
+    double hbm_bw_giga_bytes_per_second =
+        tsl::profiler::UniToGiga(cap.memory_bandwidth());
+    double shm_giga_bytes_per_second =
+        cap.num_cores() *
+        tsl::profiler::UniToGiga(GetSharedMemoryBandwidthPerSM(cap));
+    // Note that treat SRAM_RD and SRAM_WR as the same. So in future, we could
+    // only use one for shared memory / L1 cache, one for another like L2.
+    return MakePerfEnv(peak_tera_flops_per_second,
+                       {/*HBM_RW=*/hbm_bw_giga_bytes_per_second,
+                        /*SRAM_RD=*/shm_giga_bytes_per_second,
+                        /*SRAM_WR=*/shm_giga_bytes_per_second});
   } else {
     XPlaneVisitor visitor = tsl::profiler::CreateTfXPlaneVisitor(&device_plane);
     auto peak_tera_flops_per_second =

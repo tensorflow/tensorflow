@@ -81,7 +81,6 @@ DeviceCapabilities GetDeviceCaps(const XPlane& plane) {
         break;
     }
   });
-
   return caps;
 }
 

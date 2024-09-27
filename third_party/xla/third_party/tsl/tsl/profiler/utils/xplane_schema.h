@@ -278,6 +278,7 @@ enum StatType {
   kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
+  // For GPU, this is the number of SMs.
   kDevCapCoreCount,
   kDevCapMemoryBandwidth,
   kDevCapMemorySize,
@@ -330,7 +331,8 @@ enum StatType {
   kCudaGraphExecId,
   kCudaGraphOrigId,
   kStepIdleTimePs,
-  kLastStatType = kStepIdleTimePs,
+  kGpuDeviceName,
+  kLastStatType = kGpuDeviceName,
 };
 
 enum MegaScaleStatType : uint8_t {

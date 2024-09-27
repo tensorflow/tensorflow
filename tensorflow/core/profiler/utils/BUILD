@@ -56,7 +56,21 @@ cc_library(
         ":xplane_schema",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/utils:math_utils",
+    ],
+)
+
+tf_cc_test(
+    name = "hardware_type_utils_test",
+    srcs = ["hardware_type_utils_test.cc"],
+    deps = [
+        ":hardware_type_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@local_tsl//tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -449,4 +463,38 @@ cc_library(
     name = "hlo_module_utils",
     hdrs = ["hlo_module_utils.h"],
     deps = ["@local_xla//xla/hlo/ir:hlo"],
+)
+
+cc_library(
+    name = "xprof_gpu_cost_analysis",
+    srcs = ["xprof_gpu_cost_analysis.cc"],
+    hdrs = ["xprof_gpu_cost_analysis.h"],
+    visibility = [":friends"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
+    ],
+)
+
+tf_cc_test(
+    name = "xprof_gpu_cost_analysis_test",
+    srcs = ["xprof_gpu_cost_analysis_test.cc"],
+    deps = [
+        ":xprof_gpu_cost_analysis",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:test_helpers",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_cost_analysis",
+        "@local_xla//xla/service/gpu/model:hlo_op_profiles",
+        "@local_xla//xla/tests:hlo_test_base",
+        "@local_xla//xla/tests:xla_internal_test_main",
+    ],
 )
