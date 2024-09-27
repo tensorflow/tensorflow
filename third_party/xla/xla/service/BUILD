@@ -8648,6 +8648,7 @@ cc_library(
     srcs = ["infeed_token_propagation.cc"],
     hdrs = ["infeed_token_propagation.h"],
     deps = [
+        ":call_graph",
         ":hlo_dce",
         ":tuple_simplifier",
         "//xla:shape_util",
