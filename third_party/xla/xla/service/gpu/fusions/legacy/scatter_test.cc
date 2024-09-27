@@ -156,8 +156,7 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     bl_z in [0, 0],
     chunk_id in [0, 0],
     unroll_id in [0, 0],
-    bl_x * 128 + th_x in [0, 8399],
-    is_simplified: true
+    bl_x * 128 + th_x in [0, 8399]
   )";
   mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
                                               "bl_x", "bl_y", "bl_z"};
@@ -197,8 +196,7 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     chunk_id in [0, 0],
     unroll_id in [0, 0],
     index_id in [0, 0],
-    bl_x * 128 + th_x in [0, 8399],
-    is_simplified: true
+    bl_x * 128 + th_x in [0, 8399]
   )";
   EXPECT_THAT(
       ToString(*fusion->ComputeThreadIdToInputIndexing(

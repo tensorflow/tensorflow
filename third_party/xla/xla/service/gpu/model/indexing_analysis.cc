@@ -528,7 +528,7 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
       output_shape.dimensions(), parallel_dims_sizes);
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
-      output_shape.dimensions(), {}, /*is_simplified=*/true);
+      output_shape.dimensions(), {});
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce->operand_count());
@@ -661,8 +661,7 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   // Indexing map for the init value.
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
-      output_shape.dimensions(), /*symbol_upper_bounds=*/{},
-      /*is_simplified=*/true);
+      output_shape.dimensions(), /*symbol_upper_bounds=*/{});
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce_window->operand_count());
@@ -1154,8 +1153,7 @@ IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
                               mlir::MLIRContext* mlir_context) {
   return IndexingMap::FromTensorSizes(
       AffineMap::getMultiDimIdentityMap(dimensions.size(), mlir_context),
-      /*dim_upper_bounds=*/dimensions, /*symbol_upper_bounds=*/{},
-      /*is_simplified=*/dimensions.empty());
+      /*dim_upper_bounds=*/dimensions, /*symbol_upper_bounds=*/{});
 }
 
 IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* mlir_context) {

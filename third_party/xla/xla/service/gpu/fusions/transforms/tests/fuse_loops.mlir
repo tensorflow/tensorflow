@@ -8,8 +8,7 @@
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -17,8 +16,7 @@
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 func.func @fuse_loops(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index
@@ -67,8 +65,7 @@ func.func @fuse_loops(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -76,8 +73,7 @@ func.func @fuse_loops(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 func.func @do_not_fuse_index_mismatch(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index
@@ -115,8 +111,7 @@ func.func @do_not_fuse_index_mismatch(%arg0: tensor<20x160x170xf32>) -> tensor<1
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -124,8 +119,7 @@ func.func @do_not_fuse_index_mismatch(%arg0: tensor<20x160x170xf32>) -> tensor<1
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 func.func @do_not_fuse_multiple_uses(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index
@@ -165,8 +159,7 @@ func.func @do_not_fuse_multiple_uses(%arg0: tensor<20x160x170xf32>) -> tensor<1x
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -174,8 +167,7 @@ func.func @do_not_fuse_multiple_uses(%arg0: tensor<20x160x170xf32>) -> tensor<1x
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 5], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 func.func @do_not_fuse_map_domain_mismatch(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index
@@ -214,8 +206,7 @@ func.func @do_not_fuse_map_domain_mismatch(%arg0: tensor<20x160x170xf32>) -> ten
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -223,8 +214,7 @@ func.func @do_not_fuse_map_domain_mismatch(%arg0: tensor<20x160x170xf32>) -> ten
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 5) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 5) * 32 + d0 mod 32 in [0, 169]">
 func.func @do_not_fuse_map_constraint_mismatch(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index
@@ -263,8 +253,7 @@ func.func @do_not_fuse_map_constraint_mismatch(%arg0: tensor<20x160x170xf32>) ->
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0], s2 in [0, 1],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 #indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1, s2] ->"
 "   (0,"
 "   d0 mod 32,"
@@ -272,8 +261,7 @@ func.func @do_not_fuse_map_constraint_mismatch(%arg0: tensor<20x160x170xf32>) ->
 " domain:"
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0], s2 in [0, 1],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169],"
-"   is_simplified: true">
+"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
 func.func @do_not_fuse_unused_loop_iv(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index

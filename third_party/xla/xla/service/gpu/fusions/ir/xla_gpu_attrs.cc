@@ -48,8 +48,7 @@ using mlir::success;
 // Parses a chain of string attributes into an indexing map.
 // Example:
 // "()[s0, s1] -> (1 + s0 + s1 mod 3 - s1, s0 mod 2),"
-//   " domain: s0 in [-10, 10], s1 in [0, 2],"
-//   " is_simplified: false"
+//   " domain: s0 in [-10, 10], s1 in [0, 2]"
 // will be parsed as 3 StringAttrs, concatenated into a single string, and then
 // parsed into an IndexingMap.
 std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
@@ -84,17 +83,16 @@ IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
     constraints.push_back({constraint.first, constraint.second});
   }
   return get(context, indexing_map.GetAffineMap(), indexing_map.GetDimVars(),
-             indexing_map.GetRangeVars(), constraints,
-             indexing_map.IsSimplified());
+             indexing_map.GetRangeVars(), constraints);
 }
 
 mlir::LogicalResult IndexingMapAttr::verify(
     mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::AffineMap map, ArrayRef<DimVar> dim_vars,
     ArrayRef<RangeVar> range_vars,
-    ArrayRef<std::pair<AffineExpr, Interval>> constraints, bool is_simplified) {
-  auto indexing_map = IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{},
-                                  constraints, is_simplified);
+    ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+  auto indexing_map =
+      IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);
   std::stringstream ss;
   if (!indexing_map.Verify(ss)) {
     return emitError() << ss.str();
@@ -104,7 +102,7 @@ mlir::LogicalResult IndexingMapAttr::verify(
 
 IndexingMap IndexingMapAttr::getIndexingMap() const {
   return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
-                     getConstraints(), getIsSimplified());
+                     getConstraints());
 }
 
 int64_t IndexingMapAttr::getNumResults() const {

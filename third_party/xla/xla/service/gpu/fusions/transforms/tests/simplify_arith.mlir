@@ -249,7 +249,7 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
   %loop = scf.for %i = %c0 to %c3 step %c1
       iter_args(%in_ = %tensor) -> (tensor<100xf32>) {
     %0 = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0) -> (d0 mod 4),"
-      "domain: d0 in [0, 9], is_simplified: false">(%i)
+      "domain: d0 in [0, 9]">(%i)
     %updated = tensor.insert %c42_f32 into %in_[%0] : tensor<100xf32>
     scf.yield %updated :tensor<100xf32>
   }
@@ -265,9 +265,9 @@ func.func @refine_constraints(%tensor: tensor<100xf32>) -> tensor<100xf32> {
 
 #map = #xla_gpu.indexing_map<
   "(d0, d1)[s0, s1] -> (((d0 * 4 + d1 * 512 + s1) floordiv 9 + s0 * 32768) mod 2400000),"
-  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3], is_simplified: false">
+  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 73], s1 in [0, 3]">
 #map1 = #xla_gpu.indexing_map<"(d0, d1)[s0] -> ((d0 * 4 + d1 * 512 + s0) mod 9),"
-  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3], is_simplified: false">
+  "domain: d0 in [0, 127], d1 in [0, 575], s0 in [0, 3]">
 func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
     %arg1: tensor<2400000x9xf32>) -> tensor<2400000x9xf32> {
   %c0 = arith.constant 0 : index
@@ -306,8 +306,7 @@ func.func @refine_constraints_for_symbol(%arg0: tensor<2400000x9xf32>,
   "d4 in [0, 0],"
   "d5 in [0, 0],"
   "s0 in [0, 3],"
-  "d0 * 4 + s0 in [0, 29],"
-  "is_simplified: false">
+  "d0 * 4 + s0 in [0, 29]">
 func.func @dus(%arg0: tensor<20x30xf32>, %arg1: tensor<5x6xf32>, %arg2: i32, %arg3: i32, %arg4: tensor<20x30xf32>) -> tensor<20x30xf32> {
   %c24 = arith.constant 24 : index
   %c15 = arith.constant 15 : index

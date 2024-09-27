@@ -1001,8 +1001,7 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
 IndexingMap::IndexingMap(
     AffineMap affine_map, std::vector<DimVar> dimensions,
     std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-    absl::Span<std::pair<AffineExpr, Interval> const> constraints,
-    bool is_simplified)
+    absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
@@ -1014,7 +1013,6 @@ IndexingMap::IndexingMap(
   for (const auto& [expr, range] : constraints) {
     AddConstraint(expr, range);
   }
-  is_simplified_ = is_simplified;
 }
 
 IndexingMap::IndexingMap(
@@ -1034,13 +1032,10 @@ IndexingMap::IndexingMap(
 
 IndexingMap IndexingMap::FromTensorSizes(
     AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
-    absl::Span<const int64_t> symbol_upper_bounds, bool is_simplified) {
-  return IndexingMap{affine_map,
-                     DimVarsFromTensorSizes(dim_upper_bounds),
+    absl::Span<const int64_t> symbol_upper_bounds) {
+  return IndexingMap{affine_map, DimVarsFromTensorSizes(dim_upper_bounds),
                      RangeVarsFromTensorSizes(symbol_upper_bounds),
-                     /*rt_vars=*/{},
-                     /*constraints=*/{},
-                     is_simplified};
+                     /*rt_vars=*/{}};
 }
 
 RangeEvaluator IndexingMap::GetRangeEvaluator() const {
@@ -1052,7 +1047,6 @@ const Interval& IndexingMap::GetDimensionBound(int64_t dim_id) const {
 }
 
 Interval& IndexingMap::GetMutableDimensionBound(int64_t dim_id) {
-  is_simplified_ = false;
   return dim_vars_[dim_id].bounds;
 }
 
@@ -1075,7 +1069,6 @@ const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
 }
 
 Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
-  is_simplified_ = false;
   // Because affine map symbols are packed like [range_vars, rt_vars],
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
@@ -1131,7 +1124,6 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
       ResetToKnownEmpty();
     }
   }
-  is_simplified_ = false;
 }
 
 void IndexingMap::EraseConstraint(mlir::AffineExpr expr) {
@@ -1305,7 +1297,7 @@ bool IndexingMap::Verify(std::ostream& out) const {
 // simplification, because the ranges of constraints were already optimized once
 // when IndexingMap was constructed.
 bool IndexingMap::Simplify() {
-  if (IsSimplified() || IsUndefined() || IsKnownEmpty()) return false;
+  if (IsUndefined() || IsKnownEmpty()) return false;
 
   bool rtvars_were_eliminated = ReplaceConstantRTVars();
 
@@ -1336,7 +1328,6 @@ bool IndexingMap::Simplify() {
   if (affine_map_was_simplified) {
     affine_map_ = simplified_affine_map;
   }
-  is_simplified_ = true;
   return affine_map_was_simplified || constraints_were_simplified ||
          rtvars_were_eliminated;
 }
@@ -1639,7 +1630,6 @@ void IndexingMap::ResetToKnownEmpty() {
   }
   constraints_.clear();
   is_known_empty_ = true;
-  is_simplified_ = true;
 }
 
 bool IndexingMap::VerifyVariableIntervals() {
@@ -2124,8 +2114,7 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   AffineMap canonical_map =
       affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
   IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
-                               /*rt_vars=*/{}, new_constraints,
-                               /*is_simplified=*/false);
+                               /*rt_vars=*/{}, new_constraints);
   return new_indexing_map;
 }
 

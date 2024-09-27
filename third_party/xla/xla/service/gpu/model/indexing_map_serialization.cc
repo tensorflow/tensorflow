@@ -293,9 +293,6 @@ Token Parser::GetNextTokenImpl() {
     if (spelling == "domain") {
       return Token{spelling, Token::Kind::kKeywordDomain};
     }
-    if (spelling == "is_simplified") {
-      return Token{spelling, Token::Kind::kKeywordIsSimplified};
-    }
     if (spelling == "in") {
       return Token{spelling, Token::Kind::kKeywordIn};
     }
@@ -599,7 +596,8 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     if (!parser.ParseVarName(&var_name) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse DimVar\n";
       return std::nullopt;
     }
@@ -617,7 +615,8 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     if (!parser.ParseVarName(&var_name) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse RangeVar\n";
       return std::nullopt;
     }
@@ -629,31 +628,20 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   }
   // Parse constraints.
   SmallVector<Interval> constraint_bounds;
-  while (!parser.ConsumeToken(Token::Kind::kKeywordIsSimplified)) {
+  while (!parser.ConsumeToken(Token::Kind::kEOF)) {
     std::string affine_expr_str;
     Interval interval;
     if (!parser.ParseAffineExprString(&affine_expr_str) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse constraint\n";
       return std::nullopt;
     }
     affine_expr_strs.push_back(affine_expr_str);
     constraint_bounds.push_back(interval);
   }
-  // Parse is_simplified.
-  bool is_simplified;
-  if (!parser.ConsumeToken(Token::Kind::kColon) ||
-      !parser.ParseBool(&is_simplified)) {
-    llvm::errs() << "Failed to parse is_simplified\n";
-    return std::nullopt;
-  }
-  // Check that the input is consumed.
-  if (!parser.ConsumeToken(Token::Kind::kEOF)) {
-    return std::nullopt;
-  }
-
   // Parse affine expressions.
   SmallVector<AffineExpr> affine_exprs;
   if (!ParseAffineExprsWithMLIR(dim_var_names, symbol_var_names,
@@ -674,9 +662,8 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   }
   auto map = AffineMap::get(dim_vars.size(), range_vars.size(),
                             affine_map_results, context);
-  return IndexingMap{
-      map,         std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{},
-      constraints, is_simplified};
+  return IndexingMap{map, std::move(dim_vars), std::move(range_vars),
+                     /*rt_vars=*/{}, constraints};
 }
 
 std::string ToString(AffineExpr affine_expr) {
@@ -782,18 +769,29 @@ std::string ToString(const IndexingMap& indexing_map,
     return ss.str();
   }
   ss << ", domain: ";
+  int64_t remaining_vars_to_print =
+      dim_vars.size() + range_vars.size() + rt_vars.size();
   for (const auto& [index, dim_var] : llvm::enumerate(dim_vars)) {
-    ss << dim_names[index] << " in " << dim_var.bounds << ", ";
+    ss << dim_names[index] << " in " << dim_var.bounds;
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
   }
   for (const auto& [index, range_var] : llvm::enumerate(range_vars)) {
-    ss << symbol_names[index] << " in " << range_var.range << ", ";
+    ss << symbol_names[index] << " in " << range_var.range;
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
   }
   int64_t num_range_vars = range_vars.size();
   for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
     ss << GetSymbolName(num_range_vars + index, symbol_names) << " in "
        << rt_var.feasible_values << ",  hlo: "
        << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  "
-       << ToString(rt_var.map) << ", ";
+       << ToString(rt_var.map);
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
   }
   std::vector<std::string> expr_range_strings;
   const auto& constraints = indexing_map.GetConstraints();
@@ -803,10 +801,9 @@ std::string ToString(const IndexingMap& indexing_map,
         ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
   }
   std::sort(expr_range_strings.begin(), expr_range_strings.end());
-  for (const auto& expr_range_string : expr_range_strings) {
-    ss << expr_range_string << ", ";
+  if (!expr_range_strings.empty()) {
+    ss << ", " << absl::StrJoin(expr_range_strings, ", ");
   }
-  ss << "is_simplified: " << (indexing_map.IsSimplified() ? "true" : "false");
   return ss.str();
 }
 

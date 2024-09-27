@@ -169,8 +169,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1 * 10),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -183,8 +182,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1 * 10),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
@@ -194,8 +192,7 @@ ENTRY main {
     (d0, d1) -> (d0, 0),
     domain:
     d0 in [0, 1],
-    d1 in [0, 9],
-    is_simplified: true
+    d1 in [0, 9]
   )"));
 }
 
@@ -287,8 +284,7 @@ ENTRY main {
     (d0, d1) -> (d0, 0),
     domain:
     d0 in [0, 1],
-    d1 in [0, 0],
-    is_simplified: true
+    d1 in [0, 0]
   )"));
 }
 
@@ -322,8 +318,7 @@ ENTRY main {
     domain:
     d0 in [0, 1],
     d1 in [0, 1],
-    d2 in [0, 7],
-    is_simplified: true
+    d2 in [0, 7]
   )"));
 
   EXPECT_THAT(*root->operand(0),
@@ -334,8 +329,7 @@ ENTRY main {
     domain:
     d0 in [0, 1],
     d1 in [0, 1],
-    d2 in [0, 7],
-    is_simplified: true
+    d2 in [0, 7]
   )"));
 }
 
@@ -372,8 +366,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, d1 * 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
@@ -383,8 +376,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, d1 * 2 + 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
@@ -394,8 +386,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2 + 3, d1 * 2 + 4),
     domain:
     d0 in [0, 1],
-    d1 in [0, 3],
-    is_simplified: true
+    d1 in [0, 3]
   )"));
 }
 
@@ -430,8 +421,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, d1 * 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 7],
-    is_simplified: true
+    d1 in [0, 7]
   )"));
 
   const TiledHloInstruction* lhs = dot->operand(0);
@@ -441,8 +431,7 @@ ENTRY main {
     (d0, d1) -> (d0 * 2, 0),
     domain:
     d0 in [0, 1],
-    d1 in [0, 7],
-    is_simplified: true
+    d1 in [0, 7]
   )"));
 
   const TiledHloInstruction* rhs = dot->operand(1);
@@ -452,8 +441,7 @@ ENTRY main {
     (d0, d1) -> (0, d1 * 2),
     domain:
     d0 in [0, 1],
-    d1 in [0, 7],
-    is_simplified: true
+    d1 in [0, 7]
   )"));
 }
 
@@ -911,8 +899,7 @@ ENTRY main {
     (d0, d1) -> (d0, d1),
     domain:
     d0 in [0, 65537],
-    d1 in [0, 32767],
-    is_simplified: true
+    d1 in [0, 32767]
   )"));
 }
 
@@ -967,8 +954,7 @@ ENTRY main {
     (d0, d1) -> (0, d1, 0),
     domain:
     d0 in [0, 0],
-    d1 in [0, 1],
-    is_simplified: true
+    d1 in [0, 1]
   )"));
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
@@ -984,8 +970,7 @@ ENTRY main {
       (d0, d1, d2) -> (),
     s1 in [0, 226],
       hlo: %of3 = s32[] parameter(3),
-      (d0, d1, d2) -> (),
-    is_simplified: true
+      (d0, d1, d2) -> ()
   )"));
 }
 
