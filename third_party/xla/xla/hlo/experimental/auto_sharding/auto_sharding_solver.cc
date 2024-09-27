@@ -427,9 +427,8 @@ AutoShardingSolverResult CallORToolsSolver(
           ",share_binary_clauses:false,random_seed:1,interleave_search:true");
     }
     if (request.has_solver_timeout()) {
-      absl::StrAppend(
-          &solver_parameter_str, ",max_deterministic_time:",
-          0.1 * request.solver_timeout().solver_timeout_in_seconds());
+      absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
+                      request.solver_timeout().solver_timeout_in_seconds());
     }
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
