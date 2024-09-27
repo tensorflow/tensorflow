@@ -71,15 +71,17 @@ using ::mlir::func::FuncOp;
 using ::mlir::mhlo::CustomCallOp;
 
 using ::mlir::sdy::kShardingAttr;
+using ::mlir::sdy::kShardingRuleAttr;
 using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Builds the shardings coming from Shardy previously. This means
+// Builds the shardy attributes coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardingsPass`).
-void convertShardings(FuncOp funcOp) {
+void convertShardyAttrs(FuncOp funcOp) {
   // Copy over the argument shardings, but not the result shardings yet.
   // We need to wait until after we've converted all the Operations before
   // copying the result shardings.
@@ -102,7 +104,7 @@ void convertShardings(FuncOp funcOp) {
         resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
   }
 
-  // Extract the round-tripped SDY shardings from the operations.
+  // Extract the round-tripped SDY shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
     op->removeAttr(kXlaShardingAttr);
     if (DictionaryAttr dictAttr = getFrontendAttrs(op)) {
@@ -141,6 +143,13 @@ void convertShardings(FuncOp funcOp) {
         }
       }
       removeFrontendAttribute(op, kShardingRoundTripAttr);
+
+      // Import sharding rules.
+      if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
+              dictAttr, kShardingRuleRoundTripAttr)) {
+        op->setAttr(kShardingRuleAttr, shardingRuleAttr);
+        removeFrontendAttribute(op, kShardingRuleRoundTripAttr);
+      }
     }
   });
 }
@@ -176,6 +185,7 @@ class SdyRoundTripImportShardingsPass
     // Insert the meshes before any functions.
     builder.setInsertionPointToStart(moduleOp.getBody());
     for (NamedAttribute mesh : sdyMeshes) {
+      mesh.getValue().dump();
       auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
       symbolTable.insert(builder.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
@@ -183,7 +193,7 @@ class SdyRoundTripImportShardingsPass
     removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardings(funcOp);
+      convertShardyAttrs(funcOp);
     }
   }
 
