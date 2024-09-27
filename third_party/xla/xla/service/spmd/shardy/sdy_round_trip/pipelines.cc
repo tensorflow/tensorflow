@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
-#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardings.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 
@@ -55,6 +55,7 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm) {
   addCommonPreImportPasses(pm);
   pm.addPass(createSdyRoundTripImportShardingsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
+  pm.addPass(createSdyRoundTripRemoveSizeOneAxesPass());
   addCommonPostImportPasses(pm);
 }
 

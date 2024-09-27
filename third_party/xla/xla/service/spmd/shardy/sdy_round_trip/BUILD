@@ -58,8 +58,6 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
@@ -111,6 +109,22 @@ cc_library(
 )
 
 cc_library(
+    name = "remove_size_one_axes",
+    srcs = ["remove_size_one_axes.cc"],
+    hdrs = ["remove_size_one_axes.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
     name = "pipelines",
     srcs = ["pipelines.cc"],
     hdrs = ["pipelines.h"],
@@ -118,12 +132,11 @@ cc_library(
         ":export_ops",
         ":export_shardings",
         ":import_shardings",
+        ":remove_size_one_axes",
         ":shard_map_export",
         ":shard_map_import",
-        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
-        "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

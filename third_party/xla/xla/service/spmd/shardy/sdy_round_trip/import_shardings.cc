@@ -18,10 +18,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
-#include <string>
 
-#include "absl/log/check.h"
-#include "absl/strings/escaping.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/AsmParser/AsmParser.h"
