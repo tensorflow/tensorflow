@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton/kernel_name_tracer.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 #include "xla/service/gpu/fusions/triton/triton_test_utils.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/filecheck.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
@@ -147,6 +148,74 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
+class TritonBF16BF16F32BlasTest : public TritonTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
+    return debug_options;
+  }
+
+ protected:
+  void SetUp() override {
+    if (!SupportsBF16(GpuComputeComp())) {
+      GTEST_SKIP() << "BF16 not supported.";
+    }
+  }
+};
+
+TEST_F(TritonBF16BF16F32BlasTest, PropagateAlgorithmToBlas) {
+  // We check that the algorithm is propagated to the BLAS call.
+  // We also check that the kernel name matches the algorithm for Ampere.
+  // The algorithm for Hopper is not the one we expect because it uses TF32.
+
+  constexpr std::string_view kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = f32[8512,256]{1,0} parameter(0)
+      rhs = f32[256,8512]{1,0} parameter(1)
+      ROOT dot = f32[8512,8512]{1,0} dot(lhs, rhs),
+          algorithm=dot_bf16_bf16_f32,
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+    }
+  )";
+  const std::string pattern = R"(CHECK: "algorithm":"ALG_DOT_BF16_BF16_F32")";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+
+  auto tracer = KernelNameTracer::Create();
+  tracer->start();
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
+  auto kernel_name = tracer->stop();
+
+  if (kernel_name == "kernel_name_tracer_not_implemented") return;
+
+  auto cc = GetCudaComputeCapability();
+  using CudaComputeCapabilities =
+      stream_executor::CudaComputeCapability::CudaComputeCapabilities;
+  switch (cc.major) {
+    case CudaComputeCapabilities::BLACKWELL:
+      GTEST_SKIP() << "CudaComputeCapabilities::BLACKWELL has the kernel name: "
+                   << kernel_name;
+      break;
+    case CudaComputeCapabilities::AMPERE:
+      EXPECT_THAT(kernel_name, ::testing::HasSubstr("bf16gemm_"));
+      break;
+    case CudaComputeCapabilities::HOPPER:
+      // Hopper does not have bf16 kernels for ALG_DOT_BF16_BF16_F32 algorithm.
+      // As a result it uses TF32.
+      EXPECT_THAT(kernel_name, ::testing::HasSubstr("gemm_f32f32_tf32f32_f32"));
+      break;
+    default:
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+                   << " has the kernel name: " << kernel_name;
+  }
+}
+
 TEST_F(TritonGemmTest, RejectDotInt4HLO) {
   constexpr std::string_view kHloText = R"(
     HloModule t
@@ -200,6 +269,7 @@ TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
           rhs_batch_dims={0}
     }
   )";
+
   const std::string pattern =
       R"(CHECK-NOT: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));

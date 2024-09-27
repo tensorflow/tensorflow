@@ -215,15 +215,6 @@ INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(DotBF16ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32),
-                                 Values(BF16), Values(BF16, F32),
-                                 Values(CC(8, 0)),
-                                 Values(SemanticVersion{6, 0, 0}),
-                                 Values(BackendRestriction::kNoRestriction),
-                                 Values(Sizes{32, 32}, Sizes{16, 2})),
-                         TestParamsToString);
-
 INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32), Values(F32),
                                  Values(F32), Values(CC(8, 0)),

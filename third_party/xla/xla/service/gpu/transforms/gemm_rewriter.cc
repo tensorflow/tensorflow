@@ -1887,12 +1887,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
-    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
-    // algorithm) here? Why do we use the default?
-    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        se::gpu::GetBlasComputationType(
-                            PrecisionConfig::ALG_UNSET, a_dtype, output_type,
-                            stream_executor::blas::kDefaultComputePrecision));
+    TF_ASSIGN_OR_RETURN(
+        const se::blas::ComputationType compute_type,
+        se::gpu::GetBlasComputationType(
+            instr.precision_config().algorithm(), a_dtype, output_type,
+            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 

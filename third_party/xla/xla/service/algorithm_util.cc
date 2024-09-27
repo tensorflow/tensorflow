@@ -41,10 +41,11 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
       return se::blas::ComputationType::kF16;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return se::blas::ComputationType::kBF16AsF32;
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
       return se::blas::ComputationType::kF32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
