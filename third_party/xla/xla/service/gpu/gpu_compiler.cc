@@ -224,6 +224,7 @@ limitations under the License.
 #include "xla/service/slice_sinker.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
+#include "xla/service/spmd/shardy/shardy_call_inliner.h"
 #include "xla/service/stable_sort_expander.h"
 #include "xla/service/stochastic_convert_decomposer.h"
 #include "xla/service/sub_byte_normalization.h"
@@ -551,7 +552,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
-  pre_spmd_pipeline.AddPass<CallInliner>();
+  pre_spmd_pipeline.AddPass<ShardyCallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
@@ -708,7 +709,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DynamicIndexSplitter>();
 
   // TODO(b/64094172): make Call work on GPU instead of inlining.
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<ShardyCallInliner>();
 
   pipeline.AddPass<StochasticConvertDecomposer>();
 
@@ -1585,7 +1586,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       options.key_value_store,
       gpu_target_config.device_description.runtime_version()));
   // Inline back the calls which have better performance with cuBLAS.
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<ShardyCallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
