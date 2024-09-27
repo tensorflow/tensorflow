@@ -77,10 +77,11 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
+  absl::Mutex send_mutex_, receive_mutex_;
   absl::node_hash_map<int64_t, absl::node_hash_map<int64_t, uint64_t>>
-      send_pointer_maps_;
+      send_pointer_maps_ ABSL_GUARDED_BY(send_mutex_);
   absl::node_hash_map<int64_t, absl::node_hash_map<int64_t, uint64_t>>
-      receive_pointer_maps_;
+      receive_pointer_maps_ ABSL_GUARDED_BY(receive_mutex_);
 };
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,

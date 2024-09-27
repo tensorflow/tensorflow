@@ -110,25 +110,24 @@ absl::Status NcclAllToAllStartThunk::Initialize(
                     stream_kind));
     TF_ASSIGN_OR_RETURN(int32_t num_participants,
                         nccl_api()->CommCount(comm_wrapper.comm_handle));
-
-    for (int i = 0; i < num_participants; ++i) {
-      for (int j = 0; j < num_participants; ++j) {
-        if (send_pointer_maps_.count(i) && send_pointer_maps_.at(i).count(j)) {
-          continue;
-        }
-        if (!params.stream->parent()->HostMemoryRegister(
-                &send_pointer_maps_[i][j], sizeof(void*))) {
-          VLOG(5) << "Registering host send pointer for memcpy failed.";
-        }
-
-        if (!params.stream->parent()->HostMemoryRegister(
-                &receive_pointer_maps_[i][j], sizeof(void*))) {
-          VLOG(5) << "Registering host recv pointer for memcpy failed.";
+    int local_id = params.stream->parent()->device_ordinal() % num_participants;
+    {
+      absl::MutexLock send_lock(&send_mutex_);
+      absl::MutexLock receive_lock(&receive_mutex_);
+      if (!send_pointer_maps_.count(local_id)) {
+        for (int i = 0; i < num_participants; ++i) {
+          if (!params.stream->parent()->HostMemoryRegister(
+                  &send_pointer_maps_[local_id][i], sizeof(void*))) {
+            VLOG(5) << "Registering host send pointer for memcpy failed.";
+          }
+          if (!params.stream->parent()->HostMemoryRegister(
+                  &receive_pointer_maps_[local_id][i], sizeof(void*))) {
+            VLOG(5) << "Registering host recv pointer for memcpy failed.";
+          }
         }
       }
     }
   }
-
   return absl::OkStatus();
 }
 
@@ -145,17 +144,21 @@ absl::Status NcclAllToAllStartThunk::Cleanup(const CleanupParams& params) {
                         nccl_api()->CommCount(comm_wrapper.comm_handle));
 
     int local_id = params.executor->device_ordinal() % num_participants;
-    if (send_pointer_maps_.count(local_id)) {
-      for (auto& [id, value] : send_pointer_maps_[local_id]) {
-        if (!params.executor->HostMemoryUnregister((void*)value)) {
-          VLOG(5) << "Unregistering host send pointer for memcpy failed.";
+    {
+      absl::MutexLock send_lock(&send_mutex_);
+      absl::MutexLock receive_lock(&receive_mutex_);
+      if (send_pointer_maps_.count(local_id)) {
+        for (auto& [id, value] : send_pointer_maps_[local_id]) {
+          if (!params.executor->HostMemoryUnregister((void*)value)) {
+            VLOG(5) << "Unregistering host send pointer for memcpy failed.";
+          }
         }
       }
-    }
-    if (receive_pointer_maps_.count(local_id)) {
-      for (auto& [id, value] : receive_pointer_maps_[local_id]) {
-        if (!params.executor->HostMemoryUnregister((void*)value)) {
-          VLOG(5) << "Unregistering host recv pointer for memcpy failed.";
+      if (receive_pointer_maps_.count(local_id)) {
+        for (auto& [id, value] : receive_pointer_maps_[local_id]) {
+          if (!params.executor->HostMemoryUnregister((void*)value)) {
+            VLOG(5) << "Unregistering host recv pointer for memcpy failed.";
+          }
         }
       }
     }
@@ -175,10 +178,17 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
 
   if (is_local() && p2p_memcpy_enabled_) {
     int local_id = stream.parent()->device_ordinal() % num_participants;
+    absl::node_hash_map<int64_t, uint64_t>* send_pointer_map = nullptr;
+    absl::node_hash_map<int64_t, uint64_t>* receive_pointer_map = nullptr;
+    {
+      absl::MutexLock send_lock(&send_mutex_);
+      absl::MutexLock receive_lock(&receive_mutex_);
+      send_pointer_map = &send_pointer_maps_[local_id];
+      receive_pointer_map = &receive_pointer_maps_[local_id];
+    }
     return xla::gpu::RunMemCpyAllToAll(
         nccl_api(), config_.has_split_dimension, device_buffers, stream,
-        comm_wrapper.comm_handle, send_pointer_maps_[local_id],
-        receive_pointer_maps_[local_id]);
+        comm_wrapper.comm_handle, *send_pointer_map, *receive_pointer_map);
   }
   return xla::gpu::RunAllToAll(nccl_api(), config_.has_split_dimension,
                                device_buffers, stream,
