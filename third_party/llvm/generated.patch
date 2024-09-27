@@ -1,1 +1,86 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclID.h b/clang/include/clang/AST/DeclID.h
+--- a/clang/include/clang/AST/DeclID.h
++++ b/clang/include/clang/AST/DeclID.h
+@@ -189,6 +189,7 @@
+   // Every Decl ID is a local decl ID to the module being writing in ASTWriter.
+   friend class ASTWriter;
+   friend class GlobalDeclID;
++  friend struct llvm::DenseMapInfo<clang::LocalDeclID>;
+ 
+ public:
+   LocalDeclID() : Base() {}
+@@ -266,6 +267,27 @@
+     return L == R;
+   }
+ };
++
++template <> struct DenseMapInfo<clang::LocalDeclID> {
++  using LocalDeclID = clang::LocalDeclID;
++  using DeclID = LocalDeclID::DeclID;
++
++  static LocalDeclID getEmptyKey() {
++    return LocalDeclID(DenseMapInfo<DeclID>::getEmptyKey());
++  }
++
++  static LocalDeclID getTombstoneKey() {
++    return LocalDeclID(DenseMapInfo<DeclID>::getTombstoneKey());
++  }
++
++  static unsigned getHashValue(const LocalDeclID &Key) {
++    return DenseMapInfo<DeclID>::getHashValue(Key.getRawValue());
++  }
++
++  static bool isEqual(const LocalDeclID &L, const LocalDeclID &R) {
++    return L == R;
++  }
++};
+ 
+ } // namespace llvm
+ 
+diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTWriter.h b/clang/include/clang/Serialization/ASTWriter.h
+--- a/clang/include/clang/Serialization/ASTWriter.h
++++ b/clang/include/clang/Serialization/ASTWriter.h
+@@ -233,13 +233,13 @@
+   /// instead of comparing the result of `getDeclID()` or `GetDeclRef()`.
+   llvm::SmallPtrSet<const Decl *, 32> PredefinedDecls;
+ 
+-  /// Mapping from FunctionDecl to the list of lambda IDs inside the function.
++  /// Mapping from FunctionDecl ID to the list of lambda IDs inside the
++  /// function.
+   ///
+   /// These lambdas have to be loaded right after the function they belong to.
+   /// In order to have canonical declaration for lambda class from the same
+   /// module as enclosing function during deserialization.
+-  llvm::DenseMap<const Decl *, SmallVector<LocalDeclID, 4>>
+-      FunctionToLambdasMap;
++  llvm::DenseMap<LocalDeclID, SmallVector<LocalDeclID, 4>> FunctionToLambdasMap;
+ 
+   /// Offset of each declaration in the bitstream, indexed by
+   /// the declaration's ID.
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
+--- a/clang/lib/Serialization/ASTWriter.cpp
++++ b/clang/lib/Serialization/ASTWriter.cpp
+@@ -5713,8 +5713,7 @@
+     // efficent becuase it allows lazy deserialization.
+     RecordData FunctionToLambdasMapRecord;
+     for (const auto &Pair : FunctionToLambdasMap) {
+-      FunctionToLambdasMapRecord.push_back(
+-          GetDeclRef(Pair.first).getRawValue());
++      FunctionToLambdasMapRecord.push_back(Pair.first.getRawValue());
+       FunctionToLambdasMapRecord.push_back(Pair.second.size());
+       for (const auto &Lambda : Pair.second)
+         FunctionToLambdasMapRecord.push_back(Lambda.getRawValue());
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
+--- a/clang/lib/Serialization/ASTWriterDecl.cpp
++++ b/clang/lib/Serialization/ASTWriterDecl.cpp
+@@ -1524,7 +1524,8 @@
+     // For lambdas inside canonical FunctionDecl remember the mapping.
+     if (auto FD = llvm::dyn_cast_or_null<FunctionDecl>(D->getDeclContext());
+         FD && FD->isCanonicalDecl()) {
+-      Writer.FunctionToLambdasMap[FD].push_back(Writer.GetDeclRef(D));
++      Writer.FunctionToLambdasMap[Writer.GetDeclRef(FD)].push_back(
++          Writer.GetDeclRef(D));
+     }
+   } else {
+     Record.push_back(CXXRecNotTemplate);
