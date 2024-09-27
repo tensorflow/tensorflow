@@ -171,6 +171,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       }
     } else {
       op_data->output_shape_known = false;
+      // We know the output bytes size is the same as the input. Setting this
+      // enables tensor sharing in the ArenaPlanner.
+      output->bytes = input->bytes;
       return kTfLiteOutputShapeNotKnown;
     }
   }
@@ -252,7 +255,8 @@ TfLiteRegistration* Register_RESHAPE() {
       /*version=*/0,
       /*registration_external=*/nullptr,
       /*async_kernel=*/nullptr,
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
+      /*inplace_operator=*/kTfLiteInplaceOpInput0Shared |
+          kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 
