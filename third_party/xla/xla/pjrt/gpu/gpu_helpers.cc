@@ -215,4 +215,25 @@ std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
                                              /*name=*/"xla_gpu_host_bfc", opts);
 }
 
+int TopologySizes::GetDeviceCount() {
+  return num_slices * num_hosts_per_slice * num_devices_per_host;
+}
+
+// static
+absl::StatusOr<TopologySizes> TopologySizes::FromString(
+    std::string_view topology_string) {
+  TopologySizes sizes;
+  std::vector<std::string> topology_components =
+      absl::StrSplit(topology_string, 'x');
+  if (topology_components.size() != 3 ||
+      !absl::SimpleAtoi(topology_components[0], &sizes.num_slices) ||
+      !absl::SimpleAtoi(topology_components[1], &sizes.num_hosts_per_slice) ||
+      !absl::SimpleAtoi(topology_components[2], &sizes.num_devices_per_host)) {
+    return absl::InternalError(
+        "topology must be of shape "
+        "\"<num-slices>x<num-hosts-per-slice>x<num-devices-per-host>\"");
+  }
+  return sizes;
+}
+
 }  // namespace xla
