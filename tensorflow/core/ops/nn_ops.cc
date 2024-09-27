@@ -1522,7 +1522,7 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   c->set_output(1, output_shape);
   return absl::OkStatus();
 }
-// LINT.ThenChange(//tensorflow/compiler/xla/client/lib/approx_topk_shape.cc)
+// LINT.ThenChange(//tensorflow/compiler/xla/hlo/builder/lib/approx_topk_shape.cc)
 
 }  // namespace
 
