@@ -242,6 +242,8 @@ build:cuda_clang --copt=-Qunused-arguments
 # major release. Example: sm_80 kernels can run on sm_89 GPUs but
 # not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
 build:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+# Permit newer CUDA versions than Clang is aware of
+build:cuda_clang --copt="-Wno-unknown-cuda-version"
 # Set lld as the linker.
 build:cuda_clang --host_linkopt="-fuse-ld=lld"
 build:cuda_clang --host_linkopt="-lm"
