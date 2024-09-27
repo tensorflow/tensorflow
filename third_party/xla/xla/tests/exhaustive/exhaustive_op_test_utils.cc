@@ -44,11 +44,15 @@ template class ExhaustiveOpTestTraits<F64, 1>;
 template class ExhaustiveOpTestTraits<F32, 1>;
 template class ExhaustiveOpTestTraits<F16, 1>;
 template class ExhaustiveOpTestTraits<BF16, 1>;
+template class ExhaustiveOpTestTraits<F8E5M2, 1>;
+template class ExhaustiveOpTestTraits<F8E4M3FN, 1>;
 
 template class ExhaustiveOpTestTraits<F64, 2>;
 template class ExhaustiveOpTestTraits<F32, 2>;
 template class ExhaustiveOpTestTraits<F16, 2>;
 template class ExhaustiveOpTestTraits<BF16, 2>;
+template class ExhaustiveOpTestTraits<F8E5M2, 2>;
+template class ExhaustiveOpTestTraits<F8E4M3FN, 2>;
 
 bool IsSubnormalReal(xla::complex64 value) { return IsSubnormal(value.real()); }
 

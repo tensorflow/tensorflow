@@ -142,6 +142,7 @@ exhaustive_xla_test(
         ":exhaustive_op_test_utils",
         ":exhaustive_unary_test_textual_hdrs",
         "//xla:literal",
+        "//xla:types",
         "//xla/client:xla_builder",
         "//xla/client/lib:constants",
         "//xla/client/lib:math",

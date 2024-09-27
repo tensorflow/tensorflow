@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/exhaustive/exhaustive_unary_test_definitions.h"
 #include "xla/tests/exhaustive/test_op.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/types.h"
 
 #ifdef __FAST_MATH__
 #error "Can't be compiled with fast math on"
@@ -41,9 +42,39 @@ namespace {
 #include "xla/tests/exhaustive/exhaustive_unary_test_ops.inc"
 
 UNARY_TEST(Log, { LogOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
-UNARY_TEST(Log1p, { Log1pOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Log1p, {
+  Log1pOp<kT>(this)
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .Run();
+})
 
-UNARY_TEST(Exp, { ExpOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Exp, {
+  ExpOp<kT>(this)
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .Run();
+})
 UNARY_TEST(Expm1, { Expm1Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
 
 UNARY_TEST(Logistic, {
@@ -54,8 +85,20 @@ UNARY_TEST(Logistic, {
         }
         return std::abs(out) <= 1.0f;
       })
-      // FIXME(rmlarsen): Break into region around zero and everything else.
-      .Error(GetDefaultSpecGenerator())
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        // FIXME(rmlarsen): Break into region around zero and everything else.
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        // FIXME(rmlarsen): Break into region around zero and everything else.
+        return GetDefaultSpecGenerator()(x);
+      })
       .Run();
 })
 
@@ -135,13 +178,46 @@ UNARY_TEST(Acosh, {
       })
       .Run();
 })
-UNARY_TEST(Asinh, { AsinhOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
-UNARY_TEST(Atanh, { AtanhOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Asinh, {
+  AsinhOp<kT>(this)
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .Run();
+})
+UNARY_TEST(Atanh, {
+  AtanhOp<kT>(this)
+      .Error(GetDefaultSpecGenerator())
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .Run();
+})
 
 // Tests for inverse trigonometric functions.
 UNARY_TEST(Acos, {
   AcosOp<kT>(this)
-      .Error(GetDefaultSpecGenerator())
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
       .GpuError(+[](NativeT x) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder().abs_err(1e-6).rel_err(10 * eps).build();
@@ -175,12 +251,44 @@ UNARY_TEST(Atan, {
 
 UNARY_TEST(Cosh, {
   CoshOp<kT>(this)
-      .Error(GetDefaultSpecGenerator())
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
+          return ErrorSpec::Builder().distance_err(3).build();
+        } else if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(4).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
       .OutputRangeCheck(
           +[](NativeInputs in, NativeT actual) { return !(actual < 1); })
       .Run();
 })
-UNARY_TEST(Sinh, { SinhOp<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Sinh, {
+  SinhOp<kT>(this)
+      .Error(GetDefaultSpecGenerator())
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn>) {
+          return ErrorSpec::Builder().distance_err(3).build();
+        } else if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(4).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .GpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        return GetDefaultSpecGenerator()(x);
+      })
+      .Run();
+})
 UNARY_TEST(Tanh, {
   TanhOp<kT>(this)
       .Error(GetDefaultSpecGenerator())
@@ -275,7 +383,14 @@ UNARY_TEST(ErfInv, {
 
 UNARY_TEST(Digamma, {
   DigammaOp<kT>(this)
-      .Error(+[](NativeT x) {
+      .CpuError(+[](NativeT x) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder().distance_err(1).build();
+        }
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec::Builder().abs_err(2e-5).rel_err(10 * eps).build();
+      })
+      .GpuError(+[](NativeT x) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder().abs_err(2e-5).rel_err(10 * eps).build();
       })
