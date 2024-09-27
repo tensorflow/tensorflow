@@ -37,6 +37,7 @@ struct OpData {
   // This is to prevent incorrect results when mischievous users overwrite
   // output pointers with their own.
   const void* output_ptr;
+  bool output_shape_known = true;
 };
 
 TfLiteIntArray* GetOutputShape(TfLiteContext*, TfLiteNode*);
@@ -169,9 +170,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
       }
     } else {
-      SetTensorToDynamic(output);
+      op_data->output_shape_known = false;
+      return kTfLiteOutputShapeNotKnown;
     }
   }
+  op_data->output_shape_known = true;
   return kTfLiteOk;
 }
 
@@ -186,8 +189,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // There are two ways in which the 'output' can be made dynamic: it could be
   // a string tensor, or its shape cannot be calculated during Prepare(). In
   // either case, we now have all the information to calculate its shape.
-  if (IsDynamicTensor(output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+  if (output->type != kTfLiteString) {
+    if (!op_data->output_shape_known) {
+      if (output->data.data != input->data.data) {
+        // If the otuput cannot overwrite the input, then we have to set the
+        // tensor to dyanmic.
+        SetTensorToDynamic(output);
+      }
+      TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+    }
   }
 
   // Note that string tensors are always "dynamic" in the sense that their size
@@ -197,6 +207,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // reshape doesn't change the data, the output tensor needs exactly as many
   // bytes as the input tensor.
   if (output->type == kTfLiteString) {
+    SetTensorToDynamic(output);
+    TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
     auto bytes_required = input->bytes;
     TfLiteTensorRealloc(bytes_required, output);
     output->bytes = bytes_required;
