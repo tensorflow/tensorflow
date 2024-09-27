@@ -465,7 +465,6 @@ tflite_portable_test_suite()
 #
 # py_proto_library(
 #     name = "op_kernel_set_py_pb2",
-#     api_version = 2,
 #     deps = [":op_kernel_set_proto"],
 # )
 # copybara:uncomment_end
