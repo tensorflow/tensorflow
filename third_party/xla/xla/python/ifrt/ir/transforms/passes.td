@@ -214,6 +214,9 @@ For every CallOp, this pass
      main FuncOp
   3. attaches `tf.aliasing_output` attr to the callee main FuncOp's inputs
      according to `io_aliases`
+  4. attaches `jax.buffer_donor` attr to the callee main FuncOp's inputs
+     according to `donated_input_indices`
+
 For CallOps with the same callee, a different clone will be created for each
 CallOp, even if the populated metadata are the same. User may want to run
 `ifrt-duplicated-callee-elimination` pass to dedup the clones.

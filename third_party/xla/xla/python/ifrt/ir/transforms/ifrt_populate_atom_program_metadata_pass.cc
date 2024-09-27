@@ -159,6 +159,9 @@ mlir::LogicalResult PopulateMetadata(xla::ifrt::CallOp call_op,
     callee_op.setArgAttr(io_alias_as_array[0], "tf.aliasing_output",
                          builder.getI32IntegerAttr(io_alias_as_array[1]));
   }
+  for (const auto idx : call_op.getDonatedInputIndices()) {
+    callee_op.setArgAttr(idx, "jax.buffer_donor", builder.getBoolAttr(true));
+  }
   return mlir::success();
 }
 

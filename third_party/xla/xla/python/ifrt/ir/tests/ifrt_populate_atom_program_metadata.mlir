@@ -153,16 +153,17 @@ module @call_twice_with_different_sharding {
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
-// CHECK-LABEL: @populate_io_alias
-module @populate_io_alias {
-  func.func @main(%arg0: !array) attributes {ifrt.function} {
-    // CHECK: ifrt.Call @[[CALLEE_0:.+]]::@main(%arg0)
-    %0, %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0,1]
-        {io_aliases=[array<i32: 0, 0>]} : (!array) -> !array
+// CHECK-LABEL: @populate_io_alias_and_donation
+module @populate_io_alias_and_donation {
+  func.func @main(%arg0: !array, %arg1: !array) attributes {ifrt.function} {
+    // CHECK: ifrt.Call @[[CALLEE_0:.+]]::@main(%arg0, %arg1)
+    %0, %ctrl_0 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [0,1]
+        {io_aliases=[array<i32: 0, 0>], donated_input_indices=array<i32: 1>}
+        : (!array, !array) -> !array
     // Verify that the module is cloned if io_aliases differ.
-    // CHECK: ifrt.Call @[[CALLEE_1:.+]]::@main(%arg0)
-    %1, %ctrl_1 = ifrt.Call @callee::@main(%arg0) on devices [0,1]
-        : (!array) -> !array
+    // CHECK: ifrt.Call @[[CALLEE_1:.+]]::@main(%arg0, %arg1)
+    %1, %ctrl_1 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [0,1]
+        : (!array, !array) -> !array
     return
   }
 
@@ -188,8 +189,15 @@ module @populate_io_alias {
   // CHECK-DAG:     ifrt.devices = #ifrt<devices[0, 1]>
   // CHECK-DAG:     tf.aliasing_output = 0 : i32
   // CHECK-SAME: }
+  // CHECK: %arg1: tensor<2x2xi32>
+  // CHECK-SAME: {
+  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.devices = #ifrt<devices[0, 1]>
+  // CHECK-DAG:     jax.buffer_donor = true
+  // CHECK-SAME: }
   module @callee attributes {sym_visibility = "private"} {
-    func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    func.func private @main(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
+         -> tensor<2x2xi32> {
       return %arg0: tensor<2x2xi32>
     }
   }
