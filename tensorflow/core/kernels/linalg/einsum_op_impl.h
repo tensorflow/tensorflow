@@ -603,7 +603,7 @@ class EinsumOp : public OpKernel {
     Tensor output;
     OP_REQUIRES_OK(ctx, EinsumHelper::TransposeOperand<Device, T>(
                             ctx, output_inflated, output_permutation, &output));
-    ctx->set_output(0, output);
+    ctx->set_output(0, std::move(output));
   }
 
   string TraceString(const OpKernelContext& ctx, bool verbose) const override {
