@@ -237,6 +237,23 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "allocation_test",
+    srcs = ["allocation_test.cc"],
+    deps = [
+        ":allocation",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "tuning_utils",
     srcs = ["tuning_utils.cc"],
