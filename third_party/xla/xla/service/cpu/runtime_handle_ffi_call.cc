@@ -114,7 +114,7 @@ static absl::Status BuildAndCallFfi(
   }
 
   // For FFI handlers backend config must be a compatible MLIR dictionary.
-  ffi::CallFrameBuilder::FlatAttributesMap attributes;
+  ffi::CallFrameBuilder::AttributesMap attributes;
   if (!backend_config.empty() && backend_config != "{}") {
     // Backend config not empty, so proceed to parse it into an MLIR attribute
     // and build an MLIR compatible map of attributes out of it.

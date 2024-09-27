@@ -79,6 +79,20 @@ limitations under the License.
 #endif
 
 namespace xla {
+
+struct Range {
+  int64_t lo;
+  int64_t hi;
+};
+
+}  // namespace xla
+
+// Register struct types with XLA:FFI to enable automatic decoding from
+// dictionary attributes to structs.
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
+                                      StructMember<int64_t>("hi"));
+
+namespace xla {
 namespace {
 
 class CustomCallTest : public ClientLibraryTestBase {};
@@ -614,12 +628,17 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 //===----------------------------------------------------------------------===//
 
 static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
-                                  absl::Span<const int32_t> i32_arr) {
+                                  absl::Span<const int32_t> i32_arr,
+                                  Range range) {
   if (i32_arr.size() != 4)
     return absl::InternalError("i32_arr size does not match");
 
   if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 || i32_arr[3] != 4)
     return absl::InternalError("i32_arr values do not match");
+
+  if (range.lo != 0 || range.hi != 42) {
+    return absl::InternalError("range values do not match");
+  }
 
   return absl::OkStatus();
 }
@@ -627,7 +646,8 @@ static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
 XLA_FFI_DEFINE_HANDLER(kFfiAttributes, FfiAttributes,
                        ffi::Ffi::Bind()
                            .Ret<ffi::AnyBuffer>()
-                           .Attr<absl::Span<const int32_t>>("i32_arr"));
+                           .Attr<absl::Span<const int32_t>>("i32_arr")
+                           .Attr<Range>("range"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_attributes",
                          PLATFORM, kFfiAttributes);
@@ -636,7 +656,9 @@ TEST_F(CustomCallTest, FfiAttributes) {
   XlaBuilder b(TestName());
   CustomCall(&b, "xla.gpu.ffi_attributes", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {}),
-             /*opaque=*/"{ i32_arr = array<i32: 1, 2, 3, 4> }",
+             /*opaque=*/
+             "{ i32_arr = array<i32: 1, 2, 3, 4>,"
+             "  range = { lo = 0 : i64, hi = 42 : i64 } }",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,

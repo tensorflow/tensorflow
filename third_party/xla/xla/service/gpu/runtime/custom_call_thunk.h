@@ -77,8 +77,8 @@ class CustomCallThunk : public Thunk {
     Shape shape;
   };
 
-  using Attribute = ffi::CallFrameBuilder::FlatAttribute;
-  using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
+  using Attribute = ffi::CallFrameBuilder::Attribute;
+  using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
       ThunkInfo thunk_info, CustomCallTarget call_target,
