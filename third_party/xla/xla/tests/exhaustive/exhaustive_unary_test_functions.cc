@@ -211,6 +211,20 @@ UNARY_TEST(Sin, {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder().abs_err(0).rel_err(2 * eps).build();
       })
+      .CpuArmError(+[](NativeT val) {
+        // Flushes subnormals and minimum positive output to 0.
+        NativeT output = static_cast<NativeT>(std::sin(val));
+        // TODO(b/365622116): Understand why ARM flushes these but x86 doesn't.
+        if (IsSubnormalOrMinNormal(output)) {
+          return ErrorSpec::Builder()
+              .abs_err(std::numeric_limits<NativeT>::min())
+              .build();
+        }
+
+        // This error spec corresponds to a maximum relative error of 2 ULP.
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec::Builder().abs_err(0).rel_err(2 * eps).build();
+      })
       .OutputRangeCheck(
           +[](NativeInputs in, NativeT out) { return !(out < -1 || out > 1); })
       .Run();
@@ -218,6 +232,20 @@ UNARY_TEST(Sin, {
 UNARY_TEST(Tan, {
   TanOp<kT>(this)
       .Error(+[](NativeT) {
+        // This error spec corresponds to a maximum relative error of 4 ULP.
+        NativeT eps = std::numeric_limits<NativeT>::epsilon();
+        return ErrorSpec::Builder().abs_err(0).rel_err(4 * eps).build();
+      })
+      .CpuArmError(+[](NativeT val) {
+        // Flushes positive subnormals and minimum positive output to 0.
+        NativeT output = static_cast<NativeT>(std::tan(val));
+        // TODO(b/365622116): Understand why ARM flushes these but x86 doesn't.
+        if (IsSubnormalOrMinNormal(output)) {
+          return ErrorSpec::Builder()
+              .abs_err(std::numeric_limits<NativeT>::min())
+              .build();
+        }
+
         // This error spec corresponds to a maximum relative error of 4 ULP.
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder().abs_err(0).rel_err(4 * eps).build();
