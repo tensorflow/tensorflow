@@ -195,8 +195,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         // If the otuput cannot overwrite the input, then we have to set the
         // tensor to dyanmic.
         SetTensorToDynamic(output);
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+      } else {
+        TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
+        // The output pointer was set to zero during the call to ResizeTensor.
+        // Since the output aliases the input, set it back.
+        output->data.data = input->data.data;
       }
-      TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
     }
   }
 
