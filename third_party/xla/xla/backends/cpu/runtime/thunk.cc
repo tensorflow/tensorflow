@@ -77,6 +77,8 @@ std::string_view Thunk::KindToString(Kind kind) {
       return "replica-id";
     case Kind::kRngGetAndUpdateState:
       return "rng-get-and-update-state";
+    case Kind::kScatter:
+      return "scatter";
     case Kind::kSort:
       return "sort";
     case Kind::kTopK:

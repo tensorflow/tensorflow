@@ -574,6 +574,35 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
       ComparatorInfo{comparator_function->getName().str()});
 }
 
+absl::StatusOr<IrEmitter2::ScatterInfo> IrEmitter2::EmitScatterFunctor(
+    const HloInstruction* instr) {
+  HloComputation* scatter = instr->to_apply();
+
+  // Find if we already emitted this scatter.
+  auto info = absl::c_find_if(scatters_, [&](const ScatterInfo& info) {
+    return info.name == scatter->name();
+  });
+  if (info != scatters_.end()) return *info;
+
+  // We use simple post-order schedule as we are not emitting a "real"
+  // computation that requires buffer assignment.
+  auto schedule = scatter->MakeInstructionPostOrder();
+
+  // Emit LLVM IR for scatter function. We emit it as a top-level computation
+  // to set external linkage and to get a pointer to compiled function later.
+  TF_ASSIGN_OR_RETURN(llvm::Function * scatter_function,
+                      nested_ir_emitter_->EmitComputation(
+                          scatter, scatter->name(),
+                          /*is_top_level_computation=*/true, schedule,
+                          /*allow_reassociation=*/false));
+
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  scatter_function->setUWTableKind(llvm::UWTableKind::Default);
+
+  return scatters_.emplace_back(ScatterInfo{scatter_function->getName().str()});
+}
+
 //===----------------------------------------------------------------------===//
 // Building HostKernel prototypes.
 //===----------------------------------------------------------------------===//

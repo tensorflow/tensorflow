@@ -886,6 +886,7 @@ cc_library(
         "//xla/backends/cpu/runtime:reduce_scatter_thunk",
         "//xla/backends/cpu/runtime:resource_use",
         "//xla/backends/cpu/runtime:rng_state_thunk",
+        "//xla/backends/cpu/runtime:scatter_thunk",
         "//xla/backends/cpu/runtime:sort_thunk",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:topk_thunk",

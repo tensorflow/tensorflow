@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
+#include "xla/backends/cpu/runtime/scatter_thunk.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
@@ -99,7 +100,7 @@ static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
     const HloModule& module) {
   if (!module.has_schedule()) {
-    return absl::InternalError("HLO module must be scheduled to emit thunks");
+    return Internal("HLO module must be scheduled to emit thunks");
   }
   return EmitHloComputation(module.entry_computation());
 }
@@ -126,9 +127,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
 
   const HloSchedule& schedule = computation->parent()->schedule();
   if (!schedule.is_computation_scheduled(computation)) {
-    return absl::InternalError(
-        absl::StrCat("Computation ", computation->name(),
-                     " must be scheduled to emit thunks"));
+    return Internal("Computation %s must be scheduled to emit thunks",
+                    computation->name());
   }
 
   const HloInstructionSequence& sequence = schedule.sequence(computation);
@@ -245,6 +245,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kTanh:
     case HloOpcode::kXor:
       return EmitElementalKernelThunk(instruction);
+
+    case HloOpcode::kScatter:
+      return EmitScatterThunk(instruction);
 
     case HloOpcode::kSelectAndScatter:
       return EmitSelectAndScatterThunk(instruction);
@@ -665,6 +668,44 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateStateThunk(
   auto* rng_state = Cast<HloRngGetAndUpdateStateInstruction>(instruction);
   return ThunkSequence::Of<RngGetAndUpdateStateThunk>(
       ThunkInfo(instruction), state_buffer, rng_state->delta());
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitScatterThunk(
+    const HloInstruction* instruction) {
+  auto* scatter = Cast<HloScatterInstruction>(instruction);
+
+  TF_ASSIGN_OR_RETURN(auto functor, ir_emitter_.EmitScatterFunctor(scatter));
+
+  std::vector<ScatterThunk::Operand> operands;
+  for (HloInstruction* operand : scatter->scatter_operands()) {
+    TF_ASSIGN_OR_RETURN(auto operand_buffer, GetAllocationSlice(operand));
+    operands.push_back(ScatterThunk::Operand{operand_buffer, operand->shape()});
+  }
+
+  ScatterThunk::ScatterIndices scatter_indices;
+  TF_ASSIGN_OR_RETURN(scatter_indices.slice,
+                      GetAllocationSlice(scatter->scatter_indices()));
+  scatter_indices.shape = scatter->scatter_indices()->shape();
+
+  std::vector<ScatterThunk::Update> updates;
+  for (HloInstruction* update : scatter->scatter_updates()) {
+    TF_ASSIGN_OR_RETURN(auto update_buffer, GetAllocationSlice(update));
+    updates.push_back(ScatterThunk::Update{update_buffer, update->shape()});
+  }
+
+  std::vector<ScatterThunk::Result> results;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachLeafShapeWithStatus(
+      scatter->shape(), [&](const Shape& shape, const ShapeIndex& index) {
+        TF_ASSIGN_OR_RETURN(auto result_buffer,
+                            GetAllocationSlice(scatter, index));
+        results.push_back(ScatterThunk::Result{result_buffer, shape});
+        return absl::OkStatus();
+      }));
+
+  return ThunkSequence::Of<ScatterThunk>(
+      ThunkInfo(instruction), std::move(operands), std::move(scatter_indices),
+      std::move(updates), std::move(results),
+      scatter->scatter_dimension_numbers(), std::move(functor).name);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitStochasticConvertThunk(

@@ -149,6 +149,7 @@ class CpuExecutable : public Executable {
     explicit FunctionRegistry(SimpleOrcJIT* jit);
     absl::StatusOr<Kernel> FindKernel(std::string_view name) final;
     absl::StatusOr<Comparator> FindComparator(std::string_view name) final;
+    absl::StatusOr<Scatter> FindScatter(std::string_view name) final;
 
    private:
     std::string Mangle(std::string_view name);

@@ -88,6 +88,7 @@ class Thunk {
     kReduceScatter,
     kReplicaId,
     kRngGetAndUpdateState,
+    kScatter,
     kSort,
     kTopK,
     kWhile,
@@ -143,23 +144,28 @@ class Thunk {
   //
   // 1. Host kernels that are executed by a KernelThunk via StreamExecutor APIs.
   // 2. Comparator functions required by a SortThunk.
+  // 3. Scatter functors required by a ScatterThunk.
   //
   // At run time this is typically backed by an LLVM JIT compiler that compiles
   // LLVM IR to function pointers on demand. At compile time, together with
   // thunks themselves, we emit LLVM module(s) and metadata describing all the
   // functions required for running emitted thunks (number of threads, etc.).
   class FunctionRegistry {
+    // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator and
+    // scatter functions, and we use legacy compute function ABI. We should emit
+    // a much simpler comparator function that only takes compared values.
+    template <typename ResultType>
+    using ComputationType = void (*)(ResultType*, /*run_options=*/const void*,
+                                     /*params=*/const void**,
+                                     /*buffer_table=*/const void*,
+                                     /*status=*/const void*,
+                                     /*prof_counters=*/const void*);
+
    public:
     using Kernel = SE_HOST_Kernel*;
 
-    // TODO(ezhulenev): We rely on legacy IrEmitter to emit comparator
-    // functions, and we use legacy compute function ABI. We should emit a
-    // much simpler comparator function that only takes compared values.
-    using Comparator = void (*)(bool*, /*run_options=*/const void*,
-                                /*params=*/const void**,
-                                /*buffer_table=*/const void*,
-                                /*status=*/const void*,
-                                /*prof_counters=*/const void*);
+    using Comparator = ComputationType<bool>;
+    using Scatter = ComputationType<void>;
 
     virtual ~FunctionRegistry() = default;
 
@@ -169,6 +175,10 @@ class Thunk {
 
     virtual absl::StatusOr<Comparator> FindComparator(std::string_view name) {
       return Unimplemented("Comparator functions are not supported");
+    }
+
+    virtual absl::StatusOr<Scatter> FindScatter(std::string_view name) {
+      return Unimplemented("Scatter functions are not supported");
     }
   };
 

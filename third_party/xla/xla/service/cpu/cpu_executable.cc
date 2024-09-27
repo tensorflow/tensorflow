@@ -116,6 +116,20 @@ absl::StatusOr<FunctionRegistry::Comparator> FunctionRegistry::FindComparator(
   return reinterpret_cast<Comparator>(sym->getAddress().getValue());
 }
 
+absl::StatusOr<FunctionRegistry::Scatter> FunctionRegistry::FindScatter(
+    std::string_view name) {
+  VLOG(3) << "Find scatter with a name " << name;
+
+  llvm::Expected<llvm::orc::ExecutorSymbolDef> sym =
+      jit_->FindCompiledSymbol(Mangle(name));
+  if (!sym) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Can't resolve scatter with a name ", name,
+                     " in the jit compiled module."));
+  }
+  return reinterpret_cast<Scatter>(sym->getAddress().getValue());
+}
+
 se::DeviceMemoryBase ConstantAllocation::AsDeviceMemoryBase() const {
   if (auto* empty = std::get_if<std::monostate>(&data)) {
     return se::DeviceMemoryBase();

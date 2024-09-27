@@ -112,10 +112,17 @@ class IrEmitter2 {
     std::string name;
   };
 
+  // Emitted scatter function information (for scatter operation).
+  struct ScatterInfo {
+    std::string name;
+  };
+
   // Returns all the kernels emitted so far via this emitter.
   absl::Span<const KernelInfo> kernels() const { return kernels_; }
 
   absl::Span<const ComparatorInfo> comparators() const { return comparators_; }
+
+  absl::Span<const ScatterInfo> scatters() const { return scatters_; }
 
   // Emits an elemental host kernel for the given HLO instruction.
   absl::StatusOr<KernelInfo> EmitElementalHostKernel(
@@ -160,6 +167,9 @@ class IrEmitter2 {
   // Emits a comparator function for the given sort instruction.
   absl::StatusOr<ComparatorInfo> EmitSortComparator(
       const HloInstruction* instr);
+
+  // Emits a scatter function for the given scatter instruction.
+  absl::StatusOr<ScatterInfo> EmitScatterFunctor(const HloInstruction* instr);
 
  private:
   class ElementalIrEmitter;
@@ -280,6 +290,7 @@ class IrEmitter2 {
   // Keeps track of all the functions emitted so far.
   std::vector<KernelInfo> kernels_;
   std::vector<ComparatorInfo> comparators_;
+  std::vector<ScatterInfo> scatters_;
 };
 
 }  // namespace xla::cpu

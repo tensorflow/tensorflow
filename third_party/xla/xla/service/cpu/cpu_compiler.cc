@@ -476,6 +476,13 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+  // Thunk runtime uses interpreter for executing compiled thunks and very
+  // inefficient in executing small while loops. We suppress some of the
+  // expansion passes if we know that we can't execute expanded IR efficiently
+  // and instead rely on custom thunks.
+  bool is_thunk_runtime =
+      module->config().debug_options().xla_cpu_use_thunk_runtime();
+
   HloPassPipeline pre_sharding_pipeline("pre-spmd-pipeline");
   // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
   pre_sharding_pipeline.AddPass<BatchedGatherScatterNormalizer>();
@@ -656,7 +663,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   if (!is_mlir_compile) {
     pipeline.AddPass<SelectAndScatterExpander>();
-    pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
+    // When compiling for thunks runtime, we are targeting a scatter thunk, so
+    // we don't need to expand the scatter into a while loop.
+    pipeline.AddPass<ScatterExpander>(
+        is_thunk_runtime ? ScatterExpander::kEliminateSimpleScatters
+                         : ScatterExpander::kEliminateAllScatters);
   }
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
@@ -1241,6 +1252,7 @@ namespace {
 struct CompiledSymbolsPart {
   std::vector<IrEmitter2::KernelInfo> kernels;
   std::vector<IrEmitter2::ComparatorInfo> comparators;
+  std::vector<IrEmitter2::ScatterInfo> scatters;
 };
 }  // namespace
 
@@ -1267,12 +1279,23 @@ static CompiledSymbolsPart CollectCompiledSymbolsPart(
     return std::nullopt;
   };
 
+  auto find_scatter =
+      [&](llvm::StringRef name) -> std::optional<IrEmitter2::ScatterInfo> {
+    for (auto& s : ir_emitter.scatters()) {
+      if (s.name == name) return s;
+    }
+    return std::nullopt;
+  };
+
   for (auto& f : module.functions()) {
     if (auto kernel = find_kernel(f.getName())) {
       syms.kernels.push_back(*kernel);
     }
     if (auto comparator = find_comparator(f.getName())) {
       syms.comparators.push_back(*comparator);
+    }
+    if (auto scatter = find_scatter(f.getName())) {
+      syms.scatters.push_back(*scatter);
     }
   }
 
@@ -1457,10 +1480,12 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // We define the number of module parts based on the total number of
-    // compiled functions (kernels and comparators) that are called from thunks,
-    // and the maximum number of parts that we want to split the module into.
-    size_t num_compiled_functions =
-        ir_emitter2.kernels().size() + ir_emitter2.comparators().size();
+    // compiled functions (kernels, comparators and scatters) that are called
+    // from thunks, and the maximum number of parts that we want to split the
+    // module into.
+    size_t num_compiled_functions = ir_emitter2.kernels().size() +
+                                    ir_emitter2.comparators().size() +
+                                    ir_emitter2.scatters().size();
     size_t num_parts =
         std::min(num_compiled_functions, parallel_codegen_split_count);
 
@@ -1478,19 +1503,23 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     // issue compile tasks in parallel without any interference.
     std::vector<CompiledSymbolsPart> compiled_parts;
 
-    VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
-            << " kernels and " << ir_emitter2.comparators().size()
-            << " comparators";
+    VLOG(2) << absl::StreamFormat(
+        "Compile LLVM module %s: #kernels=%d #comparators=%d #scatters=%d",
+        module->name(), ir_emitter2.kernels().size(),
+        ir_emitter2.comparators().size(), ir_emitter2.scatters().size());
 
     if (HasLargeConstants(*llvm_module)) {
-      VLOG(3) << "Skip parallel compilation due to large constants";
+      VLOG(3) << absl::StreamFormat(
+          "Skip module %s parallel compilation due to large constants",
+          module->name());
       num_parts = 1;
     }
 
     if (num_parts > 1) {
-      VLOG(3) << "Split LLVM module into " << num_parts
-              << " parts before codegen to enable parallel compilation"
-              << " (max split count: " << parallel_codegen_split_count << ")";
+      VLOG(3) << absl::StreamFormat(
+          "Split LLVM module %s into %d parts before codegen to enable "
+          "parallel compilation (max split count: %d)",
+          module->name(), num_parts, parallel_codegen_split_count);
 
       TraceMe trace([&] {
         return TraceMeEncode("SplitModule", {{"num_parts", num_parts}});
@@ -1515,8 +1544,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       llvm_context.reset();
 
     } else {
-      VLOG(3) << "Compile LLVM module without splitting (max split count: "
-              << parallel_codegen_split_count << ")";
+      VLOG(3) << absl::StreamFormat(
+          "Compile LLVM module %s without splitting (max split count: %d)",
+          module->name(), parallel_codegen_split_count);
       compiled_parts.push_back(
           CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
       cantFail((*jit)->AddModule(llvm::orc::ThreadSafeModule(
@@ -1537,7 +1567,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
         return TraceMeEncode("CpuCompiler::Codegen",
                              {{"part", part},
                               {"num_kernels", symbols.kernels.size()},
-                              {"num_comparators", symbols.comparators.size()}});
+                              {"num_comparators", symbols.comparators.size()},
+                              {"num_scatters", symbols.scatters.size()}});
       });
 
       for (const auto& kernel : symbols.kernels) {
@@ -1559,6 +1590,15 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
         }
       }
 
+      for (const auto& scatter : symbols.scatters) {
+        TraceMe trace(
+            [&] { return TraceMeEncode("Scatter", {{"name", scatter.name}}); });
+        if (auto s = (*jit)->FindCompiledSymbol(mangle(scatter.name)); !s) {
+          return Internal("Failed to find compiled symbol for scatter %s",
+                          scatter.name);
+        }
+      }
+
       return absl::OkStatus();
     };
 
@@ -1569,6 +1609,9 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
     }
     for (const auto& comparator : ir_emitter2.comparators()) {
       (*jit)->AddKernelSymbol(mangle(comparator.name));
+    }
+    for (const auto& scatter : ir_emitter2.scatters()) {
+      (*jit)->AddKernelSymbol(mangle(scatter.name));
     }
 
     // Schedule compilation of LLVM module parts in parallel.
@@ -2104,6 +2147,9 @@ CpuExecutableAotCompilationResult::LoadExecutable(
     for (const auto& comparator : ir_emitter2.comparators()) {
       (*jit)->AddKernelSymbol(mangle(comparator.name));
     }
+    for (const auto& comparator : ir_emitter2.scatters()) {
+      (*jit)->AddKernelSymbol(mangle(comparator.name));
+    }
 
     // Lookup all kernel functions by name in the loaded object file.
     for (const auto& kernel : ir_emitter2.kernels()) {
@@ -2117,6 +2163,13 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       if (auto s = (*jit)->FindCompiledSymbol(mangle(comparator.name)); !s) {
         return Internal("Failed to find compiled symbol for comparator %s",
                         comparator.name);
+      }
+    }
+
+    for (const auto& scatter : ir_emitter2.scatters()) {
+      if (auto s = (*jit)->FindCompiledSymbol(mangle(scatter.name)); !s) {
+        return Internal("Failed to find compiled symbol for scatter %s",
+                        scatter.name);
       }
     }
 

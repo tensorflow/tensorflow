@@ -13,20 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tests/test_utils.h"
 #include "xla/types.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -1048,7 +1059,7 @@ ENTRY main {
   ErrorSpec spec(/*aabs=*/0);
 
   // We pass -NaN in the input, but the output might contain +NaN instead.  This
-  // is fine; we don't gurantee that XLA preserves the body of NaNs.
+  // is fine; we don't guarantee that XLA preserves the body of NaNs.
   spec.all_nans_are_equivalent = true;
 
   EXPECT_TRUE(
