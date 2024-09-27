@@ -21,6 +21,7 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
+    "if_rocm_is_configured",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -366,7 +367,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         cuda_deps = []
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
-    deps = deps + if_cuda(cuda_deps)
+    deps = deps + if_cuda_or_rocm(cuda_deps)
     if "default_copts" in kwargs:
         copts = kwargs["default_copts"] + copts
         kwargs.pop("default_copts", None)
@@ -374,8 +375,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         deps = deps + if_cuda([
             clean_dep("//xla/tsl/cuda:cudart"),
             "@local_config_cuda//cuda:cuda_headers",
-        ]) + if_rocm([
-            "@local_config_rocm//rocm:hip",
+        ]) + if_rocm_is_configured([
             "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),

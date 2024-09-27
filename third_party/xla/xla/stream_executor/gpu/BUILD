@@ -498,11 +498,7 @@ cc_library(
         "redzone_allocator_kernel.h",
         "redzone_allocator_kernel_cuda.cc",
     ],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "manual",
-    ],
+    tags = ["manual"],
     deps = [
         ":gpu_asm_opts",
         "//xla/stream_executor",
@@ -600,12 +596,9 @@ xla_test(
 
 cc_library(
     name = "gpu_cudamallocasync_allocator",
-    srcs = ["gpu_cudamallocasync_allocator.cc"],
-    hdrs = ["gpu_cudamallocasync_allocator.h"],
-    tags = [
-        "cuda-only",
-        "gpu",
-    ],
+    srcs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.cc"]),
+    hdrs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.h"]),
+    tags = ["gpu"],
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_h",
