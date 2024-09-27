@@ -31,9 +31,10 @@ ExhaustiveOpTestTraits<T, N>::FallbackErrorSpecGen() {
   } else if constexpr (N == 2) {
     return +[](NativeT, NativeT) { return ErrorSpec{}; };
   } else {
-    static_assert(false,
-                  "ExhaustieOpTestTraits<T, N>::DefaultErrorSpecGen() is only "
-                  "implemented for N == 1 and N == 2.");
+    static_assert(
+        N == 1 || N == 2,
+        "ExhaustiveOpTestTraits<T, N>::FallbackErrorSpecGen() is only "
+        "implemented for N == 1 and N == 2.");
   }
 }
 
