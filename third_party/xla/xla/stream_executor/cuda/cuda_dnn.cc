@@ -5240,10 +5240,12 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
       .set_uid(next_uid());
   amax_s->set_output(true)
       .set_dim({1, 1, 1, 1})
+      .set_stride({1, 1, 1, 1})
       .set_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_uid(next_uid());
   amax_o->set_output(true)
       .set_dim({1, 1, 1, 1})
+      .set_stride({1, 1, 1, 1})
       .set_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_uid(next_uid());
 
