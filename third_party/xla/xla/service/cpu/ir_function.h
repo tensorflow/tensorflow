@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_IR_FUNCTION_H_
 #define XLA_SERVICE_CPU_IR_FUNCTION_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"
 

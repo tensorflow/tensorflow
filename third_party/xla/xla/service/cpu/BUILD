@@ -153,13 +153,16 @@ cc_library(
         "//xla:util",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:shaped_buffer",
+        "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:notification",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -179,15 +182,18 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service:compiler",
         "//xla/service:generic_transfer_manager",
+        "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -198,6 +204,7 @@ cc_library(
     hdrs = ["buffer_info_util.h"],
     deps = [
         "//xla:cpu_function_runtime",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/types:span",
@@ -580,6 +587,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_dataflow_analysis",
         "//xla/service:hlo_execution_profile",
+        "//xla/service:hlo_profile_printer_data_cc",
         "//xla/service:hlo_value",
         "//xla/service:logical_buffer",
         "//xla/service:maybe_owning_device_memory",
@@ -647,6 +655,7 @@ cc_library(
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
@@ -831,10 +840,14 @@ cc_library(
         "//xla:types",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -844,11 +857,14 @@ cc_library(
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
         ":ir_emission_utils",
+        "//xla:shape_util",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_loop",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Core",
     ],
 )
@@ -975,6 +991,7 @@ xla_cc_binary(
     deps = [
         "//xla:array4d",
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/client",
@@ -983,6 +1000,7 @@ xla_cc_binary(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
+        "//xla/service",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:logging",
@@ -1071,9 +1089,11 @@ cc_library(
     ],
     deps = [
         ":vector_support_library",
+        "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -1091,6 +1111,7 @@ cc_library(
         "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
@@ -1109,6 +1130,7 @@ cc_library(
         "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
@@ -1123,6 +1145,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/service:custom_call_status_internal",
+        "//xla/service:custom_call_status_public_headers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
@@ -1237,8 +1261,10 @@ cc_library(
         "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3:eigen3_test",
         "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
@@ -1253,8 +1279,10 @@ cc_library(
         "//xla/backends/cpu/runtime:convolution_thunk_internal",
         "//xla/tsl/framework/contraction:eigen_contraction_kernel",
         "//xla/tsl/framework/convolution:eigen_helpers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
+        "@eigen_archive//:eigen3:eigen3_test",
         "@local_tsl//tsl/platform:mutex",  # build_cleaner: keep
     ],
 )
@@ -1332,6 +1360,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@eigen_archive//:eigen3",
     ],
@@ -1345,6 +1374,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
 )
@@ -1358,6 +1388,8 @@ cc_library(
     deps = [
         "//xla:executable_run_options",
         "//xla/service:custom_call_status_internal",
+        "//xla/service:custom_call_status_public_headers",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1411,6 +1443,7 @@ xla_cc_test(
         "//xla:types",
         "//xla/client:local_client",
         "//xla/service:custom_call_status_internal",
+        "//xla/service:custom_call_status_public_headers",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
@@ -1426,7 +1459,9 @@ xla_cc_test(
     tags = ["not_run:arm"],
     deps = [
         ":cpu_instruction_fusion",
+        "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:transpose_folding",
@@ -1435,6 +1470,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -1460,11 +1496,18 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/service:fusion_node_indexing_evaluation",
         "//xla/service:instruction_fusion",
         "//xla/service/llvm_ir:fused_ir_emitter",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -1477,7 +1520,9 @@ cc_library(
         ":target_machine_features",
         "//xla:shape_util",
         "//xla:window_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Core",
     ],
 )
@@ -1487,10 +1532,13 @@ xla_cc_test(
     srcs = ["ir_emission_utils_test.cc"],
     deps = [
         ":ir_emission_utils",
+        ":target_machine_features",
         ":target_machine_features_fake",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1507,7 +1555,10 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_layout",
         "//xla/service:layout_assignment",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
     ],
@@ -1519,6 +1570,7 @@ xla_cc_test(
     srcs = ["cpu_layout_assignment_test.cc"],
     deps = [
         ":cpu_layout_assignment",
+        ":target_machine_features",
         ":target_machine_features_fake",
         "//xla:literal",
         "//xla:shape_layout",
@@ -1534,8 +1586,12 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1553,6 +1609,9 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -1562,10 +1621,15 @@ xla_cc_test(
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
         ":conv_canonicalization",
+        ":target_machine_features",
         ":target_machine_features_fake",
+        "//xla:array4d",
+        "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -1578,6 +1642,7 @@ cc_library(
     hdrs = ["shape_partition.h"],
     deps = [
         "//xla:shape_util",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -1587,10 +1652,14 @@ xla_cc_test(
     srcs = ["shape_partition_test.cc"],
     deps = [
         ":shape_partition",
+        "//xla:shape_util",
         "//xla:test_helpers",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1646,6 +1715,7 @@ cc_library(
     hdrs = ["cpu_options.h"],
     deps = [
         "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1687,10 +1757,13 @@ xla_cc_test(
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
     deps = [
         ":ir_emission_utils",
+        ":target_machine_features",
         ":target_machine_features_fake",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -2016,6 +2089,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

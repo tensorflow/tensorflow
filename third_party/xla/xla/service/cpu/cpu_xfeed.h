@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 
 // This provides a lower level API than TransferManager that does not depend on
 // StreamExecutor. It is intended to be used by callers that do not want to use

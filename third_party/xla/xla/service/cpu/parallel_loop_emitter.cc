@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "xla/service/cpu/parallel_loop_emitter.h"
 
+#include "absl/log/check.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "xla/layout_util.h"
+#include "xla/service/cpu/ir_emission_utils.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace cpu {
