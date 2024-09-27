@@ -60,6 +60,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
       sink_.push_back(i);
     }
   }
+
   // Erase redundant edges between nodes.
   int64_t num_erased_edges = RunTransitiveReductionAndUpdatePriorities();
 
@@ -69,7 +70,7 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
     is_sequential_ &= (absl::c_count(nodes_defs_[i].in_edges, i - 1) != 0);
   }
 
-  // Maybe mark execution as sequential if all thunks use small buffers.
+  // Prefer sequential execution if all thunks use small buffers.
   auto uses_small_buffers = [&](const std::unique_ptr<Thunk>& thunk) {
     return absl::c_all_of(thunk->buffer_uses(), [&](const BufferUse& use) {
       return use.slice().size() <= options.execute_sequential_buffer_threshold;
@@ -78,6 +79,10 @@ ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
 
   bool small_buffers = absl::c_all_of(thunk_sequence_, uses_small_buffers);
   is_sequential_ |= small_buffers;
+
+  // Prefer sequential execution for small thunk sequences.
+  is_sequential_ |=
+      thunk_sequence_.size() <= options.execute_sequential_num_thunks_threshold;
 
   VLOG(2) << absl::StreamFormat(
       "Constructed ThunkExecutor with %d nodes: #source_nodes=%d "
@@ -159,8 +164,10 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
     return thunk_sequence_[0]->Execute(params);
   }
 
-  // If thunk sequence dependencies form a sequential execution graph, we skip
-  // expensive async execution and simply run thunks one by one.
+  // When we choose sequential execution strategy (we rely on heuristics and
+  // a cost model to make the decision), we skip expensive async execution and
+  // simply run thunks one by one. This minimizes runtime overheads from small
+  // XLA programs with many cheap operations.
   if (is_sequential_) {
     return ExecuteSequential(params);
   }

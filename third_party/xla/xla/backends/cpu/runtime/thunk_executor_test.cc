@@ -213,10 +213,8 @@ AddI32Thunk::ResourceUses AddI32Thunk::resource_uses() const {
 }
 
 static ThunkExecutor::Options OptionsForTest() {
-  // Override small buffers threshold to make sure that we test all execution
-  // paths, because in test we always use small buffers below the default
-  // threshold of `512`.
-  return ThunkExecutor::Options{/*execute_sequential_buffer_threshold=*/0};
+  return ThunkExecutor::Options{/*execute_sequential_buffer_threshold=*/0,
+                                /*execute_sequential_num_thunks_threshold=*/0};
 }
 
 TEST(ThunkExecutorTest, FifoReadyQueueTest) {
