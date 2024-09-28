@@ -20,7 +20,12 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
