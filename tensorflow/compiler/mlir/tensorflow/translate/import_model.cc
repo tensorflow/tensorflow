@@ -2810,26 +2810,6 @@ Status GraphDefImporter::GetControlRetsFromGraph(
   return absl::OkStatus();
 }
 
-// Stateful helper class to import a TensorFlow model expressed in SavedModel
-// into an MLIR Module.
-class SavedModelObjectGraphImporter : public ImporterBase {
- public:
-  // Main entry point: converts all functions in the given meta graph to an MLIR
-  // Module.
-  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
-      SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, MLIRImportOptions options);
-
- private:
-  explicit SavedModelObjectGraphImporter(
-      const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const GraphImportConfig& specs, mlir::ModuleOp module,
-      std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      NameUniquifier* function_name_uniquifier)
-      : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name,
-                     function_name_uniquifier) {}
-};
-
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
  public:
@@ -3585,11 +3565,9 @@ Status CreateSavedModelIR(
   return absl::OkStatus();
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
-                                       absl::Span<std::string> exported_names,
-                                       mlir::MLIRContext* context,
-                                       MLIRImportOptions import_options) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelObjectGraph(
+    SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
+    mlir::MLIRContext* context, MLIRImportOptions import_options) {
   LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
@@ -4375,8 +4353,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, MLIRImportOptions options) {
-  return SavedModelObjectGraphImporter::Convert(saved_model, exported_names,
-                                                context, options);
+  return ConvertSavedModelObjectGraph(saved_model, exported_names, context,
+                                      options);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(
