@@ -446,7 +446,6 @@ tsl_cc_test(
         ":random_inputstream",
         "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",

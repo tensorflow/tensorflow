@@ -36,7 +36,7 @@ class ReadOnceInputStream : public InputStreamInterface {
  public:
   ReadOnceInputStream() : start_(true) {}
 
-  virtual absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) {
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     if (bytes_to_read < 11) {
       return errors::InvalidArgument("Not reading all bytes: ", bytes_to_read);
     }
