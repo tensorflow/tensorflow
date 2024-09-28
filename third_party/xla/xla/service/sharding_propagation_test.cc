@@ -12195,5 +12195,38 @@ ENTRY main {
               op::Sharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardingPropagationTest, ReplicateRngBitGeneratorSeed) {
+  const char* const hlo_string = R"(
+HloModule module
+apply_or {
+  x = u64[] parameter(0)
+  y = u64[] parameter(1)
+  ROOT x_or_y = or(x, y)
+}
+ENTRY main {
+  p = s32[2,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  up = u64[2,2] convert(p)
+  i = u64[] constant(0)
+  seed = u64[2] reduce(up, i), dimensions={1}, to_apply=apply_or
+  rbg = u32[2048,4096] rng-bit-generator(seed), algorithm=rng_default
+  ROOT s = u32[2048,4096]{1,0} custom-call(rbg), custom_call_target="Sharding", sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "seed");
+  // Check sharding is correctly propagated.
+  EXPECT_TRUE(instruction->sharding().IsReplicated());
+}
+
 }  // namespace
 }  // namespace xla

@@ -2714,6 +2714,10 @@ bool ShardingPropagation::InferShardingFromUsers(
   bool improved_sharding = false;
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
+    if (user->opcode() == HloOpcode::kRngBitGenerator) {
+      instruction->set_sharding(HloSharding::Replicate());
+      return true;
+    }
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(*instruction, *user,
                                                  aggressiveness, is_spmd,
