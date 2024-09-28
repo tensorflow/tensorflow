@@ -42,7 +42,7 @@ namespace libexport {
 class TFPackage {
  public:
   // Load a SavedModel, parsing the associated protobuf for later access.
-  static tensorflow::StatusOr<TFPackage> Load(const std::string& path);
+  static absl::StatusOr<TFPackage> Load(const std::string& path);
 
   // Reads and returns a checkpoint key associated with a variable.
   //
@@ -53,7 +53,7 @@ class TFPackage {
   // checkpoint files by "checkpoint keys".  These keys along with dtype and
   // shape / slice information allow RestoreV2 to look up a variable's value in
   // the SavedModel and restore it into a tensor.
-  tensorflow::StatusOr<std::string> GetVariableCheckpointKey(int index);
+  absl::StatusOr<std::string> GetVariableCheckpointKey(int index);
 
   // Retrieves the object graph from the SavedModel.
   //
@@ -74,8 +74,7 @@ class TFPackage {
   // Since we may need to load many constants, we create a hash map of these
   // names to their corresponding nodes at load time in order to look them up
   // in constant time.
-  tensorflow::StatusOr<const tensorflow::NodeDef*> GetGraphDefNode(
-      std::string name);
+  absl::StatusOr<const tensorflow::NodeDef*> GetGraphDefNode(std::string name);
 
   // Returns a list of function defs in the SavedModel.
   const protobuf::RepeatedPtrField<FunctionDef>& GetFunctionDefs();
