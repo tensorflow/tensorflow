@@ -55,7 +55,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
 
     mutex_lock l(mu_);
     table_[key_val] = value_val;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Find(const Tensor& key, Tensor* value, const Tensor& default_value) {
