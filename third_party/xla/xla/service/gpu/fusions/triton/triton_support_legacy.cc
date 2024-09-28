@@ -122,14 +122,7 @@ CodegenDecision IsInstructionSupportsDataTypes(
     const auto operand_type = operand->shape().element_type();
     switch (instr.opcode()) {
       case HloOpcode::kConvert:
-        // TODO(b/358580281): remove DebugOptions from this function after
-        // enabling int4 in Triton GEMM.
-        if (operand_type == S4 && instr.GetModule()
-                                      ->config()
-                                      .debug_options()
-                                      .xla_gpu_enable_triton_gemm_int4()) {
-          continue;
-        }
+        if (operand_type == S4) continue;
         [[fallthrough]];
       default:
         if (!IsTritonSupportedDataType(operand_type, gpu_version)) {

@@ -1216,14 +1216,6 @@ absl::StatusOr<Value> EmitScope(
     Value result;
     if (hlo->opcode() == HloOpcode::kConvert &&
         hlo->operand(0)->shape().element_type() == S4) {
-      if (!hlo->GetModule()
-               ->config()
-               .debug_options()
-               .xla_gpu_enable_triton_gemm_int4()) {
-        return absl::UnimplementedError(
-            "Int4 support is not enabled in the debug options.");
-      }
-
       TF_ASSIGN_OR_RETURN(
           auto unpacked, EmitUnpackInt4(b, hlo, side, values[hlo->operand(0)]));
       std::vector<Value> operands({unpacked});
@@ -3058,15 +3050,6 @@ absl::Status CreateInternalError(std::string_view message,
   return absl::InternalError(err);
 }
 
-absl::Status DoSupportType(const DebugOptions& debug_options,
-                           PrimitiveType type) {
-  if (type == S4 && !debug_options.xla_gpu_enable_triton_gemm_int4()) {
-    return absl::FailedPreconditionError(
-        "Int4 support is not enabled in the debug options.");
-  }
-  return absl::OkStatus();
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -3088,7 +3071,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     PrimitiveType type = p->shape().element_type();
-    TF_RETURN_IF_ERROR(DoSupportType(debug_options, type));
     Type ir_type;
     if (type == U16) {
       ir_type = b.getI16Type();

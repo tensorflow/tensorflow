@@ -949,9 +949,6 @@ message DebugOptions {
   // If enabled, uses the libnvjitlink library for PTX compilation and linking
   bool xla_gpu_enable_libnvjitlink = 319;
 
-  // If enabled, generates triton gemm kernels for int4 inputs.
-  bool xla_gpu_enable_triton_gemm_int4 = 320;
-
   // If true, XLA will wrap `dot` operations into async computations in an
   // effort to parallelize matrix operations.
   bool xla_gpu_async_dot = 321;
@@ -1005,7 +1002,8 @@ message DebugOptions {
   // xla_gpu_graph_level
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206;
+  // xla_gpu_enable_triton_gemm_int4
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206, 320;
 }
 
 // Contains flags which affects the GPU compilation result.

@@ -285,8 +285,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
 
-  opts.set_xla_gpu_enable_triton_gemm_int4(true);
-
   opts.set_xla_gpu_enable_pgle_accuracy_checker(false);
 
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
@@ -1923,11 +1921,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Limit for the number of kernel configurations (plans) to use during "
       "autotuning of cuDNN GEMM fusions."));
 
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_triton_gemm_int4",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm_int4),
-      debug_options->xla_gpu_enable_triton_gemm_int4(),
-      "Experimental: Enable Triton gemm for int4 inputs."));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_gemm_int4",
+                                 noop_flag_setter<bool>, true,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(
       tsl::Flag("xla_gpu_async_dot",
                 bool_setter_for(&DebugOptions::set_xla_gpu_async_dot),
