@@ -18,3 +18,23 @@ If that's not what you're looking for here are some links:
     build. If you need a stand alone build
     [see the C API](https://www.tensorflow.org/install/lang_c).
 *   This directory is not actively maintained.
+
+
+
+# Sentiment Analysis with TensorFlow
+
+In this example, a TensorFlow-based Logistic Regression model is used to classify text from the 20 Newsgroups dataset into four categories.
+
+### Running the Script
+
+How to run sentiment analysis model:
+
+1. Ensure to install the required dependencies:
+
+   pip install -r requirements.txt
+
+2. Run the script:
+
+   python tensorflow/examples/sentiment_analysis.py
+
+This will load the dataset, preprocess the data using TF-IDF vectorizer, train the model, and print the test accuracy.
