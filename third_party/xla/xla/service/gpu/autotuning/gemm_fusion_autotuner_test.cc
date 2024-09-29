@@ -105,7 +105,7 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module = nullptr;
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
@@ -145,7 +145,7 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module = nullptr;
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
