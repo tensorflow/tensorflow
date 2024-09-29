@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/string_view.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/events_writer.h"
-#include "tensorflow/python/lib/core/pybind11_absl.h"
 #include "tensorflow/python/lib/core/pybind11_proto.h"
-#include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace py = pybind11;
 
