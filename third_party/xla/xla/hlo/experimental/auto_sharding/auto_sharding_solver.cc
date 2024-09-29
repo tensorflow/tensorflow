@@ -875,11 +875,14 @@ AutoShardingSolverResult SolveAndExtractSolution(
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
     LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
                   "likely a bug and should be reported.";
-    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+    return AutoShardingSolverResult(absl::InternalError("Invalid MIP."),
                                     /*skip_auto_sharding=*/false);
-  } else if (status != operations_research::MPSolver::OPTIMAL) {
+  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
+    LOG(WARNING) << "Solver timeout; no solution was produced";
     return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
                                     /*skip_auto_sharding=*/true);
+  } else if (status != operations_research::MPSolver::OPTIMAL) {
+    LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
   }
 
   // Fingerprint the model & solution (useful when checking for determinism).
