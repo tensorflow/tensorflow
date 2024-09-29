@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace mlir {
 namespace odml {
