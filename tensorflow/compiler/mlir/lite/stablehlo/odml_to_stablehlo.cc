@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
