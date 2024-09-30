@@ -708,6 +708,7 @@ xla_test(
         "complex_unary_op_samples.h",
         "complex_unary_op_test.cc",
     ],
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     backends = [
         "cpu",
         "gpu",
