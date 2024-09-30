@@ -620,6 +620,54 @@ ENTRY main {
   // and corresponds to 4 warps.
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
 }
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       NumberOfWarpsDependsOnLargestLiveTileSize) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+fusion_computation {
+  param_0 = f32[1,4096] parameter(0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[1] reduce(param_0, c0), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[1,4096] parameter(0)
+  ROOT fusion = f32[1] fusion(param_0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(
+          *fusion_adaptor, &mlir_context_,
+          /*emitter_specific_constraints_builder=*/nullptr);
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      std::get<SymbolicTileAnalysis>(analysis_or_error)
+          .ComputeTiledHloInstructions(/*tile_parameters=*/{1}));
+
+  LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
+      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
+  EXPECT_EQ(launch_dimensions.num_blocks(), 1);
+
+  // The largest tile size is 1 * 4096, for which our implementation recommends
+  // using 4 warps.
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
+}
+
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
  public:
   void CompareFlopsModels(absl::string_view hlo_module_string) {
