@@ -39,6 +39,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/distributed/topology_util.h"
@@ -994,6 +995,23 @@ TEST_F(ClientServerTest, KeyValueDelete_Directory) {
   auto kvs = client->KeyValueDirGet("test_dir/");
   TF_ASSERT_OK(kvs.status());
   EXPECT_THAT(kvs.value(), IsEmpty());
+}
+
+TEST_F(ClientServerTest, UseCompression) {
+  int port = tsl::testing::PickUnusedPortOrDie();
+  StartService(/*num_nodes=*/1, /*service_options=*/{},
+               absl::StrCat("[::]:", port));
+
+  // Sanity check that the client can connect with compression enabled.
+  DistributedRuntimeClient::Options client_options;
+  client_options.node_id = 0;
+  auto client =
+      GetDistributedRuntimeClient(absl::StrCat("dns:///localhost:", port),
+                                  client_options, /*use_compression=*/true);
+
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("foo/bar/1", "1"));
+  TF_ASSERT_OK(client->Shutdown());
 }
 
 }  // namespace

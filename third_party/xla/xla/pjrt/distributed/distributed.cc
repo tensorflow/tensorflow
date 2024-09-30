@@ -19,8 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "grpc/compression.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
+#include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
 #include "tsl/platform/grpc_credentials.h"
@@ -38,9 +40,14 @@ GetDistributedRuntimeService(std::string address,
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options) {
-  std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-      address, tsl::GetClientCredentials(kVerifySecureCredentials));
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_compression) {
+  grpc::ChannelArguments args;
+  if (use_compression) {
+    args.SetCompressionAlgorithm(GRPC_COMPRESS_GZIP);
+  }
+  std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
+      address, tsl::GetClientCredentials(kVerifySecureCredentials), args);
   return GetDistributedRuntimeClient(channel, options);
 }
 

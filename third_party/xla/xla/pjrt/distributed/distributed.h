@@ -40,7 +40,8 @@ GetDistributedRuntimeService(std::string address,
 // Builds a distributed runtime client, connecting to a service at `address`,
 // where address is a gRPC-style address such as `dns:///localhost:1234`.
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options);
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_compression = false);
 
 }  // namespace xla
 
