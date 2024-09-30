@@ -242,7 +242,6 @@ xla_test(
         "//xla/stream_executor",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",

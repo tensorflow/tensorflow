@@ -315,7 +315,6 @@ xla_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/service:hlo_parser",
-        "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
