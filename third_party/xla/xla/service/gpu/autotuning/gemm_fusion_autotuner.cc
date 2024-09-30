@@ -583,63 +583,88 @@ absl::Status RewriteGemmFusionToCustomKernelFusion(
   return pipeline.Run(hlo_module).status();
 }
 
+absl::Status HandleTritonGemm(HloInstruction* fusion_instr,
+                              FusionBackendConfig& fusion_backend_config) {
+  TF_ASSIGN_OR_RETURN(
+      const TritonGemmConfig config,
+      TritonGemmConfig::FromProto(fusion_backend_config.triton_gemm_config()));
+  if (config.split_k > 1) {
+    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(fusion_instr, config));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
     HloInstruction* fusion_instr) {
   TF_ASSIGN_OR_RETURN(auto gpu_config,
                       fusion_instr->backend_config<GpuBackendConfig>());
-  FusionBackendConfig& backend_config =
+  FusionBackendConfig& fusion_backend_config =
       *gpu_config.mutable_fusion_backend_config();
-  if (backend_config.kind() != kTritonGemmFusionKind &&
-      backend_config.kind() != kCuDnnFusionKind &&
-      backend_config.kind() != kCustomFusionKind) {
+
+  // Only autotune Triton, cuDNN, and custom kernel fusions.
+  if (fusion_backend_config.kind() != kTritonGemmFusionKind &&
+      fusion_backend_config.kind() != kCuDnnFusionKind &&
+      fusion_backend_config.kind() != kCustomFusionKind) {
     return absl::OkStatus();
   }
 
-  VLOG(4) << "Processing " << fusion_instr->ToString();
-  if (!backend_config.has_triton_gemm_config() &&
-      !backend_config.has_cudnn_fusion_config() &&
-      !backend_config.has_custom_fusion_config()) {
-    TF_ASSIGN_OR_RETURN(
-        AutotuneResult autotune_result,
-        AutotunerUtil::Autotune(
-            fusion_instr, config_, [&]() -> absl::StatusOr<AutotuneResult> {
-              if (config_.IsDeviceless()) {
-                return absl::InternalError(absl::StrCat(
-                    "Expect autotune result cache hit for deviceless "
-                    "compilation (HLO: ",
-                    fusion_instr->ToString(), ")"));
-              }
-              return absl::InternalError("Expect autotune result cache hit.");
-            }));
-    VLOG(4) << "Result: " << autotune_result.ShortDebugString();
-
-    if (autotune_result.has_triton()) {
-      *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
-      TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
-    } else if (autotune_result.has_gemm()) {
-      TF_RETURN_IF_ERROR(RewriteGemmFusionToCall(fusion_instr));
-    } else if (autotune_result.has_custom_kernel_fusion()) {
-      TF_RETURN_IF_ERROR(RewriteGemmFusionToCustomKernelFusion(
-          fusion_instr, config_.GetExecutor()->GetDeviceDescription(),
-          autotune_result.custom_kernel_fusion().kernel_index()));
-    } else {
-      CHECK(autotune_result.has_algorithm());
-      backend_config.set_kind(std::string(kCuDnnFusionKind));
-      backend_config.mutable_cudnn_fusion_config()->set_plan_id(
-          autotune_result.algorithm().algo_id());
-      TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
-    }
+  // Do not autotune if the backend config has already assigned tiling config.
+  if (fusion_backend_config.has_triton_gemm_config()) {
+    TF_RETURN_IF_ERROR(HandleTritonGemm(fusion_instr, fusion_backend_config));
+    MarkAsChanged();
+    return absl::OkStatus();
   }
 
-  if (backend_config.has_triton_gemm_config()) {
-    TF_ASSIGN_OR_RETURN(
-        const TritonGemmConfig config,
-        TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
-    if (config.split_k > 1) {
-      TF_RETURN_IF_ERROR(MakeDotSplitKBatch(fusion_instr, config));
-    }
+  // Do not autotune if the backend config has valid config.
+  if (fusion_backend_config.has_cudnn_fusion_config() ||
+      fusion_backend_config.has_custom_fusion_config()) {
+    return absl::OkStatus();
   }
 
+  VLOG(4) << "Autotuning fusion instruction: " << fusion_instr->ToString();
+  TF_ASSIGN_OR_RETURN(
+      AutotuneResult autotune_result,
+      AutotunerUtil::Autotune(
+          fusion_instr, config_, [&]() -> absl::StatusOr<AutotuneResult> {
+            if (config_.IsDeviceless()) {
+              return absl::InternalError(absl::StrCat(
+                  "Expect autotune result cache hit for deviceless "
+                  "compilation (HLO: ",
+                  fusion_instr->ToString(), ")"));
+            }
+            return absl::InternalError("Expect autotune result cache hit.");
+          }));
+  VLOG(4) << "Autotuning result: " << autotune_result.ShortDebugString();
+
+  if (autotune_result.has_triton()) {
+    *fusion_backend_config.mutable_triton_gemm_config() =
+        autotune_result.triton();
+    TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
+    TF_RETURN_IF_ERROR(HandleTritonGemm(fusion_instr, fusion_backend_config));
+    MarkAsChanged();
+    return absl::OkStatus();
+  }
+
+  if (autotune_result.has_gemm()) {
+    TF_RETURN_IF_ERROR(RewriteGemmFusionToCall(fusion_instr));
+    MarkAsChanged();
+    return absl::OkStatus();
+  }
+
+  if (autotune_result.has_custom_kernel_fusion()) {
+    TF_RETURN_IF_ERROR(RewriteGemmFusionToCustomKernelFusion(
+        fusion_instr, config_.GetExecutor()->GetDeviceDescription(),
+        autotune_result.custom_kernel_fusion().kernel_index()));
+    MarkAsChanged();
+    return absl::OkStatus();
+  }
+
+  // Autotune result has a cuDNN fusion.
+  CHECK(autotune_result.has_algorithm());
+  fusion_backend_config.set_kind(std::string(kCuDnnFusionKind));
+  fusion_backend_config.mutable_cudnn_fusion_config()->set_plan_id(
+      autotune_result.algorithm().algo_id());
+  TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
   MarkAsChanged();
   return absl::OkStatus();
 }
