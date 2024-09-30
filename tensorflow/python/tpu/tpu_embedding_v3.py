@@ -62,7 +62,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
-
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
 _PIPELINE_MODE_BACKWARD = "backward"
@@ -79,12 +78,12 @@ class SparseCoreEmbeddingConfig:
   """Config for sparsecore embedding."""
 
   disable_table_stacking: bool = False
-  max_ids_per_chip_per_sample: int = 64
+  max_ids_per_chip_per_sample: int = 128
   max_ids_per_table: Optional[Dict[str, int]] = None
   max_unique_ids_per_table: Optional[Dict[str, int]] = None
   allow_id_dropping: bool = False
-  initialize_tables_on_host: bool = True
-  enable_fast_table_initialization: bool = False
+  initialize_tables_on_host: bool = False
+  enable_fast_table_initialization: bool = True
 
 
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
@@ -297,8 +296,7 @@ class TPUEmbeddingShardedVariable(
           resource=self._packed_var.handle, dtype=self.dtype
       )
 
-
-# TODO(pineapplejuice233): Add debug string representation of the class.
+# TODO(ziyinh): Add debug string representation of the class.
 PartitionedCsrFormatTensor = collections.namedtuple(
     "PartitionedCsrFormatTensor",
     [
@@ -467,8 +465,8 @@ def _stack_tables_with_same_table_dim_and_optimizer(
 class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   """The TPUEmbedding mid level API running on TPU with sparse core accelerator."""
 
-  DEFAULT_MAX_IDS_PER_TABLE = 256
-  DEFAULT_MAX_UNIQUE_IDS_PER_TABLE = 256
+  DEFAULT_MAX_IDS_PER_TABLE = 2048
+  DEFAULT_MAX_UNIQUE_IDS_PER_TABLE = 512
 
   def __init__(
       self,
@@ -512,7 +510,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           .format(self._strategy)
       )
 
-    # TODO(pineapplejuice233): Remove this once weight decay is supported.
+    # TODO(ziyinh): Remove this once weight decay is supported.
     for table in self._table_config:
       if (
           table.optimizer.weight_decay_factor is not None
@@ -1197,7 +1195,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     """Call the mid level api to do embedding lookup."""
     return self.embedding_lookup(features, weights)
 
-  # TODO(pineapplejuice233): Duplicated helper function from tpu_embedding_v2.py. Remove
+  # TODO(ziyinh): Duplicated helper function from tpu_embedding_v2.py. Remove
   # this once this file is open souced.
   def _raise_error_for_incorrect_control_flow_context(self):
     """Raises an error if we are not in the TPUReplicateContext."""
@@ -1883,7 +1881,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           table_vocab_size=total_vocab_size,
           feature_width=feature_width,
           table_name=table_name,
-          allow_id_dropping=True,  # TODO(pineapplejuice233): make this configurable.
+          allow_id_dropping=True,  # TODO(ziyinh): make this configurable.
       )
       table_to_csr_format_tensor[table_name] = (
           PartitionedCsrFormatTensor(
@@ -2003,7 +2001,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     return table_to_gradient_list
 
 
-# TODO(pineapplejuice233): Merge this function with the one in tpu_embeding_v2.py once
+# TODO(ziyinh): Merge this function with the one in tpu_embeding_v2.py once
 # this file is OSSed.
 def extract_variable_info(
     kwargs: Any,
@@ -2142,7 +2140,7 @@ def make_sharded_variable_creator(
           kwargs["name"] = f"{name}/{replica_id}"
           kwargs["shape"] = partition_shape
           if sharding_aware:
-            # TODO(pineapplejuice233): Change this to use MOD sharding logic.
+            # TODO(ziyinh): Change this to use MOD sharding logic.
             shard_info = base.ShardInfo(
                 tensor_shape.as_shape(partition_shape),
                 copy.deepcopy(partition_offset),

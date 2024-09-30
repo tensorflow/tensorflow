@@ -38,7 +38,6 @@ from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
 
-
 TableVariable = TypeVar("TableVariable", sharded_variable.ShardedVariable,
                         tf_variables.Variable)
 SlotVarCreationFnType = Callable[
@@ -513,8 +512,9 @@ class Adagrad(_Optimizer):
   def __init__(
       self,
       learning_rate: Union[float, Callable[[], float]] = 0.001,
-      initial_accumulator_value: float = 0.1,
-      use_gradient_accumulation: bool = True,
+      initial_accumulator_value: float = 0.0,
+      epsilon: float = 1e-8,
+      use_gradient_accumulation: bool = False,
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
@@ -529,6 +529,7 @@ class Adagrad(_Optimizer):
       learning_rate: The learning rate. It should be a floating point value or a
         callable taking no arguments for a dynamic learning rate.
       initial_accumulator_value: initial accumulator for Adagrad.
+      epsilon: a small constant in denominator to avoid division by zero.
       use_gradient_accumulation: setting this to `False` makes embedding
         gradients calculation less accurate but faster.
       clip_weight_min: the minimum value to clip by; None means -infinity.
@@ -564,11 +565,15 @@ class Adagrad(_Optimizer):
         slot_variable_creation_fn,
         low_dimensional_packing_status,
     )
-    if initial_accumulator_value <= 0:
+    if initial_accumulator_value < 0:
       raise ValueError(
           f"Argument `initial_accumulator_value` must be a positive float. "
           f"Received: {initial_accumulator_value}")
     self.initial_accumulator_value = initial_accumulator_value
+    if epsilon <= 0:
+      raise ValueError("Adagrad momentum: epsilon must be positive")
+    if epsilon is not None:
+      self.epsilon = epsilon
 
   def _slot_names(self) -> List[Text]:
     return ["accumulators"]
@@ -577,7 +582,7 @@ class Adagrad(_Optimizer):
     return [
         init_ops_v2.Constant(
             self.initial_accumulator_value, support_partition=True
-        )
+        ),
     ]
 
   def _set_optimization_parameters(
@@ -1505,3 +1510,4 @@ def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
       list_of_hosts.append(host)
   assert len(list_of_hosts) == strategy.extended.num_hosts
   return list_of_hosts
+

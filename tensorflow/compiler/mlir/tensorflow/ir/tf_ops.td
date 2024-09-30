@@ -1346,7 +1346,7 @@ def TF_WriteHistogramSummaryOp : TF_Op<"WriteHistogramSummary", []> {
 
   let description = [{
 The generated
-[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+[`Summary`](https://cs.corp.google.com/#piper///depot/google3/third_party/tensorflow/core/framework/summary.proto)
 has one summary value containing a histogram for `values`.
 
 This op reports an `InvalidArgument` error if any value is not finite.
@@ -1961,12 +1961,12 @@ Op that copies host tensors to device with bounded dynamic shape support.
   }];
 
   let description = [{
-This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors`
 is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
-tensors which describes unpadded size of each dimension for each cpu tensor. 
+tensors which describes unpadded size of each dimension for each cpu tensor.
 The size of the `unpadded_sizes` should be the same as `tensors`. They are both
 on host. `tpu_tensors` are list of tpu device tensors without the padded data.
-`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` also has the same size of the `tensors` and the shapes of
 `tpu_tensors` are determined by the `unpadded_sizes`.
   }];
 
@@ -2610,6 +2610,7 @@ def XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSizeOp : TF_Op<"XlaSparseD
     TF_Float32Tensor:$sorted_gains,
     TF_Float32Tensor:$activation_gradients,
     TF_Float32Tensor:$learning_rate,
+    F32Attr:$epsilon,
     TF_Float32Tensor:$embedding_table,
     TF_Float32Tensor:$accumulator,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
@@ -2753,3 +2754,4 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
 }
 #endif // TF_OPS
+

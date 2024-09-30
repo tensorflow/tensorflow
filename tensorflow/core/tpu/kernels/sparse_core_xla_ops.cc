@@ -98,11 +98,11 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "No SparseCore is available in the tpu system."));
 
-    // TODO(pineapplejuice233): Add error checking logic.
+    // TODO(ziyinh): Add error checking logic.
     xla::XlaOp row_ids = ctx->Input("row_ids");
     xla::XlaOp col_ids = ctx->Input("col_ids");
     xla::XlaOp values = ctx->Input("values");
-    // TODO(pineapplejuice233): Right now we are passing this argument as
+    // TODO(ziyinh): Right now we are passing this argument as
     // non_zero_element_num, switch to actual 'offsets' once the decomposer
     // supports it.
     xla::XlaOp offsets = ctx->Input("offsets");
@@ -122,7 +122,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
                       ctx->InputXlaShape("row_ids"));
     int64_t token_count = row_ids_shape.dimensions(0);
 
-    // TODO(pineapplejuice233): Change this to include padding once minibatching is done.
+    // TODO(ziyinh): Change this to include padding once minibatching is done.
     xla::Shape sorted_ids_shape =
         xla::ShapeUtil::MakeShapeWithType<int32_t>({token_count});
     xla::Shape sorted_gains_shape =
@@ -405,7 +405,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
 
-    // TODO(pineapplejuice233): Add error checking logic.
+    // TODO(ziyinh): Add error checking logic.
     xla::XlaOp row_pointers = ctx->Input("row_pointers");
     xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
     xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
@@ -766,7 +766,9 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
  public:
   explicit XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp(
       OpKernelConstruction* ctx)
-      : XlaSparseDenseMatmulGradWithCsrInputBase(ctx) {}
+      : XlaSparseDenseMatmulGradWithCsrInputBase(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+  }
 
   ~XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp() override = default;
 
@@ -791,11 +793,14 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       xla::XlaOp learning_rate = xla::Parameter(
           adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
 
+      xla::XlaOp epsilon =
+          xla::ConstantR0(adagrad_optimizer_builder.get(), epsilon_);
+
       xla::XlaOp new_accumulator = accumulator + gradient * gradient;
 
       xla::XlaOp updated_embedding_table =
           embedding_table -
-          learning_rate * gradient / xla::Sqrt(new_accumulator);
+          learning_rate * gradient / (xla::Sqrt(new_accumulator) + epsilon);
 
       // Apply the weight clipping.
       xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
@@ -829,6 +834,7 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
       const XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp&) = delete;
   void operator=(const XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp&) =
       delete;
+  float epsilon_;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithAdagradAndCsrInput"),
@@ -1882,3 +1888,4 @@ REGISTER_XLA_OP(
     XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSizeOp);
 }  // anonymous namespace
 }  // namespace tensorflow
+

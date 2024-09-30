@@ -53,7 +53,7 @@ REGISTER_OP("XlaSparseDenseMatmul")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(4), 0, c->MakeDim(input_size), &output_shape));
       c->set_output(0, output_shape);
-      // TODO(pineapplejuice233): Change this to concrete shape once SparseTensor is
+      // TODO(ziyinh): Change this to concrete shape once SparseTensor is
       // available.
       c->set_output(1, c->UnknownShapeOfRank(1));
       c->set_output(2, c->UnknownShapeOfRank(1));
@@ -128,6 +128,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndCsrInput")
     .Attr("clip_weight_min: float = -inf")
     .Attr("clip_weight_max: float = inf")
     .Attr("table_name: string")
+    .Attr("epsilon: float = 1e-8")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -401,6 +402,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize")
     .Attr("max_ids_per_sparse_core: int >= 1")
     .Attr("max_unique_ids_per_sparse_core: int >= 1")
     .Attr("table_name: string")
+    .Attr("epsilon: float = 0.0")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       c->set_output(0, c->input(6));
       c->set_output(1, c->input(7));
@@ -523,3 +525,4 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
     });
 
 }  // namespace tensorflow
+
