@@ -182,7 +182,6 @@ class SdyRoundTripImportShardingsPass
     // Insert the meshes before any functions.
     builder.setInsertionPointToStart(moduleOp.getBody());
     for (NamedAttribute mesh : sdyMeshes) {
-      mesh.getValue().dump();
       auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
       symbolTable.insert(builder.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
