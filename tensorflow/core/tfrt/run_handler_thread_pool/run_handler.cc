@@ -21,6 +21,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "tensorflow/core/lib/histogram/histogram.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/numa.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/task_function.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #define EIGEN_USE_THREADS
 
 #include <optional>
@@ -32,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
