@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/filecheck.h"
@@ -177,7 +176,81 @@ class StatelessAutotunerTest : public HloTestBase {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::TearDown();
   }
+
+  absl::StatusOr<std::vector<GemmFusionAutotunerImpl::BackendConfig>>
+  GetPossibleMatmulAutotuneConfigs(
+      const HloModule& module,
+      const se::CudaComputeCapability& compute_capability,
+      const se::SemanticVersion& toolkit_version,
+      const DebugOptions& debug_options) {
+    const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
+        module.entry_computation()->root_instruction());
+    se::GpuDeviceInfoProto deviceless_proto;
+    auto ccc = deviceless_proto.mutable_cuda_compute_capability();
+    ccc->set_major(compute_capability.major);
+    ccc->set_minor(compute_capability.minor);
+
+    DeviceConfig test_config{backend().default_stream_executor(),
+                             backend().memory_allocator()};
+    AutotuneConfig autotune_config{test_config, debug_options};
+    GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
+                                      debug_options, nullptr);
+    return autotuner.GenerateConfigs(fusion);
+  }
 };
+
+TEST_F(StatelessAutotunerTest, NoCublasFallbackForTf32Tf32F32X3Algorithm) {
+  // There is no cublas implementation for dot_tf32_tf32_f32_x3 at the moment.
+  // At the same time cublas f32 is faster than triton for this algorithm.
+  // But we don't want to fallback to cuBLAS in this case because we lose the
+  // precision guarantees.
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=dot_tf32_tf32_f32_x3,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )"));
+
+  const se::CudaComputeCapability ampere{se::CudaComputeCapability::AMPERE,
+                                         /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ampere_configs,
+      GetPossibleMatmulAutotuneConfigs(*module, ampere, GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_FALSE(std::any_of(
+      ampere_configs.begin(), ampere_configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
+            config);
+      }));
+
+  const se::CudaComputeCapability hopper{se::CudaComputeCapability::HOPPER,
+                                         /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto hopper_configs,
+      GetPossibleMatmulAutotuneConfigs(*module, hopper, GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_FALSE(std::any_of(
+      hopper_configs.begin(), hopper_configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
+            config);
+      }));
+}
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
@@ -195,25 +268,6 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability();
-  }
-
-  absl::StatusOr<std::vector<GemmFusionAutotunerImpl::BackendConfig>>
-  GetPossibleMatmulAutotuneConfigs(
-      const HloFusionInstruction& fusion,
-      const se::CudaComputeCapability& compute_capability,
-      const se::SemanticVersion& toolkit_version,
-      const DebugOptions& debug_options) {
-    se::GpuDeviceInfoProto deviceless_proto;
-    auto ccc = deviceless_proto.mutable_cuda_compute_capability();
-    ccc->set_major(compute_capability.major);
-    ccc->set_minor(compute_capability.minor);
-
-    DeviceConfig test_config{backend().default_stream_executor(),
-                             backend().memory_allocator()};
-    AutotuneConfig autotune_config{test_config, debug_options};
-    GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
-                                      debug_options, nullptr);
-    return autotuner.GenerateConfigs(fusion);
   }
 
   void CheckTritonAutotuning(absl::string_view hlo,
@@ -1046,10 +1100,9 @@ TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const GemmFusionAutotunerImpl::BackendConfig& config) {
@@ -1087,10 +1140,9 @@ TEST_F(GemmFusionAutotunerTest, GeneratesConfigForUpcastGemmWithPrologue) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const GemmFusionAutotunerImpl::BackendConfig& config) {
@@ -1133,10 +1185,9 @@ TEST_F(GemmFusionAutotunerTest,
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
-          *Cast<HloFusionInstruction>(
-              module->entry_computation()->root_instruction()),
-          compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
   EXPECT_TRUE(std::any_of(
       configs.begin(), configs.end(),
       [](const GemmFusionAutotunerImpl::BackendConfig& config) {

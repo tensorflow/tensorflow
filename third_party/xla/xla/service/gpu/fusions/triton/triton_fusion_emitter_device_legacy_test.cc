@@ -147,7 +147,7 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
-class TritonBF16BF16F32BlasTest : public TritonTest {
+class BlasAlgorithmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
@@ -157,20 +157,16 @@ class TritonBF16BF16F32BlasTest : public TritonTest {
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
-
- protected:
-  void SetUp() override {
-    if (!SupportsBF16(GpuComputeComp())) {
-      GTEST_SKIP() << "BF16 not supported.";
-    }
-  }
 };
 
-TEST_F(TritonBF16BF16F32BlasTest, PropagateAlgorithmToBlas) {
+TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   // We check that the algorithm is propagated to the BLAS call.
   // We also check that the kernel name matches the algorithm for Ampere.
   // The algorithm for Hopper is not the one we expect because it uses TF32.
 
+  if (!SupportsBF16(GpuComputeComp())) {
+    GTEST_SKIP() << "BF16 not supported.";
+  }
   constexpr std::string_view kHloText = R"(
     HloModule t
 
@@ -185,6 +181,8 @@ TEST_F(TritonBF16BF16F32BlasTest, PropagateAlgorithmToBlas) {
   )";
   const std::string pattern = R"(CHECK: "algorithm":"ALG_DOT_BF16_BF16_F32")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  ASSERT_TRUE(ok);
 
   auto tracer = KernelNameTracer::Create();
   tracer->start();
@@ -208,6 +206,57 @@ TEST_F(TritonBF16BF16F32BlasTest, PropagateAlgorithmToBlas) {
       // Hopper does not have bf16 kernels for ALG_DOT_BF16_BF16_F32 algorithm.
       // As a result it uses TF32.
       EXPECT_THAT(kernel_name, ::testing::HasSubstr("gemm_f32f32_tf32f32_f32"));
+      break;
+    default:
+      GTEST_SKIP() << "Unsupported compute capability: " << cc.major
+                   << " has the kernel name: " << kernel_name;
+  }
+}
+
+TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
+  // We check that the algorithm is propagated to the BLAS call.
+  // We also check that the kernel name matches the algorithm for Ampere.
+
+  constexpr std::string_view kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = f32[8512,256]{1,0} parameter(0)
+      rhs = f32[256,8512]{1,0} parameter(1)
+      ROOT dot = f32[8512,8512]{1,0} dot(lhs, rhs),
+          algorithm=dot_tf32_tf32_f32_x3,
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+    }
+  )";
+  const std::string pattern =
+      R"(CHECK: "algorithm":"ALG_DOT_TF32_TF32_F32_X3")";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  ASSERT_TRUE(ok);
+
+  auto tracer = KernelNameTracer::Create();
+  tracer->start();
+  EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
+  auto kernel_name = tracer->stop();
+
+  if (kernel_name == "kernel_name_tracer_not_implemented") return;
+
+  auto cc = GetCudaComputeCapability();
+  using CudaComputeCapabilities =
+      stream_executor::CudaComputeCapability::CudaComputeCapabilities;
+  switch (cc.major) {
+    case CudaComputeCapabilities::BLACKWELL:
+      GTEST_SKIP() << "CudaComputeCapabilities::BLACKWELL has the kernel name: "
+                   << kernel_name;
+      break;
+    case CudaComputeCapabilities::AMPERE:
+      // There is no support for TF32_TF32_F32_X3 on Ampere. We use F32_F32_F32.
+      EXPECT_THAT(kernel_name, ::testing::HasSubstr("ampere_sgemm_128x64_nn"));
+      break;
+    case CudaComputeCapabilities::HOPPER:
+      // There is no support for TF32_TF32_F32_X3 on Hopper. We use F32_F32_F32.
+      EXPECT_THAT(kernel_name, ::testing::HasSubstr("gemm_f32f32_f32f32_f32"));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
@@ -5234,7 +5283,7 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
                                                 /*arel=*/1e-5}));
 }
 
-class TritonBF16BF16F32GemmTest : public TritonTest {
+class TritonAlgorithmTest : public TritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
@@ -5245,23 +5294,39 @@ class TritonBF16BF16F32GemmTest : public TritonTest {
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     return debug_options;
   }
-
- protected:
-  void SetUp() override {
-    if (!SupportsBF16(GpuComputeComp())) {
-      GTEST_SKIP() << "BF16 not supported.";
-    }
-  }
 };
 
-TEST_F(TritonBF16BF16F32GemmTest, WorkWithF32InputAndAlgorithm_BF16_BF16_F32) {
+TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
   const std::string kHloText = R"(
     HloModule t
 
     ENTRY main {
-      lhs = f32[32,64]{1,0} parameter(0)
-      rhs = f32[64,16]{1,0} parameter(1)
-      ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+      lhs = f32[8512,64]{1,0} parameter(0)
+      rhs = f32[64,8512]{1,0} parameter(1)
+      ROOT dot = f32[8512,8512]{1,0} dot(lhs, rhs),
+          algorithm=dot_tf32_tf32_f32_x3,
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+    }
+  )";
+  const std::string pattern =
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  EXPECT_TRUE(ok);
+}
+
+TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
+  if (!SupportsBF16(GpuComputeComp())) {
+    GTEST_SKIP() << "BF16 not supported.";
+  }
+  const std::string kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = f32[8512,64]{1,0} parameter(0)
+      rhs = f32[64,8512]{1,0} parameter(1)
+      ROOT dot = f32[8512,8512]{1,0} dot(lhs, rhs),
           algorithm=dot_bf16_bf16_f32,
           lhs_contracting_dims={1},
           rhs_contracting_dims={0}

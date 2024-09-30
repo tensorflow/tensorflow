@@ -2208,6 +2208,27 @@ bool IsTf32Allowed(const HloDotInstruction* dot_instr) {
   return algorithm_util::HasTf32InputType(algorithm);
 }
 
+mt::InputPrecision InferDotPrecision(const HloDotInstruction* dot_instr) {
+  auto algorithm = dot_instr->precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
+    return mt::InputPrecision::TF32x3;
+  }
+  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+  bool is_unsupported_bitwidth =
+      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
+        if (node->opcode() != HloOpcode::kConvert) {
+          return false;
+        }
+        int in_width =
+            primitive_util::BitWidth(node->operand(0)->shape().element_type());
+        return in_width <= 8 && node->shape().element_type() == F32;
+      });
+
+  return IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
+             ? mt::InputPrecision::TF32
+             : mt::InputPrecision::IEEE;
+}
+
 bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
                         mlir::OpBuilder& builder, Value dot_input_lhs,
                         Value dot_input_rhs,
@@ -2537,17 +2558,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
 
-  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-  bool is_unsupported_bitwidth =
-      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
-        if (node->opcode() != HloOpcode::kConvert) {
-          return false;
-        }
-        int in_width =
-            primitive_util::BitWidth(node->operand(0)->shape().element_type());
-        return in_width <= 8 && node->shape().element_type() == F32;
-      });
-
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
@@ -2700,10 +2710,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      auto input_precision =
-          IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
-              ? mt::InputPrecision::TF32
-              : mt::InputPrecision::IEEE;
+      auto dot_precision = InferDotPrecision(dot_instr);
 
       // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
       if (dot_instr->precision_config().algorithm() ==
@@ -2723,7 +2730,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
           IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
       accumulator_next =
           b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*inputPrecision=*/input_precision,
+                              /*inputPrecision=*/dot_precision,
                               /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
     }
     iter_args_next.push_back(accumulator_next);

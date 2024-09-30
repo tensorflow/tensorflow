@@ -220,6 +220,7 @@ bool IsDotAlgorithmSupportedByTriton(
   auto rocm_compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
   switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       if (cuda_compute_capability) {
         return true;

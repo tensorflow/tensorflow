@@ -36,7 +36,7 @@ class KernelNameTracerCuda : public KernelNameTracer {
   std::string stop() override;
 
  private:
-  std::unique_ptr<profiler::CuptiTracer> cupti_tracer_;
+  profiler::CuptiTracer* cupti_tracer_;  // Not owned.
   std::unique_ptr<profiler::CuptiTraceCollector> cupti_collector_;
 };
 

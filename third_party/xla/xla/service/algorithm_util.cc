@@ -47,6 +47,7 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return se::blas::ComputationType::kTF32AsF32;
@@ -188,6 +189,7 @@ bool IsSupportedDotAlgorithmOnGpu(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
