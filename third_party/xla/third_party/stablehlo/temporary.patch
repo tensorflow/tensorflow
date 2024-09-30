@@ -1,1 +1,617 @@
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
+@@ -69,7 +69,7 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 1, 1, 1, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   } : (tensor<3x2x4x7x9xi32>, tensor<4x3x5x2xi32>) -> tensor<4x3x5x8xi32>
+   func.return %0 : tensor<4x3x5x8xi32>
+ }
+@@ -77,9 +77,9 @@
+ // -----
+ 
+ // CHECK-LABEL: @gather_with_batching_no_index_vector_dim
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
+ // CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
+ // CHECK-SAME:   dimension_numbers = #stablehlo.gather<
+@@ -102,7 +102,7 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 1, 1, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   }> : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>) -> tensor<4x3x5x8xi32>
+   func.return %0 : tensor<4x3x5x8xi32>
+ }
+@@ -133,9 +133,305 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 0, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   }> : (tensor<0x2x9xi32>, tensor<0x3x5x1xi32>) -> tensor<0x3x5x8xi32>
+   func.return %0 : tensor<0x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<3x4x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 1 : tensor<3x4x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<3x4x5x1xi32>, tensor<3x4x5x1xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x4xi32>) -> tensor<3x4x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<3x4x5x8xi32>
++func.func @gather_batching_dims_indices_become_unsorted(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [0, 1],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32>
++  func.return %0 : tensor<3x4x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted_2
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_become_unsorted_2(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_remain_sorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = true,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [0, 2],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_remain_unsorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_remain_unsorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [0, 2],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_does_not_overflow_indices_type
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x127x5x1xi8>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x127x5x1xi8>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<4x127x5x1xi8>, tensor<4x127x5x1xi8>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x4xi8>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x4xi8>) -> tensor<4x127x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x127x5x8xi32>
++func.func @gather_batching_dims_does_not_overflow_indices_type(%arg0: tensor<127x2x4x7x9xi32>, %arg1: tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32>
++  func.return %0 : tensor<4x127x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_signless_indices_type
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5x2xi8>) -> tensor<4x128x5x2xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x2xi32>) -> tensor<4x128x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x4xi32>) -> tensor<4x128x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
++func.func @gather_batching_dim_overflows_signless_indices_type(%arg0: tensor<128x2x4x7x9xi32>, %arg1: tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32>
++  func.return %0 : tensor<4x128x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_unsigned_indices_type
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<256x4x5x2xui8>) -> tensor<256x4x5x2xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<256x4x5x1xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<256x4x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim0]], %[[iota_dim1]], %[[convert]], dim = 3 : (tensor<256x4x5x1xi32>, tensor<256x4x5x1xi32>, tensor<256x4x5x2xi32>) -> tensor<256x4x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x4xi32>) -> tensor<256x4x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<256x4x5x8xi32>
++func.func @gather_batching_dim_overflows_unsigned_indices_type(%arg0: tensor<256x2x4x7x9xi32>, %arg1: tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [0, 1],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32>
++  func.return %0 : tensor<256x4x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_indices_type_and_i32
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x2xi64>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x2147483648x5x1xi64>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x2147483648x5x1xi64>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x2xi64>) -> tensor<4x2147483648x5x4xi64>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x4xi64>) -> tensor<4x2147483648x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x2147483648x5x8xi32>
++func.func @gather_batching_dim_overflows_indices_type_and_i32(%arg0: tensor<2147483648x2x4x7x9xi32>, %arg1: tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32>
++  func.return %0 : tensor<4x2147483648x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_dynamic_size
++// CHECK: operand_batching_dims = [0, 2]
++// CHECK: start_indices_batching_dims = [1, 0]
++func.func @gather_batching_dim_dynamic_size(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32>
++  func.return %0 : tensor<4x?x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_and_no_index_vector_dim
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5xi8>) -> tensor<4x128x5xi32>
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %[[convert]] : (tensor<4x128x5xi32>) -> tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>) -> tensor<4x128x5x3xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2],
++// CHECK-SAME:     start_index_map = [0, 2, 1], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<128x2x4x9xi32>, tensor<4x128x5x3xi32>) -> tensor<4x128x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
++func.func @gather_batching_dim_overflows_and_no_index_vector_dim(%arg0: tensor<128x2x4x9xi32>, %arg1: tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<128x2x4x9xi32>, tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32>
++  func.return %0 : tensor<4x128x5x8xi32>
+ }
+ 
+ // -----
+@@ -156,7 +452,7 @@
+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
+-    indices_are_sorted = true,
++    indices_are_sorted = false,
+     scatter_dimension_numbers = #stablehlo.scatter<
+       update_window_dims = [3],
+       inserted_window_dims = [1, 3],
+@@ -176,9 +472,9 @@
+ // -----
+ 
+ // CHECK-LABEL: @scatter_with_batching_no_index_vector_dim
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
+ // CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
+ // CHECK-SAME:   indices_are_sorted = false,
+@@ -192,7 +488,7 @@
+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
+-    indices_are_sorted = true,
++    indices_are_sorted = false,
+     scatter_dimension_numbers = #stablehlo.scatter<
+       update_window_dims = [3],
+       inserted_window_dims = [1],
+@@ -208,3 +504,60 @@
+   }) : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>, tensor<4x3x5x8xi32>) -> tensor<3x2x4x9xi32>
+   func.return %0 : tensor<3x2x4x9xi32>
+ }
++
++// -----
++
++// CHECK-LABEL: @scatter_batching_dims_indices_remain_sorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
++// CHECK-SAME:   indices_are_sorted = true,
++// CHECK-SAME:   dimension_numbers = #stablehlo.scatter<
++// CHECK-SAME:     update_window_dims = [3], inserted_window_dims = [0, 1, 2, 3],
++// CHECK-SAME:     scatter_dims_to_operand_dims = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   unique_indices = false}>
++// CHECK:      (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
++// CHECK-NEXT: return %[[scatter]] : tensor<2x5x4x7x9xi32>
++func.func @scatter_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>, %arg2: tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32> {
++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
++    indices_are_sorted = true,
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [3],
++      inserted_window_dims = [2, 3],
++      input_batching_dims = [0, 1],
++      scatter_indices_batching_dims = [0, 2],
++      scatter_dims_to_operand_dims = [2, 3],
++      index_vector_dim = 3
++    >,
++    unique_indices = false
++  }> ({
++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
++    stablehlo.return %arg4 : tensor<i32>
++  }) : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
++  func.return %0 : tensor<2x5x4x7x9xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @scatter_batching_dim_dynamic_scatter_indices
++// CHECK: input_batching_dims = [0, 2]
++// CHECK: scatter_indices_batching_dims = [1, 0]
++func.func @scatter_batching_dim_dynamic_scatter_indices(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi32>, %arg2: tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32> {
++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
++    indices_are_sorted = false,
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [3],
++      inserted_window_dims = [1, 3],
++      input_batching_dims = [0, 2],
++      scatter_indices_batching_dims = [1, 0],
++      scatter_dims_to_operand_dims = [1, 3],
++      index_vector_dim = 3
++    >,
++    unique_indices = false
++  }> ({
++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
++    stablehlo.return %arg4 : tensor<i32>
++  }) : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi32>, tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32>
++  func.return %0 : tensor<?x2x4x7x9xi32>
++}
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
+--- stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
++++ stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
+@@ -22,8 +22,11 @@
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/MathExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
+@@ -75,6 +78,42 @@
+   return result;
+ }
+ 
++bool fitsInIntegralType(int64_t size, IntegerType type) {
++  if (type.isUnsigned()) {
++    return llvm::isUIntN(type.getWidth(), size);
++  } else {
++    return llvm::isIntN(type.getWidth(), size);
++  }
++}
++
++// If `type` is an integer type in which `size` doesn't fit, promote it to i32
++// or i64 (depending on `size`).
++Type promoteTypeForSize(Type type, int64_t size, OpBuilder &builder) {
++  // Gather/Scatter should have an integer type, but we check just in case.
++  auto intType = dyn_cast<IntegerType>(type);
++  if (!intType || fitsInIntegralType(size, intType)) {
++    return type;
++  }
++  if (fitsInIntegralType(size, builder.getI32Type())) {
++    return builder.getI32Type();
++  }
++  return builder.getI64Type();
++}
++
++// If `indices_batching_dims` and `updated_index_map` are both sorted, then the
++// `indices_are_sorted` property is preserved.
++//
++// This is because each concatenated iota is monotonically increasing, sorted
++// indices batching dims mean their order corresponds to the order of batching
++// dims in the operand, and a sorted updated start index map means the order of
++// the index vector dim corresponds to the order of operand dims.
++bool getUpdatedIndicesAreSorted(bool indices_are_sorted,
++                                ArrayRef<int64_t> indices_batching_dims,
++                                ArrayRef<int64_t> updated_index_map) {
++  return indices_are_sorted && llvm::is_sorted(indices_batching_dims) &&
++         llvm::is_sorted(updated_index_map);
++}
++
+ // Returns an updated indices tensor such that an `IotaOp` is prepended for each
+ // dim in `indicesBatchingDims` with a `ConcatenateOp`.
+ //
+@@ -85,16 +124,31 @@
+                           PatternRewriter &rewriter) {
+   Location loc = indices.getLoc();
+   auto indicesType = cast<RankedTensorType>(indices.getType());
++  Type elementType = indicesType.getElementType();
++
++  // The batching dim sizes might not fit in the existing element type,
++  // in which case we need to promote it.
++  for (int64_t batchingDim : indicesBatchingDims) {
++    elementType = promoteTypeForSize(
++        elementType, indicesType.getDimSize(batchingDim), rewriter);
++  }
++  if (elementType != indicesType.getElementType()) {
++    indicesType = RankedTensorType::get(indicesType.getShape(), elementType);
++    indices = rewriter.create<ConvertOp>(loc, indicesType, indices);
++  }
++
+   bool indexVectorDimOnLastDim = indexVectorDim == indicesType.getRank();
+-
+   SmallVector<int64_t> iotaShape(indicesType.getShape());
+   if (indexVectorDimOnLastDim) {
+     iotaShape.push_back(1);
+   } else {
+     iotaShape[indexVectorDim] = 1;
+   }
+-  auto iotaType =
+-      RankedTensorType::get(iotaShape, indicesType.getElementType());
++  auto iotaType = RankedTensorType::get(iotaShape, elementType);
++
++  if (indexVectorDimOnLastDim) {
++    indices = rewriter.create<ReshapeOp>(loc, iotaType, indices);
++  }
+ 
+   SmallVector<Value> indicesToConcat;
+   indicesToConcat.reserve(indicesBatchingDims.size() + 1);
+@@ -102,12 +156,7 @@
+     indicesToConcat.push_back(
+         rewriter.create<IotaOp>(loc, iotaType, batchingDim));
+   }
+-  if (indexVectorDimOnLastDim) {
+-    indicesToConcat.push_back(
+-        rewriter.create<ReshapeOp>(loc, iotaType, indices));
+-  } else {
+-    indicesToConcat.push_back(indices);
+-  }
++  indicesToConcat.push_back(indices);
+   return rewriter.create<ConcatenateOp>(loc, indicesToConcat, indexVectorDim);
+ }
+ 
+@@ -125,9 +174,17 @@
+                                 PatternRewriter &rewriter) const override {
+     GatherDimensionNumbersAttr dimNumbers = op.getDimensionNumbers();
+     ArrayRef<int64_t> operandBatchingDims = dimNumbers.getOperandBatchingDims();
++    ArrayRef<int64_t> startIndicesBatchingDims =
++        dimNumbers.getStartIndicesBatchingDims();
+     if (operandBatchingDims.empty()) {
+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
+         diag << "gather op has no batching dims";
++      });
++    }
++
++    if (!op.getStartIndices().getType().hasStaticShape()) {
++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
++        diag << "gather op has start indices with dynamic shape, can't expand";
+       });
+     }
+ 
+@@ -136,16 +193,18 @@
+     SmallVector<int64_t> newStartIndexMap =
+         llvm::to_vector(llvm::concat<const int64_t>(
+             operandBatchingDims, dimNumbers.getStartIndexMap()));
+-    Value newIndices = createConcatIndices(
+-        op.getStartIndices(), dimNumbers.getIndexVectorDim(),
+-        dimNumbers.getStartIndicesBatchingDims(), rewriter);
++    Value newIndices = createConcatIndices(op.getStartIndices(),
++                                           dimNumbers.getIndexVectorDim(),
++                                           startIndicesBatchingDims, rewriter);
+     rewriter.replaceOpWithNewOp<GatherOp>(
+         op, op.getOperand(), newIndices,
+         GatherDimensionNumbersAttr::get(
+             op.getContext(), dimNumbers.getOffsetDims(), newCollapsedSliceDims,
+             /*operandBatchingDims=*/{}, /*startIndicesBatchingDims=*/{},
+             newStartIndexMap, dimNumbers.getIndexVectorDim()),
+-        op.getSliceSizes(), /*indicesAreSorted=*/false);
++        op.getSliceSizes(),
++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
++                                   startIndicesBatchingDims, newStartIndexMap));
+ 
+     return success();
+   }
+@@ -161,9 +220,17 @@
+                                 PatternRewriter &rewriter) const override {
+     ScatterDimensionNumbersAttr dimNumbers = op.getScatterDimensionNumbers();
+     ArrayRef<int64_t> inputBatchingDims = dimNumbers.getInputBatchingDims();
++    ArrayRef<int64_t> scatterIndicesBatchingDims =
++        dimNumbers.getScatterIndicesBatchingDims();
+     if (inputBatchingDims.empty()) {
+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
+         diag << "scatter op has no batching dims";
++      });
++    }
++
++    if (!op.getScatterIndices().getType().hasStaticShape()) {
++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
++        diag << "gather op has start indices with dynamic shape, can't expand";
+       });
+     }
+ 
+@@ -174,7 +241,7 @@
+             inputBatchingDims, dimNumbers.getScatterDimsToOperandDims()));
+     Value newIndices = createConcatIndices(
+         op.getScatterIndices(), dimNumbers.getIndexVectorDim(),
+-        dimNumbers.getScatterIndicesBatchingDims(), rewriter);
++        scatterIndicesBatchingDims, rewriter);
+     auto newScatterOp = rewriter.create<ScatterOp>(
+         op.getLoc(), op->getResultTypes(), op.getInputs(), newIndices,
+         op.getUpdates(),
+@@ -183,7 +250,10 @@
+             newInsertedWindowDims,
+             /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
+             newScatterDimsToOperandDims, dimNumbers.getIndexVectorDim()),
+-        /*indicesAreSorted=*/false, op.getUniqueIndices());
++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
++                                   scatterIndicesBatchingDims,
++                                   newScatterDimsToOperandDims),
++        op.getUniqueIndices());
+ 
+     newScatterOp.getUpdateComputation().takeBody(op.getUpdateComputation());
+     rewriter.replaceOp(op, newScatterOp.getResults());
 
