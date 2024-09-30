@@ -685,10 +685,10 @@ test:release_linux_base --test_summary=short
 
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:release_cpu_linux --repo_env=TF_SYSROOT="/dt9"
-# Target the AVX instruction set
-build:release_cpu_linux --config=avx_linux
+# GPU Toolchain is defined here for the CPU release config
+# This isn't very flexible and not needed
+#build:release_cpu_linux --crosstool_top="@local_config_cuda//crosstool:toolchain"
+#build:release_cpu_linux --repo_env=TF_SYSROOT="/dt9"
 
 build:release_gpu_linux --config=release_cpu_linux
 build:release_cpu_linux --config=release_cpu_linux_base
