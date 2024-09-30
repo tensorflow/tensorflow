@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/service/hlo.pb.h"
