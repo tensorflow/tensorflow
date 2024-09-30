@@ -17,9 +17,9 @@ syntax = "proto3";
 package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
-import "xla/pjrt/execute_options.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/execute_options.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
@@ -428,7 +428,7 @@ message LoadedExecutableMetadataResponse {
 message LoadedExecutableExecuteRequest {
   fixed64 loaded_executable_handle = 1;
   repeated fixed64 args_handles = 2;
-  xla.ExecuteOptionsProto execute_options = 3;
+  xla.ifrt.ExecuteOptionsProto execute_options = 3;
   repeated int32 device_ids = 4;
 }
 message LoadedExecutableExecuteResponse {

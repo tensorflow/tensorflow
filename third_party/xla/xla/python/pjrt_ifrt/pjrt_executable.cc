@@ -542,7 +542,11 @@ PjRtLoadedExecutable::Execute(
   const bool returned_future_supported =
       pjrt_loaded_executable_->IsReturnedFutureSupported();
 
-  auto opts = options;
+  xla::ExecuteOptions opts;
+  opts.untuple_result = true;
+  opts.launch_id = options.launch_id;
+  opts.use_major_to_minor_data_layout_for_callbacks = true;
+  opts.non_donatable_input_indices = options.non_donatable_input_indices;
 
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
     return Internal(
@@ -565,9 +569,7 @@ PjRtLoadedExecutable::Execute(
         contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
             host_send_recv_callback->host_callback(),
             /*host_memory_for_device_manager=*/nullptr, send_callbacks,
-            recv_callbacks,
-            /*use_major_to_minor_data_layout_for_callbacks=*/
-            options.use_major_to_minor_data_layout_for_callbacks));
+            recv_callbacks, opts.use_major_to_minor_data_layout_for_callbacks));
       }
     }
     opts.send_callbacks = host_callback_states->send_callbacks;

@@ -87,6 +87,7 @@ cc_library(
         ":attribute_map",
         ":device_proto_cc",
         ":dtype_proto_cc",
+        ":execute_options_proto_cc",
         ":remap_plan_proto_cc",
         ":serdes",
         ":shape_proto_cc",
@@ -109,6 +110,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/functional:function_ref",
@@ -163,6 +165,11 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
+)
+
+tf_proto_library(
+    name = "execute_options_proto",
+    srcs = ["execute_options.proto"],
 )
 
 xla_cc_test(
