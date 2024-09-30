@@ -636,10 +636,11 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   if (UsePortableExecution(compile_metadata)) {
     execution_device_list = device_list;
   }
-  TF_ASSIGN_OR_RETURN(auto execution_result,
-                      executable_bundle->ifrt_executable->Execute(
-                          absl::MakeSpan(args), /*options=*/{},
-                          std::move(execution_device_list)));
+  TF_ASSIGN_OR_RETURN(
+      auto execution_result,
+      executable_bundle->ifrt_executable->Execute(
+          absl::MakeSpan(args), /*options=*/{.fill_status = true},
+          std::move(execution_device_list)));
 
   auto status = execution_result.status.Await();
   TF_RETURN_IF_ERROR(status);

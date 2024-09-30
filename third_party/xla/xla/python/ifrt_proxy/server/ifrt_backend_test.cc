@@ -1225,9 +1225,10 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
     execute_request->add_args_handles(arg_handle);
   }
   execute_request->set_loaded_executable_handle(handle);
-  TF_ASSERT_OK_AND_ASSIGN(
-      *execute_request->mutable_execute_options(),
-      xla::ifrt::LoadedExecutable::ExecuteOptions().ToProto());
+  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(*execute_request->mutable_execute_options(),
+                          execute_options.ToProto());
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                           CallBackend(std::move(request)));
