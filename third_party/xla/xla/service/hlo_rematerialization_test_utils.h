@@ -18,12 +18,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_REMATERIALIZATION_TEST_UTILS_H_
 #define XLA_SERVICE_HLO_REMATERIALIZATION_TEST_UTILS_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
