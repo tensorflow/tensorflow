@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -97,7 +98,9 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
 inline TfLiteIntArray* GetOutputShapeFromTensor(TfLiteContext* context,
                                                 TfLiteNode* node) {
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
-  if (shape == nullptr) return nullptr;
+  if (shape == nullptr) {
+    return nullptr;
+  }
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(shape->dims->data[0]);
   for (int i = 0; i < output_shape->size; ++i) {
@@ -160,17 +163,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
     const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
     if (NumInputs(node) == 1 || IsConstantOrPersistentTensor(shape)) {
+      op_data->output_shape_known = true;
       if (IsConstantOrPersistentTensor(input)) {
         SetTensorToPersistentRo(output);
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
         op_data->output_ptr = output->data.data;
         memcpy(output->data.data, input->data.data, input->bytes);
-        return kTfLiteOk;
       } else {
         TF_LITE_ENSURE_OK(context, ResizeOutput(context, node));
       }
+      return kTfLiteOk;
     } else {
       op_data->output_shape_known = false;
+      // We know the output bytes size is the same as the input. Setting this
+      // enables tensor sharing in the ArenaPlanner.
+      if (output->allocation_type == kTfLiteArenaRw) {
+        output->bytes = input->bytes;
+      }
       return kTfLiteOutputShapeNotKnown;
     }
   }
@@ -252,7 +261,8 @@ TfLiteRegistration* Register_RESHAPE() {
       /*version=*/0,
       /*registration_external=*/nullptr,
       /*async_kernel=*/nullptr,
-      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
+      /*inplace_operator=*/kTfLiteInplaceOpInput0Shared |
+          kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 
