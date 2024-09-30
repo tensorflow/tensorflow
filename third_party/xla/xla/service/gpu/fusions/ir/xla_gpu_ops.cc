@@ -980,7 +980,7 @@ LogicalResult MaterializeOp::verify() {
     return emitOpError()
            << "must have thread_id dimension in both indexing maps";
   }
-  if (map_in.GetDimVars(0) != map_out.GetDimVars(0)) {
+  if (map_in.GetDimVars(0).bounds != map_out.GetDimVars(0).bounds) {
     return emitOpError() << "thread_id dimension must have the same bounds in "
                             "both indexing maps";
   }

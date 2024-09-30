@@ -8,10 +8,10 @@ fusion {
   param2 = f32[300] parameter(2)
   ROOT concat = f32[900] concatenate(param0, param1, param2), dimensions={0}
 }
-// CHECK-DAG: #[[MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1) -> (d1 * 128 + d0)
-// CHECK-DAG: #[[LOOPMAP_1:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0)
-// CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0 + 200)
-// CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla_gpu.indexing_map<"(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0 + 600)
+// CHECK-DAG: #[[MAP:.*]] = #xla_gpu.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x)
+// CHECK-DAG: #[[LOOPMAP_1:.*]] = #xla_gpu.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x)
+// CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla_gpu.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x + 200)
+// CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla_gpu.indexing_map<"(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1] -> (bl_x * 128 + th_x + 600)
 
 // CHECK:       func.func @main
 // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},

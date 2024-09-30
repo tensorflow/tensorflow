@@ -404,12 +404,11 @@ IndexingMap MlirReductionFusion::GetIndexingMap(
     absl::Span<int64_t const> symbol_sizes) const {
   auto* ctx = results.front().getContext();
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
-  return IndexingMap{
-      AffineMap::get(6, symbol_sizes.size(), results, ctx),
-      DimVarsFromTensorSizes(
-          {Product(num_threads_), 1, 1, Product(num_blocks_), num_groups, 1}),
-      RangeVarsFromTensorSizes(symbol_sizes),
-      /*rt_vars=*/{}};
+  return IndexingMap{AffineMap::get(6, symbol_sizes.size(), results, ctx),
+                     DimVarsFromGPUGrid({Product(num_threads_), 1, 1,
+                                         Product(num_blocks_), num_groups, 1}),
+                     RangeVarsFromTensorSizes(symbol_sizes),
+                     /*rt_vars=*/{}};
 }
 
 IndexingMap MlirReductionFusion::GetThreadIndexingMap(
@@ -419,9 +418,11 @@ IndexingMap MlirReductionFusion::GetThreadIndexingMap(
   auto affine_map = AffineMap::get(1, symbol_sizes.size(), results,
                                    results.front().getContext());
   return IndexingMap{affine_map,
-                     DimVarsFromTensorSizes({Product(num_threads_)}),
+                     {DimVar{0, Product(num_threads_) - 1,
+                             ToVariableName(VariableKind::kThreadX)}},
                      RangeVarsFromTensorSizes(symbol_sizes),
-                     /*rt_vars=*/{}, constraints};
+                     /*rt_vars=*/{},
+                     constraints};
 }
 
 LaunchDimensions MlirReductionFusion::launch_dimensions() const {

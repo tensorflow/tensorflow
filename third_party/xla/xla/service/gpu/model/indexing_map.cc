@@ -30,7 +30,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/numeric/int128.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -783,15 +785,17 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 }  // namespace
 
 static constexpr std::string_view kVarKindDefault = "default";
-static constexpr std::string_view kVarKindThreadX = "thread_x";
-static constexpr std::string_view kVarKindThreadY = "thread_y";
-static constexpr std::string_view kVarKindThreadZ = "thread_z";
-static constexpr std::string_view kVarKindBlockX = "block_x";
-static constexpr std::string_view kVarKindBlockY = "block_y";
-static constexpr std::string_view kVarKindBlockZ = "block_z";
+static constexpr std::string_view kVarKindThreadX = "th_x";
+static constexpr std::string_view kVarKindThreadY = "th_y";
+static constexpr std::string_view kVarKindThreadZ = "th_z";
+static constexpr std::string_view kVarKindBlockX = "bl_x";
+static constexpr std::string_view kVarKindBlockY = "bl_y";
+static constexpr std::string_view kVarKindBlockZ = "bl_z";
+static constexpr std::string_view kVarKindWarp = "warp";
+static constexpr std::string_view kVarKindWarpThread = "th_w";
 
-std::string_view ToString(VariableKind type) {
-  switch (type) {
+std::string_view ToVariableName(VariableKind var_kind) {
+  switch (var_kind) {
     case VariableKind::kDefault:
       return kVarKindDefault;
     case VariableKind::kThreadX:
@@ -806,23 +810,28 @@ std::string_view ToString(VariableKind type) {
       return kVarKindBlockY;
     case VariableKind::kBlockZ:
       return kVarKindBlockZ;
+    case VariableKind::kWarp:
+      return kVarKindWarp;
+    case VariableKind::kWarpThread:
+      return kVarKindWarpThread;
   }
   llvm_unreachable("Unknown VariableType");
 }
 
-VariableKind ToVariableType(std::string_view type_name) {
-  if (type_name == kVarKindDefault) return VariableKind::kDefault;
-  if (type_name == kVarKindThreadX) return VariableKind::kThreadX;
-  if (type_name == kVarKindThreadY) return VariableKind::kThreadY;
-  if (type_name == kVarKindThreadZ) return VariableKind::kThreadZ;
-  if (type_name == kVarKindBlockX) return VariableKind::kBlockX;
-  if (type_name == kVarKindBlockY) return VariableKind::kBlockY;
-  if (type_name == kVarKindBlockZ) return VariableKind::kBlockZ;
-  llvm_unreachable("Unknown VariableType name");
+VariableKind ToVariableType(std::string_view var_name) {
+  if (var_name == kVarKindThreadX) return VariableKind::kThreadX;
+  if (var_name == kVarKindThreadY) return VariableKind::kThreadY;
+  if (var_name == kVarKindThreadZ) return VariableKind::kThreadZ;
+  if (var_name == kVarKindBlockX) return VariableKind::kBlockX;
+  if (var_name == kVarKindBlockY) return VariableKind::kBlockY;
+  if (var_name == kVarKindBlockZ) return VariableKind::kBlockZ;
+  if (var_name == kVarKindWarp) return VariableKind::kWarp;
+  if (var_name == kVarKindWarpThread) return VariableKind::kWarpThread;
+  return VariableKind::kDefault;
 }
 
 std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
-  out << ToString(var_type);
+  out << ToVariableName(var_type);
   return out;
 }
 
@@ -966,16 +975,16 @@ Interval Interval::FloorDiv(int64_t rhs) const {
 }
 
 bool operator==(const DimVar& lhs, const DimVar& rhs) {
-  return lhs.bounds == rhs.bounds;
+  return lhs.bounds == rhs.bounds && lhs.name == rhs.name;
 }
 
 bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range;
+  return lhs.range == rhs.range && lhs.name == rhs.name;
 }
 
 bool operator==(const RTVar& lhs, const RTVar& rhs) {
   return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
-         lhs.map == rhs.map;
+         lhs.map == rhs.map && lhs.name == rhs.name;
 }
 
 std::vector<DimVar> DimVarsFromTensorSizes(
@@ -983,9 +992,21 @@ std::vector<DimVar> DimVarsFromTensorSizes(
   std::vector<DimVar> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
+    ranges.push_back(DimVar{0, size - 1});
   }
   return ranges;
+}
+std::vector<DimVar> DimVarsFromGPUGrid(absl::Span<const int64_t> grid_sizes) {
+  CHECK_EQ(grid_sizes.size(), 6)
+      << "Grid must be 6-dimensional (th_x, th_y, th_z, bl_x, bl_y, bl_z)";
+  return {
+      DimVar{0, grid_sizes[0] - 1, kVarKindThreadX},
+      DimVar{0, grid_sizes[1] - 1, kVarKindThreadY},
+      DimVar{0, grid_sizes[2] - 1, kVarKindThreadZ},
+      DimVar{0, grid_sizes[3] - 1, kVarKindBlockX},
+      DimVar{0, grid_sizes[4] - 1, kVarKindBlockY},
+      DimVar{0, grid_sizes[5] - 1, kVarKindBlockZ},
+  };
 }
 
 std::vector<RangeVar> RangeVarsFromTensorSizes(
@@ -993,7 +1014,7 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
   std::vector<RangeVar> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
+    ranges.push_back({RangeVar{0, size - 1}});
   }
   return ranges;
 }
@@ -1633,6 +1654,7 @@ void IndexingMap::ResetToKnownEmpty() {
 }
 
 bool IndexingMap::VerifyVariableIntervals() {
+  // TODO: Check if the variable names are unique.
   return llvm::all_of(dim_vars_,
                       [](const DimVar& dim_var) {
                         return dim_var.bounds.IsFeasible();

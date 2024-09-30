@@ -62,7 +62,8 @@ std::string ToString(const IndexingMap& indexing_map);
 // Prints IndexingMap using the provided variable names.
 std::string ToString(const IndexingMap& indexing_map,
                      absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> symbol_names);
+                     absl::Span<const std::string> range_names,
+                     absl::Span<const std::string> rt_names);
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 

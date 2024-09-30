@@ -73,7 +73,7 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
   EXPECT_THAT(ToString(*thread_id_to_output_indexing,
                        {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
+                       {"chunk_id", "unroll_id"}, {}),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (0,
       ((bl_x * 128 + th_x) floordiv 3) mod 2,

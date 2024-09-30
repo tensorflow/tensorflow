@@ -961,14 +961,14 @@ ENTRY main {
                                  /*tile_sizes=*/{1, 1, 32},
                                  /*tile_strides=*/{0, 1, 1},
                                  /*tile_offsets_indexing=*/R"(
-    (d0, d1)[s0, s1] -> (s0, d1, s1),
+    (d0, d1)[rt0, rt1] -> (rt0, d1, rt1),
     domain:
     d0 in [0, 0],
     d1 in [0, 1],
-    s0 in [0, 1],
+    rt0 in [0, 1],
       hlo: %of1 = s32[] parameter(1),
       (d0, d1, d2) -> (),
-    s1 in [0, 226],
+    rt1 in [0, 226],
       hlo: %of3 = s32[] parameter(3),
       (d0, d1, d2) -> ()
   )"));

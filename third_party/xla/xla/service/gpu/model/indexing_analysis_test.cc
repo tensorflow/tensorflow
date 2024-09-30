@@ -668,18 +668,18 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                 operand id = 0
-                  (d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2),
+                  (d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2),
                   domain:
                   d0 in [0, 0],
                   d1 in [0, 1],
                   d2 in [0, 31],
-                  s0 in [0, 1],
+                  rt0 in [0, 1],
                     hlo: %of1 = s32[] parameter(1),
                     (d0, d1, d2)  -> (),
-                  s1 in [0, 0],
+                  rt1 in [0, 0],
                     hlo: %of2 = s32[] parameter(2),
                     (d0, d1, d2)  -> (),
-                  s2 in [0, 226],
+                  rt2 in [0, 226],
                     hlo: %of3 = s32[] parameter(3),
                     (d0, d1, d2) -> ()
                 operand id = 1
@@ -722,14 +722,14 @@ TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
                   d0 in [0, 19],
                   d1 in [0, 29]
                 operand id = 1
-                  (d0, d1)[s0, s1]  -> (d0 - s0, d1 - s1),
+                  (d0, d1)[rt0, rt1]  -> (d0 - rt0, d1 - rt1),
                   domain:
                   d0 in [0, 19],
                   d1 in [0, 29],
-                  s0 in [0, 15],
+                  rt0 in [0, 15],
                     hlo: %of1 = s32[] parameter(2),
                     (d0, d1)  -> (),
-                  s1 in [0, 20],
+                  rt1 in [0, 20],
                     hlo: %of2 = s32[] parameter(3),
                     (d0, d1)  -> ()
                 operand id = 2
@@ -1053,16 +1053,16 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1, d2, d3)[s0, s1] -> (d1 + s0, d2 + s1, d3),
+                (d0, d1, d2, d3)[rt0, rt1] -> (d1 + rt0, d2 + rt1, d3),
                 domain:
                 d0 in [0, 1805],
                 d1 in [0, 6],
                 d2 in [0, 7],
                 d3 in [0, 3],
-                s0 in [0, 26],
+                rt0 in [0, 26],
                   hlo: %indices = s32[1806,2]{1,0} parameter(1),
                   (d0, d1, d2, d3) -> (d0, 0),
-                s1 in [0, 68],
+                rt1 in [0, 68],
                   hlo: %indices = s32[1806,2]{1,0} parameter(1),
                   (d0, d1, d2, d3) -> (d0, 1)
               operand id = 1
@@ -1340,20 +1340,20 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1)[s0, s1, s2, s3] -> (d0 + s0 + s2, d1 + s1 + s3),
+                (d0, d1)[rt0, rt1, rt2, rt3] -> (d0 + rt0 + rt2, d1 + rt1 + rt3),
                 domain:
                 d0 in [0, 24],
                 d1 in [0, 15],
-                s0 in [0, 100],
+                rt0 in [0, 100],
                   hlo: %of11 = s32[] parameter(1),
                   (d0, d1) -> (),
-                s1 in [0, 32],
+                rt1 in [0, 32],
                   hlo: %of12 = s32[] parameter(2),
                   (d0, d1) -> (),
-                s2 in [0, 25],
+                rt2 in [0, 25],
                   hlo: %of21 = s32[] parameter(3),
                   (d0, d1) -> (),
-                s3 in [0, 16],
+                rt3 in [0, 16],
                   hlo: %of22 = s32[] parameter(4),
                   (d0, d1) -> ()
               operand id = 1
@@ -2610,14 +2610,14 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDUS) {
     )hlo"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                             operand id = 0
-                              (d0, d1)[s0] -> (0, d1 + s0 - 4096),
+                              (d0, d1)[rt0] -> (0, d1 + rt0 - 4096),
                               domain:
                               d0 in [0, 0],
                               d1 in [0, 4095],
-                              s0 in [0, 4096],
+                              rt0 in [0, 4096],
                                 hlo: %slice = s32[1]{0} parameter(1),
                                 (d0, d1) -> (0),
-                              d1 + s0 in [4096, 8191]
+                              d1 + rt0 in [4096, 8191]
                             operand id = 1
                               (d0, d1) -> (0),
                               domain:

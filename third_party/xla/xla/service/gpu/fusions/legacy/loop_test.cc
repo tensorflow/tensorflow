@@ -75,10 +75,12 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
 
-  EXPECT_THAT(ToString(*thread_id_to_output_indexing,
-                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     (bl_x * 128 + th_x) floordiv 15000,
     ((bl_x * 128 + th_x) floordiv 75) mod 200,
@@ -119,10 +121,12 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
-  EXPECT_THAT(ToString(*thread_id_to_output_indexing,
-                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x),
               domain:
               th_x in [0, 19],
@@ -137,10 +141,9 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
           /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(ToString(*thread_id_to_input_indexing,
-                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      ToString(*thread_id_to_input_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x),
               domain:
               th_x in [0, 19],
@@ -176,10 +179,12 @@ TEST_F(LoopTest, Broadcast) {
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
-  EXPECT_THAT(ToString(*thread_id_to_output_indexing,
-                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 (bl_x * 128 + th_x) floordiv 600,
                 ((bl_x * 128 + th_x) floordiv 30) mod 20,
@@ -198,10 +203,9 @@ TEST_F(LoopTest, Broadcast) {
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
           /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(ToString(*thread_id_to_input_indexing,
-                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                       {"chunk_id", "unroll_id"}),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      ToString(*thread_id_to_input_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
                   (((bl_x * 128 + th_x) floordiv 30) mod 20),
                 domain:

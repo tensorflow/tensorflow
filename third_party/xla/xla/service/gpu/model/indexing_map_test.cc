@@ -72,20 +72,24 @@ std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {
 
 TEST_F(IndexingMapTest, VariableKind) {
   EXPECT_EQ(ToVariableType("default"), VariableKind::kDefault);
-  EXPECT_EQ(ToVariableType("thread_x"), VariableKind::kThreadX);
-  EXPECT_EQ(ToVariableType("thread_y"), VariableKind::kThreadY);
-  EXPECT_EQ(ToVariableType("thread_z"), VariableKind::kThreadZ);
-  EXPECT_EQ(ToVariableType("block_x"), VariableKind::kBlockX);
-  EXPECT_EQ(ToVariableType("block_y"), VariableKind::kBlockY);
-  EXPECT_EQ(ToVariableType("block_z"), VariableKind::kBlockZ);
+  EXPECT_EQ(ToVariableType("th_x"), VariableKind::kThreadX);
+  EXPECT_EQ(ToVariableType("th_y"), VariableKind::kThreadY);
+  EXPECT_EQ(ToVariableType("th_z"), VariableKind::kThreadZ);
+  EXPECT_EQ(ToVariableType("bl_x"), VariableKind::kBlockX);
+  EXPECT_EQ(ToVariableType("bl_y"), VariableKind::kBlockY);
+  EXPECT_EQ(ToVariableType("bl_z"), VariableKind::kBlockZ);
+  EXPECT_EQ(ToVariableType("warp"), VariableKind::kWarp);
+  EXPECT_EQ(ToVariableType("th_w"), VariableKind::kWarpThread);
 
-  EXPECT_EQ(ToString(VariableKind::kDefault), "default");
-  EXPECT_EQ(ToString(VariableKind::kThreadX), "thread_x");
-  EXPECT_EQ(ToString(VariableKind::kThreadY), "thread_y");
-  EXPECT_EQ(ToString(VariableKind::kThreadZ), "thread_z");
-  EXPECT_EQ(ToString(VariableKind::kBlockX), "block_x");
-  EXPECT_EQ(ToString(VariableKind::kBlockY), "block_y");
-  EXPECT_EQ(ToString(VariableKind::kBlockZ), "block_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kDefault), "default");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadX), "th_x");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadY), "th_y");
+  EXPECT_EQ(ToVariableName(VariableKind::kThreadZ), "th_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockX), "bl_x");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockY), "bl_y");
+  EXPECT_EQ(ToVariableName(VariableKind::kBlockZ), "bl_z");
+  EXPECT_EQ(ToVariableName(VariableKind::kWarp), "warp");
+  EXPECT_EQ(ToVariableName(VariableKind::kWarpThread), "th_w");
 }
 
 TEST_F(IndexingMapTest, VerifyDimensions) {
@@ -120,21 +124,20 @@ TEST_F(IndexingMapTest, RTVar) {
                                     /*instr=*/nullptr, zero_dim_map})};
 
   IndexingMap indexing_map(
-      ParseAffineMap("(d0, d1)[s0, s1, s2] -> (d1, d0, s0 + s1, s1)",
+      ParseAffineMap("(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
                      &mlir_context_),
-      {DimVar{{0, 99}}, DimVar{{0, 43}}}, {RangeVar{{-99, 99}}},
+      {DimVar{0, 99, "d0"}, DimVar{0, 43, "d1"}}, {RangeVar{-99, 99, "range"}},
       std::move(rt_vars));
-  EXPECT_THAT(ToString(indexing_map, {"d0", "d1"}, {"range", "rt_0", "rt_1"}),
-              MatchIndexingString(R"(
-                (d0, d1)[range, rt_0, rt_1] -> (d1, d0, range + rt_0, rt_0),
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                (d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1),
                 domain:
                 d0 in [0, 99],
                 d1 in [0, 43],
                 range in [-99, 99],
-                rt_0 in [0, 2],
+                rt0 in [0, 2],
                   hlo: NULL,
                   (d0, d1) -> (),
-                rt_1 in [0, 7],
+                rt1 in [0, 7],
                   hlo: NULL,
                   (d0, d1) -> ()
               )"));
@@ -177,14 +180,12 @@ TEST_F(IndexingMapTest, Composition_Permutation) {
      s0 in [0, 1],
      s1 in [0, 1]
   )");
-
   IndexingMap consumer = Parse(R"(
      (d0)[s0] -> (d0, s0),
      domain:
      d0 in [0, 3],
      s0 in [0, 3]
   )");
-
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(composed, MatchIndexingMap(R"(
                           (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
@@ -276,36 +277,35 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
   auto zero_dim_map =
       AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
   std::vector<RTVar> rt_vars{
-      RTVar{Interval{0, 0},
-            /*instr=*/nullptr, zero_dim_map},
+      RTVar{Interval{0, 0}, /*instr=*/nullptr, zero_dim_map},
       RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map}),
       RTVar({Interval{0, 226}, /*instr=*/nullptr, zero_dim_map})};
 
   IndexingMap producer(
-      ParseAffineMap("(d0, d1, d2)[s0, s1, s2] -> (d0 + s0, d1 + s1, d2 + s2)",
-                     &mlir_context_),
+      ParseAffineMap(
+          "(d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2)",
+          &mlir_context_),
       {DimVar{{0, 0}}, DimVar{{0, 1}}, DimVar{{0, 226}}}, {},
       std::move(rt_vars));
 
   IndexingMap consumer(
-      ParseAffineMap("(d0, d1)[s0] -> (0, d1, s0)", &mlir_context_),
-      {DimVar{{0, 0}}, DimVar{{0, 1}}}, {RangeVar{0, 31}}, {});
+      ParseAffineMap("(d0, d1)[s] -> (0, d1, s)", &mlir_context_),
+      {DimVar{0, 0}, DimVar{0, 1}}, {RangeVar{0, 31, "s"}}, {});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(ToString(composed, {"d0", "d1"}, {"s", "rt_0", "rt_1", "rt_2"}),
-              MatchIndexingString(R"(
-    (d0, d1)[s, rt_0, rt_1, rt_2] -> (rt_0, d1 + rt_1, s + rt_2),
+  EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
+    (d0, d1)[s, rt0, rt1, rt2] -> (rt0, d1 + rt1, s + rt2),
     domain:
     d0 in [0, 0],
     d1 in [0, 1],
     s in [0, 31],
-    rt_0 in [0, 0],
+    rt0 in [0, 0],
       hlo: NULL,
       (d0, d1) -> (),
-    rt_1 in [0, 1],
+    rt1 in [0, 1],
       hlo: NULL,
       (d0, d1) -> (),
-    rt_2 in [0, 226],
+    rt2 in [0, 226],
       hlo: NULL,
       (d0, d1) -> ()
   )"));
@@ -318,22 +318,20 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   IndexingMap producer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
                      &mlir_context_),
-      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
-      {RTVar({Interval{0, 2}, /*instr=*/nullptr, zero_dim_map}),
-       RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map})});
+      {DimVar{0, 24}, DimVar{0, 15}}, {},
+      {RTVar{Interval{0, 2}, /*instr=*/nullptr, zero_dim_map, "ps_0"},
+       RTVar{Interval{0, 1}, /*instr=*/nullptr, zero_dim_map, "ps_1"}});
 
   std::vector<RTVar> consumer_rt_vars;
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
                      &mlir_context_),
-      {DimVar{{0, 24}}, DimVar{{0, 15}}}, {},
-      {RTVar({Interval{0, 25}, /*instr=*/nullptr, zero_dim_map}),
-       RTVar({Interval{0, 16}, /*instr=*/nullptr, zero_dim_map})});
+      {DimVar{0, 24}, DimVar{0, 15}}, {},
+      {RTVar{Interval{0, 25}, /*instr=*/nullptr, zero_dim_map, "cs_0"},
+       RTVar{Interval{0, 16}, /*instr=*/nullptr, zero_dim_map, "cs_1"}});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
-  EXPECT_THAT(
-      ToString(composed, {"d0", "d1"}, {"ps_0", "ps_1", "cs_0", "cs_1"}),
-      MatchIndexingString(R"(
+  EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
     (d0, d1)[ps_0, ps_1, cs_0, cs_1] ->
       (d0 + cs_0 * 2 + ps_0, d1 + cs_1 * 3 + ps_1 * 4),
     domain:
@@ -600,14 +598,14 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
   indexing_map.RemoveUnusedSymbols();
   // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42),
+                              (d0)[s0, rt0] -> (d0 * 4 + s0 + rt0 - 42),
                               domain:
                               d0 in [0, 31],
                               s0 in [0, 1],
-                              s1 in [0, 3],
+                              rt0 in [0, 3],
                                 hlo: NULL,
                                 (d0) -> (),
-                              d0 * 4 + s0 + s1 in [24, 459]
+                              d0 * 4 + s0 + rt0 in [24, 459]
                             )"));
 };
 
@@ -1832,10 +1830,10 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartialRTVarRemoval) {
   EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0)[s0] -> (d0, s0),
+              (d0)[rt0] -> (d0, rt0),
               domain:
               d0 in [0, 23],
-              s0 in [0, 512],
+              rt0 in [0, 512],
                 hlo: %constant = s64[12]{0} constant({...}),
                 (d0) -> (d0 floordiv 2)
               )"));
@@ -1936,7 +1934,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
   // arbitrary values that cannot be represent as an affine expression, hence
   // the RTVar remains in-place.
   IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0] -> (d0, s0)", &mlir_context_),
+      ParseAffineMap("(d0)[rt0] -> (d0, rt0)", &mlir_context_),
       /*dimensions=*/{{0, 11}},
       /*range_vars=*/{},
       {RTVar{Interval{0, 11},
@@ -1946,10 +1944,10 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_PartiallyOptimizableAdd) {
   EXPECT_TRUE(indexing_map.Simplify());
 
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-              (d0)[s0] -> (d0, d0 * 2 + s0),
+              (d0)[rt0] -> (d0, d0 * 2 + rt0),
               domain:
               d0 in [0, 11],
-              s0 in [0, 11],
+              rt0 in [0, 11],
                 hlo: %constant = s64[12]{0} constant({...}),
                 (d0) -> (d0)
             )"));

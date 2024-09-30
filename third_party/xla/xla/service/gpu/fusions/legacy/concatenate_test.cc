@@ -84,23 +84,23 @@ TEST_F(ConcatenateTest, ThreadIndexing) {
     unroll_id in [0, 0],
     bl_x * 128 + th_x in [0, 399]
   )";
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
   EXPECT_THAT(
       ToString(*fusion->ComputeThreadIdToInputIndexing(
                    /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_),
-               {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-               {"chunk_id", "unroll_id"}),
+               dim_names, range_names, {}),
       MatchIndexingString(kIndexing));
   EXPECT_THAT(
       ToString(*fusion->ComputeThreadIdToInputIndexing(
                    /*root_index=*/0, /*hero_operand_index=*/1, &mlir_context_),
-               {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-               {"chunk_id", "unroll_id"}),
+               dim_names, range_names, {}),
       MatchIndexingString(kIndexing));
   EXPECT_THAT(
       ToString(*fusion->ComputeThreadIdToInputIndexing(
                    /*root_index=*/0, /*hero_operand_index=*/2, &mlir_context_),
-               {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-               {"chunk_id", "unroll_id"}),
+               dim_names, range_names, {}),
       MatchIndexingString(kIndexing));
 }
 

@@ -71,18 +71,18 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
   EXPECT_THAT(
       ToString(*fusion.ComputeThreadIdToInputIndexing(0, 0, &mlir_context_)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> (
-          d3 floordiv 8,
-          (d3 mod 8) * 8 + d0 floordiv 32,
-          (d0 mod 32) * 2 + s2 * 64 + s3
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2, s3] -> (
+          bl_x floordiv 8,
+          (bl_x mod 8) * 8 + th_x floordiv 32,
+          (th_x mod 32) * 2 + s2 * 64 + s3
         ),
         domain:
-        d0 in [0, 255],
-        d1 in [0, 0],
-        d2 in [0, 0],
-        d3 in [0, 799],
-        d4 in [0, 0],
-        d5 in [0, 0],
+        th_x in [0, 255],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 799],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
         s0 in [0, 0],
         s1 in [0, 0],
         s2 in [0, 7],
@@ -91,18 +91,18 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
   EXPECT_THAT(
       ToString(*fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5) -> (
-          d3 floordiv 8,
-          (d3 mod 8) * 8 + d0 floordiv 32
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (
+          bl_x floordiv 8,
+          (bl_x mod 8) * 8 + th_x floordiv 32
         ),
         domain:
-        d0 in [0, 224],
-        d1 in [0, 0],
-        d2 in [0, 0],
-        d3 in [0, 799],
-        d4 in [0, 0],
-        d5 in [0, 0],
-        d0 mod 32 in [0, 0]
+        th_x in [0, 224],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 799],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
+        th_x mod 32 in [0, 0]
       )"));
 }
 

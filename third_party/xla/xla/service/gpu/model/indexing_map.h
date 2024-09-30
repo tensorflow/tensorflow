@@ -50,10 +50,14 @@ enum class VariableKind : char {
   kThreadX,
   kThreadY,
   kThreadZ,
+  // GPU warp ID.
+  kWarp,
+  // GPU thread ID in the warp.
+  kWarpThread
 };
 
-std::string_view ToString(VariableKind type);
-VariableKind ToVariableType(std::string_view type_name);
+std::string_view ToVariableName(VariableKind var_kind);
+VariableKind ToVariableType(std::string_view var_name);
 std::ostream& operator<<(std::ostream& out, VariableKind var_type);
 
 // Interval represents a closed interval [lower_bound, upper_bound].
@@ -201,7 +205,14 @@ class RangeEvaluator {
 // Dimension variable represents a dimension of a tensor or a GPU grid.
 // Dimensions correspond to the dimension parameter of `affine_map_`.
 struct DimVar {
+  DimVar() = default;
+  explicit DimVar(Interval bounds, llvm::StringRef name = "")
+      : bounds(bounds), name(name) {}
+  DimVar(int64_t lb, int64_t ub, llvm::StringRef name = "")
+      : DimVar(Interval{lb, ub}, name) {}
+
   Interval bounds;
+  std::string name = "";
 };
 bool operator==(const DimVar& lhs, const DimVar& rhs);
 inline bool operator!=(const DimVar& lhs, const DimVar& rhs) {
@@ -222,7 +233,14 @@ inline size_t hash_value(const DimVar& dim_var) {
 // tensor. RangeSymbol variables correspond to the front portion of the
 // symbols in `affine_map_`.
 struct RangeVar {
+  RangeVar() = default;
+  explicit RangeVar(Interval range, llvm::StringRef name = "")
+      : range(range), name(name) {}
+  RangeVar(int64_t lb, int64_t ub, llvm::StringRef name = "")
+      : RangeVar(Interval{lb, ub}, name) {}
+
   Interval range;
+  std::string name = "";
 };
 bool operator==(const RangeVar& lhs, const RangeVar& rhs);
 inline bool operator!=(const RangeVar& lhs, const RangeVar& rhs) {
@@ -248,6 +266,7 @@ struct RTVar {
   // the iteration space of `hlo`. It shows what element of `hlo` we need to
   // extract to get the runtime value for the RTVar.
   mlir::AffineMap map;
+  std::string name = "";
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
 inline bool operator!=(const RTVar& lhs, const RTVar& rhs) {
@@ -263,6 +282,8 @@ H AbslHashValue(H h, const RTVar& rt_var) {
 
 std::vector<DimVar> DimVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
+
+std::vector<DimVar> DimVarsFromGPUGrid(absl::Span<const int64_t> grid_sizes);
 
 std::vector<RangeVar> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);

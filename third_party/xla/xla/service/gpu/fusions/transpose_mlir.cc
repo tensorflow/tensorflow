@@ -215,7 +215,7 @@ IndexingMap MlirTransposeFusion::GetSharedMemoryIndexing(
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   return {mlir::AffineMap::get(6, 2, thread_offsets, ctx),
-          DimVarsFromTensorSizes(dim_var_sizes),
+          DimVarsFromGPUGrid(dim_var_sizes),
           RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
           {}};
 }

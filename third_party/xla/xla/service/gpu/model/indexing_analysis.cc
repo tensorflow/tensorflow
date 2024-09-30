@@ -458,8 +458,8 @@ IndexingMap ComputeOutputToInputPadOpIndexingImpl(
        llvm::zip(output_dims, padding_low, padding_high, padding_interior)) {
     AffineExpr dim_expr = getAffineDimExpr(output_dim_id, mlir_context);
     dim_vars.push_back(
-        {Interval{std::max(int64_t{0}, pad_low),
-                  std::min(output_dim - 1, output_dim - 1 - pad_high)}});
+        {DimVar{std::max(int64_t{0}, pad_low),
+                std::min(output_dim - 1, output_dim - 1 - pad_high)}});
     if (pad_interior == 0) {
       exprs.push_back(dim_expr - pad_low);
     } else {
@@ -624,8 +624,8 @@ IndexingMap ComposeIndexingMapsForWindow(
 
     exprs.push_back(symbol_expr * window_config.window_dilation() +
                     window_config.stride() * dim_expr);
-    dim_vars.push_back({Interval{0, output_dimensions[dim_id] - 1}});
-    range_vars.push_back({Interval{0, window_config.size() - 1}});
+    dim_vars.push_back({DimVar{0, output_dimensions[dim_id] - 1}});
+    range_vars.push_back({RangeVar{0, window_config.size() - 1}});
   }
   // Indexing map for pad op that pads the input.
   IndexingMap padded_input_indexing = ComputeOutputToInputPadOpIndexingImpl(
@@ -746,8 +746,8 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
   int64_t input_group_size =
       kernel_shape.dimensions(dnums.kernel_input_feature_dimension());
   Interval input_feature_range{0, input_group_size - 1};
-  input_symbols.push_back({input_feature_range});
-  kernel_symbols.push_back({input_feature_range});
+  input_symbols.push_back(RangeVar{input_feature_range});
+  kernel_symbols.push_back(RangeVar{input_feature_range});
 
   // With multiple feature groups, the input feature dimension is equally split.
   if (convolution->feature_group_count() > 1) {
@@ -768,7 +768,8 @@ HloInstructionIndexing ComputeOutputToInputConvolutionOpIndexing(
         output_shape.dimensions(dnums.output_batch_dimension());
     AffineExpr batch_group_expr =
         getAffineSymbolExpr(input_symbols.size(), mlir_context);
-    input_symbols.push_back({{0, convolution->batch_group_count() - 1}});
+    input_symbols.push_back(
+        RangeVar{{0, convolution->batch_group_count() - 1}});
     input_exprs[dnums.input_batch_dimension()] =
         batch_group_expr * batch_group_size + batch_dim_expr;
   } else {
