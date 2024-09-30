@@ -65,19 +65,25 @@ constexpr std::array<DataType, 14> kNumericTypes = {
      DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128,
      DT_BFLOAT16}};
 
-constexpr std::array<DataType, 22> kCpuAllTypes = {
-    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
-     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
-     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
-     DT_INT4,       DT_UINT4}};
+constexpr std::array<DataType, 24> kCpuAllTypes = {
+    {DT_UINT8,           DT_QUINT8,        DT_UINT16,
+     DT_UINT32,          DT_UINT64,        DT_INT8,
+     DT_QINT8,           DT_INT16,         DT_INT32,
+     DT_QINT32,          DT_INT64,         DT_HALF,
+     DT_FLOAT,           DT_DOUBLE,        DT_COMPLEX64,
+     DT_COMPLEX128,      DT_BOOL,          DT_BFLOAT16,
+     DT_FLOAT8_E5M2,     DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2FNUZ,
+     DT_FLOAT8_E4M3FNUZ, DT_INT4,          DT_UINT4}};
 
-constexpr std::array<DataType, 22> kGpuAllTypes = {
-    {DT_UINT8,      DT_QUINT8, DT_UINT16,   DT_UINT32,      DT_UINT64,
-     DT_INT8,       DT_QINT8,  DT_INT16,    DT_INT32,       DT_QINT32,
-     DT_INT64,      DT_HALF,   DT_FLOAT,    DT_DOUBLE,      DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL,   DT_BFLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN,
-     DT_INT4,       DT_UINT4}};
+constexpr std::array<DataType, 24> kGpuAllTypes = {
+    {DT_UINT8,           DT_QUINT8,        DT_UINT16,
+     DT_UINT32,          DT_UINT64,        DT_INT8,
+     DT_QINT8,           DT_INT16,         DT_INT32,
+     DT_QINT32,          DT_INT64,         DT_HALF,
+     DT_FLOAT,           DT_DOUBLE,        DT_COMPLEX64,
+     DT_COMPLEX128,      DT_BOOL,          DT_BFLOAT16,
+     DT_FLOAT8_E5M2,     DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2FNUZ,
+     DT_FLOAT8_E4M3FNUZ, DT_INT4,          DT_UINT4}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.

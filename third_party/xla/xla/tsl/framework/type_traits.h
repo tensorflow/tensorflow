@@ -76,6 +76,7 @@ struct is_simple_type {
       std::is_same<T, float8_e4m3fnuz>::value ||
       std::is_same<T, float8_e4m3b11fnuz>::value ||
       std::is_same<T, float8_e5m2>::value ||
+      std::is_same<T, float8_e4m3fnuz>::value ||
       std::is_same<T, float8_e5m2fnuz>::value || std::is_same<T, int4>::value ||
       std::is_same<T, uint4>::value;
 };

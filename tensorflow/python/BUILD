@@ -971,7 +971,7 @@ pywrap_aware_filegroup(
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
         "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
-        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
+        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2, float8_e4m3fnuz, float8_e5m2fnuz
         "@local_xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],

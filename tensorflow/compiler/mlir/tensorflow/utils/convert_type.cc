@@ -88,6 +88,12 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case tensorflow::DT_FLOAT8_E5M2:
       *type = builder.getFloat8E5M2Type();
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FNUZ:
+      *type = builder.getFloat8E4M3FNUZType();
+      return absl::OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2FNUZ:
+      *type = builder.getFloat8E5M2FNUZType();
+      return absl::OkStatus();
     case DT_INT4:
       *type = builder.getIntegerType(4, /*isSigned=*/true);
       return absl::OkStatus();
@@ -124,6 +130,12 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     return absl::OkStatus();
   } else if (type.isFloat8E5M2()) {
     *dtype = DT_FLOAT8_E5M2;
+    return absl::OkStatus();
+  } else if (type.isFloat8E4M3FNUZ()) {
+    *dtype = DT_FLOAT8_E4M3FNUZ;
+    return absl::OkStatus();
+  } else if (type.isFloat8E5M2FNUZ()) {
+    *dtype = DT_FLOAT8_E5M2FNUZ;
     return absl::OkStatus();
   } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(type)) {
     switch (itype.getWidth()) {

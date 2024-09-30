@@ -198,6 +198,12 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
     case TF_FLOAT8_E4M3FN:
       *out_pyarray_type = custom_dtypes.float8_e4m3fn;
       break;
+    case TF_FLOAT8_E5M2FNUZ:
+      *out_pyarray_type = custom_dtypes.float8_e5m2fnuz;
+      break;
+    case TF_FLOAT8_E4M3FNUZ:
+      *out_pyarray_type = custom_dtypes.float8_e4m3fnuz;
+      break;
     case TF_INT4:
       *out_pyarray_type = custom_dtypes.int4;
       break;

@@ -43,32 +43,34 @@ type DataType C.TF_DataType
 
 // Types of scalar values in the TensorFlow type system.
 const (
-	Float        DataType = C.TF_FLOAT
-	Double       DataType = C.TF_DOUBLE
-	Int32        DataType = C.TF_INT32
-	Uint32       DataType = C.TF_UINT32
-	Uint8        DataType = C.TF_UINT8
-	Int16        DataType = C.TF_INT16
-	Int8         DataType = C.TF_INT8
-	String       DataType = C.TF_STRING
-	Complex64    DataType = C.TF_COMPLEX64
-	Complex      DataType = C.TF_COMPLEX
-	Int64        DataType = C.TF_INT64
-	Uint64       DataType = C.TF_UINT64
-	Bool         DataType = C.TF_BOOL
-	Qint8        DataType = C.TF_QINT8
-	Quint8       DataType = C.TF_QUINT8
-	Qint32       DataType = C.TF_QINT32
-	Bfloat16     DataType = C.TF_BFLOAT16
-	Qint16       DataType = C.TF_QINT16
-	Quint16      DataType = C.TF_QUINT16
-	Uint16       DataType = C.TF_UINT16
-	Complex128   DataType = C.TF_COMPLEX128
-	Half         DataType = C.TF_HALF
-	Float8e5m2   DataType = C.TF_FLOAT8_E5M2
-	Float8e4m3fn DataType = C.TF_FLOAT8_E4M3FN
-	Int4         DataType = C.TF_INT4
-	Uint4        DataType = C.TF_UINT4
+	Float        	DataType = C.TF_FLOAT
+	Double       	DataType = C.TF_DOUBLE
+	Int32        	DataType = C.TF_INT32
+	Uint32       	DataType = C.TF_UINT32
+	Uint8        	DataType = C.TF_UINT8
+	Int16        	DataType = C.TF_INT16
+	Int8         	DataType = C.TF_INT8
+	String       	DataType = C.TF_STRING
+	Complex64    	DataType = C.TF_COMPLEX64
+	Complex      	DataType = C.TF_COMPLEX
+	Int64        	DataType = C.TF_INT64
+	Uint64       	DataType = C.TF_UINT64
+	Bool         	DataType = C.TF_BOOL
+	Qint8        	DataType = C.TF_QINT8
+	Quint8       	DataType = C.TF_QUINT8
+	Qint32       	DataType = C.TF_QINT32
+	Bfloat16     	DataType = C.TF_BFLOAT16
+	Qint16       	DataType = C.TF_QINT16
+	Quint16      	DataType = C.TF_QUINT16
+	Uint16       	DataType = C.TF_UINT16
+	Complex128   	DataType = C.TF_COMPLEX128
+	Half         	DataType = C.TF_HALF
+	Float8e5m2   	DataType = C.TF_FLOAT8_E5M2
+	Float8e4m3fn 	DataType = C.TF_FLOAT8_E4M3FN
+	Float8e5m2fnuz  DataType = C.TF_FLOAT8_E5M2FNUZ
+	Float8e4m3fnuz 	DataType = C.TF_FLOAT8_E4M3FNUZ
+	Int4         	DataType = C.TF_INT4
+	Uint4        	DataType = C.TF_UINT4
 )
 
 // Tensor holds a multi-dimensional array of elements of a single data type.
@@ -558,7 +560,7 @@ func isTensorSerializable(dataType DataType) error {
 	// serialization and deserialization of Tensors.  Till then capitalize
 	// on knowledge of the implementation for numeric types.
 	switch dataType {
-	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half, Float8e5m2, Float8e4m3fn, Int4, Uint4:
+	case Float, Double, Int32, Uint8, Int16, Int8, Complex, Int64, Bool, Quint8, Qint32, Bfloat16, Qint16, Quint16, Uint16, Complex128, Half, Float8e5m2, Float8e4m3fn, Float8e5m2fnuz, Float8e4m3fnuz, Int4, Uint4:
 		return nil
 	default:
 		return fmt.Errorf("serialization of tensors with the DataType %d is not yet supported, see https://github.com/tensorflow/tensorflow/issues/6003", dataType)

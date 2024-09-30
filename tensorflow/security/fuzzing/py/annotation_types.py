@@ -30,6 +30,10 @@ Complex128 = _create_dtype_wrapper("Complex128", _dtypes.complex128)
 Complex64 = _create_dtype_wrapper("Complex64", _dtypes.complex64)
 Float8e4m3fn = _create_dtype_wrapper("Float8e4m3fn", _dtypes.float8_e4m3fn)
 Float8e5m2 = _create_dtype_wrapper("Float8e5m2", _dtypes.float8_e5m2)
+Float8e4m3fnuz = _create_dtype_wrapper(
+    "Float8e4m3fnuz", _dtypes.float8_e4m3fnuz)
+Float8e5m2fnuz = _create_dtype_wrapper(
+    "Float8e5m2fnuz", _dtypes.float8_e5m2fnuz)
 Float16 = _create_dtype_wrapper("Float16", _dtypes.float16)
 Float32 = _create_dtype_wrapper("Float32", _dtypes.float32)
 Float64 = _create_dtype_wrapper("Float64", _dtypes.float64)

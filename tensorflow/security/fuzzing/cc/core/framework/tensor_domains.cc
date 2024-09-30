@@ -92,7 +92,7 @@ Domain<absl::StatusOr<Tensor>> StatusOrAnyNumericTensor(
     // TODO(b/268338352): Add unsupported types
     // DT_BOOL, DT_STRING, DT_COMPLEX64, DT_QINT8, DT_QUINT8, DT_QINT32,
     // DT_BFLOAT16, DT_QINT16, DT_COMPLEX128, DT_HALF, DT_RESOURCE, DT_VARIANT,
-    // DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN
+    // DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2FNUZ, DT_FLOAT8_E4M3FNUZ
     default:
       LOG(FATAL) << "Unsupported data type: " << data_type;  // Crash OK
   }
