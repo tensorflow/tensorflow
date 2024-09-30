@@ -37,19 +37,23 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -147,7 +151,7 @@ class HloTestBase : public ::testing::Test {
   void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
                          bool print_operand_shape = false);
 
-  // LikeMatchOptimizedHlo, but checks operand shapes as well.
+  // Like MatchOptimizedHlo, but checks operand shapes as well.
   void MatchOptimizedHloWithShapes(absl::string_view hlo,
                                    absl::string_view pattern) {
     MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
@@ -177,7 +181,7 @@ class HloTestBase : public ::testing::Test {
               bool allow_mixed_precision_in_hlo_verifier = true,
               HloPredicate instruction_can_change_layout_func = {});
 
-  ~HloTestBase() override {}
+  ~HloTestBase() override = default;
 
   // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
   // FileChecks the result against `expected`.
@@ -287,16 +291,14 @@ class HloTestBase : public ::testing::Test {
   // reference backend. Note that the program shape of the module must not be
   // modified.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
@@ -323,11 +325,11 @@ class HloTestBase : public ::testing::Test {
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
-      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
   [[nodiscard]] ::testing::AssertionResult Run(
-      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
@@ -355,7 +357,7 @@ class HloTestBase : public ::testing::Test {
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const absl::Span<Literal* const> arguments,
+      absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Same as below, except requires passing the modules.
@@ -390,14 +392,14 @@ class HloTestBase : public ::testing::Test {
 
   // Executes an hlo module with fake inputs on multiple replicas.
   [[nodiscard]] ::testing::AssertionResult RunReplicated(
-      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
       const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   [[nodiscard]] ::testing::AssertionResult RunMultipleTimes(
-      const absl::string_view hlo_string, bool run_hlo_passes,
+      absl::string_view hlo_string, bool run_hlo_passes,
       std::vector<ExecutionProfile>* profiles,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
@@ -405,7 +407,7 @@ class HloTestBase : public ::testing::Test {
       const std::string& filename, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
@@ -525,8 +527,7 @@ class HloTestBase : public ::testing::Test {
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareInternal(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
@@ -545,7 +546,7 @@ class HloTestBase : public ::testing::Test {
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const absl::Span<Literal* const> arguments,
+      absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   // Returns either an HloRunner or HloRunnerPjRt implementation depending if
