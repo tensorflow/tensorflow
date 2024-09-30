@@ -254,6 +254,16 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
   return ConvertType<float, tsl::float8_e5m2fnuz>(f32_literal);
 }
 
+/* static */ Literal LiteralUtil::ConvertF32ToF8E5M2(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e5m2>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF8E4M3FN(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e4m3fn>(f32_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, bfloat16>(f32_literal);

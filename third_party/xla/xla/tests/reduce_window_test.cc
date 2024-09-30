@@ -1339,7 +1339,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         /*window_dilations=*/param.window_dilation,
         /*padding=*/padding);
 
-    ComputeAndCompare(&b, {MaybeConvertLiteralToBfloat16(input_literal)},
+    ComputeAndCompare(&b, {MaybeConvertLiteralToTestType(input_literal)},
                       DefaultErrorSpec());
   }
 };

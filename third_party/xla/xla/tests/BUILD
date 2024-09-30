@@ -272,6 +272,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_builder",
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/service:platform_util",
         "//xla/stream_executor",
