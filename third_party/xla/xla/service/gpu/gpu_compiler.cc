@@ -1564,6 +1564,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         !debug_options.xla_gpu_enable_priority_fusion();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
     pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
+    // Normalization passes might have introduced s4 tensors without bit width
+    // annotations, this pass will add the annotations.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
