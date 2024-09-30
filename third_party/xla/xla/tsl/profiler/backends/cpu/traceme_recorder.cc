@@ -25,12 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/tsl/profiler/utils/lock_free_queue.h"
+#include "xla/tsl/profiler/utils/per_thread.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/utils/lock_free_queue.h"
-#include "tsl/profiler/utils/per_thread.h"
 
 namespace tsl {
 namespace profiler {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
+#include "xla/tsl/profiler/utils/session_manager.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
-#include "tsl/profiler/utils/session_manager.h"
 
 namespace tensorflow {
 namespace profiler {

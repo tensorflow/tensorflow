@@ -28,7 +28,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -40,7 +40,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -76,7 +76,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -98,7 +98,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )
 
@@ -127,7 +127,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/utils:timespan",
         "@local_xla//xla/tsl/lib/io:iterator",
+        "@local_xla//xla/tsl/profiler/utils:timespan",
     ],
 )

@@ -22,7 +22,7 @@ package(
 
 pytype_strict_library(
     name = "test_utils",
-    testonly = True,
+    testonly = True,  # test comment
     srcs = ["test_utils.py"],
     visibility = ["//visibility:public"],
 )

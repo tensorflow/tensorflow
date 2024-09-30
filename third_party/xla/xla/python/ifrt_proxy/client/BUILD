@@ -99,6 +99,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:test_utils",
         "//xla/python/ifrt_proxy/common:types",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
@@ -115,7 +116,6 @@ cc_library(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 

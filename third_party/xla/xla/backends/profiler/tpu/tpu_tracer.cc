@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tsl_status_helper.h"
 #include "xla/tsl/c/tsl_status.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #include "xla/stream_executor/tpu/tpu_profiler_init_fns.inc"

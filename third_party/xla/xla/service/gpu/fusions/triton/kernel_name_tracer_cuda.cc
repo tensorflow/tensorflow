@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/service/gpu/fusions/triton/kernel_name_tracer.h"
-#include "tsl/profiler/utils/time_utils.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 
 namespace xla::gpu {
 

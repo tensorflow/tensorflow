@@ -396,9 +396,9 @@ tsl_cc_test(
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
-        "//tsl/profiler/utils:time_utils_impl",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
 )
 
