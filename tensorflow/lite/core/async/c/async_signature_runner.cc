@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/core/async/c/async_signature_runner.h"
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/async_signature_runner.h"
-#include "tensorflow/lite/core/async/c/internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 TfLiteAsyncSignatureRunner* TfLiteInterpreterGetAsyncSignatureRunner(
