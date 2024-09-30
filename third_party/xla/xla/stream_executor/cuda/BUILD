@@ -320,7 +320,6 @@ xla_test(
     backends = ["gpu"],
     tags = [
         "cuda-only",
-        "gpu",
     ],
     deps = [
         ":cuda_diagnostics",
