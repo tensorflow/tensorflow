@@ -1019,6 +1019,23 @@ cc_library(
     alwayslink = True,
 )
 
+xla_test(
+    name = "cuda_executor_test",
+    srcs = ["cuda_executor_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_executor",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 cc_library(
     name = "all_runtime",
     copts = tsl_copts(),

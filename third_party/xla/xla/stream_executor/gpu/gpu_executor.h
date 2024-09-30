@@ -58,8 +58,6 @@ class GpuExecutor : public StreamExecutorCommon {
   // Creates an EventBasedTimer for the given stream.
   virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
   CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) = 0;
-  static absl::StatusOr<std::unique_ptr<DeviceDescription>>
-  CreateDeviceDescription(int device_ordinal);
 
   // Frees unused memory cached on the device for use with graphs back to the
   // OS.

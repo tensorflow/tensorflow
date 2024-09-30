@@ -104,7 +104,7 @@ class RocmExecutor : public GpuExecutor {
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
-    return GpuExecutor::CreateDeviceDescription(device_ordinal());
+    return RocmExecutor::CreateDeviceDescription(device_ordinal());
   }
   void* UnifiedMemoryAllocate(uint64_t size) override {
     return GpuDriver::UnifiedMemoryAllocate(gpu_context(), size);
@@ -140,6 +140,9 @@ class RocmExecutor : public GpuExecutor {
     }
     return it->second;
   }
+
+  static absl::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
  private:
   // Collects metadata for the specified kernel.

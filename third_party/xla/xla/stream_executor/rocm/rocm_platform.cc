@@ -30,8 +30,6 @@ namespace gpu {
 
 ROCmPlatform::ROCmPlatform() : name_("ROCM") {}
 
-ROCmPlatform::~ROCmPlatform() {}
-
 Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
 
 int ROCmPlatform::VisibleDeviceCount() const {
@@ -49,7 +47,7 @@ const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
-  return GpuExecutor::CreateDeviceDescription(ordinal);
+  return RocmExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {

@@ -678,7 +678,7 @@ absl::Status CudaExecutor::TrimGraphMemory() {
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
-GpuExecutor::CreateDeviceDescription(int device_ordinal) {
+CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal, &device));
 

@@ -217,6 +217,14 @@ cc_library(
     alwayslink = True,
 )
 
+xla_test(
+    name = "rocm_executor_test",
+    srcs = ["rocm_executor_test.cc"],
+    backends = ["gpu_amd_any"],
+    tags = ["rocm-only"],
+    deps = [":rocm_executor"],
+)
+
 cc_library(
     name = "rocm_kernel",
     srcs = ["rocm_kernel.cc"],

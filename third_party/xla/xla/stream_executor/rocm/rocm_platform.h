@@ -39,7 +39,6 @@ extern const Platform::Id kROCmPlatformId;
 class ROCmPlatform : public Platform {
  public:
   ROCmPlatform();
-  ~ROCmPlatform() override;
 
   // Platform interface implementation:
   // Returns the same value as kROCmPlatform above.

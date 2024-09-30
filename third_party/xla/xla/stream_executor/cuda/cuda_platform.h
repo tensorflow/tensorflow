@@ -38,7 +38,6 @@ namespace gpu {
 class CudaPlatform : public Platform {
  public:
   CudaPlatform();
-  ~CudaPlatform() override;
 
   // Platform interface implementation:
   // Returns the same value as kCudaPlatform above.
