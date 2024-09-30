@@ -21,8 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/timespan.h"

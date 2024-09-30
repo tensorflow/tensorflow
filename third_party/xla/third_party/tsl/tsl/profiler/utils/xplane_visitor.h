@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/timespan.h"
 
 namespace tsl {
