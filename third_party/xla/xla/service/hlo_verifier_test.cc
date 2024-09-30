@@ -3488,5 +3488,20 @@ TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
   ASSERT_IS_OK(verifier.Run(module.get()).status());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, Int4CompareSelect) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main {
+      a = s4[10]{0:E(4)} parameter(0)
+      b = s4[10]{0:E(4)} parameter(1)
+      less = pred[10] compare(a, b), direction=LT
+      ROOT result = select(less, a, b)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
 }  // namespace
 }  // namespace xla
