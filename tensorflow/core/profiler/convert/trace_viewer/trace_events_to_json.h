@@ -68,6 +68,7 @@ struct JsonTraceOptions {
   TraceEventsColorerInterface* colorer = nullptr;
 
   bool generate_stack_frames = true;
+  bool use_new_backend = false;
 };
 
 // Counts generated JSON events by type.
@@ -516,6 +517,8 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   output->Append(
       R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
 
+  output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
+                                 options.use_new_backend ? "true" : "false"));
   WriteDetails(options.details, output);
   WriteSelectedDeviceIds(options.selected_device_ids, output);
   WriteReturnedEventsSize(events.NumEvents(), output);
