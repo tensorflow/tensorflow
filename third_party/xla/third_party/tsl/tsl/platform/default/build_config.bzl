@@ -845,5 +845,5 @@ def tf_google_mobile_srcs_no_runtime():
 def tf_google_mobile_srcs_only_runtime():
     return []
 
-def tf_cuda_libdevice_path_deps():
-    return tf_platform_deps("cuda_libdevice_path")
+def tf_cuda_root_path_deps():
+    return tf_platform_deps("cuda_root_path")

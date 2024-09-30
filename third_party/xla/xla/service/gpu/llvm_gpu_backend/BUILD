@@ -11,7 +11,11 @@ load(
     "if_cuda_is_configured",
 )
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+    "internal_visibility",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -36,6 +40,11 @@ cc_library(
         "gpu_backend_lib.h",
         "utils.h",
     ],
+    data = if_cuda_is_configured(
+        if_google(
+            ["@local_config_cuda//cuda:runtime_libdevice"],
+        ),
+    ),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
@@ -76,7 +85,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//mlir:NVVMDialect",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:cuda_libdevice_path",
+        "@local_tsl//tsl/platform:cuda_root_path",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",

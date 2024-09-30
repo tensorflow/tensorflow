@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_
-#define TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#ifndef TENSORFLOW_TSL_PLATFORM_CUDA_ROOT_PATH_H_
+#define TENSORFLOW_TSL_PLATFORM_CUDA_ROOT_PATH_H_
 
 #include <string>
 #include <vector>
@@ -46,4 +46,4 @@ bool PreferPtxasFromPath();
 
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PLATFORM_CUDA_LIBDEVICE_PATH_H_
+#endif  // TENSORFLOW_TSL_PLATFORM_CUDA_ROOT_PATH_H_
