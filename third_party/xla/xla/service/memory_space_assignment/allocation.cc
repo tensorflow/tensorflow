@@ -279,7 +279,8 @@ std::string PinnedAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "PinnedAllocation in ", memory_space_str, " defined at ",
@@ -304,7 +305,7 @@ CopyAllocation::CopyAllocation(
     int64_t copy_start_schedule_after_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
     std::optional<int64_t> cross_program_prefetch_index,
-    HloInstruction* sync_instruction)
+    HloInstruction* sync_mem_op)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -314,7 +315,7 @@ CopyAllocation::CopyAllocation(
       prev_allocation_(prev_allocation),
       copy_start_schedule_after_(copy_start_schedule_after_time),
       copy_done_schedule_before_(copy_done_schedule_before_time),
-      sync_instruction_(sync_instruction) {}
+      sync_mem_op_(sync_mem_op) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -325,13 +326,21 @@ absl::Status CopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  if (sync_instruction_ != nullptr &&
-      sync_instruction_->opcode() != HloOpcode::kCopy) {
+  if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     TF_ASSIGN_OR_RETURN(copy_done_,
                         computation->CreateAsyncInstructions(
-                            sync_instruction_, {ShapeUtil::MakeShape(S32, {})},
+                            sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
                             HloInstruction::kMainExecutionThread, false));
     copy_start_ = copy_done_->mutable_operand(0);
+    // If the shape of the copy start operand is not compatible with the
+    // shape of the producing instruction, we insert a bitcast to make them
+    // compatible.
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(
+            producing_instruction->shape(), copy_start_->operand(0)->shape())) {
+      producing_instruction =
+          computation->AddInstruction(HloInstruction::CreateBitcast(
+              copy_start_->operand(0)->shape(), producing_instruction));
+    }
     TF_RETURN_IF_ERROR(
         copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
@@ -367,15 +376,16 @@ std::string CopyAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat("Copy Allocation in ", memory_space_str,
                       ", start_time:", start_time(), ", end_time:", end_time(),
                       ", copy_start_after_time: ", copy_start_schedule_after(),
                       ", copy_done_before_time: ", copy_done_schedule_before(),
-                      ", uses: ", UsesToString(uses()), ", sync_instruction: ",
-                      sync_instruction_ ? sync_instruction_->name() : "none",
-                      ", from ", prev_allocation_.ToString());
+                      ", uses: ", UsesToString(uses()), ", sync_mem_op: ",
+                      sync_mem_op_ ? sync_mem_op_->name() : "none", ", from ",
+                      prev_allocation_.ToString());
 }
 
 HloPosition CopyAllocation::defining_position() const {
@@ -427,7 +437,8 @@ SlicedCopyAllocation::SlicedCopyAllocation(
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
     const SlicedPrefetchOptions& sliced_prefetch_options,
-    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn)
+    absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn,
+    HloInstruction* sync_mem_op)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
           GetSlicedCopyAllocationChunk(
@@ -442,7 +453,8 @@ SlicedCopyAllocation::SlicedCopyAllocation(
       original_shape_to_slice_(prev_allocation.defining_position().shape()),
       prev_allocation_(prev_allocation),
       sliced_prefetch_options_(sliced_prefetch_options),
-      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn) {
+      get_equivalent_s8_shape_fn_(get_equivalent_s8_shape_fn),
+      sync_mem_op_(sync_mem_op) {
   CHECK_GE(slice_decisions_sorted_by_exclusive_start_time.size(), 2);
   slice_details_sorted_by_exclusive_start_time_.reserve(
       slice_decisions_sorted_by_exclusive_start_time.size());
@@ -636,7 +648,9 @@ std::string SlicedCopyAllocation::ToString() const {
       slice_details_sorted_by_start_time().front().copy_start_after_time,
       ", last_slice_copy_done_before_time: ",
       slice_details_sorted_by_start_time().back().copy_done_before_time,
-      ", uses: ", UsesToString(uses()), ", from ", prev_allocation_.ToString());
+      ", uses: ", UsesToString(uses()),
+      ", sync_mem_op: ", sync_mem_op_ ? sync_mem_op_->name() : "none",
+      ", from ", prev_allocation_.ToString());
 }
 
 absl::Status SlicedCopyAllocation::CreateBitcastConcat(
