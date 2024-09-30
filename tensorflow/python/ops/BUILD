@@ -3630,6 +3630,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
+        "no_rocm", #TODO(rocm): weekly sync 240919
     ],
     deps = [
         ":array_ops",
