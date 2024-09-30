@@ -498,8 +498,7 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
   static absl::Status AsynchronousMemsetUint8(Context* context,
                                               GpuDevicePtr location,
-                                              uint8_t value,
-                                              size_t uint32_count,
+                                              uint8_t value, size_t uint8_count,
                                               GpuStreamHandle stream);
 
   // Performs an asynchronous memset of the device memory segment via
