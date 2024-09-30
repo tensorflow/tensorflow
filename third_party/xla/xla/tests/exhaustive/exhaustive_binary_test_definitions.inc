@@ -264,13 +264,9 @@ using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 #define BINARY_TEST_F16(test_name, ...)
 #endif
 
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
 #define BINARY_TEST_BF16(test_name, ...)          \
   XLA_TEST_P(ExhaustiveBF16BinaryTest, test_name) \
   __VA_ARGS__
-#else
-#define BINARY_TEST_BF16(test_name, ...)
-#endif
 
 #define BINARY_TEST_F32(test_name, ...)          \
   XLA_TEST_P(ExhaustiveF32BinaryTest, test_name) \

@@ -123,13 +123,9 @@ class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
 #define UNARY_TEST_E5M2(test_name, ...)
 #endif
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
 #define UNARY_TEST_BF16(test_name, ...)          \
   XLA_TEST_P(ExhaustiveBF16UnaryTest, test_name) \
   __VA_ARGS__
-#else
-#define UNARY_TEST_BF16(test_name, ...)
-#endif
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 #define UNARY_TEST_F16(test_name, ...)          \

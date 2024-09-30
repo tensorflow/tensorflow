@@ -1017,12 +1017,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
                            zero_error_spec_, &expected.shape());
 }
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest, ::testing::Bool());
-#else
-INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
-                        ::testing::ValuesIn(std::vector<bool>{false}));
-#endif
 
 using ReshapeHloTest = HloTestBase;
 
