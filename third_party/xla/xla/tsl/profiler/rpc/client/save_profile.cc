@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tsl {
 namespace profiler {

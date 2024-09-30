@@ -18,12 +18,12 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
+#include "xla/tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/test.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/trace_utils.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tsl {
 namespace profiler {

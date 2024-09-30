@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_events_util.h"
 #include "tensorflow/core/profiler/convert/trace_viewer/trace_viewer_color.h"
 #include "tensorflow/core/profiler/lib/context_types.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/trace_events_raw.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/context_types.h"
-#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

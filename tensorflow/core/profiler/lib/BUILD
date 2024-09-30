@@ -144,7 +144,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme_encode",
     ] + if_not_android([
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
-        "@local_tsl//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ]),
 )
 

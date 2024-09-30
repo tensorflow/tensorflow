@@ -53,9 +53,9 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:file_system_utils",
-        "@local_tsl//tsl/profiler/utils:time_utils",
         "@local_xla//xla/tsl/profiler/rpc:profiler_service_impl",
+        "@local_xla//xla/tsl/profiler/utils:file_system_utils",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ] + tf_grpc_cc_dependencies(),
 )
 

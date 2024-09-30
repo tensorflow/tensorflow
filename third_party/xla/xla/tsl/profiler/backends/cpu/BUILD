@@ -40,6 +40,8 @@ cc_library(
         "//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
+        "//xla/tsl/profiler/utils:lock_free_queue",
+        "//xla/tsl/profiler/utils:per_thread",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
@@ -47,8 +49,6 @@ cc_library(
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/utils:lock_free_queue",
-        "@local_tsl//tsl/profiler/utils:per_thread",
     ],
     alwayslink = True,
 )
@@ -59,6 +59,9 @@ tsl_cc_test(
     deps = [
         ":traceme_recorder",
         ":traceme_recorder_impl",
+        "//xla/tsl/profiler/utils:math_utils",
+        "//xla/tsl/profiler/utils:time_utils",
+        "//xla/tsl/profiler/utils:time_utils_impl",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
@@ -68,9 +71,6 @@ tsl_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/utils:math_utils",
-        "@local_tsl//tsl/profiler/utils:time_utils",
-        "@local_tsl//tsl/profiler/utils:time_utils_impl",
     ],
 )
 
@@ -120,13 +120,13 @@ cc_library(
     ]),
     deps = [
         ":traceme_recorder",
+        "//xla/tsl/profiler/utils:parse_annotation",
+        "//xla/tsl/profiler/utils:tf_op_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:parse_annotation",
-        "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_builder",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -144,6 +144,8 @@ cc_library(
     deps = [
         ":threadpool_listener_state",
         ":traceme_recorder",
+        "//xla/tsl/profiler/utils:time_utils",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:logging",
@@ -153,8 +155,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:time_utils",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ],
 )
 

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
