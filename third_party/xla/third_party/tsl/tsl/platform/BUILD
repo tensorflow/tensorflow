@@ -100,6 +100,17 @@ cc_library(
     ],
 )
 
+tsl_cc_test(
+    name = "cpu_info_test",
+    size = "small",
+    srcs = ["cpu_info_test.cc"],
+    deps = [
+        ":platform_port",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_library(
     name = "criticality",
     compatible_with = get_compatible_with_portable(),
