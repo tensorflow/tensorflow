@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
@@ -102,6 +103,8 @@ TEST_F(CudaDriverTest, GraphGetNodeCountTest) {
   CHECK_CUDA(cuCtxCreate(&context, 0, device));
   gpu::GpuGraphHandle graph;
   TF_CHECK_OK(gpu::GpuDriver::CreateGraph(&graph));
+  absl::Cleanup cleanup(
+      [graph] { TF_CHECK_OK(gpu::GpuDriver::DestroyGraph(graph)); });
   EXPECT_THAT(gpu::GpuDriver::GraphGetNodeCount(graph), IsOkAndHolds(0));
   gpu::GpuGraphNodeHandle node;
   TF_CHECK_OK(gpu::GpuDriver::GraphAddEmptyNode(&node, graph, {}));
