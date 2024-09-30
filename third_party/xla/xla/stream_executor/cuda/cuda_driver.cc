@@ -1079,10 +1079,10 @@ absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
 absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                                                 CUdeviceptr location,
                                                 uint8_t value,
-                                                size_t uint32_count,
+                                                size_t uint8_count,
                                                 CUstream stream) {
   ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD8Async(location, value, uint32_count, stream),
+  return cuda::ToStatus(cuMemsetD8Async(location, value, uint8_count, stream),
                         "Failed to enqueue async memset operation");
 }
 

@@ -955,12 +955,11 @@ absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
 
 absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                                                 hipDeviceptr_t location,
-                                                uint8 value,
-                                                size_t uint32_count,
+                                                uint8 value, size_t uint8_count,
                                                 GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
-      wrap::hipMemsetAsync(location, value, uint32_count, stream),
+      wrap::hipMemsetAsync(location, value, uint8_count, stream),
       "Failed to enqueue async memset operation");
   return absl::OkStatus();
 }
