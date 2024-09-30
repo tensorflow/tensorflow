@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -52,7 +52,7 @@ class QuantizationTestBase : public Test {
         arith::ArithDialect, mlir::stablehlo::StablehloDialect,
         func::FuncDialect, TF::TensorFlowDialect, TFL::TensorFlowLiteDialect,
         tf_saved_model::TensorFlowSavedModelDialect,
-        tf_executor::TensorFlowExecutorDialect, quant::QuantizationDialect,
+        tf_executor::TensorFlowExecutorDialect, quant::QuantDialect,
         quantfork::QuantizationForkDialect>();
   }
 

@@ -1,0 +1,43 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/BuiltinFuncToLLVM.cpp	2024-09-25 10:13:59.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BuiltinFuncToLLVM.cpp	2024-09-30 02:20:03.000000000 -0700
+@@ -190,7 +190,8 @@
+       auto name = StringAttr::get(callOp.getContext(), "llvm.amdgcn.rcp.f32");
+       LLVM::FastmathFlagsAttr defaultFlags{};
+       auto rcpOp = rewriter.create<LLVM::CallIntrinsicOp>(
+-          loc, returnType, name, operands[1], defaultFlags);
++          loc, returnType, name, operands[1], defaultFlags,
++          ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+ 
+       replacementOp = rewriter.create<LLVM::FMulOp>(
+           loc, returnType, operands[0], rcpOp->getResult(0), defaultFlags);
+
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/WMMA.cpp	2024-08-20 03:28:55.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/WMMA.cpp	2024-09-30 02:20:03.000000000 -0700
+@@ -219,7 +219,8 @@
+   }
+   auto wmmaIntrinsic = rewriter.create<mlir::LLVM::CallIntrinsicOp>(
+       loc, TypeRange{valC.getType()}, StringAttr::get(loc.getContext(), name),
+-      operands, defaultFlags);
++      operands, defaultFlags,
++      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+ 
+   return wmmaIntrinsic.getResult(0);
+ }
+
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp	2024-09-16 13:44:40.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp	2024-09-30 02:20:03.000000000 -0700
+@@ -72,7 +72,10 @@
+   auto stringAttr = rewriter.getStringAttr("llvm.amdgcn.ballot");
+   SmallVector<Value> operands = {cmp};
+   Value asmResult =
+-      rewriter.create<LLVM::CallIntrinsicOp>(loc, type, stringAttr, operands)
++      rewriter
++          .create<LLVM::CallIntrinsicOp>(
++              loc, type, stringAttr, operands, ::mlir::LLVM::FastmathFlags{},
++              ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/)
+           ->getResult(0);
+   return asmResult;
+ }
