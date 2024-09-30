@@ -145,7 +145,12 @@ void GenerateScatterShardingFromOperands(
                            const HloSharding& update_sharding,
                            const HloSharding& scatter_sharding)>
         yield_sharding) {
-  absl::flat_hash_set<HloSharding> scatter_shardings;
+  std::vector<HloSharding> scatter_shardings;
+  auto scatter_shardings_insert = [&](const HloSharding& sharding) {
+    const auto it =
+        std::find(scatter_shardings.begin(), scatter_shardings.end(), sharding);
+    if (it == scatter_shardings.end()) scatter_shardings.push_back(sharding);
+  };
   CHECK_EQ(scatter->scatter_operand_count(), 1);
   const HloInstruction* scatter_data = scatter->scatter_operands()[0];
   const HloInstruction* scatter_indices = scatter->scatter_indices();
@@ -155,11 +160,11 @@ void GenerateScatterShardingFromOperands(
       ScatterIndexShardingFromUpdateIndexPassthroughDimensions(update_sharding,
                                                                scatter);
 
-  scatter_shardings.insert(data_sharding);
+  scatter_shardings_insert(data_sharding);
   if (std::optional<HloSharding> maybe_from_update =
           hlo_sharding_util::ScatterOutputShardingFromUpdate(update_sharding,
                                                              *scatter)) {
-    scatter_shardings.insert(*maybe_from_update);
+    scatter_shardings_insert(*maybe_from_update);
   }
 
   std::optional<hlo_sharding_util::GatherScatterParallelDims>
@@ -182,21 +187,21 @@ void GenerateScatterShardingFromOperands(
       aligned_operand_parallel_dims;
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           data_sharding, scatter_data->shape(), shape,
           absl::MakeConstSpan(aligned_operand_parallel_dims),
           absl::MakeConstSpan(output_parallel_dims)));
 
   // Infer output sharding from scatter indices sharding.
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           indices_sharding, scatter_indices->shape(), shape,
           absl::MakeConstSpan(scatter_parallel_dims->indices_parallel_dims),
           absl::MakeConstSpan(output_parallel_dims)));
 
   // Infer output sharding from scatter update sharding.
-  scatter_shardings.insert(
+  scatter_shardings_insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           update_sharding, scatter_update->shape(), shape,
           absl::MakeConstSpan(update_parallel_dims),
