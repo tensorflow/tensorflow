@@ -158,21 +158,27 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     auto& value = it->second;
 
     value.cache = std::make_shared<Cache>(&lru_list_);
-    value.weakref =
-        nb::weakref(key.object, nb::cpp_function([this_weak = weak_from_this(),
-                                                  key](nb::handle weakref) {
-                      auto cache = this_weak.lock();
-                      if (cache == nullptr) {
-                        return;
-                      }
-                      auto it = cache->entries_.find(key);
-                      if (it == cache->entries_.end()) {
-                        return;
-                      }
-                      // Create temp-var to avoid re-entrant erase.
-                      auto tmp = std::move(it->second);
-                      cache->entries_.erase(it);
-                    }));
+    auto weakref_gc_callback = nb::cpp_function(
+        [this_weak = weak_from_this(), key](nb::handle weakref) {
+          auto cache = this_weak.lock();
+          if (cache == nullptr) {
+            return;
+          }
+          auto it = cache->entries_.find(key);
+          if (it == cache->entries_.end()) {
+            return;
+          }
+          // Create temp-var to avoid re-entrant erase.
+          auto tmp = std::move(it->second);
+          cache->entries_.erase(it);
+        });
+    PyObject* ref =
+        PyWeakref_NewRef(key.object.ptr(), weakref_gc_callback.ptr());
+    if (!ref) {
+      entries_.erase(it);
+      throw nb::python_error();
+    }
+    value.weakref = nb::steal<nb::weakref>(ref);
     return value.cache;
   }
 
