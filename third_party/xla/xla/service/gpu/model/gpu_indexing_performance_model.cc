@@ -524,9 +524,16 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
 LaunchDimensions
 GpuPerformanceModelWithIndexingAnalysis::GetLaunchDimensionsForTiledFusion(
     const TiledHloComputation& tiled_hlo_computation) {
-  const auto* tiled_root = tiled_hlo_computation.GetRoot();
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
-  int64_t num_warps = GetNumWarps(GetPaddedTileSize(tiled_root->tile_sizes()));
+
+  // Decide on the number of warps to use based on the largest live tile size
+  // at any given point within the computation.
+  int64_t largest_live_tile_size = 1;
+  for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
+    largest_live_tile_size = std::max(
+        largest_live_tile_size, GetPaddedTileSize(tiled_hlo->tile_sizes()));
+  }
+  int64_t num_warps = GetNumWarps(largest_live_tile_size);
 
   return {static_cast<uint64_t>(num_blocks),
           static_cast<uint64_t>(num_warps * WarpSize())};
