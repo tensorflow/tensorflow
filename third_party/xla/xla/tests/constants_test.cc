@@ -15,7 +15,7 @@ limitations under the License.
 
 // Tests that constants in program memory round trip as expected.
 
-#include "xla/client/lib/constants.h"
+#include "xla/hlo/builder/lib/constants.h"
 
 #include <memory>
 #include <vector>
@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"

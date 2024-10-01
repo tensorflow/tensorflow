@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
