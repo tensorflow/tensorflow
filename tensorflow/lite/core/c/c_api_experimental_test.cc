@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/util.h"
 
@@ -919,6 +921,22 @@ TEST(CApiExperimentalTest, SetInvalidHandleToTensor) {
   TfLiteInterpreterDelete(interpreter);
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
+}
+
+TEST(CApiExperimentalTest, MinimumLogSeverity) {
+  testing::internal::CaptureStderr();
+  tflite::LogSeverity default_log_severity = tflite::TFLITE_LOG_INFO;
+#if defined(__ANDROID__) || !defined(NDEBUG)
+  default_log_severity = tflite::TFLITE_LOG_VERBOSE;
+#endif
+
+  EXPECT_EQ(TfLiteLoggerOptionsSetMinimumLogSeverity(kTfLiteLogWarning),
+            static_cast<TfLiteLogSeverity>(default_log_severity));
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING, "Foo");
+  TFLITE_LOG_PROD(default_log_severity, "Bar");
+  EXPECT_EQ("WARNING: Foo\n", testing::internal::GetCapturedStderr());
+  tflite::logging_internal::MinimalLogger::SetMinimumLogSeverity(
+      default_log_severity);
 }
 
 void AllocateAndSetInputs(TfLiteInterpreter* interpreter) {
