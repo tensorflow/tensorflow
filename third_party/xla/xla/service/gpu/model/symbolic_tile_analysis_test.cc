@@ -966,11 +966,7 @@ ENTRY main {
     d0 in [0, 0],
     d1 in [0, 1],
     rt0 in [0, 1],
-      hlo: %of1 = s32[] parameter(1),
-      (d0, d1, d2) -> (),
-    rt1 in [0, 226],
-      hlo: %of3 = s32[] parameter(3),
-      (d0, d1, d2) -> ()
+    rt1 in [0, 226]
   )"));
 }
 

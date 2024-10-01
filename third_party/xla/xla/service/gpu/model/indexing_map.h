@@ -261,11 +261,6 @@ inline size_t hash_value(const RangeVar& range_var) {
 // portion of the symbols in `affine_map_`.
 struct RTVar {
   Interval feasible_values;
-  const HloInstruction* hlo;
-  // This is a map from the iteration space of the corresponding indexing map to
-  // the iteration space of `hlo`. It shows what element of `hlo` we need to
-  // extract to get the runtime value for the RTVar.
-  mlir::AffineMap map;
   std::string name = "";
 };
 bool operator==(const RTVar& lhs, const RTVar& rhs);
@@ -275,9 +270,7 @@ inline bool operator!=(const RTVar& lhs, const RTVar& rhs) {
 
 template <typename H>
 H AbslHashValue(H h, const RTVar& rt_var) {
-  llvm::hash_code map_hash = llvm::hash_combine(rt_var.map);
-  return H::combine(std::move(h), rt_var.feasible_values, rt_var.hlo,
-                    static_cast<size_t>(map_hash));
+  return H::combine(std::move(h), rt_var.feasible_values);
 }
 
 std::vector<DimVar> DimVarsFromTensorSizes(
@@ -457,10 +450,6 @@ class IndexingMap {
   // Merges "mod" constraints for the same AffineExpr.
   // Returns true if simplification was performed.
   bool MergeModConstraints();
-
-  // Replace RTVars that yield constants by indexing expressions.
-  // Returns true if simplification was performed.
-  bool ReplaceConstantRTVars();
 
   // Removes DimVars, RangeVars, RTVars that correspond to the unused dimensions
   // and symbols. If unused_dims is empty, then dims won't be removed. The same

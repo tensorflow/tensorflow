@@ -1151,9 +1151,7 @@ void SymbolicTile::Print(std::ostream& out) const {
   if (!rt_vars.empty()) {
     out << "\n\trt_vars: ";
     for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-      out << 's' << index << " in " << rt_var.feasible_values << ",  hlo: "
-          << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  "
-          << rt_var.map << ", ";
+      out << 's' << index << " in " << rt_var.feasible_values << ", ";
     }
   }
   if (!constraints_.IsAlwaysSatisfied()) {

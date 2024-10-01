@@ -805,9 +805,7 @@ std::string ToString(const IndexingMap& indexing_map,
     }
   }
   for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-    ss << rt_names[index] << " in " << rt_var.feasible_values << ",  hlo: "
-       << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  "
-       << ToString(rt_var.map);
+    ss << rt_names[index] << " in " << rt_var.feasible_values;
     if (--remaining_vars_to_print > 0) {
       ss << ", ";
     }
