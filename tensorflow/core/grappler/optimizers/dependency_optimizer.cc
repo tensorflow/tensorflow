@@ -540,7 +540,7 @@ Status DependencyOptimizer::TransitiveReduction() {
   // highest index of a target of any control output from each node.
   int num_controls = 0;
   std::vector<std::vector<int>> outputs(num_nodes);
-  std::vector<gtl::InlinedVector<std::pair<int, int>, 2>> control_outputs(
+  std::vector<absl::InlinedVector<std::pair<int, int>, 2UL>> control_outputs(
       num_nodes);
   // target_range[i] contains the range of node indices for which to compute
   // longest paths starting from node i.
