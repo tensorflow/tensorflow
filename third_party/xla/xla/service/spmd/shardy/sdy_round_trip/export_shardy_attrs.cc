@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 
 #include <cstdint>
 #include <memory>
@@ -136,11 +136,12 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   return mlir::success();
 }
 
-class SdyRoundTripExportShardingsPass
-    : public PassWrapper<SdyRoundTripExportShardingsPass,
+class SdyRoundTripExportShardyAttrsPass
+    : public PassWrapper<SdyRoundTripExportShardyAttrsPass,
                          mlir::OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripExportShardingsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      SdyRoundTripExportShardyAttrsPass)
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -164,14 +165,15 @@ class SdyRoundTripExportShardingsPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-round-trip-export-shardings";
+    return "xla-sdy-round-trip-export-shardy-attrs";
   }
 
   StringRef getDescription() const override {
-    return "Converts the shardings from kShardingAttr to "
-           "kShardingRoundTripAttr in the HLO frontend attributes and saves "
-           "the mesh symbols as kMeshesRoundTripAttr in the module frontend "
-           "attributes.";
+    return "Converts the shardy attributes from "
+           "kShardingAttr/kShardingRuleAttr to "
+           "kShardingRoundTripAttr/kShardingRuleRoundTripAttr in the HLO "
+           "frontend attributes and saves the mesh symbols as "
+           "kMeshesRoundTripAttr in the module frontend attributes.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -181,12 +183,12 @@ class SdyRoundTripExportShardingsPass
 
 }  // namespace
 
-void registerSdyRoundTripExportShardingsPass() {
-  mlir::registerPass(createSdyRoundTripExportShardingsPass);
+void registerSdyRoundTripExportShardyAttrsPass() {
+  mlir::registerPass(createSdyRoundTripExportShardyAttrsPass);
 }
 
-std::unique_ptr<Pass> createSdyRoundTripExportShardingsPass() {
-  return std::make_unique<SdyRoundTripExportShardingsPass>();
+std::unique_ptr<Pass> createSdyRoundTripExportShardyAttrsPass() {
+  return std::make_unique<SdyRoundTripExportShardyAttrsPass>();
 }
 
 }  // namespace sdy

@@ -16,9 +16,9 @@ package_group(
 )
 
 cc_library(
-    name = "export_shardings",
-    srcs = ["export_shardings.cc"],
-    hdrs = ["export_shardings.h"],
+    name = "export_shardy_attrs",
+    srcs = ["export_shardy_attrs.cc"],
+    hdrs = ["export_shardy_attrs.h"],
     deps = [
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
@@ -50,9 +50,9 @@ cc_library(
 )
 
 cc_library(
-    name = "import_shardings",
-    srcs = ["import_shardings.cc"],
-    hdrs = ["import_shardings.h"],
+    name = "import_shardy_attrs",
+    srcs = ["import_shardy_attrs.cc"],
+    hdrs = ["import_shardy_attrs.h"],
     deps = [
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
@@ -130,8 +130,8 @@ cc_library(
     hdrs = ["pipelines.h"],
     deps = [
         ":export_ops",
-        ":export_shardings",
-        ":import_shardings",
+        ":export_shardy_attrs",
+        ":import_shardy_attrs",
         ":remove_size_one_axes",
         ":shard_map_export",
         ":shard_map_import",

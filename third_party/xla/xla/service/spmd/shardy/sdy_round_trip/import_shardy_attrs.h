@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDINGS_H_
-#define XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDINGS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDY_ATTRS_H_
+#define XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDY_ATTRS_H_
 
 #include <memory>
 
@@ -29,12 +29,12 @@ namespace sdy {
 // - Converts sharding rules from `kShardingRuleRoundTripAttr` to
 //   `kShardingRuleAttr`
 // - Converts meshes from `kMeshesRoundTripAttr` to sdy.mesh symbols
-std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardingsPass();
+std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardyAttrsPass();
 
-// Registers the xla-sdy-round-trip-import-shardings pass.
-void registerSdyRoundTripImportShardingsPass();
+// Registers the xla-sdy-round-trip-import-shardy-attrs pass.
+void registerSdyRoundTripImportShardyAttrsPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDINGS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_SDY_ROUND_TRIP_IMPORT_SHARDY_ATTRS_H_

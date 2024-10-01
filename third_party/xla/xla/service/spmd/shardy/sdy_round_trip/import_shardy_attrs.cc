@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/sdy_round_trip/import_shardings.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 
 #include <cassert>
 #include <cstdint>
@@ -77,7 +77,7 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // Builds the shardy attributes coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
-// (see `SdyRoundTripImportShardingsPass`).
+// (see `SdyRoundTripImportShardyAttrsPass`).
 void convertShardyAttrs(FuncOp funcOp) {
   // Copy over the argument shardings, but not the result shardings yet.
   // We need to wait until after we've converted all the Operations before
@@ -151,11 +151,12 @@ void convertShardyAttrs(FuncOp funcOp) {
   });
 }
 
-class SdyRoundTripImportShardingsPass
-    : public mlir::PassWrapper<SdyRoundTripImportShardingsPass,
+class SdyRoundTripImportShardyAttrsPass
+    : public mlir::PassWrapper<SdyRoundTripImportShardyAttrsPass,
                                mlir::OperationPass<ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripImportShardingsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
+      SdyRoundTripImportShardyAttrsPass)
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -194,12 +195,12 @@ class SdyRoundTripImportShardingsPass
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-round-trip-import-shardings";
+    return "xla-sdy-round-trip-import-shardy-attrs";
   }
 
   StringRef getDescription() const override {
-    return "Converts the shardings from strings in MHLO frontend attributes to "
-           "SDY meshes and shardings.";
+    return "Converts the shardy attributes from strings in MHLO frontend "
+           "attributes to SDY meshes, shardings and sharding rules.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -209,12 +210,12 @@ class SdyRoundTripImportShardingsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardingsPass() {
-  return std::make_unique<SdyRoundTripImportShardingsPass>();
+std::unique_ptr<mlir::Pass> createSdyRoundTripImportShardyAttrsPass() {
+  return std::make_unique<SdyRoundTripImportShardyAttrsPass>();
 }
 
-void registerSdyRoundTripImportShardingsPass() {
-  mlir::registerPass(createSdyRoundTripImportShardingsPass);
+void registerSdyRoundTripImportShardyAttrsPass() {
+  mlir::registerPass(createSdyRoundTripImportShardyAttrsPass);
 }
 
 }  // namespace sdy
