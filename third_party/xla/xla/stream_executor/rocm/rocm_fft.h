@@ -33,6 +33,7 @@ limitations under the License.
 #endif
 
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -40,11 +41,7 @@ limitations under the License.
 
 namespace stream_executor {
 
-class Stream;
-
 namespace gpu {
-
-class GpuExecutor;
 
 // ROCMFftPlan uses deferred initialization. Only a single call of
 // Initialize() is allowed to properly create hipfft plan and set member
