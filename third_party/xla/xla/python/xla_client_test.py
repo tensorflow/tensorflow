@@ -3169,17 +3169,12 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       options.compile_portable_executable = True
       executable_build_options.num_replicas = 3
       executable_build_options.num_partitions = 2
-      executable_build_options.debug_options.xla_cpu_enable_fast_math = True
-      executable_build_options.debug_options.xla_test_all_input_layouts = True
-      executable_build_options.debug_options.xla_gpu_kernel_cache_file = (
-          "/foo/bar"
-      )
-      executable_build_options.debug_options.xla_gpu_enable_llvm_module_compilation_parallelism = (
-          True
-      )
-      executable_build_options.debug_options.xla_gpu_per_fusion_autotune_cache_dir = (
-          "/bar/foo/"
-      )
+      deb_opt = executable_build_options.debug_options
+      deb_opt.xla_cpu_enable_fast_math = True
+      deb_opt.xla_test_all_input_layouts = True
+      deb_opt.xla_gpu_kernel_cache_file = "/foo/bar"
+      deb_opt.xla_gpu_enable_llvm_module_compilation_parallelism = True
+      deb_opt.xla_gpu_per_fusion_autotune_cache_dir = "/bar/foo/"
 
       b = options.SerializeAsString()
       restored = xla_client.CompileOptions.ParseFromString(b)
@@ -3352,8 +3347,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       options.num_replicas = num_replicas
       compiled_c = self.backend.compile(
           xla_computation_to_mlir_module(c.build()), compile_options=options)
-      results, sharded_token = compiled_c.execute_sharded_on_local_devices_with_tokens(
-          [])
+      results, sharded_token = (
+          compiled_c.execute_sharded_on_local_devices_with_tokens([])
+      )
       sharded_token.block_until_ready()
       self.assertLen(results, 1)
       self.assertLen(results[0], 1)
