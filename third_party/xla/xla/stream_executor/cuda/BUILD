@@ -356,6 +356,7 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

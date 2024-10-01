@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/errors.h"
 
@@ -49,15 +51,6 @@ struct BlasLt;
 struct MatrixDescriptor;
 struct OutputMatrixDescriptor;
 }  // namespace gpu
-
-class Stream;
-class ScratchAllocator;
-
-template <typename ElemT>
-class DeviceMemory;
-
-template <typename ElemT>
-class HostOrDeviceScalar;
 
 template <typename T>
 using DeviceMemorySlice = absl::Span<DeviceMemory<T> *const>;

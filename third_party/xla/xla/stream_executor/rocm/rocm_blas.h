@@ -33,6 +33,7 @@ limitations under the License.
 #endif
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #if TF_HIPBLASLT
@@ -74,8 +75,6 @@ using RocBlasType_t =
                         rocblas_bfloat16, std::complex<float>,
                         rocblas_float_complex, std::complex<double>,
                         rocblas_double_complex>::type;
-
-class GpuExecutor;
 
 // BLAS plugin for ROCM platform via rocBLAS library.
 //

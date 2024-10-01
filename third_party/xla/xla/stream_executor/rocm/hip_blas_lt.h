@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
 
@@ -26,10 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
 
 namespace stream_executor {
-
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
 
 namespace rocm {
 
