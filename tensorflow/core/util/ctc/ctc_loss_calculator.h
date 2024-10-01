@@ -18,7 +18,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorCostModel.h"  // from @eigen_archive
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
