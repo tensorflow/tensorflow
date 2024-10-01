@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_status.h"
 
 namespace stream_executor {
 namespace test_util {
