@@ -58,9 +58,9 @@ absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
 LrtStatus QnnManager::LoadLibSO(absl::string_view path) {
   lib_so_ = load::LoadSO(path);
   if (lib_so_ == nullptr) {
-    return StatusCreate(kLrtStatusDynamicLoadErr);
+    return kLrtStatusDynamicLoadErr;
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void QnnManager::DumpLibSODetails() const {
@@ -81,7 +81,7 @@ const QnnFunctionPointers* QnnManager::API() const {
 LrtStatus QnnManager::ResolveFuncs() {
   if (lib_so_ == nullptr) {
     std::cerr << "Cannot resolve functions: libQnn*.so has not been loaded.\n";
-    return StatusCreate(kLrtStatusDynamicLoadErr);
+    return kLrtStatusDynamicLoadErr;
   }
 
   auto providers = LoadProvidersFromLib(lib_so_);
@@ -103,10 +103,10 @@ LrtStatus QnnManager::ResolveFuncs() {
 
   if (interface_ == nullptr) {
     std::cerr << "No valid interface was provided\n";
-    return StatusCreate(kLrtStatusDynamicLoadErr);
+    return kLrtStatusDynamicLoadErr;
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void QnnManager::DumpProviderDetails() const {
@@ -120,40 +120,40 @@ LrtStatus QnnManager::FreeLogging() {
   if (log_handle_ != nullptr) {
     if (QNN_SUCCESS != API()->logFree(log_handle_)) {
       std::cerr << "Failed to free logging\n";
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
   log_handle_ = nullptr;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus QnnManager::FreeBackend() {
   if (backend_handle_ != nullptr) {
     if (QNN_SUCCESS != API()->backendFree(backend_handle_)) {
       std::cerr << "Failed to free backend\n";
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
   backend_handle_ = nullptr;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus QnnManager::FreeContext() {
   if (context_handle_ != nullptr) {
     if (QNN_SUCCESS != API()->contextFree(context_handle_, nullptr)) {
       std::cerr << "Failed to free context\n";
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
   context_handle_ = nullptr;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
   Qnn_ContextBinarySize_t bin_size = 0;
   if (QNN_SUCCESS != API()->contextGetBinarySize(ContextHandle(), &bin_size)) {
     std::cerr << "Failed to get context bin size\n";
-    return StatusCreate(kLrtStatusErrorNotFound);
+    return kLrtStatusErrorNotFound;
   }
   buffer.clear();
   buffer.resize(bin_size);
@@ -163,13 +163,13 @@ LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
                                              buffer.size(),
                                              &written_bin_size)) {
     std::cerr << "Failed to generated context binary \n";
-    return StatusCreate(kLrtStatusErrorNotFound);
+    return kLrtStatusErrorNotFound;
   }
 
   std::cerr << "Serialized a context bin of size (bytes): " << written_bin_size
             << "\n";
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus SetupAll(QnnManager& qnn) {
@@ -183,7 +183,7 @@ LrtStatus SetupAll(QnnManager& qnn) {
     if (QNN_SUCCESS != qnn.API()->logCreate(qnn::log::GetDefaultStdOutLogger(),
                                             QNN_LOG_LEVEL_DEBUG,
                                             &qnn.LogHandle())) {
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
 
@@ -191,7 +191,7 @@ LrtStatus SetupAll(QnnManager& qnn) {
     auto cfg = qnn::config::GetDefaultHtpConfigs();
     if (QNN_SUCCESS != qnn.API()->backendCreate(qnn.LogHandle(), cfg.data(),
                                                 &qnn.BackendHandle())) {
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
 
@@ -201,10 +201,10 @@ LrtStatus SetupAll(QnnManager& qnn) {
     if (QNN_SUCCESS != qnn.API()->contextCreate(qnn.BackendHandle(), device,
                                                 cfg.data(),
                                                 &qnn.ContextHandle())) {
-      return StatusCreate(kLrtStatusErrorNotFound);
+      return kLrtStatusErrorNotFound;
     }
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 };  // namespace qnn

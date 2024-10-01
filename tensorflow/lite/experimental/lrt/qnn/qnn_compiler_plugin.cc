@@ -49,10 +49,10 @@ LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
                                           lrt_param_index_t config_idx,
                                           const char** config_id) {
   if (config_idx != 0) {
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
   *config_id = kPluginModel;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 //
@@ -69,7 +69,7 @@ LrtStatus LrtCompiledResultGetByteCode(LrtCompiledResult compiled_result,
                                        size_t* byte_code_size) {
   *byte_code = compiled_result->context_bin.data();
   *byte_code_size = compiled_result->context_bin.size();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
@@ -77,19 +77,19 @@ LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
                                        const void** call_info,
                                        size_t* call_info_size) {
   if (call_idx >= compiled_result->graph_names.size()) {
-    return StatusCreate(kLrtParamIndexOOB);
+    return kLrtStatusParamIndexOOB;
   }
 
   *call_info = compiled_result->graph_names.at(call_idx).data();
   *call_info_size = compiled_result->graph_names.at(call_idx).size();
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
                                        lrt_param_index_t* num_calls) {
   *num_calls = compiled_result->graph_names.size();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
@@ -109,7 +109,7 @@ LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LrtCompilerPluginT;
   LRT_RETURN_STATUS_IF_NOT_OK(qnn::SetupAll(plugin->qnn));
   *compiler_plugin = plugin;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin) {
@@ -141,7 +141,7 @@ LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
     LRT_RETURN_STATUS_IF_NOT_OK(PushOp(selected_ops, op));
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 // Composes a QNN graph with the context inside qnn from subgraph. On success,
@@ -150,7 +150,7 @@ LrtStatus ComposeGraph(QnnManager& qnn, LrtSubgraph subgraph,
                        std::string& qnn_graph_name) {
   // TODO: Implement this.
   qnn_graph_name = "Unimplemented_QNN_Graph";
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
@@ -166,7 +166,7 @@ LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
 
   if (num_partitions != 1) {
     std::cerr << "Only 1 partition currently supported.\n";
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
   auto subgraph = partitions[0];
 
@@ -174,20 +174,20 @@ LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
                               graph_tools::GetSubgraphInputs(subgraph));
   if (inputs.size() != 2) {
     std::cerr << "Only 2 inputs currently supported\n";
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   LRT_ASSIGN_OR_RETURN_STATUS(auto outputs,
                               graph_tools::GetSubgraphOutputs(subgraph));
   if (outputs.size() != 1) {
     std::cerr << "Only 1 output currently supported\n";
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(subgraph));
   if (ops.size() != 1) {
     std::cerr << "Only one op subgraphs supported\n";
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   LrtCompiledResult result = new LrtCompiledResultT;
@@ -201,5 +201,5 @@ LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
 
   *compiled_result = result;
 
-  return StatusOk();
+  return kLrtStatusOk;
 }

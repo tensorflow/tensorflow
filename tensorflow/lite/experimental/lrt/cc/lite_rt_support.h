@@ -33,24 +33,6 @@
 
 #define _RETURN_VAL(val) return val
 
-struct LrtStatusDeleter {
-  void operator()(LrtStatus status) {
-    if (status != nullptr) {
-      StatusDestroy(status);
-    }
-  }
-};
-
-using UniqueLrtStatus = std::unique_ptr<LrtStatusT, LrtStatusDeleter>;
-
-inline UniqueLrtStatus UniqueStatusFromCode(LrtStatusCode code) {
-  return UniqueLrtStatus(StatusCreate(code));
-}
-
-inline UniqueLrtStatus UniqueStatusOk() {
-  return UniqueStatusFromCode(kLrtStatusOk);
-}
-
 // TODO: b/365295276 - Put all smart pointer wrappers in support.h.
 struct LrtCompilerPluginDeleter {
   void operator()(LrtCompilerPlugin plugin) {
@@ -83,9 +65,9 @@ class LrtResult {
     return result;
   }
 
-  static LrtResult<T> FromCode(LrtStatusCode code) {
+  static LrtResult<T> FromStatus(LrtStatus status) {
     LrtResult<T> result;
-    result.data_ = code;
+    result.data_ = status;
     return result;
   }
 
@@ -96,17 +78,17 @@ class LrtResult {
     return std::get<T>(data_);
   }
 
-  LrtStatusCode Code() {
+  LrtStatus Status() {
     if (std::holds_alternative<T>(data_)) {
       return kLrtStatusOk;
     }
-    return std::get<LrtStatusCode>(data_);
+    return std::get<LrtStatus>(data_);
   }
 
   bool HasValue() { return std::holds_alternative<T>(data_); }
 
  private:
-  std::variant<LrtStatusCode, T> data_;
+  std::variant<LrtStatus, T> data_;
 };
 
 #ifdef NDEBUG
@@ -118,28 +100,18 @@ class LrtResult {
 
 #ifdef LRT_RETURN_STATUS_IF_NOT_OK_MSG
 #undef LRT_RETURN_STATUS_IF_NOT_OK_MSG
-#define LRT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg) \
-  {                                                  \
-    LrtStatus stat = expr;                           \
-    if (GetStatusCode(stat) != kLrtStatusOk) {       \
-      _LRT_D_MSG(d_msg)                              \
-      return stat;                                   \
-    }                                                \
-    StatusDestroy(stat);                             \
+#define LRT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg)     \
+  if (LrtStatus status = expr; status != kLrtStatusOk) { \
+    _LRT_D_MSG(d_msg);                                   \
+    return status;                                       \
   }
 #endif
 
 // TODO: b/365295276 Make c friendly `CHECK` macro(s) and move to c api.
 #define LRT_CHECK_STATUS_HAS_CODE_MSG(expr, code, d_msg) \
-  {                                                      \
-    LrtStatus stat = expr;                               \
-    CHECK_NE(stat, nullptr);                             \
-    LrtStatusCode code_ = GetStatusCode(stat);           \
-    StatusDestroy(stat);                                 \
-    if (code_ != code) {                                 \
-      _LRT_D_MSG(d_msg)                                  \
-      CHECK(false);                                      \
-    }                                                    \
+  if (LrtStatus status = expr; status != code) {         \
+    _LRT_D_MSG(d_msg);                                   \
+    CHECK(false);                                        \
   }
 
 #define LRT_CHECK_STATUS_HAS_CODE(expr, code) \
@@ -151,13 +123,9 @@ class LrtResult {
   LRT_CHECK_STATUS_HAS_CODE_MSG(expr, kLrtStatusOk, d_msg);
 
 // If expr doesn't retur ok status, wrap as result and return.
-#define LRT_RETURN_RESULT_IF_NOT_OK(expr, ty)                         \
-  {                                                                   \
-    LrtStatus stat = (expr);                                          \
-    LrtStatusCode code_ = GetStatusCode(stat);                        \
-    StatusDestroy(stat);                                              \
-    if (code_ != kLrtStatusOk) return LrtResult<ty>::FromCode(code_); \
-  }
+#define LRT_RETURN_RESULT_IF_NOT_OK(expr, ty)          \
+  if (LrtStatus status = expr; status != kLrtStatusOk) \
+    return LrtResult<ty>::FromStatus(status);
 
 #define _ASSIGN_OR_BLOCK(decl, expr, block, result) \
   auto result = (expr);                             \
@@ -173,7 +141,7 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_VAL(decl, expr, val) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, val, _CONCAT_NAME(_result, __COUNTER__))
 
-#define _STATUS_FROM_RESULT(result) StatusCreate(result.Code());
+#define _STATUS_FROM_RESULT(result) result.Status();
 
 #define _ASSIGN_OR_RETURN_STATUS(decl, expr, result) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, _STATUS_FROM_RESULT(result), result)
@@ -182,7 +150,7 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_STATUS(decl, expr) \
   _ASSIGN_OR_RETURN_STATUS(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
 
-#define _FORWARD_RESULT(result, ty) LrtResult<ty>::FromCode(result.Code());
+#define _FORWARD_RESULT(result, ty) LrtResult<ty>::FromStatus(result.Status());
 
 #define _ASSIGN_OR_RETURN_RESULT(decl, expr, ty, result) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, _FORWARD_RESULT(result, ty), result)

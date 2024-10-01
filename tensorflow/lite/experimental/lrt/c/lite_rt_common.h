@@ -25,9 +25,6 @@ extern "C" {
 // previously declared opaque type.
 #define LITE_RT_DEFINE_HANDLE_ARRAY(name) typedef name* name##Array
 
-// Common status type. May have an attached opaque payload. Requires cleanup.
-LITE_RT_DEFINE_HANDLE(LrtStatus);
-
 typedef enum {
   kLrtStatusOk = 0,
 
@@ -45,24 +42,10 @@ typedef enum {
   kLrtStatusDynamicLoadErr = 502,
 
   // IR related errors.
-  kLrtParamIndexOOB = 1000,
+  kLrtStatusParamIndexOOB = 1000,
   kLrtStatusBadTensorType = 1001,
   kLrtStatusGraphInvariantError = 1002,
-} LrtStatusCode;
-
-// Get code from status.
-LrtStatusCode GetStatusCode(LrtStatus status);
-
-// Free any payloads attached to status.
-void StatusDestroy(LrtStatus status);
-
-// Create a status with given code.
-LrtStatus StatusCreate(LrtStatusCode code);
-
-// Create an ok status.
-LrtStatus StatusOk();
-
-// TODO: b/365295276 - Implement error message payloads for lrt status.
+} LrtStatus;
 
 #ifdef __cplusplus
 }

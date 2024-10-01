@@ -44,10 +44,10 @@ LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
                                           lrt_param_index_t config_idx,
                                           const char** config_id) {
   if (config_idx != 0) {
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
   *config_id = kPluginModel;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 //
@@ -64,7 +64,7 @@ LrtStatus LrtCompiledResultGetByteCode(LrtCompiledResult compiled_result,
                                        size_t* byte_code_size) {
   *byte_code = compiled_result->byte_code.data();
   *byte_code_size = compiled_result->byte_code.size();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
@@ -72,19 +72,19 @@ LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
                                        const void** call_info,
                                        size_t* call_info_size) {
   if (call_idx >= compiled_result->per_op_data.size()) {
-    return StatusCreate(kLrtParamIndexOOB);
+    return kLrtStatusParamIndexOOB;
   }
 
   *call_info = compiled_result->per_op_data.at(call_idx).data();
   *call_info_size = compiled_result->per_op_data.at(call_idx).size();
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
                                        lrt_param_index_t* num_calls) {
   *num_calls = compiled_result->per_op_data.size();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
@@ -101,7 +101,7 @@ struct LrtCompilerPluginT {
 
 LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
   *compiler_plugin = new LrtCompilerPluginT;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin) {
@@ -121,7 +121,7 @@ LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
     }
     LRT_RETURN_STATUS_IF_NOT_OK(PushOp(selected_ops, op));
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
@@ -135,7 +135,7 @@ LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
 
     LRT_RETURN_STATUS_IF_NOT_OK(GetOpCode(op, &op_code));
     if (op_code != kLrtOpCodeTflMul) {
-      return StatusCreate(kLrtStatusErrorUnsupported);
+      return kLrtStatusErrorUnsupported;
     }
 
     ++num_muls_in_partition;
@@ -157,7 +157,7 @@ LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
     free(per_op_data);
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
@@ -173,5 +173,5 @@ LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
 
   *compiled_result = result;
 
-  return StatusOk();
+  return kLrtStatusOk;
 }

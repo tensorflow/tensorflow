@@ -27,30 +27,30 @@
 LrtStatus GetModelNumSubgraphs(LrtModel model,
                                lrt_param_index_t* num_subgraphs) {
   *num_subgraphs = model->subgraphs.size();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetModelSubgraph(LrtModel model, lrt_param_index_t subgraph_index,
                            LrtSubgraph* subgraph) {
   if (subgraph_index >= model->subgraphs.size()) {
-    return StatusCreate(kLrtParamIndexOOB);
+    return kLrtStatusParamIndexOOB;
   }
   *subgraph = model->subgraphs.data() + subgraph_index;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetModelMainSubgraph(LrtModel model,
                                lrt_param_index_t* main_subgraph_index) {
   // TODO replace this with signature.
   *main_subgraph_index = 0;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void ModelDestroy(LrtModel model) { delete model; }
 
 LrtStatus PushOp(LrtOpList op_list, LrtOp op) {
   op_list->ops.push_back(op);
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 //
@@ -61,7 +61,7 @@ LrtStatus GetSubgraphInputs(LrtSubgraph subgraph, lrt_param_index_t* num_inputs,
                             LrtTensorArray* inputs) {
   *num_inputs = subgraph->inputs.size();
   *inputs = subgraph->inputs.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetSubgraphOutputs(LrtSubgraph subgraph,
@@ -69,14 +69,14 @@ LrtStatus GetSubgraphOutputs(LrtSubgraph subgraph,
                              LrtTensorArray* outputs) {
   *num_outputs = subgraph->outputs.size();
   *outputs = subgraph->outputs.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetSubgraphOps(LrtSubgraph subgraph, lrt_param_index_t* num_ops,
                          LrtOpArray* ops) {
   *num_ops = subgraph->ops.size();
   *ops = subgraph->ops.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 //
@@ -87,19 +87,19 @@ LrtStatus GetOpOutputs(LrtOp op, lrt_param_index_t* num_outputs,
                        LrtTensorArray* outputs) {
   *num_outputs = op->outputs.size();
   *outputs = op->outputs.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetOpInputs(LrtOp op, lrt_param_index_t* num_inputs,
                       LrtTensorArray* inputs) {
   *num_inputs = op->inputs.size();
   *inputs = op->inputs.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetOpCode(LrtOp op, LrtOpCode* code) {
   *code = op->op_code;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 //
@@ -114,12 +114,12 @@ LrtStatus GetBufferInfo(LrtBuffer buffer, size_t* size, const void** addr) {
     *size = buffer->fb_buffer->data.size();
     *addr = buffer->fb_buffer->data.data();
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetTensorBuffer(LrtTensor tensor, LrtBuffer* buffer) {
   *buffer = &tensor->buffer;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetTensorUses(LrtTensor tensor, lrt_param_index_t* num_uses,
@@ -128,7 +128,7 @@ LrtStatus GetTensorUses(LrtTensor tensor, lrt_param_index_t* num_uses,
   *num_uses = tensor->users.size();
   *use_users = tensor->users.data();
   *use_user_arg_inds = tensor->user_arg_inds.data();
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 // Null if subgraph input or constant.
@@ -138,28 +138,28 @@ LrtStatus GetTensorDefiningOp(LrtTensor tensor, LrtOp* maybe_defining_op,
     *maybe_defining_op = tensor->defining_op;
     *maybe_defining_op_output_ind = tensor->defining_op_out_ind;
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetTensorTypeId(LrtTensor tensor, LrtTensorTypeId* type_id) {
   *type_id = tensor->type_id;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetUrankedTensorType(LrtTensor tensor,
                                LrtUnrankedTensorType* unranked_tensor_type) {
   if (tensor->type_id != kLrtUnrankedTensorType) {
-    return StatusCreate(kLrtStatusBadTensorType);
+    return kLrtStatusBadTensorType;
   }
   *unranked_tensor_type = tensor->type_detail.unranked_tensor_type;
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus GetRankedTensorType(LrtTensor tensor,
                               LrtRankedTensorType* ranked_tensor_type) {
   if (tensor->type_id != kLrtRankedTensorType) {
-    return StatusCreate(kLrtStatusBadTensorType);
+    return kLrtStatusBadTensorType;
   }
   *ranked_tensor_type = tensor->type_detail.ranked_tensor_type;
-  return StatusOk();
+  return kLrtStatusOk;
 }

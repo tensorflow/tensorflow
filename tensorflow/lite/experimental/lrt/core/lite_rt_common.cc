@@ -13,20 +13,3 @@
 // limitations under the License.
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-
-struct LrtStatusT {
-  LrtStatusCode code;
-  // TODO: b/365295276 - Implement error message payloads for lrt status.
-};
-
-LrtStatusCode GetStatusCode(LrtStatus status) { return status->code; }
-
-void StatusDestroy(LrtStatus status) { delete status; }
-
-LrtStatus StatusCreate(LrtStatusCode code) {
-  auto* res = new LrtStatusT;
-  res->code = code;
-  return res;
-}
-
-LrtStatus StatusOk() { return StatusCreate(kLrtStatusOk); }

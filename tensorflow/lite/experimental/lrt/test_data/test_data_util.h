@@ -36,10 +36,8 @@
 
 #define ASSERT_STATUS_HAS_CODE(expr, code) \
   {                                        \
-    auto stat = (expr);                    \
-    auto code_ = GetStatusCode(stat);      \
-    StatusDestroy(stat);                   \
-    ASSERT_EQ(code_, code);                \
+    LrtStatus status = (expr);             \
+    ASSERT_EQ(status, code);               \
   }
 
 #define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLrtStatusOk);

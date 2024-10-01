@@ -152,7 +152,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   DumpSubgraph(main_subgraph, "Main subgraph after partioning.");
 
   if (dry_run) {
-    return StatusOk();
+    return kLrtStatusOk;
   }
 
   LrtCompiledResult compiled_result;
@@ -166,7 +166,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   if (num_calls_compiled != slices.size()) {
     std::cerr
         << "Plugin must provide and entry point for each compiled partition\n";
-    return StatusCreate(kLrtStatusErrorNotFound);
+    return kLrtStatusErrorNotFound;
   }
 
   for (int i = 0; i < num_calls_compiled; ++i) {
@@ -190,7 +190,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   LRT_RETURN_STATUS_IF_NOT_OK(AppendMetadata(model, byte_code, byte_code_size,
                                              LrtPluginSocManufacturer()));
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 int main(int argc, char** argv) {

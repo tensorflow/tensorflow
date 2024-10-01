@@ -33,12 +33,8 @@ extern "C" {
     LRT_ABORT;                      \
   }
 
-#define LRT_RETURN_STATUS_IF_NOT_OK(expr)                 \
-  {                                                       \
-    LrtStatus stat = expr;                                \
-    if (GetStatusCode(stat) != kLrtStatusOk) return stat; \
-    StatusDestroy(stat);                                  \
-  }
+#define LRT_RETURN_STATUS_IF_NOT_OK(expr) \
+  if (LrtStatus status = expr; status != kLrtStatusOk) return status;
 
 // TODO: b/365295276 - Add optional debug only print messages support
 // to all macros.
@@ -46,13 +42,7 @@ extern "C" {
   LRT_RETURN_STATUS_IF_NOT_OK(expr)
 
 #define LRT_RETURN_VAL_IF_NOT_OK(expr, ret_val) \
-  {                                             \
-    LrtStatus stat = expr;                      \
-    LrtStatusCode code_ = GetStatusCode(stat);  \
-    StatusDestroy(stat);                        \
-    if (code_ != kLrtStatusOk) return ret_val;  \
-  }
-
+  if (LrtStatus status = expr; status != kLrtStatusOk) return ret_val;
 
 #ifdef __cplusplus
 }  // extern "C"
