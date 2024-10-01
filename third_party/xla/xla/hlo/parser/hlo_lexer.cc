@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_lexer.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 
 #include <cstdint>
 #include <cstring>

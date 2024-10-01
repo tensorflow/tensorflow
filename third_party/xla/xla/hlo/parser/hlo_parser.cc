@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 
 #include <cmath>
 #include <complex>
@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -67,7 +68,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_lexer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/service/shape_inference.h"

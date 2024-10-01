@@ -7102,96 +7102,25 @@ xla_cc_test(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/parser:hlo_parser
+# instead.
 cc_library(
     name = "hlo_parser",
-    srcs = ["hlo_parser.cc"],
     hdrs = ["hlo_parser.h"],
     deps = [
-        ":computation_layout",
-        ":hlo_lexer",
-        ":hlo_module_config",
-        ":hlo_proto_cc",
-        ":name_uniquer",
-        ":shape_inference",
-        "//xla:array",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_layout",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:tile_assignment",
-        "//xla/tsl/lib/gtl:map_util",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
+        "//xla/hlo/parser:hlo_parser",
     ],
 )
 
-xla_cc_test(
-    name = "hlo_parser_test",
-    size = "small",
-    srcs = ["hlo_parser_test.cc"],
-    deps = [
-        ":hlo_lexer",
-        ":hlo_module_config",
-        ":hlo_parser",
-        ":pattern_matcher",
-        ":pattern_matcher_gmock",
-        "//xla:array",
-        "//xla:shape_util",
-        "//xla:window_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:verified_hlo_module",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/parser:hlo_lexer
+# instead.
 cc_library(
     name = "hlo_lexer",
-    srcs = ["hlo_lexer.cc"],
     hdrs = [
         "hlo_lexer.h",
     ],
     deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:regexp",
+        "//xla/hlo/parser:hlo_lexer",
     ],
 )
 
