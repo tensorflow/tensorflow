@@ -469,40 +469,6 @@ HostBufferSemantics = _xla.HostBufferSemantics
 # There are different implementations of Executable for different backends.
 
 
-def execute_with_python_values(executable, arguments, backend):
-  """Execute on one replica with Python values as arguments and output."""
-
-  def put(arg):
-    return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
-
-  arguments = [put(arg) for arg in arguments]
-  outputs = executable.execute(arguments)
-  return [np.asarray(x) for x in outputs]
-
-
-def execute_with_python_values_replicated(executable, arguments, backend):
-  """Execute on many replicas with Python values as arguments and output.
-
-  Args:
-    executable: the program to run.
-    arguments: a list of lists of Python values indexed by `[replica][arg_num]`
-      to pass as inputs.
-    backend: the backend we are targeting.
-
-  Returns:
-    A list of python values, one per replica.
-  """
-  devices = executable.local_devices()
-
-  # pylint: disable=g-complex-comprehension
-  def copy_to_devices(pyvals):
-    return [backend.buffer_from_pyval(v, d) for v, d in zip(pyvals, devices)]
-
-  inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
-  outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
-
-
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2

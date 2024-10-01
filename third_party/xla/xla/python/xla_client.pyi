@@ -71,13 +71,6 @@ _NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
 
-def execute_with_python_values(executable: LoadedExecutable, arguments: Sequence[Any],
-                               backend: Client) -> Sequence[numpy.ndarray]: ...
-
-def execute_with_python_values_replicated(
-    executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
-    backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
-
 def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ...
 
 def heap_profile(client: Client) -> bytes:
