@@ -129,7 +129,6 @@ enum PrimitiveType {
   // Next = 28
 }
 // LINT.ThenChange(
-//   https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,
 //   https://www.tensorflow.org/code/tensorflow/compiler/xla/tools/driver.cc
 // )
 
