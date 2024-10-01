@@ -27,16 +27,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 
-class Stream;
-
 namespace gpu {
-
-class GpuExecutor;
 
 // CUDAFftPlan uses deferred initialization. Only a single call of
 // Initialize() is allowed to properly create cufft plan and set member
@@ -116,17 +114,17 @@ class CUDAFft : public fft::FftSupport {
 
   // This is for complex to complex FFT, when the direction is required.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
+  bool DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                   FuncT cufft_exec,
-                                  const DeviceMemory<InputT> &input,
-                                  DeviceMemory<OutputT> *output);
+                                  const DeviceMemory<InputT>& input,
+                                  DeviceMemory<OutputT>* output);
 
   // This is for complex to real or real to complex FFT, when the direction
   // is implied.
   template <typename FuncT, typename InputT, typename OutputT>
-  bool DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufft_exec,
-                     const DeviceMemory<InputT> &input,
-                     DeviceMemory<OutputT> *output);
+  bool DoFftInternal(Stream* stream, fft::Plan* plan, FuncT cufft_exec,
+                     const DeviceMemory<InputT>& input,
+                     DeviceMemory<OutputT>* output);
 
   CUDAFft(const CUDAFft&) = delete;
   void operator=(const CUDAFft&) = delete;

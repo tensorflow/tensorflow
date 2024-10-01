@@ -44,6 +44,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -52,10 +54,6 @@ struct half;
 }  // namespace Eigen
 
 namespace stream_executor {
-
-class HostBuffer;
-class Stream;
-class ScratchAllocator;
 
 namespace dnn {
 

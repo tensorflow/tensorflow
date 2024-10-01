@@ -43,8 +43,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
-
 // Wraps a GpuStreamHandle in order to satisfy the platform-independent
 // StreamInterface.
 //

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 
 namespace xla {
 namespace gpu {
@@ -34,8 +35,6 @@ class DeterminismTest;
 
 namespace stream_executor {
 namespace gpu {
-
-class GpuStream;
 
 // When a timer is created it launches a delay kernel into the given stream and
 // queues a start event immediately afterwards. This delay kernel blocks
