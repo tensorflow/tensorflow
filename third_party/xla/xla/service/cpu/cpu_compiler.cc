@@ -999,10 +999,11 @@ absl::Status CreateHloProfilingArtifacts(
 absl::StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
     const CompileOptions& options) {
+  auto& config = module->config();
   std::unique_ptr<llvm::TargetMachine> jit_target_machine =
       SimpleOrcJIT::InferTargetMachineForJIT(
-          CompilerTargetOptions(module->config()),
-          CodeGenOptLevel(module->config()));
+          CompilerTargetOptions(config), CodeGenOptLevel(config),
+          config.debug_options().xla_cpu_max_isa());
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get(),
@@ -1302,6 +1303,18 @@ static bool HasLargeConstants(llvm::Module& module) {
   return false;
 }
 
+inline void VlogMaxIsa(absl::string_view max_cpu_isa) {
+  if (VLOG_IS_ON(1) && !max_cpu_isa.empty()) {
+    if (tsl::port::IsX86CPU()) {
+      VLOG(1) << "`xla_cpu_max_isa` is set. Will not use features newer than: "
+              << max_cpu_isa;
+    } else {
+      VLOG(1) << "`xla_cpu_max_isa` is set to `" << max_cpu_isa
+              << "`. This flag is not supported on non-x86 CPUs yet.";
+    }
+  }
+}
+
 absl::StatusOr<std::unique_ptr<CpuExecutable>>
 CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   TraceMe trace([&] {
@@ -1331,6 +1344,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   // parallel compilation at run time.
   size_t parallel_codegen_split_count =
       debug_options.xla_cpu_parallel_codegen_split_count();
+  VlogMaxIsa(debug_options.xla_cpu_max_isa());
 
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
@@ -1341,7 +1355,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
       CreateOrcJITPostCompilationHook(module.get(), &obj_files),
-      parallel_codegen_split_count);
+      parallel_codegen_split_count, debug_options.xla_cpu_max_isa());
   if (!jit) {
     return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }
@@ -2033,15 +2047,18 @@ CpuExecutableAotCompilationResult::LoadExecutable(
                                   compiler->BufferSizeBytesFunction(),
                                   /*can_share_buffer=*/nullptr));
 
+  const DebugOptions& debug_options = module->config().debug_options();
+  VlogMaxIsa(debug_options.xla_cpu_max_isa());
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
-      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      debug_options.xla_llvm_disable_expensive_passes(),
       options::SlpVectorizerDisabled(module->config()),
       llvm_ir::GetCpuFastMathFlags(module->config()),
       /*pre_optimization_hook=*/nullptr, /*post_optimization_hook=*/nullptr,
-      /*post_codegen_hook=*/nullptr);
+      /*post_codegen_hook=*/nullptr, /*num_jit_dylibs=*/1,
+      debug_options.xla_cpu_max_isa());
   if (!jit) {
     return Internal("Creating JIT failed: %s", llvm::toString(jit.takeError()));
   }

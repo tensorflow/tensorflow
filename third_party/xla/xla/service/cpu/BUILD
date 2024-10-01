@@ -498,6 +498,7 @@ cc_library(
         "//xla:util",
         "//xla/service:custom_call_target_registry",
         "//xla/service:llvm_compiler",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
@@ -513,6 +514,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
     ] + xla_internal(["service/cpu:named_orc_jit_memory_mapper"]),
 )
 
