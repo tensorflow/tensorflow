@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
