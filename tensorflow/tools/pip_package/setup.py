@@ -109,8 +109,8 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.18.0.a',
-    'keras-nightly >= 3.2.0.dev',
+    'tb-nightly ~= 2.19.0.a',
+    'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
     'ml_dtypes >= 0.4.0, < 0.5.0',
