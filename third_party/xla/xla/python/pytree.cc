@@ -595,9 +595,14 @@ nb::list PyTreeDef::FlattenUpTo(nb::handle xs) const {
 
       case PyTreeKind::kNone:
         if (!object.is_none()) {
-          throw std::invalid_argument(
-              absl::StrFormat("Expected None, got %s.",
-                              nb::cast<std::string_view>(nb::repr(object))));
+          throw std::invalid_argument(absl::StrFormat(
+              "Expected None, got %s.\n\n"
+              "In previous releases of JAX, flatten-up-to used to "
+              "consider None to be a tree-prefix of non-None values. To obtain "
+              "the previous behavior, you can usually write:\n"
+              "  jax.tree.map(lambda x, y: None if x is None else f(x, y), a, "
+              "b, is_leaf=lambda x: x is None)",
+              nb::cast<std::string_view>(nb::repr(object))));
         }
         break;
 
