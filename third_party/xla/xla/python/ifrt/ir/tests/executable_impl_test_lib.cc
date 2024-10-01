@@ -87,9 +87,11 @@ module {
                   xla::ifrt::DType(xla::ifrt::DType::kS32),
                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
 
+  ExecuteOptions options;
+  options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
@@ -127,9 +129,11 @@ module {
                   xla::ifrt::ShardingParam({1}, {{0}, {1}}),
                   BasicDeviceList::Create({devices->devices()[0]})));
 
+  ExecuteOptions options;
+  options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
@@ -168,9 +172,11 @@ module {
                   xla::ifrt::ShardingParam({1}, {{0}, {1}}),
                   BasicDeviceList::Create({devices->devices()[0]})));
 
+  ExecuteOptions options;
+  options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
@@ -205,9 +211,11 @@ module {
           std::make_unique<IfrtIRProgram>(*mlir_module),
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
-  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
-                          loaded_exec->Execute(/*args=*/{}, /*options=*/{},
-                                               /*devices=*/std::nullopt));
+  ExecuteOptions options;
+  options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(/*args=*/{}, options, /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
@@ -250,9 +258,11 @@ module {
                   xla::ifrt::DType(xla::ifrt::DType::kS32),
                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
 
+  ExecuteOptions options;
+  options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
@@ -295,9 +305,11 @@ module {
                   xla::ifrt::DType(xla::ifrt::DType::kS32),
                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
 
+  ExecuteOptions options;
+  options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), options,
                            /*devices=*/std::nullopt));
   TF_ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
@@ -376,9 +388,11 @@ module {
                   xla::ifrt::DType(xla::ifrt::DType::kS32),
                   xla::ifrt::ShardingParam({2, 1}, {{0}, {2}}), devices));
 
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
-      loaded_exec->Execute(absl::MakeSpan(&input, 1), /*options=*/{},
+      loaded_exec->Execute(absl::MakeSpan(&input, 1), execute_options,
                            /*devices=*/std::nullopt));
 
   TF_ASSERT_OK(result.status.Await());
