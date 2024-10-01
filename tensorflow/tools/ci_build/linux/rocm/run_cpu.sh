@@ -34,7 +34,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 
 bazel test \
       -k \
-      --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+      --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-cuda-only,-benchmark-test,-v1only \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
       --test_timeout 600,900,2400,7200 \
