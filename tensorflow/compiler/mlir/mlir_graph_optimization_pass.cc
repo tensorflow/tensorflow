@@ -245,9 +245,17 @@ Status MlirFunctionOptimizationPass::Run(
   timings.ReportAndStop();
 
   if (!module_ref_status.ok()) {
-    LOG(ERROR) << "Failed to convert graph to MLIR: "
-               << module_ref_status.status();
-    return module_ref_status.status();
+    // If at least one pass is enabled, return failure to the caller
+    // immediately.
+    if (overall_state == MlirOptimizationPassState::Enabled) {
+      return module_ref_status.status();
+    }
+    // Do not fail, just keep the original TF graph unchanged in fallback mode.
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
+    return absl::OkStatus();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
@@ -270,7 +278,7 @@ Status MlirFunctionOptimizationPass::Run(
 
     Status pass_status = absl::OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
-    if (pass_state != MlirOptimizationPassState::Disabled) {
+    if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
       VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
               << (*graph)->num_edges();
@@ -285,17 +293,50 @@ Status MlirFunctionOptimizationPass::Run(
                 << (*graph)->num_edges();
         is_module_updated = true;
       }
+    } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      VLOG(2) << "Run MLIR graph optimization pass with fallback: "
+              << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
+      // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
+      // module in case of no failures.
+      auto module_ref_clone = module_ref->clone();
+      timings.Reset({kTfMlirCategory, name.str() + "_fallback"});
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, module_ref_clone, **graph, *flib_def);
+      timings.ReportAndStop();
+
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass with fallback: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
+        module_ref = module_ref_clone;
+        is_module_updated = true;
+      } else {
+        module_ref_clone->destroy();
+      }
     } else {
       VLOG(2) << "MLIR graph optimization pass: " << StringRefToView(name)
               << " is disabled and will not be run.";
     }
 
     if (!pass_status.ok()) {
-      // If pass failed return error back to the caller.
-      if (pass_state != MlirOptimizationPassState::Disabled) {
-        LOG(INFO) << StringRefToView(name)
-                  << " pass failed. Try to disbale it.";
+      // If pass failed and it is:
+      //   FallbackEnabled - only collect metrics, do not propagate
+      //     error to the caller.
+      //   Enabled - return error back to the caller.
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+        LOG(WARNING) << StringRefToView(name)
+                     << " pass failed, continuing without the pass because the "
+                        "pass has fallback enabled";
+        mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
+      } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
+      }
+    } else {
+      if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+        mlir_function_pass_fallback_count->GetCell(kSuccess)->IncrementBy(1);
       }
     }
 
@@ -376,9 +417,14 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(
       **options.graph, debug_info, *options.flib_def, import_config, &context);
   if (!module_ref_status.ok()) {
-    LOG(ERROR) << "Failed to convert graph to MLIR: "
-               << module_ref_status.status();
-    return module_ref_status.status();
+    if (pass_state == MlirOptimizationPassState::Enabled) {
+      return module_ref_status.status();
+    }
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
+    return absl::OkStatus();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
@@ -401,9 +447,20 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   module_ref_clone->destroy();
 
   if (!pass_status.ok()) {
-    if (pass_state == MlirOptimizationPassState::Disabled) {
-      LOG(INFO) << StringRefToView(name) << " pass failed. Try to disbale it.";
-      return pass_status;
+    if (pass_state == MlirOptimizationPassState::Enabled) return pass_status;
+
+    if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      LOG(WARNING) << StringRefToView(name)
+                   << " pass failed, continuing without the pass because the "
+                      "pass has fallback enabled";
+      mlir_graph_optimization_pass_fallback_count->GetCell(kFailure)
+          ->IncrementBy(1);
+      return absl::OkStatus();
+    }
+  } else {
+    if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
+      mlir_graph_optimization_pass_fallback_count->GetCell(kSuccess)
+          ->IncrementBy(1);
     }
   }
 
