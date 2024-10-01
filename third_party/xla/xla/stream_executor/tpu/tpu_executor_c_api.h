@@ -89,7 +89,8 @@ void TpuExecutor_EnqueueInfeed(SE_StreamExecutor* executor,
                                int64_t size, TF_Status* status);
 void TpuExecutor_DequeueOutfeed(SE_StreamExecutor* executor,
                                 int32_t outfeed_queue_index, uint8_t* data,
-                                int64_t size, TF_Status* status);
+                                int64_t size, XLA_Shape* shape,
+                                TF_Status* status);
 
 void TpuExecutor_BlockHostUntilDone(SE_StreamExecutor* executor,
                                     SE_Stream* stream, TF_Status* status);

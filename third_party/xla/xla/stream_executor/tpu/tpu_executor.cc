@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "absl/cleanup/cleanup.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_stream.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
-#include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -154,11 +154,16 @@ TpuExecutor::GetAllocatorStats() {
 
 void TpuExecutor::DequeueOutfeed(int32_t outfeed_queue_index,
                                  absl::Span<uint8_t> bytes,
+                                 const std::optional<xla::Shape>& shape,
                                  StatusCallback done) {
+  XLA_Shape c_shape;
+  if (shape.has_value()) {
+    ApiConverter::ToC(shape.value(), &c_shape);
+  }
   StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(executor_, outfeed_queue_index,
-                                                bytes.data(), bytes.size(),
-                                                status.c_status);
+  ExecutorApiFn()->TpuExecutor_DequeueOutfeedFn(
+      executor_, outfeed_queue_index, bytes.data(), bytes.size(),
+      shape.has_value() ? &c_shape : nullptr, status.c_status);
   done(status.status());
 }
 
