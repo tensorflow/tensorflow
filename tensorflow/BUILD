@@ -903,43 +903,6 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-# This flag disables all google production dependencies, intended for
-# applications run with non-prod environment.
-# TODO(timshen): Currently this option only disables some dependencies.
-# See b/122528503.
-# copybara:uncomment_begin(google-only)
-# bool_flag(
-#     name = "tf_no_prod_deps",
-#     build_setting_default = False,
-# )
-#
-# config_setting(
-#     name = "no_prod_deps_define",
-#     define_values = {"tf_no_prod_deps": "1"},
-# )
-#
-# config_setting(
-#     name = "no_prod_deps_flag",
-#     flag_values = {":tf_no_prod_deps": "True"},
-# )
-#
-# selects.config_setting_group(
-#     name = "no_prod_deps",
-#     match_any = [
-#         ":no_prod_deps_define",
-#         ":no_prod_deps_flag",
-#     ],
-# )
-#
-# config_setting(
-#     name = "no_prod_deps_cuda",
-#     define_values = {
-#         "tf_no_prod_deps": "1",
-#         "GOOGLE_CUDA_COMPILER": "clang",
-#     },
-# )
-# copybara:uncomment_end
-
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
