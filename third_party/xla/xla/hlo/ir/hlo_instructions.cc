@@ -2038,7 +2038,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
       // instruction. Add it as an operand and add a corresponding called
       // computation parameter instruction.
 
-      // No need to create an original_value for an added parameter as the
+      // No need to create an original value for an added parameter as the
       // original value is saved in the corresponding argument.
       called_computation_parameter = AddCallOperand(operand);
     }
@@ -2047,7 +2047,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   if (clone != instruction_to_append) {
-    // Copy over original_value attribute to the clone of a fused instruction.
+    // Copy over the original value to the clone of a fused instruction.
     if (auto original_value = instruction_to_append->original_value()) {
       clone->set_original_value(original_value);
     }
@@ -2092,7 +2092,7 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     HloInstruction* new_root = called_computation()->AddInstruction(
         HloInstruction::CreateTuple(tuple_elements));
 
-    // No need to create an original_value for a new root with added outputs
+    // No need to create an original value for a new root with added outputs
     // as the original value is saved in the get-tuple-element instructions
     // that use it.
     called_computation()->set_root_instruction(new_root,
@@ -2425,7 +2425,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     auto cloned_instruction =
         parent()->AddInstruction(fused_instruction->CloneWithNewOperands(
             fused_instruction->shape(), new_operands, /*suffix=*/"clone"));
-    // Copy over original_value attribute to the clone of a fused instruction.
+    // Copy over the original value to the clone of a fused instruction.
     // This is necessary as the clone will be cloned again when the clone is
     // fused in FuseInstructionIntoMultiOutput(). This can be skipped if we
     // improve the code to only clone once as stated in the preceding comment.
