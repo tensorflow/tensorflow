@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+using TensorVector = absl::InlinedVector<TensorValue, 4UL>;
 
 // In order to avoid the overhead of creating a large thread pool, we set a
 // small default thread count. This value should be revised should DeviceSimple
@@ -81,7 +81,7 @@ Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 
-  gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
+  absl::InlinedVector<AllocatorAttributes, 4UL> output_attrs;
   const int num_outputs = op_kernel->num_outputs();
   for (int i = 0; i < num_outputs; i++) {
     AllocatorAttributes attr;
