@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_blas.h"
 
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/rocm/rocblas_wrapper.h"
-
 #define EIGEN_USE_GPU
 #define EIGEN_USE_HIP
 #include <assert.h>
 
 #include <complex>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "rocm/rocm_config.h"
@@ -34,10 +33,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -154,26 +156,25 @@ ROCMBlas::~ROCMBlas() {
 }
 
 bool ROCMBlas::SetStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
-  ScopedActivateContext sac{parent_};
-
-  rocblas_status ret =
-      wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
-  if (ret != rocblas_status_success) {
+  auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : nullptr;
+  if (auto ret = wrap::rocblas_set_stream(blas_, handle);
+      ret != rocblas_status_success) {
     LOG(ERROR) << "failed to set stream for rocBLAS calls: " << ToString(ret);
     return false;
   }
-
   return true;
 }
 
-hipStream_t ROCMBlas::ROCMStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
-  ScopedActivateContext sac{parent_};
-  return AsGpuStreamValue(stream);
+absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
+  absl::MutexLock lock{&mu_};
+  CHECK(blas_ != nullptr);
+  GpuStreamHandle handle{};
+  if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
+      ret != rocblas_status_success) {
+    return absl::InternalError("failed to get the current stream value");
+  }
+  return (handle == nullptr);
 }
 
 namespace {
@@ -351,11 +352,11 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
+  ScopedActivateContext sac{parent_};
   if (!SetStream(stream)) {
     return absl::InternalError("Setting stream failed");
   }
 
-  ScopedActivateContext sac{parent_};
   rocblas_status ret;
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
@@ -383,6 +384,8 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
 #endif
 
   ret = rocblas_func(blas_, std::forward<Args>(args)...);
+  SetStream(nullptr);  // Resetting stream after the function call
+
   if (ret != rocblas_status_success) {
     auto err_str =
         absl::StrFormat("%s failed with: %s", FuncT::kName, ToString(ret));

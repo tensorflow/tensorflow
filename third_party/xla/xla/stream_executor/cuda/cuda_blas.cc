@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -66,6 +67,7 @@ namespace cuda {
 using gpu::AsGpuStreamValue;
 using gpu::GpuMemory;
 using gpu::GpuMemoryMutable;
+using gpu::GpuStreamHandle;
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
@@ -229,25 +231,26 @@ CUDABlas::~CUDABlas() {
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
   gpu::ScopedActivateContext sac{parent_};
 
-  cublasStatus_t ret = cublasSetStream(blas_, AsGpuStreamValue(stream));
-  if (ret != CUBLAS_STATUS_SUCCESS) {
+  auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : nullptr;
+  if (auto ret = cublasSetStream(blas_, handle); ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cuBLAS calls: " << ToString(ret);
     return false;
   }
-
   return true;
 }
 
-cudaStream_t CUDABlas::CUDAStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
-  gpu::ScopedActivateContext sac{parent_};
-  return AsGpuStreamValue(stream);
+absl::StatusOr<bool> CUDABlas::IsMainStreamSet() const {
+  absl::MutexLock lock{&mu_};
+  CHECK(blas_ != nullptr);
+  GpuStreamHandle handle{};
+  if (auto ret = cublasGetStream(blas_, &handle);
+      ret != CUBLAS_STATUS_SUCCESS) {
+    return absl::InternalError("failed to get the current stream value");
+  }
+  return (handle == nullptr);
 }
 
 namespace {

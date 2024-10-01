@@ -114,9 +114,6 @@ class ROCMBlas : public blas::BlasSupport {
   // invoked before calling into rocBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the underlying ROCm stream
-  hipStream_t ROCMStream(Stream *stream);
-
   // A helper function that calls the real rocBLAS function together with error
   // handling.
   //
@@ -187,7 +184,7 @@ class ROCMBlas : public blas::BlasSupport {
       ScratchAllocator *scratch_allocator);
 
   // mutex that guards the rocBLAS handle for this device.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   // GpuExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.
