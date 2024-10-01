@@ -240,49 +240,7 @@ cc_library(
     name = "self_adjoint_eig",
     hdrs = ["self_adjoint_eig.h"],
     deps = [
-<<<<<<< HEAD
-        ":slicing",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_test(
-    name = "self_adjoint_eig_test",
-    srcs = ["self_adjoint_eig_test.cc"],
-    real_hardware_only = True,
-    shard_count = 5,
-    tags = ["optonly"],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1",]),
-    deps = [
-        ":arithmetic",
-        ":constants",
-        ":math",
-        ":matrix",
-        ":self_adjoint_eig",
-        "//xla:array",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:error_spec",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
-        "//xla/tests:client_library_test_base",
-        "//xla/tests:test_macros_header",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-=======
         "//xla/hlo/builder/lib:self_adjoint_eig",
->>>>>>> upstream/master
     ],
 )
 

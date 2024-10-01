@@ -358,16 +358,10 @@ build:linux --copt="-Werror=unused-result"
 # Add switch as an error on Linux.
 build:linux --copt="-Wswitch"
 build:linux --copt="-Werror=switch"
-<<<<<<< HEAD
-# Required for building with clang
-build:linux --copt="-Wno-error=unused-but-set-variable"
 # We have some invalid linker scripts in the build,
 # so we need to disable this check
 build:linux --linkopt=-Wl,--undefined-version
 build:linux --host_linkopt=-Wl,--undefined-version
-=======
-
->>>>>>> upstream/master
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 
