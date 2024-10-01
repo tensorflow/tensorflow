@@ -708,7 +708,7 @@ struct FunctionArgIndex {
 
 class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
-  virtual ~FunctionLibraryRuntime() {}
+  ~FunctionLibraryRuntime() override {}
 
   // Instantiate a function with the given "attrs".
   //

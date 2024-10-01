@@ -837,11 +837,11 @@ class RunHandlerPool::Impl {
     thread_local std::unique_ptr<
         Eigen::MaxSizeVector<internal::ThreadWorkSource*>>
         thread_work_sources =
-            std::unique_ptr<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
-                new Eigen::MaxSizeVector<internal::ThreadWorkSource*>(
-                    static_cast<int32>(ParamFromEnvWithDefault(
-                        "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
-                        kMaxConcurrentHandlers))));
+            std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+
+                static_cast<int32>(ParamFromEnvWithDefault(
+                    "TF_RUN_HANDLER_MAX_CONCURRENT_HANDLERS",
+                    kMaxConcurrentHandlers)));
     uint64 version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -1059,7 +1059,7 @@ void RunHandler::Impl::ThreadPoolInterfaceWrapper::Schedule(
 
 RunHandler::Impl::Impl(RunHandlerPool::Impl* pool_impl)
     : pool_impl_(pool_impl) {
-  thread_pool_interface_.reset(new ThreadPoolInterfaceWrapper(this));
+  thread_pool_interface_ = std::make_unique<ThreadPoolInterfaceWrapper>(this);
   Reset(0, RunOptions::Experimental::RunHandlerPoolOptions());
 }
 
