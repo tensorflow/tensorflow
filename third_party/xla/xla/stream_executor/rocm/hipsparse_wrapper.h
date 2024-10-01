@@ -27,7 +27,6 @@ limitations under the License.
 #else
 #include "rocm/include/hipsparse.h"
 #endif
-#include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"

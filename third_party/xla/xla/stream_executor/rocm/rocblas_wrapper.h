@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "rocm/include/rocblas/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/platform.h"
