@@ -20,7 +20,6 @@ cc_library(
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_cc_grpc_proto",
         "//tensorflow/distribute/experimental/rpc/proto:tf_rpc_service_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
-        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )

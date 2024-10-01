@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_DISTRIBUTE_EXPERIMENTAL_RPC_KERNELS_GRPC_RPC_SERVICE_H_
 #define TENSORFLOW_DISTRIBUTE_EXPERIMENTAL_RPC_KERNELS_GRPC_RPC_SERVICE_H_
 
-#include "xla/stream_executor/platform/port.h"
 #include "tensorflow/distribute/experimental/rpc/proto/tf_rpc_service.grpc.pb.h"
 #include "tensorflow/distribute/experimental/rpc/proto/tf_rpc_service.pb.h"
 
