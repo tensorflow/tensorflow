@@ -384,9 +384,6 @@ class TfrtCpuClient final : public PjRtClient {
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
   }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
-  }
 
   absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented.");

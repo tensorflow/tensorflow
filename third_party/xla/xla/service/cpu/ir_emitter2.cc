@@ -230,7 +230,7 @@ IrEmitter2::KernelInfo::KernelInfo(KernelPrototype prototype,
     : name(prototype.function->getName().str()),
       block_dims(block_dims),
       thread_dims(thread_dims),
-      invariant_buffers(std::move(prototype.invariant_buffers)) {}
+      invariant_arguments(std::move(prototype.invariant_arguments)) {}
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitElementalHostKernel(
     const HloInstruction* instr) {
@@ -793,15 +793,6 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     result_slices.insert(result.slice);
   }
 
-  // Collect a set of invariant (read-only) buffer slices. If a buffer slice is
-  // not a part of result set, then it must be a read-only buffer.
-  absl::flat_hash_set<BufferAllocation::Slice> invariant_slices;
-  for (const KernelParameter& argument : arguments) {
-    if (!result_slices.contains(argument.slice)) {
-      invariant_slices.insert(argument.slice);
-    }
-  }
-
   // Create a kernel function with HostKernel API. We use external linkage
   // because we'll be resolving this function from the XLA runtime.
   llvm::Function* function = llvm::Function::Create(
@@ -833,16 +824,26 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
 
   int64_t idx = 0;
 
+  // A set of invariant (read-only) buffer indices, feeded in the loop array in
+  // the next section.
+  absl::flat_hash_set<int64_t> invariant_arguments;
+
   // IrArrays for the parameters.
   std::vector<llvm_ir::IrArray> ir_arguments;
-  for (const KernelParameter& argument : arguments) {
+  for (int64_t i = 0; i < arguments.size(); ++i) {
+    const KernelParameter& argument = arguments[i];
     auto ir_argument = EmitKernelArgument(b, call_frame, idx++, argument.shape);
     if (auto* noalias = get_noalias(argument.slice)) {
       ir_argument.AddNoaliasMetadata(noalias);
     }
-    if (invariant_slices.contains(argument.slice)) {
+
+    // If a buffer slice is not a part of result set, then it must be invariant
+    // (read-only).
+    if (!result_slices.contains(argument.slice)) {
       ir_argument.MarkInvariantOverWholeProgram(&ctx);
+      invariant_arguments.insert(i);
     }
+
     ir_arguments.push_back(std::move(ir_argument));
   }
 
@@ -876,7 +877,7 @@ absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
                          kernel_thread,
                          std::move(ir_arguments),
                          std::move(ir_results),
-                         std::move(invariant_slices)};
+                         std::move(invariant_arguments)};
 }
 
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(

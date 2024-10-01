@@ -340,7 +340,7 @@ absl::Status CommandBufferCmdSequence::Record(
       TF_RETURN_IF_ERROR(command_buffer->Barrier(execution_scope_id));
       num_recorded_commands.erase(execution_scope_id);
     }
-    VLOG(5) << " Record command buffer with scope id "
+    VLOG(5) << "Record command buffer with scope id "
             << execution_scope_id.value();
 
     TF_RETURN_IF_ERROR(
@@ -1369,7 +1369,8 @@ absl::Status CuDnnCmd::Record(const Thunk::ExecuteParams& execute_params,
   return AddTracedCommandBuffer(
       execute_params, record_params, command_buffer, [&](se::Stream* stream) {
         return graph_->get()->Execute(
-            *stream, absl::Span<se::DeviceMemoryBase>(operands));
+            *stream, absl::Span<se::DeviceMemoryBase>(operands),
+            execute_params.collective_params->local_device_ordinal);
       });
 }
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/shape.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -331,25 +332,21 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
 
   for (int i = 0; i < ins_->operand_count(); ++i) {
     const HloInstruction* operand = ins_->operand(i);
+    const Shape& operand_shape = operand->shape();
+    const StrategyGroup& operand_strategy_group = *strategy_map_.at(operand);
     communication_resharding_costs.push_back(CommunicationReshardingCostVector(
-        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
-        cluster_env_));
+        operand_strategy_group, operand_shape, input_specs[i], cluster_env_));
     memory_resharding_costs.push_back(MemoryReshardingCostVector(
-        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
-        cluster_env_));
+        operand_strategy_group, operand_shape, input_specs[i], cluster_env_));
   }
 
-  strategy_group_->strategies.push_back(ShardingStrategy({
-      name,
-      output_spec,
-      compute_cost,
-      communication_cost,
-      static_cast<double>(
-          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec)),
-      communication_resharding_costs,
-      memory_resharding_costs,
-      {input_specs.begin(), input_specs.end()},
-  }));
+  strategy_group_->AddStrategy(
+      ShardingStrategy({name, output_spec, compute_cost, communication_cost,
+                        static_cast<double>(ByteSizeOfShapeWithSharding(
+                            ins_->shape(), output_spec)),
+                        communication_resharding_costs,
+                        memory_resharding_costs}),
+      {input_specs.begin(), input_specs.end()});
 }
 
 // Given lhs and rhs dim maps, infers a sharding for the output by relying
@@ -447,13 +444,13 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
   CHECK_OK(ins_clone->ReplaceOperandWith(1, rhs_clone.get()));
   if (ins_->opcode() == HloOpcode::kConvolution) {
     xla::InferConvolutionShardingFromOperands(
-        ins_clone.get(), call_graph_, 10,
-        /* may_combine_partial_sharding */ true, /* is_spmd */ true);
+        ins_clone.get(), /* aggressiveness */ 10,
+        /* may_combine_partial_sharding */ true);
   } else {
     xla::InferDotShardingFromOperands(
-        ins_clone.get(), call_graph_,
+        ins_clone.get(),
         dot_as_convolution_util::ParseDotGeneralFromDot(ins_clone.get()),
-        /* may_combine_partial_sharding/ */ true, /* is_spmd */ true);
+        /* aggressiveness */ 10, /* may_combine_partial_sharding */ true);
   }
   if (!ins_clone->has_sharding()) {
     return std::nullopt;
@@ -462,15 +459,29 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
 }
 
 void HandlerBase::SortStrategies() {
+  std::vector<std::pair<ShardingStrategy, InputShardings>> strategy_shardings;
+  const auto strategy_input_shardings =
+      strategy_group_->GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const ShardingStrategy& strategy =
+        strategy_group_->GetStrategyForInputShardings(iid);
+    strategy_shardings.push_back({strategy, input_shardings});
+  }
   absl::c_stable_sort(
-      strategy_group_->strategies,
-      [](const ShardingStrategy& s1, const ShardingStrategy& s2) {
-        if (s1.memory_cost == s2.memory_cost) {
-          return s1.name < s2.name;
+      strategy_shardings,
+      [](const std::pair<ShardingStrategy, InputShardings>& s1,
+         const std::pair<ShardingStrategy, InputShardings>& s2) {
+        if (s1.first.memory_cost == s2.first.memory_cost) {
+          return s1.first.name < s2.first.name;
         } else {
-          return s1.memory_cost < s2.memory_cost;
+          return s1.first.memory_cost < s2.first.memory_cost;
         }
       });
+  strategy_group_->ClearStrategies();
+  for (const auto& [strategy, input_shardings] : strategy_shardings) {
+    strategy_group_->AddStrategy(strategy, input_shardings);
+  }
 }
 
 /************** DotHandler function definitions **************/
@@ -962,8 +973,8 @@ absl::Status ConvHandler::RegisterStrategies() {
   // and only keep the data parallel strategies.
   if (option_.force_batch_dim_to_mesh_dim >= 0 &&
       batch_map_.contains(GetBatchDimMapKey(ins_))) {
-    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategy_group_,
-                                      cluster_env_, batch_map_, option_));
+    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), cluster_env_,
+                                      batch_map_, option_, *strategy_group_));
   }
 
   SortStrategies();

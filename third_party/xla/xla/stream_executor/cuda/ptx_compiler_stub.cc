@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
@@ -29,7 +30,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
       "XLA was built without libnvptxcompiler support.");
 }
 
-absl::StatusOr<LibNvPtxCompilerVersion> GetLibNvPtxCompilerVersion() {
+absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {
   return absl::UnimplementedError(
       "XLA was built without libnvptxcompiler support.");
 }

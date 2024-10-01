@@ -1,0 +1,1426 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/c/c_api_opaque.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/c/c_api_opaque.h</h1>
+  <p>C API for TensorFlow Lite Opaque Types. </p>
+  <h2>Summary</h2>
+  <p>These APIs are accessors for TFLite Opaque Types. These APIs are primarily intended to be used by delegates and custom OP implementations.</p>
+  <p>This API is part of the TensorFlow Lite Extension APIs. We reserve the right to make changes to this API in future releases, potentially including non-backwards-compatible changes, on a different schedule than for the other TensorFlow Lite APIs. See <a href="https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis">https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis</a>.<aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/c/c_api_opaque.h"</pre> to access the APIs documented on this page. </aside></p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Typedefs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga350e3ccada7f85e4b4240f39e55890bc">TfLiteIntArray</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a></code>
+        </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a></code>
+        </div><div>An opaque type to create a tensor. </div></td>
+    </tr>
+  </table>
+  <table class="methods responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Functions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaf955495296442d13620689537e832e8a">TfLiteOpaqueContextAcquireSubgraphContext</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, int subgraph_index, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> **acquired_opaque_context)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Entry point for C API AcquireSubgraphContext. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gac6c68b0352a09e37eb4911b22ff93a6c">TfLiteOpaqueContextAddTensor</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context, <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, int *new_tensor_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Adds an additional tensor and configures its properties based on the provided 'builder', preserving pre-existing Tensor entries. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gae24c6640d5c76438df475c3be9e9fd31">TfLiteOpaqueContextGetExecutionPlan</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> **execution_plan)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads the provided <code>execution_plan</code> associated with the provided <code>opaque_context</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gac5ef5e946445ca48fcc705bb2b88fd6d">TfLiteOpaqueContextGetInputs</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const int **inputs, int *num_inputs)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*inputs' pointer the starting address of an array of indices representing the tensors that are inputs to the subgraph that is associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga6f421a855b4f57ebabf92edde7c4a1db">TfLiteOpaqueContextGetName</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the name of the subgraph that is associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga99c369753bf8c78e38c92aae04db147c">TfLiteOpaqueContextGetNodeAndRegistration</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, int node_index, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> **node, <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> **registration_external)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Given the specified 'opaque_context' and 'node_index', load the caller's opaque '*node' and '*registration_external' pointer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaa5eacd8d72cd3eb97700e8b18d8a05f2">TfLiteOpaqueContextGetNodeInitDataMmapInfo</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context, const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *node, int *fd, int64_t *custom_initial_data_offset_in_file, int64_t *custom_initial_data_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads metadata of a TF Lite node's custom initialization data. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga22cb23e67e13ab8beed88a2c4b34ff00">TfLiteOpaqueContextGetNumNodes</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the number of nodes associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gadd675e475f0032f01dc394152f48e6cc">TfLiteOpaqueContextGetNumTensors</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the number of tensors associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga4f7dcbdc902649c7137c3d0a4f36a8b1">TfLiteOpaqueContextGetOpaqueTensor</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, int index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *</code>
+        </div>
+        <div>Returns modifiable access to the opaque tensor that corresponds to the specified <code>index</code> and is associated with the provided <code>opaque_context</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga338ad4595ba4944218808133fb22d791">TfLiteOpaqueContextGetOutputs</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const int **outputs, int *num_outputs)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*outputs' pointer the starting address of an array of indices representing the tensors that are outputs to the subgraph that is associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga0590ac120e9f897a425e29782ef70a74">TfLiteOpaqueContextGetSizeOfType</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type, size_t *bytes)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Populates the size in bytes of a provide 'type' into 'bytes'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga9d9fd6cd39b02d68ba7d7a0d986fd81b">TfLiteOpaqueContextGetVariables</a>(const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const int **variables, int *num_variables)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*variables' pointer the starting address of an array of indices representing the tensors that are variables to the subgraph that is associated with the provided 'opaque_context'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga638e302aefaa7eb67070d58f42c02680">TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, int subgraph_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Entry point for C API MarkSubgraphAsDelegationSkippable. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga69e39bfd1783c988e18da729c8d219a5">TfLiteOpaqueContextReleaseSubgraphContext</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, int subgraph_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Entry point for C API ReleaseSubgraphContext. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga5e0e3db8689c6b766475bafe5fb91349">TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> *registration_external, const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *nodes_to_replace, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *opaque_delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Entry point for C API ReplaceNodeSubsetsWithDelegateKernels. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga9d61ce4db8a59630e9caf92651bc8ae4">TfLiteOpaqueContextReportError</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const char *format, ...)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Reports an error message formed by using the provided 'format' string in combination with the data provided via the unnamed arguments following the 'format' parameter ('...'). </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga6de588fcc77daf2f73e9548b02451520">TfLiteOpaqueContextReportErrorVa</a>(struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const char *format, va_list vlist)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Same as <code>TfLiteOpaqueContextReportError</code>, but with the variable arguments passed via a <code>va_list</code> instead of directly. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gac65e08f879c3ccad564accc0bc312ea2">TfLiteOpaqueContextResizeTensor</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor, <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *new_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Resizes the provided 'tensor' that is associated with the provided 'context' so that the 'tensor's shape matches the dimensionality specified via the provided 'new_size' array. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga0bf26a7817e2bf599af31ccafa751c00">TfLiteOpaqueNodeGetBuiltinData</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void *</code>
+        </div>
+        <div>Returns the builtin data associated with the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaac8ae260e65744f3956b8a4b05d00619">TfLiteOpaqueNodeGetCustomInitialData</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, const void **init_data, int *size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*init_data' pointer the address of the custom init data associated with the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaffc7ebdd28a34bd8abdd67737cd2f1dc">TfLiteOpaqueNodeGetInput</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, int index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *</code>
+        </div>
+        <div>Returns the input tensor of the given node. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaad3f5398a154aab2cad49312e87e5051">TfLiteOpaqueNodeGetInputTensorIndex</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, int index_of_input)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>Given an 'index_of_input', which must be in the range of [0, N), where N is the number of input tensors of the provided 'opaque_node', returns the (global) index of the tensor that holds the input. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gadbd356a91810fbdf92a696ac715cb1e5">TfLiteOpaqueNodeGetOutput</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context, const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, int index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *</code>
+        </div>
+        <div>Returns the output tensor of the given node. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaeef4673183d2625795cdc5bd5980a117">TfLiteOpaqueNodeGetOutputTensorIndex</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, int index_of_output)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>Given an 'index_of_output', which must be in the range of [0, N), where N is the number of output tensors of the provided 'opaque_node', returns the (global) index of the tensor that holds the output. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga7a1b879db46c2bc6029b876e9680f4e1">TfLiteOpaqueNodeGetUserData</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void *</code>
+        </div>
+        <div>Returns opaque data provided by the node implementer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga3686979e59fabb5397e8071912135a51">TfLiteOpaqueNodeInputs</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, const int **inputs, int *num_inputs)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*inputs' pointer the starting address of an array of indices representing the tensors that are inputs of the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gad60280580fc560ea29cabaea48125857">TfLiteOpaqueNodeNumberOfInputs</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>Gets the number of input tensors of the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gadcf4d7918da04eec4c4b462d4510348a">TfLiteOpaqueNodeNumberOfOutputs</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>Gets the number of output tensors of the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaabed3d01de8be8a9898f3315431e61fd">TfLiteOpaqueNodeOutputs</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, const int **outputs, int *num_outputs)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*outputs' pointer the starting address of an array of indices representing the tensors that are outputs of the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga42eedc1ef01ed3319c2709b415f814d2">TfLiteOpaqueNodeTemporaries</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node, const int **temporaries, int *num_temporaries)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided '*temporaries' pointer the starting address of an array of indices representing the temporary tensors associated with the provided 'opaque_node'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga12a4e152314a08ca7b9cc10931c9f7db">TfLiteOpaqueTensorBuilderCreate</a>()</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Creates an opaque tensor builder object. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gac1961538037381e5973efb2800cf3268">TfLiteOpaqueTensorBuilderDelete</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Deletes an opaque tensor builder object. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga7fb68909c0bcbe1daf1b1c971dc33872">TfLiteOpaqueTensorBuilderSetAllocationType</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> allocation_type)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Sets the allocation type of the provided 'builder' to the provided 'allocation_type'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaa7f6d9e8551a340bbb94167e2a384504">TfLiteOpaqueTensorBuilderSetData</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, void *data)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Sets the raw data of the provided 'builder' to the provided 'data'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gab163662f5799399f25d81a207cb7fe39">TfLiteOpaqueTensorBuilderSetQuantization</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> quantization)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Sets the quantization of the provided 'builder' to the provided 'quantization'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gad8c18c454cfbdf6ee4fbf8e399ec79dc">TfLiteOpaqueTensorBuilderSetQuantizationParams</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> params)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Sets the quantization params of the provided 'builder' to the provided 'params'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga4895cfa4df885a3b77fb018b72da8883">TfLiteOpaqueTensorBuilderSetType</a>(<a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *</code>
+        </div>
+        <div>Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gac2757cd79edd59fb4ef2af71d335ad3f">TfLiteOpaqueTensorByteSize</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the size of the underlying data in bytes. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gabbba60b7881ec376b908159c2032a28c">TfLiteOpaqueTensorCopyFromBuffer</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor, const void *input_data, size_t input_data_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Copies from the provided input buffer into the tensor's buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga15e7715a4270ae0d8680f8aec06ba848">TfLiteOpaqueTensorCopyToBuffer</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor, void *output_data, size_t output_data_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Copies to the provided output buffer from the tensor's buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga2e3b4e1645df093c73590bcd15a0ac12">TfLiteOpaqueTensorData</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void *</code>
+        </div>
+        <div>Returns a pointer to the underlying data buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga0d0addece430a3a2f66f6a07e30c0e9b">TfLiteOpaqueTensorDim</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor, int32_t dim_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the length of the tensor in the "dim_index" dimension. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gafbdbb0ea4aa5f74d1d7861c3a1f03458">TfLiteOpaqueTensorGetAllocationStrategy</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a></code>
+        </div>
+        <div>Returns a tensor data allocation strategy. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga3fb1389f4f3eddee0ce0ee6e8154d3b4">TfLiteOpaqueTensorGetAllocationType</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a></code>
+        </div>
+        <div>Returns the 'opaque_tensor's allocation type. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gae60b16c5c60db936492e6bcc26057d87">TfLiteOpaqueTensorGetBufferAddressStability</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a></code>
+        </div>
+        <div>Returns how stable a tensor data buffer address is across runs. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga2d7a2e4739f60c6f2d10cfaf699b0fb8">TfLiteOpaqueTensorGetDataKnownStep</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+        </div>
+        <div>Returns the operation step when the data of a tensor is populated. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga41ebc0e1130b6fb4716dad8d7d6abbb5">TfLiteOpaqueTensorGetDataStability</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a></code>
+        </div>
+        <div>Returns how stable a tensor data values are across runs. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gabce8bc94d5b898a1d1f17a67d72ea208">TfLiteOpaqueTensorGetDimSignature</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor, int32_t dim_index, int32_t *dim_length)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided 'dim_length' the length of the tensor in the 'dim_index' signature dimension or -1 if that dimension has unknown length. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gabdc462383fa10f30b2604381d4ad589e">TfLiteOpaqueTensorGetNumDimsSignature</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor, int32_t *num_dims)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Loads into the provided 'num_dims' the number of dimensions that the tensor's signature has. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga948f5986cae10e6d29cbaf15ebe98e38">TfLiteOpaqueTensorGetQuantization</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a></code>
+        </div>
+        <div>Returns the 'opaque_tensor's quantization information. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gabd4fc7852ac02c7f414e1c57ce98c570">TfLiteOpaqueTensorGetQuantizationParams</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a></code>
+        </div>
+        <div>Returns the 'opaque_tensor's quantization parameters. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gad081dd8cb3e78b50277d787e1a18ab54">TfLiteOpaqueTensorGetShapeKnownStep</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a></code>
+        </div>
+        <div>Returns the operation step when the shape of a tensor is computed. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gab75a624187bf3b2d92f882d3656689b8">TfLiteOpaqueTensorGetString</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor, int index, const char **str, int *len)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Stores the address of the n-th (denoted by the provided 'index') string contained in the provided 'tensor' in the provided '*str' pointer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga191040e7547ce0f1844ade27ec434c15">TfLiteOpaqueTensorGetStringCount</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Returns the number of strings stored in the provided 'tensor'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga058effbf0e7e4179e43aadf3911da57d">TfLiteOpaqueTensorIsVariable</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>Returns 'non-zero' if the provided 'opaque_tensor' is a variable, and returns zero otherwise. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gaf688b34baaad34e1fb1a230d115e34f5">TfLiteOpaqueTensorName</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the (null-terminated) name of the tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga291eeb5c7c5ee23fa388b4cf8e2d1b36">TfLiteOpaqueTensorNumDims</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the number of dimensions that the tensor has. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga79f7234255a6acd953dfd2c6d436b364">TfLiteOpaqueTensorType</a>(const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a></code>
+        </div>
+        <div>Returns the type of a tensor element. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1ga1e5157da9514a5188bd2d78a646e7958">TfLiteOpaqueTensorWriteString</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor, const char *str, int len)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Writes the string pointed to by the provided 'str' pointer of length 'len' into the provided 'tensor'. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__opaque_1gace3f0d9a38893241dde0e81d9b0d7e34">TfLiteOpaqueTensorWriteStrings</a>(<a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor, const char *const *str_array, int str_array_len, const int *str_n_len)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Writes the array of strings specified by 'str_array' into the specified 'tensor'. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Typedefs</h2>
+  <div id="group__c__api__opaque_1ga350e3ccada7f85e4b4240f39e55890bc">
+    <h3>TfLiteIntArray</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> TfLiteIntArray</pre>
+    <div />
+  </div>
+  <div id="group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">
+    <h3>TfLiteOpaqueTensorBuilder</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> TfLiteOpaqueTensorBuilder</pre>
+    <div>
+      <p>An opaque type to create a tensor. </p>
+    </div>
+  </div>
+  <h2>Functions</h2>
+  <div id="group__c__api__opaque_1gaf955495296442d13620689537e832e8a">
+    <h3>TfLiteOpaqueContextAcquireSubgraphContext</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextAcquireSubgraphContext(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  int subgraph_index,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> **acquired_opaque_context
+)</pre>
+    <div>
+      <p>Entry point for C API AcquireSubgraphContext. </p>
+      <p>Retrieves the corresponding TfLiteOpaqueContext of a subgraph given a subgraph index and switches to the delegate context for this subgraph. If an invalid subgraph index is given, then returns kTfLiteError.</p>
+      <p>NOTE: This function is expected to be paired with <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga69e39bfd1783c988e18da729c8d219a5">TfLiteOpaqueContextReleaseSubgraphContext()</a> once the delegate preparation is done and/or the delegate context functions are no longer needed. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gac6c68b0352a09e37eb4911b22ff93a6c">
+    <h3>TfLiteOpaqueContextAddTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextAddTensor(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context,
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  int *new_tensor_index
+)</pre>
+    <div>
+      <p>Adds an additional tensor and configures its properties based on the provided 'builder', preserving pre-existing Tensor entries. </p>
+      <p>If non-null, the value pointed to by 'new_tensor_index' will be set to the index of the new tensor. Returns 'kTfLiteOk' when the tensor has been added successfully. Returns 'kTfLiteError' in case of failure. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gae24c6640d5c76438df475c3be9e9fd31">
+    <h3>TfLiteOpaqueContextGetExecutionPlan</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetExecutionPlan(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> **execution_plan
+)</pre>
+    <div>
+      <p>Loads the provided <code>execution_plan</code> associated with the provided <code>opaque_context</code>. </p>
+      <p>Returns <code>kTfLiteOk</code> if the <code>execution_plan</code> was successfully loaded. A return value different from <code>kTfLiteOk</code> indicates a failure and the <code>execution_plan</code> will be left in an unspecified state. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gac5ef5e946445ca48fcc705bb2b88fd6d">
+    <h3>TfLiteOpaqueContextGetInputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetInputs(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const int **inputs,
+  int *num_inputs
+)</pre>
+    <div>
+      <p>Loads into the provided '*inputs' pointer the starting address of an array of indices representing the tensors that are inputs to the subgraph that is associated with the provided 'opaque_context'. </p>
+      <p>The length of the array is loaded into the provided 'num_inputs' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'inputs' and 'num_inputs' in an unspecified state. Calls to 'SetInputs' on the associated subgraph invalidate the loaded pointers. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga6f421a855b4f57ebabf92edde7c4a1db">
+    <h3>TfLiteOpaqueContextGetName</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteOpaqueContextGetName(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context
+)</pre>
+    <div>
+      <p>Returns the name of the subgraph that is associated with the provided 'opaque_context'. </p>
+      <p>Typically the returned pointer will remain valid throughout the lifetime of the subgraph, but may be invalidated by a call to 'Subgraph::SetName'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga99c369753bf8c78e38c92aae04db147c">
+    <h3>TfLiteOpaqueContextGetNodeAndRegistration</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetNodeAndRegistration(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  int node_index,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> **node,
+  <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> **registration_external
+)</pre>
+    <div>
+      <p>Given the specified 'opaque_context' and 'node_index', load the caller's opaque '*node' and '*registration_external' pointer. </p>
+      <p>Return 'kTfLiteOk' if both the '*node' as well as the '*registration_external' have been loaded correctly. Any other return code indicates a failure and both '*node' as well as '*registration_external' will be in an unspecified state.</p>
+      <p>A caller can obtain a node's index by calling 'TfLiteOpaqueContextGetExecutionPlan', which provides an array of node indices, sorted in execution order. A node index might also come from the data structures passed to the delegate kernel's callback parameters, like the delegate parameters data structure passed to the 'init' callback that contains an array of node indices that are meant to be handled by the delegate kernel.</p>
+      <p>This function is expected to be called from within a delegate callback, like 'Prepare', or a delegate kernel callback (i.e., a callback registered with a 'TfLiteRegistrationExternal' object).</p>
+      <p>The loaded '*node' and '*registration_external' pointers will generally remain valid for the lifetime of the associated 'opaque_context', but can be invalidated through API calls where delegates get un-applied, like API calls that modify the model graph via a delegate, or if input tensors get re-sized. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaa5eacd8d72cd3eb97700e8b18d8a05f2">
+    <h3>TfLiteOpaqueContextGetNodeInitDataMmapInfo</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetNodeInitDataMmapInfo(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context,
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *node,
+  int *fd,
+  int64_t *custom_initial_data_offset_in_file,
+  int64_t *custom_initial_data_size
+)</pre>
+    <div>
+      <p>Loads metadata of a TF Lite node's custom initialization data. </p>
+      <p>Specifically:<ul>
+          <li>Loads into the supplied 'fd' the file descriptor of the file that stores the 'node's custom initialization data. This output parameter will be loaded if the TF Lite runtime has access to the file descriptor, though this is not always the case, e.g. if a client provides a tflite::Model directly to the TF Lite runtime. If 'fd' can be loaded then 'kTfLiteOk' will be returned, otherwise 'kTfLiteError' is returned.</li>
+          <li>Loads into the supplied 'custom_initial_data_offset_in_file' pointer the offset of the 'node's custom init data in the file associated with 'fd'. This output parameter will be set to -1 if the 'node' does not have custom init data set.</li>
+          <li>Loads into the supplied 'custom_initial_data_size' the size of the custom initialization data. This output parameter will be set to -1 if the 'node' does not have custom init data set.</li>
+        </ul></p>
+      <p>Returns 'kTfLiteOk' when 'fd' has been loaded successfully and 'kTfLiteError' otherwise. Note that this means that 'kTfLiteOk' can be returned, even if the 'node' does not have custom init data set. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga22cb23e67e13ab8beed88a2c4b34ff00">
+    <h3>TfLiteOpaqueContextGetNumNodes</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteOpaqueContextGetNumNodes(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context
+)</pre>
+    <div>
+      <p>Returns the number of nodes associated with the provided 'opaque_context'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gadd675e475f0032f01dc394152f48e6cc">
+    <h3>TfLiteOpaqueContextGetNumTensors</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteOpaqueContextGetNumTensors(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context
+)</pre>
+    <div>
+      <p>Returns the number of tensors associated with the provided 'opaque_context'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga4f7dcbdc902649c7137c3d0a4f36a8b1">
+    <h3>TfLiteOpaqueContextGetOpaqueTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> * TfLiteOpaqueContextGetOpaqueTensor(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  int index
+)</pre>
+    <div>
+      <p>Returns modifiable access to the opaque tensor that corresponds to the specified <code>index</code> and is associated with the provided <code>opaque_context</code>. </p>
+      <p>This requires the <code>index</code> to be between 0 and N - 1, where N is the number of tensors in the model.</p>
+      <p>Typically the tensors associated with the <code>context</code> would be set during the initialization of the <code>interpreter</code> that the <code>context</code> belongs to, through a mechanism like the <code>InterpreterBuilder</code>, and remain unchanged throughout the lifetime of the interpreter. However, there are some circumstances in which the pointer may not remain valid throughout the lifetime of the interpreter, because calls to <code>AddTensors</code> on the interpreter invalidate the returned pointer.</p>
+      <p>The ownership of the tensor remains with the TFLite runtime, meaning the caller should not deallocate the pointer. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga338ad4595ba4944218808133fb22d791">
+    <h3>TfLiteOpaqueContextGetOutputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetOutputs(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const int **outputs,
+  int *num_outputs
+)</pre>
+    <div>
+      <p>Loads into the provided '*outputs' pointer the starting address of an array of indices representing the tensors that are outputs to the subgraph that is associated with the provided 'opaque_context'. </p>
+      <p>The length of the array is loaded into the provided 'num_outputs' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'outputs' and 'num_outputs' in an unspecified state. Calls to 'SetOutputs' on the associated subgraph invalidate the loaded pointers. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga0590ac120e9f897a425e29782ef70a74">
+    <h3>TfLiteOpaqueContextGetSizeOfType</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetSizeOfType(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type,
+  size_t *bytes
+)</pre>
+    <div>
+      <p>Populates the size in bytes of a provide 'type' into 'bytes'. </p>
+      <p>Returns 'kTfLiteOk' for valid types, and 'kTfLiteError' otherwise. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga9d9fd6cd39b02d68ba7d7a0d986fd81b">
+    <h3>TfLiteOpaqueContextGetVariables</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextGetVariables(
+  const struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const int **variables,
+  int *num_variables
+)</pre>
+    <div>
+      <p>Loads into the provided '*variables' pointer the starting address of an array of indices representing the tensors that are variables to the subgraph that is associated with the provided 'opaque_context'. </p>
+      <p>The length of the array is loaded into the provided 'num_variables' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'variables' and 'num_variables' in an unspecified state. Calls to 'SetVariables' on the associated subgraph invalidate the loaded pointers. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga638e302aefaa7eb67070d58f42c02680">
+    <h3>TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  int subgraph_index
+)</pre>
+    <div>
+      <p>Entry point for C API MarkSubgraphAsDelegationSkippable. </p>
+      <p>Marks the subgraph with the given index as "delegation-skippable". Returns kTfLiteOk if the given subgraph index is valid and is successfully marked as delegation-skippable, and an error status if the subgraph index is invalid. If a subgraph is delegation-skippable, then the subgraph will be handled by a specific TfLiteOpaqueDelegate that is already supposed to be aware of this condition, and therefore, TfLiteInterpreter can skip invoking <code>ModifyGraphWithDelegate</code> on this subgraph.</p>
+      <p>NOTE: This function is expected to be called only when the subgraph that <code>subgraph_index</code> is pointing to should be skipped by interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list of callee subgraphs of the same control flow node, and all of those callees are supported by the same delegate at once).</p>
+      <p>For example, this function can be used when the delegate is handling control flow ops such as while ops. For instance, a while op has a condition subgraph indexed at <code>i</code> and a body subgraph indexed at <code>j</code>. The op can be delegated when the following conditions hold:<ol>
+          <li>The delegate supports while op</li>
+          <li>Both condition subgraph <code>i</code> and body subgraph <code>j</code> can be fully delegated to the delegate.</li>
+        </ol></p>
+      <p>Then if the delegate decides to support the while node along with both body and condition subgraphs, it should mark subgraphs <code>i</code> and <code>j</code> skippable so that those two subgraphs won't be delegated to another delegate.</p>
+      <p>WARNING: It is the delegate's responsibility to define when to skip <code>Subgraph::ModifyGraphWithDelegate</code>, to check for any edge cases (i.e. multiple references to the subgraph that <code>subgraph_index</code> is pointing to), and to mark a subgraph as skippable by using this function. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga69e39bfd1783c988e18da729c8d219a5">
+    <h3>TfLiteOpaqueContextReleaseSubgraphContext</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextReleaseSubgraphContext(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  int subgraph_index
+)</pre>
+    <div>
+      <p>Entry point for C API ReleaseSubgraphContext. </p>
+      <p>Releases the corresponding TfLiteOpaqueContext by switching back to the TFLite kernel context for this specified subgraph.</p>
+      <p>NOTE: This function is expected to be used after <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1gaf955495296442d13620689537e832e8a">TfLiteOpaqueContextAcquireSubgraphContext()</a> once the delegate preparation is done and/or the delegate context functions are no longer needed. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga5e0e3db8689c6b766475bafe5fb91349">
+    <h3>TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> *registration_external,
+  const <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *nodes_to_replace,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *opaque_delegate
+)</pre>
+    <div>
+      <p>Entry point for C API ReplaceNodeSubsetsWithDelegateKernels. </p>
+      <p>Replaces the specified <code>nodes_to_replace</code> that are associated with the provided <code>opaque_context</code> with delegate kernels. The provided <code>registration_external</code> represents the delegate kernel and will be used for each node subset that will be delegate to the provided <code>opaque_delegate</code>.</p>
+      <p>The TF Lite runtime will take ownership of the <code>registration_external</code> and will delete it when the associated <code>opaque_context</code> gets destroyed.</p>
+      <p>The ownership of the <code>nodes_to_replace</code> and the <code>opaque_delegate</code> remains with the caller. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga9d61ce4db8a59630e9caf92651bc8ae4">
+    <h3>TfLiteOpaqueContextReportError</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteOpaqueContextReportError(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const char *format,
+  ...
+)</pre>
+    <div>
+      <p>Reports an error message formed by using the provided 'format' string in combination with the data provided via the unnamed arguments following the 'format' parameter ('...'). </p>
+      <p>The intended usage and behavior is the same as with 'printf' with regards to how the data and the formatting string interact. E.g. 'TfLiteOpaqueContextReportError(opaque_context, "a=%d b=%d", a, b);'</p>
+      <p>The provided 'opaque_context' will be used for reporting the resulting error message.</p>
+      <p>Note that TF Lite clients can use macros like 'TF_LITE_OPAQUE_ENSURE' to check for certain conditions to be true, and print an error message if the condition does not hold. Direct usage of this function from application code should therefore be rare. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga6de588fcc77daf2f73e9548b02451520">
+    <h3>TfLiteOpaqueContextReportErrorVa</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteOpaqueContextReportErrorVa(
+  struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const char *format,
+  va_list vlist
+)</pre>
+    <div>
+      <p>Same as <code>TfLiteOpaqueContextReportError</code>, but with the variable arguments passed via a <code>va_list</code> instead of directly. </p>
+      <p>Callers that receive an ellipsis and want to forward it to to the opaque context error reporting API can add the ellipsis content to a <code>va_list</code> and then call <code>TfLiteOpaqueContextReportErrorVa</code>. E.g.:</p>
+      <p>
+        <pre class="prettyprint">void MyErrorReporter(struct TfLiteOpaqueContext* opaque_context,
+                                 const char* format, ...) {
+  va_list vlist;
+  va_start(vlist, format);
+  TfLiteOpaqueContextReportErrorVa(opaque_context, format, vlist);
+  va_end(vlist);
+}  </pre>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gac65e08f879c3ccad564accc0bc312ea2">
+    <h3>TfLiteOpaqueContextResizeTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueContextResizeTensor(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *context,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor,
+  <a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *new_size
+)</pre>
+    <div>
+      <p>Resizes the provided 'tensor' that is associated with the provided 'context' so that the 'tensor's shape matches the dimensionality specified via the provided 'new_size' array. </p>
+      <p>Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave the 'tensor' in an unspecified state. The TF Lite runtime takes ownership of the 'new_size' array, even in case of failure. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga0bf26a7817e2bf599af31ccafa751c00">
+    <h3>TfLiteOpaqueNodeGetBuiltinData</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void * TfLiteOpaqueNodeGetBuiltinData(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node
+)</pre>
+    <div>
+      <p>Returns the builtin data associated with the provided 'opaque_node'. </p>
+      <p>The builtin init data associated with a node would typically be set during the creation of the associated interpreter, through a mechanism like the interpreter builder that loads a TFLite model and initialises the interpreter's nodes accordingly. Under these conditions the returned address remains valid throughout the lifetime of the 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaac8ae260e65744f3956b8a4b05d00619">
+    <h3>TfLiteOpaqueNodeGetCustomInitialData</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueNodeGetCustomInitialData(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  const void **init_data,
+  int *size
+)</pre>
+    <div>
+      <p>Loads into the provided '*init_data' pointer the address of the custom init data associated with the provided 'opaque_node'. </p>
+      <p>The length of data is loaded into the provided 'size' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'init_data' and 'size' in an unspecified state.</p>
+      <p>The custom init data associated with a node would typically be set during the creation of the associated interpreter, through a mechanism like the interpreter builder that loads a TFLite model and initialises the interpreter's nodes accordingly. Under these conditions the returned address remains valid throughout the lifetime of the 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaffc7ebdd28a34bd8abdd67737cd2f1dc">
+    <h3>TfLiteOpaqueNodeGetInput</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> * TfLiteOpaqueNodeGetInput(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  int index
+)</pre>
+    <div>
+      <p>Returns the input tensor of the given node. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaad3f5398a154aab2cad49312e87e5051">
+    <h3>TfLiteOpaqueNodeGetInputTensorIndex</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteOpaqueNodeGetInputTensorIndex(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  int index_of_input
+)</pre>
+    <div>
+      <p>Given an 'index_of_input', which must be in the range of [0, N), where N is the number of input tensors of the provided 'opaque_node', returns the (global) index of the tensor that holds the input. </p>
+      <p>Returns -1 if 'index_of_input' is not within the [0, N) range. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gadbd356a91810fbdf92a696ac715cb1e5">
+    <h3>TfLiteOpaqueNodeGetOutput</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> * TfLiteOpaqueNodeGetOutput(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> *opaque_context,
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  int index
+)</pre>
+    <div>
+      <p>Returns the output tensor of the given node. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaeef4673183d2625795cdc5bd5980a117">
+    <h3>TfLiteOpaqueNodeGetOutputTensorIndex</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteOpaqueNodeGetOutputTensorIndex(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  int index_of_output
+)</pre>
+    <div>
+      <p>Given an 'index_of_output', which must be in the range of [0, N), where N is the number of output tensors of the provided 'opaque_node', returns the (global) index of the tensor that holds the output. </p>
+      <p>Returns -1 if 'index_of_output' is not within the [0, N) range. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga7a1b879db46c2bc6029b876e9680f4e1">
+    <h3>TfLiteOpaqueNodeGetUserData</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void * TfLiteOpaqueNodeGetUserData(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node
+)</pre>
+    <div>
+      <p>Returns opaque data provided by the node implementer. </p>
+      <p>The value returned from this function is the value that was returned from the <code>init</code> callback that was passed to <code>TfLiteRegistrationExternalSetInit</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga3686979e59fabb5397e8071912135a51">
+    <h3>TfLiteOpaqueNodeInputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueNodeInputs(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  const int **inputs,
+  int *num_inputs
+)</pre>
+    <div>
+      <p>Loads into the provided '*inputs' pointer the starting address of an array of indices representing the tensors that are inputs of the provided 'opaque_node'. </p>
+      <p>The length of the array is loaded into the provided 'num_inputs' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'inputs' and 'num_inputs' in an unspecified state.</p>
+      <p>The input tensors associated with a node would typically be set during the creation of the associated interpreter, through a mechanism like the interpreter builder that loads a TFLite model and initialises the interpreter's nodes accordingly. Under these conditions the loaded address remains valid throughout the lifetime of the 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gad60280580fc560ea29cabaea48125857">
+    <h3>TfLiteOpaqueNodeNumberOfInputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfInputs(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node
+)</pre>
+    <div>
+      <p>Gets the number of input tensors of the provided 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gadcf4d7918da04eec4c4b462d4510348a">
+    <h3>TfLiteOpaqueNodeNumberOfOutputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfOutputs(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node
+)</pre>
+    <div>
+      <p>Gets the number of output tensors of the provided 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaabed3d01de8be8a9898f3315431e61fd">
+    <h3>TfLiteOpaqueNodeOutputs</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueNodeOutputs(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  const int **outputs,
+  int *num_outputs
+)</pre>
+    <div>
+      <p>Loads into the provided '*outputs' pointer the starting address of an array of indices representing the tensors that are outputs of the provided 'opaque_node'. </p>
+      <p>The length of the array is loaded into the provided 'num_outputs' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'outputs' and 'num_outputs' in an unspecified state.</p>
+      <p>The output tensors associated with a node would typically be set during the creation of the associated interpreter, through a mechanism like the interpreter builder that loads a TFLite model and initialises the interpreter's nodes accordingly. Under these conditions the loaded address remains valid throughout the lifetime of the 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga42eedc1ef01ed3319c2709b415f814d2">
+    <h3>TfLiteOpaqueNodeTemporaries</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueNodeTemporaries(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> *opaque_node,
+  const int **temporaries,
+  int *num_temporaries
+)</pre>
+    <div>
+      <p>Loads into the provided '*temporaries' pointer the starting address of an array of indices representing the temporary tensors associated with the provided 'opaque_node'. </p>
+      <p>The length of the array is loaded into the provided 'num_temporaries' pointer. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure and will leave 'temporaries' and 'num_temporaries' in an unspecified state.</p>
+      <p>The temporary tensors associated with a node would typically be set during the creation of the associated interpreter, through a mechanism like the interpreter builder that loads a TFLite model and initialises the interpreter's nodes accordingly. Under these conditions the loaded address remains valid throughout the lifetime of the 'opaque_node'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga12a4e152314a08ca7b9cc10931c9f7db">
+    <h3>TfLiteOpaqueTensorBuilderCreate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderCreate()</pre>
+    <div>
+      <p>Creates an opaque tensor builder object. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gac1961538037381e5973efb2800cf3268">
+    <h3>TfLiteOpaqueTensorBuilderDelete</h3>
+    <pre class="prettyprint">void TfLiteOpaqueTensorBuilderDelete(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder
+)</pre>
+    <div>
+      <p>Deletes an opaque tensor builder object. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga7fb68909c0bcbe1daf1b1c971dc33872">
+    <h3>TfLiteOpaqueTensorBuilderSetAllocationType</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderSetAllocationType(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> allocation_type
+)</pre>
+    <div>
+      <p>Sets the allocation type of the provided 'builder' to the provided 'allocation_type'. </p>
+      <p>The 'allocation_type' must be one of the following: 'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'. If the provided 'allocation_type' is not one of those values then 'TfLiteOpaqueContextAddTensor' will return an error. Returns the address of the provided 'builder', so that builder calls can be chained together. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaa7f6d9e8551a340bbb94167e2a384504">
+    <h3>TfLiteOpaqueTensorBuilderSetData</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderSetData(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  void *data
+)</pre>
+    <div>
+      <p>Sets the raw data of the provided 'builder' to the provided 'data'. </p>
+      <p>Returns the address of the provided 'builder', so that builder calls can be chained together. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gab163662f5799399f25d81a207cb7fe39">
+    <h3>TfLiteOpaqueTensorBuilderSetQuantization</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderSetQuantization(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> quantization
+)</pre>
+    <div>
+      <p>Sets the quantization of the provided 'builder' to the provided 'quantization'. </p>
+      <p>Returns the address of the provided 'builder', so that builder calls can be chained together. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gad8c18c454cfbdf6ee4fbf8e399ec79dc">
+    <h3>TfLiteOpaqueTensorBuilderSetQuantizationParams</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderSetQuantizationParams(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> params
+)</pre>
+    <div>
+      <p>Sets the quantization params of the provided 'builder' to the provided 'params'. </p>
+      <p>Returns the address of the provided 'builder', so that builder calls can be chained together. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga4895cfa4df885a3b77fb018b72da8883">
+    <h3>TfLiteOpaqueTensorBuilderSetType</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> * TfLiteOpaqueTensorBuilderSetType(
+  <a href="/lite/api_docs/c/group/c-api-opaque.html#group__c__api__opaque_1ga4e89c2af4ec5662c4b9ddb6124465185">TfLiteOpaqueTensorBuilder</a> *builder,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> type
+)</pre>
+    <div>
+      <p>Sets the 'TfLiteType' of the provided 'builder' to the provided 'type'. </p>
+      <p>Returns the address of the provided 'builder', so that builder calls can be chained together. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gac2757cd79edd59fb4ef2af71d335ad3f">
+    <h3>TfLiteOpaqueTensorByteSize</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteOpaqueTensorByteSize(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the size of the underlying data in bytes. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gabbba60b7881ec376b908159c2032a28c">
+    <h3>TfLiteOpaqueTensorCopyFromBuffer</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorCopyFromBuffer(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor,
+  const void *input_data,
+  size_t input_data_size
+)</pre>
+    <div>
+      <p>Copies from the provided input buffer into the tensor's buffer. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga15e7715a4270ae0d8680f8aec06ba848">
+    <h3>TfLiteOpaqueTensorCopyToBuffer</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorCopyToBuffer(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor,
+  void *output_data,
+  size_t output_data_size
+)</pre>
+    <div>
+      <p>Copies to the provided output buffer from the tensor's buffer. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga2e3b4e1645df093c73590bcd15a0ac12">
+    <h3>TfLiteOpaqueTensorData</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void * TfLiteOpaqueTensorData(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns a pointer to the underlying data buffer. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga0d0addece430a3a2f66f6a07e30c0e9b">
+    <h3>TfLiteOpaqueTensorDim</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteOpaqueTensorDim(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor,
+  int32_t dim_index
+)</pre>
+    <div>
+      <p>Returns the length of the tensor in the "dim_index" dimension. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gafbdbb0ea4aa5f74d1d7861c3a1f03458">
+    <h3>TfLiteOpaqueTensorGetAllocationStrategy</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gae00888e38fbedcb5130cf359c574580a">TfLiteAllocationStrategy</a> TfLiteOpaqueTensorGetAllocationStrategy(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns a tensor data allocation strategy. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga3fb1389f4f3eddee0ce0ee6e8154d3b4">
+    <h3>TfLiteOpaqueTensorGetAllocationType</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gae48332e93fec6c3fe7c4ee4897770d4b">TfLiteAllocationType</a> TfLiteOpaqueTensorGetAllocationType(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the 'opaque_tensor's allocation type. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gae60b16c5c60db936492e6bcc26057d87">
+    <h3>TfLiteOpaqueTensorGetBufferAddressStability</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a> TfLiteOpaqueTensorGetBufferAddressStability(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns how stable a tensor data buffer address is across runs. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga2d7a2e4739f60c6f2d10cfaf699b0fb8">
+    <h3>TfLiteOpaqueTensorGetDataKnownStep</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a> TfLiteOpaqueTensorGetDataKnownStep(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns the operation step when the data of a tensor is populated. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga41ebc0e1130b6fb4716dad8d7d6abbb5">
+    <h3>TfLiteOpaqueTensorGetDataStability</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1ga8e48d3a995a7dea060434068920c5b23">TfLiteRunStability</a> TfLiteOpaqueTensorGetDataStability(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns how stable a tensor data values are across runs. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gabce8bc94d5b898a1d1f17a67d72ea208">
+    <h3>TfLiteOpaqueTensorGetDimSignature</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorGetDimSignature(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor,
+  int32_t dim_index,
+  int32_t *dim_length
+)</pre>
+    <div>
+      <p>Loads into the provided 'dim_length' the length of the tensor in the 'dim_index' signature dimension or -1 if that dimension has unknown length. </p>
+      <p>Returns 'kTfLiteOk' if 'dim_length' was successfully loaded. Any other return code indicates an error and 'dim_length' won't be loaded. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gabdc462383fa10f30b2604381d4ad589e">
+    <h3>TfLiteOpaqueTensorGetNumDimsSignature</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorGetNumDimsSignature(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor,
+  int32_t *num_dims
+)</pre>
+    <div>
+      <p>Loads into the provided 'num_dims' the number of dimensions that the tensor's signature has. </p>
+      <p>Returns 'kTfLiteOk' if 'num_dims' was successfully loaded. Any other return code indicates an error and 'num_dims' won't be loaded.</p>
+      <p>A tensor's dimension signature encodes shapes with unknown dimensions with -1. E.g. for a tensor with three dimensions, whose first dimension has an unknown size, and the second and third dimension have a size of 2, the dimension signature is [-1,2,2], and 'TfLiteOpaqueTensorGetNumDimsSignature' loads 3 into 'num_dims'. If the tensor does not have its dimension signature field set then 'num_dims' is set to -1. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga948f5986cae10e6d29cbaf15ebe98e38">
+    <h3>TfLiteOpaqueTensorGetQuantization</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization.html#struct_tf_lite_quantization">TfLiteQuantization</a> TfLiteOpaqueTensorGetQuantization(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the 'opaque_tensor's quantization information. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gabd4fc7852ac02c7f414e1c57ce98c570">
+    <h3>TfLiteOpaqueTensorGetQuantizationParams</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> TfLiteOpaqueTensorGetQuantizationParams(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the 'opaque_tensor's quantization parameters. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gad081dd8cb3e78b50277d787e1a18ab54">
+    <h3>TfLiteOpaqueTensorGetShapeKnownStep</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/common.html#group__common_1gaa07ed5a55fa2bff442239a17b6c371d9">TfLiteRunStep</a> TfLiteOpaqueTensorGetShapeKnownStep(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *t
+)</pre>
+    <div>
+      <p>Returns the operation step when the shape of a tensor is computed. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gab75a624187bf3b2d92f882d3656689b8">
+    <h3>TfLiteOpaqueTensorGetString</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorGetString(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor,
+  int index,
+  const char **str,
+  int *len
+)</pre>
+    <div>
+      <p>Stores the address of the n-th (denoted by the provided 'index') string contained in the provided 'tensor' in the provided '*str' pointer. </p>
+      <p>Stores the length of the string in the provided '*len' argument.</p>
+      <p>Returns 'kTfLiteOk' if '*str' and '*len' have been set successfully. Any other return value indicates a failure, which leaves '*str' and '*len' in an unspecified state.</p>
+      <p>The range of valid indices is defined by the half open interval [0, N), where N == TfLiteOpaqueTensorGetStringCount(tensor).</p>
+      <p>Note that 'str' is not guaranteed to be null-terminated. Also note that this function will not create a copy of the underlying string data. The data is owned by the 'tensor'. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga191040e7547ce0f1844ade27ec434c15">
+    <h3>TfLiteOpaqueTensorGetStringCount</h3>
+    <pre class="prettyprint">int TfLiteOpaqueTensorGetStringCount(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the number of strings stored in the provided 'tensor'. </p>
+      <p>Returns -1 in case of failure. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga058effbf0e7e4179e43aadf3911da57d">
+    <h3>TfLiteOpaqueTensorIsVariable</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteOpaqueTensorIsVariable(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns 'non-zero' if the provided 'opaque_tensor' is a variable, and returns zero otherwise. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gaf688b34baaad34e1fb1a230d115e34f5">
+    <h3>TfLiteOpaqueTensorName</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteOpaqueTensorName(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the (null-terminated) name of the tensor. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga291eeb5c7c5ee23fa388b4cf8e2d1b36">
+    <h3>TfLiteOpaqueTensorNumDims</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteOpaqueTensorNumDims(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the number of dimensions that the tensor has. </p>
+      <p>Returns -1 in case the 'opaque_tensor' does not have its dimensions property set. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga79f7234255a6acd953dfd2c6d436b364">
+    <h3>TfLiteOpaqueTensorType</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> TfLiteOpaqueTensorType(
+  const <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *opaque_tensor
+)</pre>
+    <div>
+      <p>Returns the type of a tensor element. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1ga1e5157da9514a5188bd2d78a646e7958">
+    <h3>TfLiteOpaqueTensorWriteString</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorWriteString(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor,
+  const char *str,
+  int len
+)</pre>
+    <div>
+      <p>Writes the string pointed to by the provided 'str' pointer of length 'len' into the provided 'tensor'. </p>
+      <p>The string provided via 'str' is copied into the 'tensor'. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure.</p>
+      <p>Note that calling 'TfLiteOpaqueTensorWriteString' deallocates any previously stored data in the 'tensor'. E.g. suppose 't' denotes a 'TfLiteOpaqueTensor*', then calling 'TfLiteOpaqueTensorWriteString(t, "AB", 2)' followed by a call to 'TfLiteOpaqueTensorWriteString(t, "CD", 2)' will lead to 't' containing 'CD', not 'ABCD'.</p>
+      <p>'TfLiteOpaqueTensorWriteString' is a convenience function for the use case of writing a single string to a tensor and its effects are identical to calling 'TfLiteOpaqueTensorWriteStrings' with an array of a single string. </p>
+    </div>
+  </div>
+  <div id="group__c__api__opaque_1gace3f0d9a38893241dde0e81d9b0d7e34">
+    <h3>TfLiteOpaqueTensorWriteStrings</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteOpaqueTensorWriteStrings(
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> *tensor,
+  const char *const *str_array,
+  int str_array_len,
+  const int *str_n_len
+)</pre>
+    <div>
+      <p>Writes the array of strings specified by 'str_array' into the specified 'tensor'. </p>
+      <p>The strings provided via the 'str_array' are being copied into the 'tensor'. Returns 'kTfLiteOk' in case of success. Any other return value indicates a failure.</p>
+      <p>The provided 'str_array_len' must denote the length of 'str_array' and 'str_n_len[i]' must denote the length of the i-th string.</p>
+      <p>The provided strings don't need to be null terminated and may contain embedded null characters. The amount of bytes copied into the 'tensor' is entirely determined by 'str_n_len[i]' and it is the caller's responsibility to set this value correctly to avoid undefined behavior.</p>
+      <p>Also note that calling 'TfLiteOpaqueTensorWriteStrings' deallocates any previously stored data in the 'tensor'. </p>
+    </div>
+  </div>
+</body>
+</html>

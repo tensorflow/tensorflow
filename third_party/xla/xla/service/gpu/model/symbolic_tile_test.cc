@@ -406,12 +406,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
         size_map: (d0, d1, d2) -> (1, d1, d2)
         stride_map: (d0, d1, d2) -> (0, 1, 1)
         rt_vars:
-          s0 in [0, 1]
-            hlo: %of1 = s32[] parameter(1)
-            (d0, d1, d2) -> ()
-          s1 in [0, 226]
-            hlo: %of3 = s32[] parameter(3)
-            (d0, d1, d2) -> ()
+          s0 in [0, 1],
+            hlo: %of1 = s32[] parameter(1),
+            (d0, d1, d2) -> (),
+          s1 in [0, 226],
+            hlo: %of3 = s32[] parameter(3),
+            (d0, d1, d2) -> (),
       )")));
   for (int i = 1; i <= 3; i++) {
     EXPECT_THAT(
@@ -458,12 +458,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
         size_map: (d0, d1) -> (d0, d1)
         stride_map: (d0, d1) -> (1, 1)
         rt_vars:
-          s0 in [0, 15]
-            hlo: %of1 = s32[] parameter(2)
-            (d0, d1) -> ()
-          s1 in [0, 20]
-            hlo: %of2 = s32[] parameter(3)
-            (d0, d1) -> ()
+          s0 in [0, 15],
+            hlo: %of1 = s32[] parameter(2),
+            (d0, d1) -> (),
+          s1 in [0, 20],
+            hlo: %of2 = s32[] parameter(3),
+            (d0, d1) -> (),
       )")));
   for (int i = 2; i <= 3; i++) {
     EXPECT_THAT(
@@ -501,12 +501,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
         size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
         stride_map: (d0, d1, d2, d3) -> (1, 1, 1)
         rt_vars:
-          s0 in [0, 26]
-            hlo: %indices = s32[1806,2]{1,0} parameter(1)
-            (d0, d1, d2, d3) -> (d0, 0)
-          s1 in [0, 68]
-            hlo: %indices = s32[1806,2]{1,0} parameter(1)
-            (d0, d1, d2, d3) -> (d0, 1)
+          s0 in [0, 26],
+            hlo: %indices = s32[1806,2]{1,0} parameter(1),
+            (d0, d1, d2, d3) -> (d0, 0),
+          s1 in [0, 68],
+            hlo: %indices = s32[1806,2]{1,0} parameter(1),
+            (d0, d1, d2, d3) -> (d0, 1),
       )")));
 
   EXPECT_THAT(
@@ -1216,6 +1216,38 @@ TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
   // that yet.
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
+}
+
+TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
+  Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
+  Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
+  Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
+
+  ConjointConstraints conjunction_0{c0, c1};
+  ConjointConstraints conjunction_1{c1, c2};
+
+  ConstraintExpression constraints;
+  constraints.Or(conjunction_0);
+  constraints.Or(conjunction_1);
+
+  // Parameters {6, 8} satisfy these constraints.
+  std::vector<int64_t> possible_tile_parameters({6, 8});
+  EXPECT_TRUE(constraints.IsSatisfiedBy(possible_tile_parameters));
+
+  // Parameters {13, 8} should also satisfy these constraints.
+  std::vector<int64_t> other_possible_tile_parameters({13, 8});
+  EXPECT_TRUE(constraints.IsSatisfiedBy(other_possible_tile_parameters));
+
+  // However, tile sizes {6, 7} do not satisfy these constraints.
+  std::vector<int64_t> impossible_tile_parameters({6, 7});
+  EXPECT_FALSE(constraints.IsSatisfiedBy(impossible_tile_parameters));
+
+  // Anything satisfies an always satisfied constraint expression.
+  EXPECT_TRUE(ConstraintExpression().IsSatisfiedBy(impossible_tile_parameters));
+
+  // Nothing satisfies an unsatisfiable constraint expression.
+  EXPECT_FALSE(ConstraintExpression::GetUnsatisfiableConstraintExpression()
+                   .IsSatisfiedBy(possible_tile_parameters));
 }
 
 }  // namespace

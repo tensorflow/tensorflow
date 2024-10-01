@@ -70,7 +70,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const std::string& data, std::string_view format,
     const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto) {
+    BufferAssignmentProto* buffer_assignment_proto,
+    bool set_to_default_entry_computation_layout) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
   if (format == "hlo" || format == "txt") {
@@ -81,8 +82,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    TF_ASSIGN_OR_RETURN(module,
-                        ParseAndReturnUnverifiedModule(hlo_string, config));
+    TF_ASSIGN_OR_RETURN(module, ParseAndReturnUnverifiedModule(
+                                    hlo_string, config,
+                                    set_to_default_entry_computation_layout));
   } else {
     HloSnapshot proto;
     if (format == "pb") {
@@ -130,14 +132,16 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::string& path, std::string format,
     const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto) {
+    BufferAssignmentProto* buffer_assignment_proto,
+    bool set_to_default_entry_computation_layout) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
-                            buffer_assignment_proto);
+                            buffer_assignment_proto,
+                            set_to_default_entry_computation_layout);
 }
 
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>

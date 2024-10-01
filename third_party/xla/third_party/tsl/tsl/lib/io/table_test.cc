@@ -36,17 +36,17 @@ namespace tsl {
 namespace table {
 
 namespace {
-typedef std::pair<StringPiece, StringPiece> StringPiecePair;
+typedef std::pair<absl::string_view, absl::string_view> StringPiecePair;
 }
 
 namespace test {
-static StringPiece RandomString(random::SimplePhilox* rnd, int len,
-                                string* dst) {
+static absl::string_view RandomString(random::SimplePhilox* rnd, int len,
+                                      string* dst) {
   dst->resize(len);
   for (int i = 0; i < len; i++) {
     (*dst)[i] = static_cast<char>(' ' + rnd->Uniform(95));  // ' ' .. '~'
   }
-  return StringPiece(*dst);
+  return absl::string_view(*dst);
 }
 static string RandomKey(random::SimplePhilox* rnd, int len) {
   // Make sure to generate a wide variety of characters so we
@@ -59,9 +59,9 @@ static string RandomKey(random::SimplePhilox* rnd, int len) {
   }
   return result;
 }
-static StringPiece CompressibleString(random::SimplePhilox* rnd,
-                                      double compressed_fraction, size_t len,
-                                      string* dst) {
+static absl::string_view CompressibleString(random::SimplePhilox* rnd,
+                                            double compressed_fraction,
+                                            size_t len, string* dst) {
   int raw = static_cast<int>(len * compressed_fraction);
   if (raw < 1) raw = 1;
   string raw_data;
@@ -73,7 +73,7 @@ static StringPiece CompressibleString(random::SimplePhilox* rnd,
     dst->append(raw_data);
   }
   dst->resize(len);
-  return StringPiece(*dst);
+  return absl::string_view(*dst);
 }
 }  // namespace test
 
@@ -84,7 +84,7 @@ namespace {
 struct STLLessThan {
   STLLessThan() {}
   bool operator()(const string& a, const string& b) const {
-    return StringPiece(a).compare(StringPiece(b)) < 0;
+    return absl::string_view(a).compare(absl::string_view(b)) < 0;
   }
 };
 }  // namespace
@@ -97,7 +97,7 @@ class StringSink : public WritableFile {
 
   absl::Status Close() override { return absl::OkStatus(); }
   absl::Status Flush() override { return absl::OkStatus(); }
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     return errors::Unimplemented("StringSink does not support Name()");
   }
   absl::Status Sync() override { return absl::OkStatus(); }
@@ -106,7 +106,7 @@ class StringSink : public WritableFile {
     return absl::OkStatus();
   }
 
-  absl::Status Append(StringPiece data) override {
+  absl::Status Append(absl::string_view data) override {
     contents_.append(data.data(), data.size());
     return absl::OkStatus();
   }
@@ -117,18 +117,18 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  explicit StringSource(const StringPiece& contents)
+  explicit StringSource(const absl::string_view& contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
   ~StringSource() override {}
 
   uint64 Size() const { return contents_.size(); }
 
-  absl::Status Name(StringPiece* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     return errors::Unimplemented("StringSource does not support Name()");
   }
 
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset > contents_.size()) {
       return errors::InvalidArgument("invalid Read offset");
@@ -137,7 +137,7 @@ class StringSource : public RandomAccessFile {
       n = contents_.size() - offset;
     }
     memcpy(scratch, &contents_[offset], n);
-    *result = StringPiece(scratch, n);
+    *result = absl::string_view(scratch, n);
     bytes_read_ += n;
     return absl::OkStatus();
   }
@@ -158,7 +158,7 @@ class Constructor {
   explicit Constructor() : data_(STLLessThan()) {}
   virtual ~Constructor() {}
 
-  void Add(const string& key, const StringPiece& value) {
+  void Add(const string& key, const absl::string_view& value) {
     data_[key] = string(value);
   }
 
@@ -242,7 +242,7 @@ class TableConstructor : public Constructor {
 
   Iterator* NewIterator() const override { return table_->NewIterator(); }
 
-  uint64 ApproximateOffsetOf(const StringPiece& key) const {
+  uint64 ApproximateOffsetOf(const absl::string_view& key) const {
     return table_->ApproximateOffsetOf(key);
   }
 
@@ -360,7 +360,7 @@ class Harness : public ::testing::Test {
           model_iter = data.lower_bound(key);
           if (kVerbose)
             fprintf(stderr, "Seek '%s'\n", absl::CEscape(key).c_str());
-          iter->Seek(StringPiece(key));
+          iter->Seek(absl::string_view(key));
           ASSERT_EQ(ToStringPiecePair(data, model_iter),
                     ToStringPiecePair(iter));
           break;
@@ -446,7 +446,7 @@ TEST_F(Harness, ZeroRestartPointsInBlock) {
   char data[sizeof(uint32)];
   memset(data, 0, sizeof(data));
   BlockContents contents;
-  contents.data = StringPiece(data, sizeof(data));
+  contents.data = absl::string_view(data, sizeof(data));
   contents.cacheable = false;
   contents.heap_allocated = false;
   Block block(contents);
@@ -579,7 +579,7 @@ TEST(TableTest, ApproximateOffsetOfPlain) {
 
 static bool SnappyCompressionSupported() {
   string out;
-  StringPiece in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  absl::string_view in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   return port::Snappy_Compress(in.data(), in.size(), &out);
 }
 

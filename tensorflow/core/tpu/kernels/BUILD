@@ -342,7 +342,6 @@ cc_library(
 tf_proto_library(
     name = "tpu_executable_info_proto",
     srcs = ["tpu_executable_info.proto"],
-    cc_api_version = 2,
     protodeps = [
         "@local_xla//xla:xla_data_proto",
         "@local_xla//xla/service:hlo_proto",
@@ -353,7 +352,6 @@ tf_proto_library(
 tf_proto_library(
     name = "tpu_compile_proto",
     srcs = ["tpu_compile.proto"],
-    cc_api_version = 2,
     protodeps = [
         ":tpu_executable_info_proto",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
@@ -731,7 +729,6 @@ tf_proto_library(
     name = "tpu_compilation_cache_proto",
     srcs = ["tpu_compilation_cache.proto"],
     has_services = True,
-    cc_api_version = 2,
     create_java_proto = False,
     protodeps = [
         ":tpu_compilation_cache_common_proto",
@@ -742,7 +739,6 @@ tf_proto_library(
 tf_proto_library(
     name = "tpu_compilation_cache_common_proto",
     srcs = ["tpu_compilation_cache_common.proto"],
-    cc_api_version = 2,
     create_java_proto = False,
 )
 
@@ -1546,7 +1542,6 @@ tf_proto_library(
     name = "sparse_core_layout_proto",
     srcs = ["sparse_core_layout.proto"],
     has_services = False,
-    cc_api_version = 2,
     create_go_proto = False,
     create_java_proto = False,
     create_kotlin_proto = False,

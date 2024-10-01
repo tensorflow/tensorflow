@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
 

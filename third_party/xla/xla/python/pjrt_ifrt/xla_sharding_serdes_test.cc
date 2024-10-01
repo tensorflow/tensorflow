@@ -51,7 +51,8 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }
 

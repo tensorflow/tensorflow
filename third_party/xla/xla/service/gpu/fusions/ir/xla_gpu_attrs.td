@@ -35,6 +35,8 @@ def XLAGPU_RangeVarsParameter : ArrayRefParameter<"::xla::gpu::RangeVar",
                                                   "RangeVarArray"> {
 }
 
+def XLAGPU_BoolParameter : AttrOrTypeParameter<"bool", ""> {}
+
 def XLAGPU_ConstraintsParameter :
     ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::gpu::Interval>",
                       "ContraintsArray"> {
@@ -49,7 +51,8 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   let parameters = (ins XLAGPU_AffineMapParameter:$map,
                         XLAGPU_DimVarsParameter:$dim_vars,
                         XLAGPU_RangeVarsParameter:$range_vars,
-                        XLAGPU_ConstraintsParameter:$constraints);
+                        XLAGPU_ConstraintsParameter:$constraints,
+                        XLAGPU_BoolParameter:$is_simplified);
   let hasCustomAssemblyFormat = 1;
   let builders =  [
     AttrBuilder<(ins "const ::xla::gpu::IndexingMap&":$indexing_map)>,
@@ -57,7 +60,24 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     // Returns the indexing map constructed from IndexingMapAttr.
-    xla::gpu::IndexingMap getIndexingMap();
+    xla::gpu::IndexingMap getIndexingMap() const;
+
+    // Returns the number of indexing map results.
+    int64_t getNumResults() const;
+  }];
+}
+
+def XLAGPU_LaunchGridAttr : XLAGPU_Attr<"LaunchGrid"> {
+  let summary = "An attribute representing a launch grid.";
+  let mnemonic = "launch_grid";
+  let description = [{This attribute stores a launch grid.}];
+  let parameters = (ins ArrayRefParameter<"int64_t", "">:$block_counts,
+                        ArrayRefParameter<"int64_t", "">:$thread_counts);
+  let assemblyFormat = [{
+    `<`
+       `block_counts` `=` `[` $block_counts `]` `,`
+       `thread_counts` `=` `[` $thread_counts `]`
+    `>`
   }];
 }
 

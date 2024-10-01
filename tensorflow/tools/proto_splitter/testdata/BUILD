@@ -42,7 +42,6 @@ exports_files([
 tf_proto_library(
     name = "test_message_proto",
     srcs = ["test_message.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = [
         "//tensorflow/cc/saved_model:__subpackages__",

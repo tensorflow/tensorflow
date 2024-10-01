@@ -11,6 +11,7 @@ load(
 )
 load("@local_xla//xla:xla.bzl", "xla_py_proto_library")
 load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
@@ -88,7 +89,6 @@ tf_cc_binary(
 tf_proto_library(
     name = "tf2xla_proto",
     srcs = ["tf2xla.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
     ],
@@ -106,7 +106,6 @@ xla_py_proto_library(
 tf_proto_library(
     name = "host_compute_metadata_proto",
     srcs = ["host_compute_metadata.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
     ],
@@ -308,7 +307,7 @@ cc_library(
         "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:empty",
+        "@local_xla//xla/tsl:empty",
         "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:float8",
@@ -318,10 +317,12 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:cord",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
-    ] + tf_additional_tensor_coding_deps(),
+    ] + tf_additional_tensor_coding_deps() + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -376,7 +377,7 @@ cc_library(
 #         "//tensorflow/core/platform:thread_annotations",
 #         "//tensorflow/core/platform:tstring",
 #         "//tensorflow/core/platform:types",
-#         "@local_xla//xla:empty",
+#         "@local_xla//xla/tsl:empty",
 #     ]),
 #     dont_match_regexp = "|".join(["//tensorflow"]),
 #     kind = "cc_library",
@@ -423,6 +424,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:cpu_function_runtime",
@@ -944,19 +946,21 @@ tf_cc_test(
     srcs = ["xla_jit_compiled_cpu_function_test.cc"],
     deps = [
         ":tf2xla_proto_cc",
+        ":xla_compiled_cpu_function",
         ":xla_jit_compiled_cpu_function",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:test",
         "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:executable_build_options",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:platform_util",

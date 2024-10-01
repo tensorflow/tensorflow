@@ -7,6 +7,7 @@ load(
     "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -38,6 +39,7 @@ cc_library(
         "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:literal",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -67,13 +69,13 @@ cc_library(
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:symbolic_tiled_hlo_instruction",
-        "//xla/service/gpu/model:tiled_hlo_computation",
-        "//xla/service/gpu/model:tiled_hlo_instruction",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
-        "//xla/translate/hlo_to_mhlo:hlo_module_importer",
+        "//xla/tools:hlo_decomposer_lib",
+        "//xla/translate/hlo_to_mhlo:hlo_function_importer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -101,6 +103,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:IndexToLLVM",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:NVVMDialect",
@@ -201,7 +204,7 @@ xla_test(
     ],
     shard_count = 20,
     tags = [
-        "nomac",
+        "no_mac",
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -216,7 +219,7 @@ xla_test(
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cublas_plugin",
@@ -251,7 +254,7 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-        "nomac",
+        "no_mac",
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -262,7 +265,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cublas_plugin",
@@ -292,15 +295,15 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:float_normalization",
-        "//xla/service:hlo_pass_pipeline",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_float_support",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu/model:tiled_hlo_computation",
-        "//xla/service/gpu/model:triton_emitter_constraints",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/stream_executor:device_description",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
@@ -326,10 +329,10 @@ xla_cc_test(
     deps = [
         ":triton_fusion_emitter",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu/model:symbolic_tile_analysis",
-        "//xla/service/gpu/model:tiled_hlo_computation",
-        "//xla/service/gpu/model:tiled_hlo_instruction",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tests:hlo_test_base",
@@ -360,11 +363,12 @@ xla_test(
     ],
     tags = [
         "large",
+        "no_mac",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
-        "nomac",
         "nozapfhahn",  # Times out under coverage
+    ] + if_google([
         "requires-mem:16g",
-    ],
+    ]),
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
@@ -385,10 +389,11 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-    tags = ["nomac",
+    tags = ["no_mac",
             "no_rocm"],  # TODO(rocm) 240729
     deps = [
         ":triton_support",
+        ":triton_test_utils",
         "//xla:comparison_util",
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
@@ -450,10 +455,9 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
@@ -473,7 +477,7 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ],
-    tags = ["nomac",
+    tags = ["no_mac",
             "no_rocm"], # TODO(rocm) 240729
     deps = [
         ":triton_fusion_emitter",
@@ -486,7 +490,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/stream_executor:device_description",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log:check",

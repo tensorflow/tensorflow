@@ -270,7 +270,8 @@ absl::StatusOr<bool> ScanLoopAccumulatorInputUnification::Run(
   // accumulators and inputs that are by definition updated and read fully via
   // dynamic-update-slice and dynamic-sliced within a loop.
   std::vector<std::pair<HloInstruction*, WhileLoopConfig>> unrollable_loops =
-      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads);
+      WhileLoopUnroller::GetUnrollableLoops(module, execution_threads,
+                                            /*unroll_config=*/std::nullopt);
 
   // TODO(b/337883537): We might want to simplify compare instructions before
   // this. It helps us identify more inputs and accumulators.

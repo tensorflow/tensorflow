@@ -224,6 +224,7 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -621,6 +622,7 @@ cc_test(
     size = "small",
     srcs = ["test_util_test.cc"],
     deps = [
+        ":test_delegate_providers_lib",
         ":test_util",
         "//tensorflow/lite:array",
         "//tensorflow/lite:util",
@@ -766,12 +768,14 @@ BUILTIN_KERNEL_SRCS = [
     "shape.cc",
     "stablehlo_gather.cc",
     "stablehlo_add.cc",
+    "stablehlo_and.cc",
     "stablehlo_composite.cc",
     "stablehlo_multiply.cc",
     "stablehlo_pad.cc",
     "stablehlo_reduce_window.cc",
     "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
+    "stablehlo_shift_left.cc",
     "sign.cc",
     "skip_gram.cc",
     "slice.cc",
@@ -3253,6 +3257,21 @@ cc_test(
 )
 
 cc_test(
+    name = "stablehlo_and_test",
+    size = "small",
+    srcs = ["stablehlo_and_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stablehlo_min_max_test",
     size = "small",
     srcs = ["stablehlo_min_max_test.cc"],
@@ -3279,6 +3298,19 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_shift_left_test",
+    size = "small",
+    srcs = ["stablehlo_shift_left_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],

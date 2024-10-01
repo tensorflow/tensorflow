@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -131,7 +132,7 @@ class BasicStringArray final
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<tsl::RCReference<Array>> Copy(
-      std::optional<xla::ifrt::DeviceList> devices,
+      std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
 

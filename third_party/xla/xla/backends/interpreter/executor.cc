@@ -16,9 +16,9 @@ limitations under the License.
 #include "xla/backends/interpreter/executor.h"
 
 #include <cstring>
+#include <memory>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -62,15 +62,15 @@ absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
-  internal::DeviceDescriptionBuilder builder;
+  DeviceDescription desc;
 
-  builder.set_device_address_bits(64);
+  desc.set_device_address_bits(64);
 
-  builder.set_name("Interpreter");
-  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  desc.set_name("Interpreter");
+  desc.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
+  desc.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
 
-  return builder.Build();
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 }  // namespace interpreter

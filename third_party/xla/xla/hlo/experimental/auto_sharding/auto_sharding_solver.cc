@@ -71,6 +71,10 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // beware that significantly larger / smaller values can cause numerical issues.
 constexpr double kMemoryMultiplier = 1e6;
 
+// Maximum costs above this threshold can lead to Invalid MIPs.
+// TODO(moffitt): Handle hints properly for problems with high overbudget costs.
+constexpr double kMaxCostValue = 1e18;
+
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && cost == other.cost &&
@@ -137,17 +141,6 @@ void PrintLargestInstructions(
             << " memory usage: "
             << instruction_mem.at(i).second / (1024 * 1024 * 1024) << "GB";
   }
-}
-
-// Applies deterministic noise to the coefficient using `name` and `saltiplier`
-// so that ties between equal terms can be broken in the solver's objective
-// function. We include both a multiplicative term (in case the coefficient is
-// large) and an additive term (in case the coefficient is zero).
-void AddSalt(const std::string& name, const double saltiplier, double* coeff) {
-  if (saltiplier <= 0.0) return;
-  const tsl::uint64 hash = tsl::Hash64(name);  // stable across runs & platforms
-  double salt = saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
-  *coeff = *coeff * (1.0 + salt) + salt;
 }
 
 AutoShardingSolverResult SolveAndExtractSolution(
@@ -237,6 +230,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     std::vector<std::pair<int64_t, int64_t>>& reduced_intervals,
     std::vector<MPVariable*>& group_vars,
     absl::flat_hash_set<int64_t>& reduced_times) {
+  const absl::Time term_reduction_start_time = absl::Now();
   std::optional<std::pair<int64_t, int64_t>> num_terms = std::nullopt;
   std::vector<absl::btree_set<int64_t>> reduced_groups;
   if (groups.empty()) {
@@ -286,6 +280,15 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
   const absl::flat_hash_set<int64_t> times = MemoryTermReducer::GetReducedTimes(
       num_primitives, reduced_intervals, reduced_groups);
   reduced_times.insert(times.begin(), times.end());
+  const absl::Time term_reduction_end_time = absl::Now();
+  if (num_terms) {
+    const auto term_reduction_duration =
+        term_reduction_end_time - term_reduction_start_time;
+    LOG(INFO) << "Memory Term Reducer for " << prim_type << "s took "
+              << absl::ToInt64Milliseconds(term_reduction_duration)
+              << " ms and reduced the number of terms from " << num_terms->first
+              << " to " << num_terms->second;
+  }
   return num_terms;
 }
 
@@ -487,16 +490,15 @@ AutoShardingSolverResult CallORToolsSolver(
   absl::flat_hash_set<MPVariable*> infinity_vars;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
                            request.communication_costs(node_idx).costs(j);
       if (coefficient >= kInfinityCost) {
         infinity_vars.insert(s[node_idx][j]);
         continue;
       }
-      AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier(),
-              &coefficient);
+      if (request.minimize_departures()) continue;
+      double accumulated_coefficient =
+          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       solver->MutableObjective()->SetCoefficient(
           s[node_idx][j], accumulated_coefficient + coefficient);
     }
@@ -504,15 +506,14 @@ AutoShardingSolverResult CallORToolsSolver(
   // Edge costs
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
       if (coefficient >= kInfinityCost) {
         infinity_vars.insert(e[edge_idx][j]);
         continue;
       }
-      AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier(),
-              &coefficient);
+      if (request.minimize_departures()) continue;
+      double accumulated_coefficient =
+          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       solver->MutableObjective()->SetCoefficient(
           e[edge_idx][j], accumulated_coefficient + coefficient);
     }
@@ -564,7 +565,8 @@ AutoShardingSolverResult CallORToolsSolver(
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
-        return AutoShardingSolverResult(absl::InternalError(err_msg), false);
+        return AutoShardingSolverResult(absl::InternalError(err_msg),
+                                        /*skip_auto_sharding=*/false);
       }
     }
   }
@@ -595,26 +597,18 @@ AutoShardingSolverResult CallORToolsSolver(
         reduced_intervals_edges;
     absl::flat_hash_set<int64_t> reduced_times;
     std::vector<MPVariable*> group_node_vars, group_edge_vars;
-    const absl::Time term_reduction_start_time = absl::Now();
-    auto num_node_terms = ReduceMemoryTerms(
+    std::optional<std::pair<int64_t, int64_t>> num_node_terms, num_edge_terms;
+    num_node_terms = ReduceMemoryTerms(
         request, *solver, request.live_size(), request.num_nodes(),
         std::move(LiveNodes), request.node_intervals(), request.node_groups(),
         request.memory_costs(), "node", s, reduced_intervals_nodes,
         group_node_vars, reduced_times);
-    auto num_edge_terms = ReduceMemoryTerms(
-        request, *solver, request.live_edges_size(), request.edges_size(),
-        std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
-        request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
-        group_edge_vars, reduced_times);
-    const absl::Time term_reduction_end_time = absl::Now();
-    if (num_node_terms && num_edge_terms) {
-      const auto term_reduction_duration =
-          term_reduction_end_time - term_reduction_start_time;
-      LOG(INFO) << "Memory Term Reducer took "
-                << absl::ToInt64Milliseconds(term_reduction_duration)
-                << " ms and reduced the number of terms from "
-                << num_node_terms->first + num_edge_terms->first << " to "
-                << num_node_terms->second + num_edge_terms->second;
+    if (request.enable_memory_edge_costs()) {
+      num_edge_terms = ReduceMemoryTerms(
+          request, *solver, request.live_edges_size(), request.edges_size(),
+          std::move(LiveEdges), request.edge_intervals(), request.edge_groups(),
+          request.memory_edge_costs(), "edge", e, reduced_intervals_edges,
+          group_edge_vars, reduced_times);
     }
     absl::flat_hash_map<LivenessIdx, MPConstraint*> constraints;
     AddMemoryTerms(request, *solver, request.num_nodes(),
@@ -627,7 +621,7 @@ AutoShardingSolverResult CallORToolsSolver(
                      overbudget_var, reduced_times, e, group_edge_vars,
                      constraints);
     }
-    if (overbudget_var) {
+    if (overbudget_var && !request.minimize_departures()) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
           request.overbudget_coeff().coeff() * request.memory_budget());
@@ -649,8 +643,12 @@ AutoShardingSolverResult CallORToolsSolver(
         MPConstraint* constraint = solver->MakeRowConstraint(
             -1.0, MPSolver::infinity(),
             absl::StrCat("edge[", edge_idx, "][", j, "]"));
-        constraint->SetCoefficient(s[edge.first()][p], -1.0);
-        constraint->SetCoefficient(s[edge.second()][q], -1.0);
+        // In the special case where the source and destination are both
+        // represented by the same node variable, its coefficient in this
+        // constraint must be doubled.
+        double coeff = (s[edge.first()][p] == s[edge.second()][q]) ? 2.0 : 1.0;
+        constraint->SetCoefficient(s[edge.first()][p], -coeff);
+        constraint->SetCoefficient(s[edge.second()][q], -coeff);
         constraint->SetCoefficient(e[edge_idx][j], 1.0);
       }
     }
@@ -692,7 +690,18 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
   }
-  if (request.has_max_cost()) {
+  if (request.minimize_departures()) {
+    for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+      for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+        double accumulated_coefficient =
+            solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
+        double departure_cost = request.departure_costs(node_idx).costs(j);
+        solver->MutableObjective()->SetCoefficient(
+            s[node_idx][j], accumulated_coefficient + departure_cost);
+      }
+    }
+  }
+  if (request.has_max_cost() && request.max_cost().coeff() < kMaxCostValue) {
     double max_cost = kMaxCostEpsilon * request.max_cost().coeff();
     max_cost -= solver->Objective().offset();
     MPConstraint* cost_constraint = solver->MakeRowConstraint(
@@ -702,7 +711,8 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
-  if (!request.s_hint().empty() && !request.deterministic_mode()) {
+  if (!request.s_hint().empty() && !request.deterministic_mode() &&
+      (!request.has_max_cost() || request.max_cost().coeff() < kMaxCostValue)) {
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       if (request.s_follow(node_idx) >= 0) continue;
@@ -860,16 +870,17 @@ AutoShardingSolverResult SolveAndExtractSolution(
       }
     }
 #endif
-
     return AutoShardingSolverResult(
         absl::InternalError("MPSolver could not find any feasible solution."),
-        false);
+        /*skip_auto_sharding=*/false);
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
     LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
                   "likely a bug and should be reported.";
+    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+                                    /*skip_auto_sharding=*/false);
   } else if (status != operations_research::MPSolver::OPTIMAL) {
-    auto err_msg = "Solver timed out.";
-    return AutoShardingSolverResult(absl::InternalError(err_msg), true);
+    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+                                    /*skip_auto_sharding=*/true);
   }
 
   // Fingerprint the model & solution (useful when checking for determinism).
@@ -939,8 +950,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
   }
   PrintLargestInstructions(chosen_node_strategy, request);
   const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
-                                           unsalted_objective};
-  return AutoShardingSolverResult(output, false);
+                                           solver.Objective().Value()};
+  return AutoShardingSolverResult(output, /*skip_auto_sharding=*/false);
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {

@@ -109,6 +109,7 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   ImplicitLocOpBuilder b(entry_function.getLoc(), entry_function);
   b.setInsertionPointToStart(entry_function.addEntryBlock());
+  auto thread_and_block_ids = EmitThreadAndBlockIds(b);
 
   mlir::MLIRContext* mlir_context = entry_function.getContext();
 
@@ -124,12 +125,10 @@ absl::Status MlirInPlaceDynamicUpdateSliceFusion::EmitEntryFunction(
 
   const auto& root_computation = computations.FindPartitionedComputation(
       fusion.fused_instructions_computation());
-  auto result_tensors = EmitThreadLoopNest(
-      b, output_tensor_args, indexing,
-      [&](ValueRange output_tensors, ValueRange dim_values,
-          ValueRange symbol_values) -> llvm::SmallVector<Value> {
-        auto input_indices =
-            ApplyIndexing(indexing, dim_values, symbol_values, b);
+  auto result_tensors = mlir_converter::EmitXlaLoopOp(
+      b, thread_and_block_ids, output_tensor_args, indexing,
+      [&](ValueRange symbol_values, ValueRange input_indices,
+          ValueRange output_tensors) -> llvm::SmallVector<Value> {
         llvm::SmallVector<Value> results;
         for (auto [instr, root, output] :
              llvm::zip(dus_ops_, analysis_.fusion_roots(), output_tensors)) {

@@ -109,10 +109,11 @@ struct PeelLoop : public OpRewritePattern<LoopOp> {
       auto tail_loop = rewriter.create<LoopOp>(
           loc, indexing_map, loop_op.getDims(), inits,
           [&](OpBuilder& nested_b, Location nested_loc, ValueRange ivs,
-              ValueRange iter_args) {
+              ValueRange map_results, ValueRange iter_args) {
             OpBuilder::InsertionGuard guard(nested_b);
             mlir::IRMapping mapping;
             mapping.map(loop_op.getInductionVars(), ivs);
+            mapping.map(loop_op.getIndexingMapResults(), map_results);
             mapping.map(loop_op.getRegionIterArgs(), iter_args);
             for (auto& op : loop_op.getBody()->getOperations()) {
               nested_b.clone(op, mapping);

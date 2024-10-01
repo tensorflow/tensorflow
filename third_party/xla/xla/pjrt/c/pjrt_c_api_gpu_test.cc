@@ -276,6 +276,12 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
   std::vector<std::string> allocator_options = {"default", "platform", "bfc",
                                                 "cuda_async"};
   for (const std::string& allocator_option : allocator_options) {
+#ifdef TENSORFLOW_USE_ROCM
+    if (allocator_option == "cuda_async") {
+      VLOG(1) << "cuda_async allocator not available on ROCm!";
+      continue;
+    }
+#endif
     absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
         {"allocator", allocator_option},
         {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
@@ -475,18 +481,17 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
 }
 
-static void* kNoop = xla::ffi::Ffi::Bind()
-                         .To([]() { return xla::ffi::Error::Success(); })
-                         .release();
-
 TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
+  static constexpr auto* noop = +[] { return xla::ffi::Error::Success(); };
+  XLA_FFI_DEFINE_HANDLER(kNoop, noop, xla::ffi::Ffi::Bind());
+
   PJRT_Gpu_Register_Custom_Call_Args args;
   args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
   std::string function_name = "typed_function_name";
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
   args.api_version = 1;
-  args.custom_call_function = kNoop;
+  args.custom_call_function = reinterpret_cast<void*>(kNoop);
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next =
       reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);

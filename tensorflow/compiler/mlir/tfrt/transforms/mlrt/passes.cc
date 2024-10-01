@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/assign_op_key.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/async_while.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/fuse_mlrt_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/ifrt_set_tpu_host_allocator.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/parallelization.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/rewrite_ifrt_load_variable.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tf_to_mlrt.h"
@@ -39,6 +40,7 @@ void RegisterMlrtPasses() {
   mlir::registerPass([]() { return CreateParallelizationPass(); });
   mlir::registerPass([]() { return CreateWhileToMapFnPass(); });
   mlir::registerPass([]() { return CreateRewriteIfrtLoadVariablePass(); });
+  mlir::registerPass([]() { return CreateIfrtSetTpuHostAllocatorPass(); });
   mlir::registerPass(
       []() { return CreateTfToMlrtPreParallelizationConversionPass({}); });
   mlir::registerPass([]() { return CreateTfToMlrtConversionPass({}); });
@@ -52,6 +54,10 @@ void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
   pm.addPass(
       mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
 
+  if (options.use_tpu_host_allocator_for_inputs) {
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlrt_compiler::CreateIfrtSetTpuHostAllocatorPass());
+  }
   pm.addPass(mlrt_compiler::CreateRewriteIfrtLoadVariablePass());
 
   if (options.enable_while_parallel_iterations) {

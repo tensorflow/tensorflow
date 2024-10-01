@@ -159,6 +159,27 @@ TEST_P(QuantizeConvModelTest, QuantizationSucceeds) {
   ASSERT_TRUE(output_model);
 }
 
+TEST_P(QuantizeConvModelTest, AvoidQuantOpForExternalStates) {
+  auto status =
+      QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,
+                    /*allow_float=*/true, /*disable_per_channel=*/true,
+                    &error_reporter_, /*handle_external_state=*/true);
+  EXPECT_EQ(status, kTfLiteOk);
+  for (const auto& subgraph : model_.subgraphs) {
+    for (int i = 0; i < subgraph->inputs.size(); ++i) {
+      TensorT* inputtensor = subgraph->tensors[subgraph->inputs[i]].get();
+      TensorT* outputtensor = subgraph->tensors[subgraph->inputs[i]].get();
+      if (i == 0) {
+        EXPECT_TRUE(inputtensor->type == TensorType_FLOAT32 &&
+                    outputtensor->type == TensorType_FLOAT32);
+      } else {
+        EXPECT_TRUE(inputtensor->type == TensorType_INT8 &&
+                    outputtensor->type == TensorType_INT8);
+      }
+    }
+  }
+}
+
 TEST_P(QuantizeConvModelTest, SkipUnspecifiedLayer) {
   auto status =
       QuantizeModel(&builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32,

@@ -1385,6 +1385,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow",
+        "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1394,9 +1395,27 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/lib/math:math_util",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:sharding_builder",
         "@local_xla//xla/service:hlo_parser",
+    ],
+)
+
+tf_cc_test(
+    name = "utils/xla_sharding_util_test",
+    srcs = ["utils/xla_sharding_util_test.cc"],
+    deps = [
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
+        ":xla_sharding_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

@@ -1157,19 +1157,22 @@ ENTRY entry {
   EXPECT_TRUE(executable->has_module());
 }
 
-TEST_F(CollectiveOpsTestE2E, AllToAllCollectiveQuantizer) {
+TEST_F(CollectiveOpsTestE2E, AllToAllQuantizeCollectiveQuantizer) {
   absl::string_view kModuleReplicatedStr = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->bf16[4,32,128]{2,1,0}}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={()->bf16[2]}, num_partitions=2
 ENTRY entry {
-  param = f32[4,32,128]{2,1,0} parameter(0)
-  all-to-all = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={1}
-  ROOT convert = bf16[4,32,128]{2,1,0} convert(all-to-all)
+  input = f32[2] constant({2., 4.})
+  scale = f32[] constant(2.)
+  scale_bcast = f32[2] broadcast(scale), dimensions={}
+  input_scaled = f32[2] multiply(input, scale_bcast)
+  all-to-all = f32[2] all-to-all(input_scaled), channel_id=1, replica_groups={{0,1}}, dimensions={0}
+  ROOT convert = bf16[2] convert(all-to-all)
 }
 )";
 
   const int64_t kNumReplicas = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
-  const int64_t kNumPartitions = 4;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1185,6 +1188,77 @@ ENTRY entry {
       FindInstruction(&executable->module(), HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
+
+  // Execute the test on 2 partitions.
+  TF_ASSERT_OK_AND_ASSIGN(
+      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
+                              /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assignment(0, i) = i;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
+                                     &assignment, /*run_hlo_passes=*/true,
+                                     /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumPartitions);
+  const bfloat16 four = static_cast<bfloat16>(4.);
+  const bfloat16 eight = static_cast<bfloat16>(8.);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({four, four}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({eight, eight}, results[1]);
+}
+
+TEST_F(CollectiveOpsTestE2E, DequantizeAllToAllCollectiveQuantizer) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={()->f32[2]}, num_partitions=2
+ENTRY entry {
+  input = bf16[2] constant({2., 4.})
+  input_f32 = f32[2] convert(input)
+  scale = f32[] constant(2.)
+  scale_bcast = f32[2] broadcast(scale), dimensions={}
+  input_scaled = f32[2] multiply(input_f32, scale_bcast)
+  ROOT all-to-all = f32[2] all-to-all(input_scaled), channel_id=1, replica_groups={{0,1}}, dimensions={0}
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_num_partitions(kNumPartitions);
+
+  // Verify that the element type of the all-to-all has been changed to BF16.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* all_to_all =
+      FindInstruction(&executable->module(), HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, NotNull());
+  EXPECT_EQ(all_to_all->shape().element_type(), BF16);
+
+  // Execute the test on 2 partitions.
+  TF_ASSERT_OK_AND_ASSIGN(
+      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
+                              /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assignment(0, i) = i;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
+                                     &assignment, /*run_hlo_passes=*/true,
+                                     /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumPartitions);
+  LiteralTestUtil::ExpectR1Equal<float>({4., 4.}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
 }
 
 }  // namespace

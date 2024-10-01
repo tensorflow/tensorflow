@@ -37,10 +37,9 @@ class HloFusionAdaptor;
 // Treats HloInstructions as if they were unfused.
 class HloInstructionAdaptor {
  public:
-  HloInstructionAdaptor() = default;
+  HloInstructionAdaptor() = delete;
   HloInstructionAdaptor(const HloInstruction& instruction,
-                        const HloFusionAdaptor* parent)
-      : instruction_(&instruction), parent_(parent) {}
+                        const HloFusionAdaptor* parent);
 
   HloOpcode opcode() const { return instruction_->opcode(); }
   absl::string_view name() const { return instruction_->name(); }
@@ -65,7 +64,7 @@ class HloInstructionAdaptor {
  private:
   const HloInstruction* instruction_;
 
-  // Pointer to the parent fusion adaptor. Can not be null.
+  // Pointer to the parent fusion adaptor. Is never null.
   const HloFusionAdaptor* parent_;
 };
 
@@ -104,6 +103,7 @@ class HloFusionInstructionAdaptor {
 
 }  // namespace internal
 
+// Treats a set of HloInstructions as if they were fused.
 class HloFusionAdaptor {
  public:
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
@@ -126,6 +126,10 @@ class HloFusionAdaptor {
       const HloComputation* computation);
 
  private:
+  HloFusionAdaptor() = default;
+  HloFusionAdaptor(const HloFusionAdaptor&) = delete;
+  HloFusionAdaptor& operator=(const HloFusionAdaptor&) = delete;
+
   void AddInstruction(const HloInstruction* instruction);
   void AddComputation(const HloComputation* computation);
 

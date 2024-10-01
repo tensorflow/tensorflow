@@ -19,7 +19,7 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"
-#include "tsl/lib/monitoring/percentile_sampler.h"
+#include "xla/tsl/lib/monitoring/percentile_sampler.h"
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile

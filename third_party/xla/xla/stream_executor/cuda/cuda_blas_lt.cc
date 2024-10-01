@@ -43,10 +43,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -256,7 +256,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         cu_preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
 
     int found_algorithm_count = 0;
     SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
@@ -319,11 +319,11 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
-    return xla::Internal("The F8 LHS must be column-major");
+    return xla::Internal("The F8 LHS must be row-major");
   }
   if (xla::primitive_util::IsF8Type(rhs_layout.dtype) &&
       rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
-    return xla::Internal("The F8 RHS must be row-major");
+    return xla::Internal("The F8 RHS must be column-major");
   }
 
   TF_ASSIGN_OR_RETURN(auto output_dtype,
@@ -505,7 +505,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 #endif
     }
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
 
     if (palgo != nullptr) {
       SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(

@@ -25,11 +25,15 @@ load(
 OS_ARCH_DICT = {
     "amd64": "x86_64-unknown-linux-gnu",
     "aarch64": "aarch64-unknown-linux-gnu",
+    "tegra-aarch64": "tegra-aarch64-unknown-linux-gnu",
 }
 _REDIST_ARCH_DICT = {
     "linux-x86_64": "x86_64-unknown-linux-gnu",
     "linux-sbsa": "aarch64-unknown-linux-gnu",
+    "linux-aarch64": "tegra-aarch64-unknown-linux-gnu",
 }
+
+TEGRA = "tegra"
 
 SUPPORTED_ARCHIVE_EXTENSIONS = [
     ".zip",
@@ -76,11 +80,19 @@ def _get_lib_name_and_version(path):
     lib_version = path[extension_index + len(LIB_EXTENSION):]
     return (lib_name, lib_version)
 
+def _get_main_lib_name(repository_ctx):
+    if repository_ctx.name == "cuda_driver":
+        return "libcuda"
+    else:
+        return "lib{}".format(
+            repository_ctx.name.split("_")[1],
+        ).lower()
+
 def _get_libraries_by_redist_name_in_dir(repository_ctx):
     lib_dir_path = repository_ctx.path("lib")
     if not lib_dir_path.exists:
         return []
-    main_lib_name = "lib{}".format(repository_ctx.name.split("_")[1]).lower()
+    main_lib_name = _get_main_lib_name(repository_ctx)
     lib_dir_content = lib_dir_path.readdir()
     return [
         str(f)
@@ -96,19 +108,28 @@ def get_lib_name_to_version_dict(repository_ctx):
     lib_name_to_version_dict = {}
     for path in _get_libraries_by_redist_name_in_dir(repository_ctx):
         lib_name, lib_version = _get_lib_name_and_version(path)
-        key = "%%{%s_version}" % lib_name.lower()
+        major_version_key = "%%{%s_version}" % lib_name.lower()
+        minor_version_key = "%%{%s_minor_version}" % lib_name.lower()
 
         # We need to find either major or major.minor version if there is no
         # file with major version. E.g. if we have the following files:
         # libcudart.so
         # libcudart.so.12
         # libcudart.so.12.3.2,
-        # we will save save {"%{libcudart_version}": "12"}.
+        # we will save save {"%{libcudart_version}": "12",
+        # "%{libcudart_minor_version}": "12.3.2"}
         if len(lib_version.split(".")) == 1:
-            lib_name_to_version_dict[key] = lib_version
-        if (len(lib_version.split(".")) == 2 and
-            key not in lib_name_to_version_dict):
-            lib_name_to_version_dict[key] = lib_version
+            lib_name_to_version_dict[major_version_key] = lib_version
+        if len(lib_version.split(".")) == 2:
+            lib_name_to_version_dict[minor_version_key] = lib_version
+            if (major_version_key not in lib_name_to_version_dict or
+                len(lib_name_to_version_dict[major_version_key].split(".")) > 2):
+                lib_name_to_version_dict[major_version_key] = lib_version
+        if len(lib_version.split(".")) >= 3:
+            if major_version_key not in lib_name_to_version_dict:
+                lib_name_to_version_dict[major_version_key] = lib_version
+            if minor_version_key not in lib_name_to_version_dict:
+                lib_name_to_version_dict[minor_version_key] = lib_version
     return lib_name_to_version_dict
 
 def create_dummy_build_file(repository_ctx, use_comment_symbols = True):
@@ -139,13 +160,11 @@ def get_major_library_version(repository_ctx, lib_name_to_version_dict):
     # buildifier: disable=function-docstring-return
     # buildifier: disable=function-docstring-args
     """Returns the major library version provided the versions dict."""
-    major_version = ""
-    if len(lib_name_to_version_dict) == 0:
-        return major_version
-    main_lib_name = "lib{}".format(repository_ctx.name.split("_")[1])
+    main_lib_name = _get_main_lib_name(repository_ctx)
     key = "%%{%s_version}" % main_lib_name
-    major_version = lib_name_to_version_dict[key]
-    return major_version
+    if key not in lib_name_to_version_dict:
+        return ""
+    return lib_name_to_version_dict[key]
 
 def create_build_file(
         repository_ctx,
@@ -177,13 +196,28 @@ def create_build_file(
 
 def _create_symlinks(repository_ctx, local_path, dirs):
     for dir in dirs:
-        repository_ctx.symlink(
-            "{path}/{dir}".format(
-                path = local_path,
-                dir = dir,
-            ),
-            dir,
+        dir_path = "{path}/{dir}".format(
+            path = local_path,
+            dir = dir,
         )
+        if not repository_ctx.path(local_path).exists:
+            fail("%s directory doesn't exist!" % dir_path)
+        repository_ctx.symlink(dir_path, dir)
+
+def _create_libcuda_symlinks(
+        repository_ctx,
+        lib_name_to_version_dict):
+    if repository_ctx.name == "cuda_driver":
+        key = "%{libcuda_version}"
+        if key not in lib_name_to_version_dict:
+            return
+        nvidia_driver_path = "lib/libcuda.so.{}".format(
+            lib_name_to_version_dict[key],
+        )
+        if not repository_ctx.path(nvidia_driver_path).exists:
+            fail("%s doesn't exist!" % nvidia_driver_path)
+        repository_ctx.symlink(nvidia_driver_path, "lib/libcuda.so.1")
+        repository_ctx.symlink("lib/libcuda.so.1", "lib/libcuda.so")
 
 def use_local_path(repository_ctx, local_path, dirs):
     # buildifier: disable=function-docstring-args
@@ -202,6 +236,10 @@ def use_local_path(repository_ctx, local_path, dirs):
         repository_ctx,
         lib_name_to_version_dict,
         major_version,
+    )
+    _create_libcuda_symlinks(
+        repository_ctx,
+        lib_name_to_version_dict,
     )
     repository_ctx.file("version.txt", major_version)
 
@@ -244,6 +282,15 @@ def _download_redistribution(repository_ctx, arch_key, path_prefix):
     )
     repository_ctx.delete(file_name)
 
+def _get_platform_architecture(repository_ctx):
+    host_arch = repository_ctx.os.arch
+
+    if host_arch == "aarch64":
+        uname_result = repository_ctx.execute(["uname", "-a"]).stdout
+        if TEGRA in uname_result:
+            return "{}-{}".format(TEGRA, host_arch)
+    return host_arch
+
 def _use_downloaded_cuda_redistribution(repository_ctx):
     # buildifier: disable=function-docstring-args
     """ Downloads CUDA redistribution and initializes hermetic CUDA repository."""
@@ -265,7 +312,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         return
 
     # Download archive only when GPU config is used.
-    arch_key = OS_ARCH_DICT[repository_ctx.os.arch]
+    arch_key = OS_ARCH_DICT[_get_platform_architecture(repository_ctx)]
     if arch_key not in repository_ctx.attr.url_dict.keys():
         fail(
             ("The supported platforms are {supported_platforms}." +
@@ -287,6 +334,10 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         repository_ctx,
         lib_name_to_version_dict,
         major_version,
+    )
+    _create_libcuda_symlinks(
+        repository_ctx,
+        lib_name_to_version_dict,
     )
     repository_ctx.file("version.txt", major_version)
 
@@ -337,7 +388,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
         return
 
     # Download archive only when GPU config is used.
-    arch_key = OS_ARCH_DICT[repository_ctx.os.arch]
+    arch_key = OS_ARCH_DICT[_get_platform_architecture(repository_ctx)]
     if arch_key not in repository_ctx.attr.url_dict.keys():
         arch_key = "cuda{version}_{arch}".format(
             version = cuda_version.split(".")[0],
@@ -401,21 +452,24 @@ cudnn_repo = repository_rule(
 def _get_redistribution_urls(dist_info):
     url_dict = {}
     for arch in _REDIST_ARCH_DICT.keys():
-        if "relative_path" in dist_info[arch]:
+        arch_key = arch
+        if arch_key == "linux-aarch64" and arch_key not in dist_info:
+            arch_key = "linux-sbsa"
+        if "relative_path" in dist_info[arch_key]:
             url_dict[_REDIST_ARCH_DICT[arch]] = [
-                dist_info[arch]["relative_path"],
-                dist_info[arch].get("sha256", ""),
+                dist_info[arch_key]["relative_path"],
+                dist_info[arch_key].get("sha256", ""),
             ]
             continue
 
-        if "full_path" in dist_info[arch]:
+        if "full_path" in dist_info[arch_key]:
             url_dict[_REDIST_ARCH_DICT[arch]] = [
-                dist_info[arch]["full_path"],
-                dist_info[arch].get("sha256", ""),
+                dist_info[arch_key]["full_path"],
+                dist_info[arch_key].get("sha256", ""),
             ]
             continue
 
-        for cuda_version, data in dist_info[arch].items():
+        for cuda_version, data in dist_info[arch_key].items():
             # CUDNN JSON might contain paths for each CUDA version.
             path_key = "relative_path"
             if path_key not in data.keys():

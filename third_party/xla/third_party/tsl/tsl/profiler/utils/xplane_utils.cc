@@ -608,10 +608,12 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     XLineBuilder aggregated_line = aggregated_plane.GetOrCreateLine(line_id);
     for (const auto& [group_id, stat_by_event] : stats_by_group) {
       for (const auto& [event_id, event_stat] : stat_by_event) {
+        const auto& src_event_metadata = *plane.GetEventMetadata(event_id);
         XEventMetadata& event_metadata =
-            *aggregated_plane.GetOrCreateEventMetadata(event_id);
-        CopyEventMetadata(*plane.GetEventMetadata(event_id), plane,
-                          event_metadata, aggregated_plane);
+            *aggregated_plane.GetOrCreateEventMetadata(
+                src_event_metadata.name());
+        CopyEventMetadata(src_event_metadata, plane, event_metadata,
+                          aggregated_plane);
         XEventBuilder aggregated_event =
             aggregated_line.AddEvent(event_metadata);
         aggregated_event.SetNumOccurrences(event_stat.stat.count());

@@ -104,7 +104,7 @@ class IrEmitter2 {
     std::string name;
     se::BlockDim block_dims;
     se::ThreadDim thread_dims;
-    absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers;
+    absl::flat_hash_set<int64_t> invariant_arguments;
   };
 
   // Emitted comparator function information (for sort operation).
@@ -180,9 +180,9 @@ class IrEmitter2 {
     std::vector<llvm_ir::IrArray> arguments;
     std::vector<llvm_ir::IrArray> results;
 
-    // Set containing all invariant (read-only) buffers. A buffer is read-only
-    // if it is not aliased with any result.
-    absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers;
+    // Set containing all invariant (read-only) buffers indices. A buffer is
+    // read-only if it is not aliased with any result.
+    absl::flat_hash_set<int64_t> invariant_arguments;
   };
 
   // Emits a host kernel prototype and prepares function for emitting kernel

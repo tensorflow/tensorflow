@@ -352,8 +352,10 @@ bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
   }
   // Do not change precision for side-effecting instructions, control flow, and
   // bitcast-convert, because this pass might break the interfaces or
-  // assumptions for them.
-  return inst->opcode() == HloOpcode::kCustomCall ||
+  // assumptions for them. It is safe to change precision for AllocateBuffer
+  // since it is merely a buffer allocation and does not have any side effects.
+  return (inst->opcode() == HloOpcode::kCustomCall &&
+          !inst->IsCustomCall("AllocateBuffer")) ||
          inst->opcode() == HloOpcode::kCall ||
          inst->opcode() == HloOpcode::kBitcastConvert ||
          inst->HasSideEffectNoRecurse();
@@ -577,7 +579,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       auto hlo = *inst_it;
       auto adjust_hlo_output = [&](const Shape& /* subshape */,
                                    const ShapeIndex& index) {
-        auto output_type = OutputTypeAfterChange(hlo, index);
+        const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
         VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
                 << " for :" << hlo->ToString() << "\n";
         if (output_type != F32 && output_type != BF16) {
@@ -1018,6 +1020,9 @@ void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
     }
     it->second.erase(
         ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+    if (it->second.empty()) {
+      changes_to_bf16_.erase(it);
+    }
   }
 }
 

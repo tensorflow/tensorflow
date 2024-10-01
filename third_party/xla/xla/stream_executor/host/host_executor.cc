@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -148,22 +149,22 @@ absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
-  internal::DeviceDescriptionBuilder builder;
+  DeviceDescription desc;
 
-  builder.set_device_address_bits(64);
+  desc.set_device_address_bits(64);
 
   // TODO(rspringer): How to report a value that's based in reality but that
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
-  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
+  desc.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
 
   float cycle_counter_frequency = static_cast<float>(
       tsl::profile_utils::CpuUtils::GetCycleCounterFrequency());
-  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
+  desc.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
-  builder.set_name("Host");
-  builder.set_platform_version("Default Version");
+  desc.set_name("Host");
+  desc.set_platform_version("Default Version");
 
-  return builder.Build();
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(

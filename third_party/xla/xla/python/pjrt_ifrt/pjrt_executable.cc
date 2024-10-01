@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -317,19 +318,20 @@ PjRtLoadedExecutable::CreateInternal(
     const std::optional<xla::HloSharding>& result_hlo_sharding,
     const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks) {
-  DeviceList::Devices ds;
+  BasicDeviceList::Devices ds;
   ds.reserve(pjrt_loaded_executable->addressable_devices().size());
   for (xla::PjRtDevice* device :
        pjrt_loaded_executable->addressable_devices()) {
     TF_ASSIGN_OR_RETURN(Device * ifrt_device, client->LookupPjRtDevice(device));
     ds.push_back(ifrt_device);
   }
-  DeviceList devices(std::move(ds));
+  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
   // Devices used for constructing output shardings. A fake one will be used for
   // a portable executable.
-  std::optional<DeviceList> sharding_devices;
-  if (devices.empty()) {
-    sharding_devices = DeviceList({client->addressable_devices().front()});
+  std::optional<tsl::RCReference<DeviceList>> sharding_devices;
+  if (devices->devices().empty()) {
+    sharding_devices =
+        BasicDeviceList::Create({client->addressable_devices().front()});
   } else {
     sharding_devices = devices;
   }
@@ -464,7 +466,8 @@ PjRtLoadedExecutable::CreateInternal(
 PjRtLoadedExecutable::PjRtLoadedExecutable(
     PjRtCompatibleClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-    DeviceList devices, std::vector<Device*> addressable_devices,
+    tsl::RCReference<DeviceList> devices,
+    std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
     std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
         host_send_recv_callbacks,
@@ -485,9 +488,9 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
 PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
 absl::StatusOr<PjRtLoadedExecutable::ExecuteResult>
-PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
-                              const ExecuteOptions& options,
-                              std::optional<DeviceList> devices) {
+PjRtLoadedExecutable::Execute(
+    absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
+    std::optional<tsl::RCReference<DeviceList>> devices) {
   DCHECK(this);
   // TODO(hyeontaek): Check input sharding consistency.
 
@@ -500,17 +503,18 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   const bool portable_execution = devices.has_value();
   PjRtCompatibleDevice* portable_execution_device = nullptr;
   if (portable_execution) {
-    if (devices->size() != 1) {
+    if ((*devices)->size() != 1) {
       return InvalidArgument(
           "Only single-shard portable execution is supported");
     }
     num_computations = 1;
-    portable_execution_device = static_cast<PjRtDevice*>(devices->front());
+    portable_execution_device =
+        static_cast<PjRtDevice*>((*devices)->devices().front());
   } else {
-    if (devices_.empty()) {
+    if (devices_->devices().empty()) {
       return InvalidArgument("No devices provided for portable executable");
     }
-    num_computations = devices_.size();
+    num_computations = devices_->size();
   }
 
   argument_handles.resize(num_computations);

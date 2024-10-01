@@ -184,14 +184,14 @@ def assign_sub(ref, value, use_locking=None, name=None):
   ...     sess.run(a.initializer)
   ...     update_op = tf.compat.v1.assign_sub(a, 1)
   ...     res_a = sess.run(update_op)
-  ...     res_a
+  ...     print(res_a)
   0
 
   After:
 
   >>> b = tf.Variable(1, dtype=tf.int64)
   >>> res_b = b.assign_sub(1)
-  >>> res_b.numpy()
+  >>> res_b.numpy().item()
   0
 
   @end_compatibility
@@ -256,14 +256,14 @@ def assign_add(ref, value, use_locking=None, name=None):
   ...     sess.run(a.initializer)
   ...     update_op = tf.compat.v1.assign_add(a, 1)
   ...     res_a = sess.run(update_op)
-  ...     res_a
+  ...     print(res_a)
   1
 
   After:
 
   >>> b = tf.Variable(0, dtype=tf.int64)
   >>> res_b = b.assign_add(1)
-  >>> res_b.numpy()
+  >>> res_b.numpy().item()
   1
 
   @end_compatibility
@@ -339,14 +339,14 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   ...     sess.run(a.initializer)
   ...     update_op = tf.compat.v1.assign(a, 2)
   ...     res_a = sess.run(update_op)
-  ...     res_a
+  ...     print(res_a)
   2
 
   After:
 
   >>> b = tf.Variable(0, dtype=tf.int64)
   >>> res_b = b.assign(2)
-  >>> res_b.numpy()
+  >>> res_b.numpy().item()
   2
   """
   if ref.dtype._is_ref_dtype:

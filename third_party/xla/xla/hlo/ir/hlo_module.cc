@@ -783,7 +783,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
                                                   execution_options));
   if (!config.has_static_device_assignment()) {
     if (module.has_device_assignment()) {
-      // Get the proto from the exeuction options rather than the module proto.
+      // Get the proto from the execution options rather than the module proto.
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(module.device_assignment()));

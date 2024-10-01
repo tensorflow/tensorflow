@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -87,14 +88,16 @@ static absl::Status CreateErrorFromPTXASLog(std::string_view log,
     return absl::UnimplementedError(absl::StrFormat(
         "Loaded PTX assembler is too old for %s.", architecture));
   }
-  if (absl::StrContains(log, "ptxas fatal") &&
-      absl::StrContains(log, "Register allocation failed")) {
-    return absl::ResourceExhaustedError("Register allocation failed");
+  if (IsPtxRegisterAllocationError(log)) {
+    return absl::ResourceExhaustedError(log);
   }
-  if (cancel_if_reg_spill && absl::StrContains(log, "warning") &&
-      absl::StrContains(log, "Registers are spilled")) {
-    return absl::CancelledError(
-        "Compilation result discarded due to register spilling");
+  if (absl::StrContains(log, "warning")) {
+    LOG(INFO) << log;
+    if (cancel_if_reg_spill &&
+        absl::StrContains(log, "Registers are spilled")) {
+      return absl::CancelledError(
+          "Compilation result discarded due to register spilling");
+    }
   }
   return absl::OkStatus();
 }
@@ -150,8 +153,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   }
 
   std::vector<std::string> cli_args;
-  // If the target is sm_90, hard code it to sm_90a so that all instructions
-  // can be used. We don't need the portability that sm_90 gives.
+  // On Hopper, default to sm_90a so that all instructions can be used. But
+  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
   std::string_view extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc_major, cc_minor, extension);
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));

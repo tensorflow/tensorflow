@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -318,13 +319,13 @@ absl::StatusOr<DevicePutResultFn> HandlePyArray(
 
   // Fallback to python for non-matching clients or pmap sharding.
   if (py_array.sharding().type().ptr() == jax::PmapSharding::type().ptr() ||
-      ifrt_array->sharding().devices().front()->client() !=
+      ifrt_array->sharding().devices()->devices().front()->client() !=
           to_device->client()) {
     return HandleNumpyArray(obj.attr("_value"), client, to_device, options,
                             to_memory_kind);
   }
 
-  if (ifrt_array->sharding().devices().front() == to_device &&
+  if (ifrt_array->sharding().devices()->devices().front() == to_device &&
       (!to_memory_kind.memory_kind().has_value() ||
        !ifrt_array->sharding().memory_kind().memory_kind().has_value() ||
        ifrt_array->sharding().memory_kind() == to_memory_kind)) {
@@ -338,10 +339,10 @@ absl::StatusOr<DevicePutResultFn> HandlePyArray(
       auto* ifrt_client = ifrt_array->client();
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_arrays,
-          ifrt_client->CopyArrays(
-              absl::MakeSpan(&ifrt_array, 1),
-              ifrt::DeviceList(ifrt::DeviceList::Devices({to_device})),
-              to_memory_kind, ifrt::ArrayCopySemantics::kReuseInput));
+          ifrt_client->CopyArrays(absl::MakeSpan(&ifrt_array, 1),
+                                  ifrt::BasicDeviceList::Create({to_device}),
+                                  to_memory_kind,
+                                  ifrt::ArrayCopySemantics::kReuseInput));
       return DevicePutResult(std::move(copied_ifrt_arrays[0]),
                              std::move(owning_pybuffer));
     };

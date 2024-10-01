@@ -58,6 +58,8 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
@@ -71,6 +73,45 @@ cc_library(
 )
 
 cc_library(
+    name = "shard_map_export",
+    srcs = ["shard_map_export.cc"],
+    hdrs = ["shard_map_export.h"],
+    deps = [
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "shard_map_import",
+    srcs = ["shard_map_import.cc"],
+    hdrs = ["shard_map_import.h"],
+    deps = [
+        "//xla/mlir_hlo",
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "pipelines",
     srcs = ["pipelines.cc"],
     hdrs = ["pipelines.h"],
@@ -80,6 +121,7 @@ cc_library(
         ":import_shardings",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy/mhlo_round_trip:export_shardings",
+        "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

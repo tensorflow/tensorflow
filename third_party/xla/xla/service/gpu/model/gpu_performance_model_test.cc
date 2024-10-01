@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -86,6 +87,7 @@ class GpuPerformanceModelTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
   GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
                                        /*per_second_rates=*/{},
+                                       /*min_latencies_seconds=*/{},
                                        /*count_multiple_input_accesses=*/true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
@@ -708,6 +710,68 @@ ENTRY fusion {
   auto t = EstimateRunTimesForPriorityFusion(fusion, {reduce});
 
   EXPECT_LT(t.time_unfused, t.time_fused);
+}
+
+TEST_F(GpuPerformanceModelTest,
+       EstimateRunTimeForFusion_InfiniteProducer_ReturnsInfinite) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule testmodule
+
+ENTRY fusion {
+  p0 = f32[32] parameter(0)
+  exp = f32[32] exponential(p0)
+  ROOT add = f32[32] add(p0, exp)
+})"));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer = module->entry_computation()->GetInstructionWithName("exp");
+  auto* consumer = module->entry_computation()->GetInstructionWithName("add");
+
+  auto config = GpuPerformanceModelOptions::PriorityFusion(
+      &fusion_analysis_cache_, &gpu_performance_model_cache_);
+
+  auto producer_runtime = EstimateRunTimeData::Infinite();
+  gpu_performance_model_cache_.Set(*producer, producer_runtime);
+
+  auto consumer_runtime = GpuPerformanceModel::EstimateRunTimeForInstruction(
+      consumer, device_info_, &analysis_, config);
+
+  auto result = GpuPerformanceModel::EstimateRunTimeForFusion(
+      producer, consumer, producer_runtime, consumer_runtime, device_info_,
+      &analysis_, config);
+
+  EXPECT_EQ(result, absl::InfiniteDuration());
+}
+
+TEST_F(GpuPerformanceModelTest,
+       EstimateRunTimeForFusion_InfiniteConsumer_ReturnsInfinite) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule testmodule
+
+ENTRY fusion {
+  p0 = f32[32] parameter(0)
+  exp = f32[32] exponential(p0)
+  ROOT add = f32[32] add(p0, exp)
+})"));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer = module->entry_computation()->GetInstructionWithName("exp");
+  auto* consumer = module->entry_computation()->GetInstructionWithName("add");
+
+  auto config = GpuPerformanceModelOptions::PriorityFusion(
+      &fusion_analysis_cache_, &gpu_performance_model_cache_);
+
+  auto producer_runtime = GpuPerformanceModel::EstimateRunTimeForInstruction(
+      producer, device_info_, &analysis_, config);
+
+  auto consumer_runtime = EstimateRunTimeData::Infinite();
+  gpu_performance_model_cache_.Set(*producer, consumer_runtime);
+
+  auto result = GpuPerformanceModel::EstimateRunTimeForFusion(
+      producer, consumer, producer_runtime, consumer_runtime, device_info_,
+      &analysis_, config);
+
+  EXPECT_EQ(result, absl::InfiniteDuration());
 }
 
 }  // namespace

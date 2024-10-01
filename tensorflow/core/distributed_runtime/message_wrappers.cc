@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -111,7 +113,7 @@ string InMemoryRunStepRequest::DebugString() const {
 
 const RunStepRequest& InMemoryRunStepRequest::ToProto() const {
   if (!proto_version_) {
-    proto_version_.reset(new RunStepRequest);
+    proto_version_ = std::make_unique<RunStepRequest>();
     proto_version_->set_session_handle(session_handle());
     proto_version_->set_partial_run_handle(partial_run_handle());
     for (size_t i = 0; i < num_feeds(); ++i) {
@@ -400,7 +402,7 @@ void InMemoryRunGraphRequest::set_request_id(int64_t request_id) {
 
 const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
   if (!proto_version_) {
-    proto_version_.reset(new RunGraphRequest);
+    proto_version_ = std::make_unique<RunGraphRequest>();
     proto_version_->set_session_handle(session_handle());
     proto_version_->set_create_worker_session_called(
         create_worker_session_called());
@@ -716,7 +718,7 @@ absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
 
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_.set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
@@ -788,7 +790,7 @@ absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
 
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_->set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
@@ -896,7 +898,7 @@ absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
 
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_.set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
@@ -949,7 +951,7 @@ absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
 
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_->set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }

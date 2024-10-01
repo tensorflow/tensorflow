@@ -748,6 +748,68 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
               TensorEq(AsTensor<int16_t>({10, 11, 12}, {3})));
 }
 
+TEST_F(KernelTest, IfrtRestoreVariableOpInValidInput) {
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  static constexpr int kNumVariables = 4;
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp(kNumVariables);
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  xla::ifrt::Future<tensorflow::Tensor> uninitialized_entry =
+      ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
+          kVariableRuntimeName);
+  ASSERT_TRUE(uninitialized_entry.IsReady());
+  EXPECT_THAT(uninitialized_entry.Await().status(),
+              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  tensorflow::Tensor prefix_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)});
+  args.at(0).Set(tfrt_stub::FallbackTensor(std::move(prefix_tensor)));
+
+  tensorflow::Tensor name_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w1/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w2/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w3/.ATTRIBUTES/VARIABLE_VALUE")});
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(name_tensor)));
+
+  // Wrong `slice_tensor` that is missing one element.
+  tensorflow::Tensor slice_tensor = AsTensor<tsl::tstring>(
+      {tsl::tstring(""), tsl::tstring(""), tsl::tstring("")});
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(slice_tensor)));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  EXPECT_THAT(execution_context.status(),
+              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 }  // namespace
 }  // namespace tf_mlrt
 }  // namespace tensorflow

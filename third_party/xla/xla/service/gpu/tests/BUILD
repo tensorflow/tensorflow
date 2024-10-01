@@ -20,7 +20,7 @@ load(
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -121,7 +121,7 @@ xla_cc_test(
     name = "async_kernel_launch_test",
     srcs = ["async_kernel_launch_test.cc"],
     # "requires-net:external" tag allows uploading `xprof` results.
-    tags = ["requires-net:external"] + tf_cuda_tests_tags(),
+    tags = if_google(["requires-net:external"]) + tf_cuda_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -490,6 +490,7 @@ xla_test(
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu/transforms:instruction_fusion",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -501,8 +502,8 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_pass_pipeline",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/transforms:fusion_merger",
         "//xla/service/gpu/transforms:instruction_fusion",
@@ -625,7 +626,6 @@ lit_test_suite(
         [
             "add_preds.hlo",
             "calling_convention.hlo",
-            "copy.hlo",
             "dot_bf16.hlo",
             "dynamic_update_slice_inplace.hlo",
             "fused_scatter.hlo",
@@ -637,6 +637,7 @@ lit_test_suite(
             "reduce_f64_column.hlo",
             "reduce_large_row_to_scalar.hlo",
             "reduce_row_vectorized.hlo",
+            "reduce_to_scalar_vectorized.hlo",
             "reduce_unnested.hlo",
             "reduce_variadic_column.hlo",
             "reduction_vectorization_sm_all.hlo",
@@ -649,6 +650,7 @@ lit_test_suite(
             "sorting.hlo",
             "transpose_021.hlo",
             "transpose_021_extra_output.hlo",
+            "transpose_10.hlo",
             "transpose_210.hlo",
             "transpose_210_extra_output.hlo",
             "triton_naming.hlo",
@@ -823,16 +825,14 @@ xla_test(
 xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-sm80",
-    ]},
     backends = [
-        "gpu",
+        "gpu_a100",
+        "gpu_h100",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 2,
     deps = [
         ":gpu_codegen_test",
+        "//xla:array3d",
         "//xla:array4d",
         "//xla:error_spec",
         "//xla:literal",
@@ -852,6 +852,8 @@ xla_test(
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:client_library_test_base",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
@@ -864,9 +866,7 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 # This library is here to be reused by tests.

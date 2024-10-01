@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <variant>
-#include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -27,11 +30,12 @@ limitations under the License.
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/dnn.pb.h"
@@ -84,8 +88,8 @@ class GemmAlgorithmPickerTest : public HloTestBase,
             },
             [&](const se::RocmComputeCapability& cc) {
               if (blas_get_version) {
-                auto version = std::stol(device_desc().runtime_version());
-                if (version < 60200) {
+                if (device_desc().runtime_version() <
+                    stream_executor::SemanticVersion{6, 2, 0}) {
                   GTEST_SKIP()
                       << "This API is not available on ROCM 6.1 and below.";
                 }
@@ -129,8 +133,11 @@ ENTRY main {
     // algorithms left after autotuning
     TF_ASSERT_OK_AND_ASSIGN(
         bool changed,
-        RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040),
-                   module.get()));
+        RunHloPass(
+            GemmRewriter(
+                gpu_comp(),
+                /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
+            module.get()));
 
     AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
     GemmAlgorithmPicker gpicker(cfg);
@@ -146,7 +153,7 @@ ENTRY main {
   // Clear cache before the second run!
   AutotunerUtil::ClearAutotuneResults();
   {
-    // Run once again but now with autotune level 5 and embarassingly tight
+    // Run once again but now with autotune level 5 and embarrassingly tight
     // rtol which shall disqualify most of the algorithms.
 
     // Note that, we have "two sources of truth" for GemmAlgorithmPicker: i.e.,
@@ -157,8 +164,11 @@ ENTRY main {
     module->mutable_config().set_debug_options(debug_opts);
     TF_ASSERT_OK_AND_ASSIGN(
         bool changed,
-        RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040),
-                   module.get()));
+        RunHloPass(
+            GemmRewriter(
+                gpu_comp(),
+                /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
+            module.get()));
 
     AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
     GemmAlgorithmPicker gpicker(cfg);
@@ -186,7 +196,11 @@ ENTRY main {
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
+      RunHloPass(
+          GemmRewriter(
+              gpu_comp(),
+              /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
+          m.get()));
   changed = false;
   DebugOptions opts;
   AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
@@ -211,7 +225,10 @@ ENTRY main {
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
+      RunHloPass(
+          GemmRewriter(gpu_comp(),
+                       /*toolkit_version=*/se::SemanticVersion{12, 4, 0}),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -243,7 +260,11 @@ ENTRY main {
   bool changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
-      RunHloPass(GemmRewriter(gpu_comp(), /*toolkit_version=*/12040), m.get()));
+      RunHloPass(
+          GemmRewriter(
+              gpu_comp(),
+              /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
+          m.get()));
   changed = false;
 
   DebugOptions opts;
@@ -272,10 +293,13 @@ ENTRY main {
 
   DevicelessConfig deviceless_config{gpu_device_desc()};
   AutotuneConfig deviceless_cfg{deviceless_config, opts};
-  TF_ASSERT_OK_AND_ASSIGN(changed,
-                          RunHloPass(GemmRewriter(gpu_comp(),
-                                                  /*toolkit_version=*/12040),
-                                     m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed,
+      RunHloPass(
+          GemmRewriter(
+              gpu_comp(),
+              /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
+          m.get()));
   changed = false;
   TF_ASSERT_OK_AND_ASSIGN(
       changed, RunHloPass(GemmAlgorithmPicker(deviceless_cfg), m.get()))

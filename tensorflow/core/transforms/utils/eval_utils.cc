@@ -73,7 +73,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
         "Cannot parse tensor from tensor_proto.");
   }
   *tensor = std::move(parsed);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,

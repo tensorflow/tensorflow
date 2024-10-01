@@ -484,7 +484,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_tf_unfreeze_global_tensors",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo:fold_broadcast_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
@@ -544,7 +544,6 @@ tf_proto_library(
     srcs = [
         "quantization_options.proto",
     ],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core:protos_all",
@@ -569,7 +568,6 @@ tf_proto_library(
 tf_proto_library(
     name = "exported_model_proto",
     srcs = ["exported_model.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core:protos_all",

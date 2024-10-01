@@ -21,7 +21,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/rpc/client:save_profile",
+        "@local_xla//xla/tsl/profiler/rpc/client:save_profile",
     ],
 )
 
@@ -41,8 +41,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ],
 )
 
@@ -65,8 +65,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )
@@ -79,6 +79,6 @@ cc_library(
         ":profiler_client_for_pybind",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/rpc/client:remote_profiler_session_manager",
+        "@local_xla//xla/tsl/profiler/rpc/client:remote_profiler_session_manager",
     ],
 )

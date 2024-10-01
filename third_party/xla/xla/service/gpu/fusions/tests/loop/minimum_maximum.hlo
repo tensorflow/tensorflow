@@ -1,7 +1,7 @@
 // RUN: fusion_to_mlir %s | FileCheck %s
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   param0 = f64[] parameter(0)
   param1 = f64[] parameter(1)
 
@@ -11,7 +11,7 @@ fused_computation {
 }
 
 // CHECK:       func.func @main
-// CHECK:         xla_gpu.pure_call @fused_computation_tuple
-// CHECK:       func.func private @fused_computation_tuple
+// CHECK:         xla_gpu.pure_call @fusion_tuple
+// CHECK:       func.func private @fusion_tuple
 // CHECK-DAG:     arith.minimumf
 // CHECK-DAG:     arith.maximumf

@@ -23,13 +23,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -51,17 +52,21 @@ class ConcreteShardingTest : public test_util::DeviceTest {};
 class ConcreteEvenShardingTest : public test_util::DeviceTest {};
 class ShardingParamShardingTest : public test_util::DeviceTest {};
 
+TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
+  EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");
+}
+
 TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
   EXPECT_TRUE(sharding->IsFullyReplicated());
 }
 
 TEST_P(SingleDeviceShardingTest, GetShardShape) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
   EXPECT_THAT(sharding->GetShardShape(Shape({10, 20})),
               IsOkAndHolds(Shape({10, 20})));
 }
@@ -69,13 +74,13 @@ TEST_P(SingleDeviceShardingTest, GetShardShape) {
 TEST_P(SingleDeviceShardingTest, HasSamePartitioning) {
   auto device_list0 = GetDevices({0});
   std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
-      device_list0.devices().front(), MemoryKind());
+      device_list0->devices().front(), MemoryKind());
 
   EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding0));
   {
     auto device_list1 = GetDevices({1});
     std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
-        device_list1.devices().front(), MemoryKind());
+        device_list1->devices().front(), MemoryKind());
     EXPECT_TRUE(sharding0->HasSamePartitioning(*sharding1));
   }
 }
@@ -83,11 +88,11 @@ TEST_P(SingleDeviceShardingTest, HasSamePartitioning) {
 TEST_P(SingleDeviceShardingTest, WithDeviceAssignment) {
   auto device_list0 = GetDevices({0});
   std::shared_ptr<const Sharding> sharding0 = SingleDeviceSharding::Create(
-      device_list0.devices().front(), MemoryKind());
+      device_list0->devices().front(), MemoryKind());
   {
     auto device_list1 = GetDevices({1});
     std::shared_ptr<const Sharding> sharding1 = SingleDeviceSharding::Create(
-        device_list1.devices().front(), MemoryKind());
+        device_list1->devices().front(), MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(
         auto new_sharding,
         sharding0->WithDeviceAssignment(device_list1,
@@ -106,8 +111,8 @@ TEST_P(SingleDeviceShardingTest, WithDeviceAssignment) {
 
 TEST_P(SingleDeviceShardingTest, IndexDomains) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
 
   Shape shape({10, 20});
   TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
@@ -116,8 +121,8 @@ TEST_P(SingleDeviceShardingTest, IndexDomains) {
 
 TEST_P(SingleDeviceShardingTest, Disassemble) {
   auto device_list = GetDevices({0});
-  std::shared_ptr<const Sharding> sharding =
-      SingleDeviceSharding::Create(device_list.devices().front(), MemoryKind());
+  std::shared_ptr<const Sharding> sharding = SingleDeviceSharding::Create(
+      device_list->devices().front(), MemoryKind());
 
   {  // Disassemble static shape.
     Shape shape({10, 20});
@@ -141,6 +146,14 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
     EXPECT_EQ(dynamic_shape, result_shape);
     EXPECT_EQ(*result_sharding, *sharding);
   }
+}
+
+TEST_P(OpaqueShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(
+      OpaqueSharding::Create(tsl::RCReference<DeviceList>(), MemoryKind()), "");
+
+  EXPECT_DEATH(
+      OpaqueSharding::Create(BasicDeviceList::Create({}), MemoryKind()), "");
 }
 
 TEST_P(OpaqueShardingTest, IsFullyReplicated) {
@@ -187,8 +200,8 @@ TEST_P(OpaqueShardingTest, WithDeviceAssignment) {
                                         /*memory_kind=*/std::nullopt));
     // For OpaqueSharding, we cannot use an equality test.
     ASSERT_TRUE(llvm::isa<OpaqueSharding>(*new_sharding));
-    EXPECT_THAT(new_sharding->devices().devices(),
-                ElementsAreArray(device_list1.devices()));
+    EXPECT_THAT(new_sharding->devices()->devices(),
+                ElementsAreArray(device_list1->devices()));
   }
   {
     auto device_list1 = GetDevices({0, 1, 2, 3});
@@ -233,6 +246,16 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteSharding::Create(tsl::RCReference<DeviceList>(),
+                                        MemoryKind(), Shape({}), {Shape({})}),
+               "");
+
+  EXPECT_DEATH(ConcreteSharding::Create(BasicDeviceList::Create({}),
+                                        MemoryKind(), Shape({}), {Shape({})}),
+               "");
 }
 
 TEST_P(ConcreteShardingTest, IsFullyReplicated) {
@@ -366,13 +389,13 @@ TEST_P(ConcreteShardingTest, Disassemble) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, shard_shapes[i]);
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
 TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
-  DeviceList device_list = GetDevices({0, 1});
+  auto device_list = GetDevices({0, 1});
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
@@ -395,8 +418,8 @@ TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
   for (int i = 0; i < disassembled.size(); ++i) {
     const auto& [dynamic_shape, sharding] = disassembled[i];
     EXPECT_EQ(dynamic_shape, shard_dynamic_shapes[i]);
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -427,6 +450,18 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteSharding does not have index "
                                  "domain information")));
+}
+
+TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteEvenSharding::Create(tsl::RCReference<DeviceList>(),
+                                            MemoryKind(), Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
+
+  EXPECT_DEATH(ConcreteEvenSharding::Create(BasicDeviceList::Create({}),
+                                            MemoryKind(), Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
 }
 
 TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
@@ -550,8 +585,8 @@ TEST_P(ConcreteEvenShardingTest, Disassemble) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({15}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -579,6 +614,20 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST_P(ShardingParamShardingTest, CreateWithBadDeviceList) {
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  EXPECT_DEATH(ShardingParamSharding::Create(
+                   param, tsl::RCReference<DeviceList>(), MemoryKind())
+                   .value(),
+               "");
+
+  EXPECT_DEATH(ShardingParamSharding::Create(param, BasicDeviceList::Create({}),
+                                             MemoryKind())
+                   .value(),
+               "");
 }
 
 TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {
@@ -725,8 +774,8 @@ TEST_P(ShardingParamShardingTest, Disassemble) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({3, 2}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 

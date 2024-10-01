@@ -133,8 +133,8 @@ TransposeFusion::TransposeFusion(const se::DeviceDescription& gpu_device_info,
           ComputeTransposeTiling(gpu_device_info, analysis.tiled_transpose())) {
   for (auto [root, hero] :
        llvm::zip(analysis_.fusion_roots(), analysis_.fusion_heroes())) {
-    if (auto transpose = GetDescriptionForTiledTransposeEmitter(
-            root.instruction(), hero.instruction())) {
+    if (auto transpose =
+            GetDescriptionForTiledTransposeEmitter(hero.instruction())) {
       permutation_ = transpose->permutation;
       break;
     }
@@ -171,8 +171,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
   for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
     const auto& hero = analysis_.fusion_hero(output_idx).instruction();
-    auto transpose_descr =
-        GetDescriptionForTiledTransposeEmitter(root.instruction(), hero);
+    auto transpose_descr = GetDescriptionForTiledTransposeEmitter(hero);
     if (transpose_descr.has_value()) {
       auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
           &hero, std::vector<std::pair<int64_t, const HloInstruction*>>{

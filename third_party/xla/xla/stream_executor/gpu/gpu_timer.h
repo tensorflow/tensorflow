@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 
@@ -34,7 +35,6 @@ class DeterminismTest;
 namespace stream_executor {
 namespace gpu {
 
-class GpuContext;
 class GpuStream;
 
 // When a timer is created it launches a delay kernel into the given stream and
@@ -45,7 +45,7 @@ class GpuStream;
 // to be measured more accurately.
 class GpuTimer : public EventBasedTimer {
  public:
-  GpuTimer(GpuContext* context, std::unique_ptr<GpuEvent> start_event,
+  GpuTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
            std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
            GpuSemaphore semaphore = {})
       : context_(context),
@@ -77,7 +77,7 @@ class GpuTimer : public EventBasedTimer {
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
  private:
-  GpuContext* context_;
+  Context* context_;
   std::unique_ptr<GpuEvent> start_event_;
   std::unique_ptr<GpuEvent> stop_event_;
   GpuStream* stream_;

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/status.h"
@@ -169,7 +170,7 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
                                 size_t batch_timeout_micros,
                                 size_t max_enqueued_batches,
                                 bool enable_large_batch_splitting,
-                                bool enable_lazy_split, SplitFunc split_func,
+                                SplitFunc split_func,
                                 bool enable_priority_queue = false) {
   QueueOptions queue_options;
   queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -177,7 +178,6 @@ QueueOptions CreateQueueOptions(size_t max_execution_batch_size,
   queue_options.input_batch_size_limit = input_batch_size_limit;
   queue_options.batch_timeout_micros = batch_timeout_micros;
   queue_options.enable_large_batch_splitting = enable_large_batch_splitting;
-  queue_options.enable_lazy_split = enable_lazy_split;
   queue_options.enable_priority_queue = enable_priority_queue;
   if (enable_large_batch_splitting) {
     queue_options.split_input_task_func = split_func;
@@ -198,12 +198,10 @@ class SharedBatchSchedulerTestBase {
                                   bool enable_priority_queue = false) {
     return tensorflow::serving::CreateQueueOptions(
         max_execution_batch_size, input_batch_size_limit, batch_timeout_micros,
-        max_enqueued_batches, enable_input_batch_split(), enable_lazy_split(),
-        get_split_func(), enable_priority_queue);
+        max_enqueued_batches, enable_input_batch_split(), get_split_func(),
+        enable_priority_queue);
   }
   virtual bool enable_input_batch_split() const = 0;
-
-  virtual bool enable_lazy_split() const = 0;
 
   SplitFunc get_split_func() const {
     if (enable_input_batch_split()) {
@@ -233,15 +231,10 @@ class SharedBatchSchedulerTestBase {
   }
 };
 
-class SharedBatchSchedulerTest
-    : public ::testing::TestWithParam<std::tuple<bool, bool>>,
-      public SharedBatchSchedulerTestBase {
+class SharedBatchSchedulerTest : public ::testing::TestWithParam<bool>,
+                                 public SharedBatchSchedulerTestBase {
  protected:
-  bool enable_input_batch_split() const override {
-    return std::get<0>(GetParam());
-  }
-
-  bool enable_lazy_split() const override { return std::get<1>(GetParam()); }
+  bool enable_input_batch_split() const override { return GetParam(); }
 };
 
 TEST_P(SharedBatchSchedulerTest, Basic) {
@@ -480,7 +473,6 @@ TEST_P(
 
       return absl::OkStatus();
     };
-    queue_options.enable_lazy_split = enable_lazy_split();
     queue_options.max_execution_batch_size = 10;
     queue_options.enable_priority_queue = true;
 
@@ -993,31 +985,6 @@ TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
   stop_teardown.Notify();
 }
 
-// Tests that `enable_lazy_split` could be enabled only if
-// `enable_large_batch_splitting` is enabled.
-TEST_P(SharedBatchSchedulerTest, InvalidLazySplitOptions) {
-  auto callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
-    // do nothing.
-  };
-
-  auto scheduler = CreateSharedBatchScheduler(2);
-
-  const size_t input_batch_size_limit = 10;
-  const size_t batch_timeout_micros = 100 * 1000;  // 100 milliseconds
-  const size_t max_enqueued_batches = 2;
-  std::unique_ptr<Queue> queue;
-  EXPECT_THAT(
-      scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
-                              input_batch_size_limit, input_batch_size_limit,
-                              batch_timeout_micros, max_enqueued_batches,
-                              false /* enable_large_batch_splitting */,
-                              true /* enable_lazy_split */, get_split_func()),
-                          callback, &queue),
-      testing::StatusIs(error::INVALID_ARGUMENT,
-                        "enable_lazy_split should be enabled only if "
-                        "enable_large_batch_splitting is enabled."));
-}
-
 // Tests that queue configured with zero `max_enqueued_batches` get one queue.
 // Note, technically an invalid-argument error should be returned.
 // Since existing models (with very low QPS) rely on the rewrite, retain the
@@ -1038,28 +1005,22 @@ TEST_P(SharedBatchSchedulerTest, ZeroQueueRewrittenToOneQueue) {
         scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
                                 input_batch_size_limit, input_batch_size_limit,
                                 batch_timeout_micros, max_enqueued_batches,
-                                enable_input_batch_split(), enable_lazy_split(),
-                                get_split_func()),
+                                enable_input_batch_split(), get_split_func()),
                             callback, &queue),
         testing::StatusIs(error::INVALID_ARGUMENT,
                           "max_enqueued_batches must be positive; was 0"));
   } else {
-    TF_ASSERT_OK(scheduler->AddQueue(
-        tensorflow::serving::CreateQueueOptions(
-            input_batch_size_limit, input_batch_size_limit,
-            batch_timeout_micros, max_enqueued_batches,
-            enable_input_batch_split(), enable_lazy_split(), get_split_func()),
-        callback, &queue));
+    TF_ASSERT_OK(
+        scheduler->AddQueue(tensorflow::serving::CreateQueueOptions(
+                                input_batch_size_limit, input_batch_size_limit,
+                                batch_timeout_micros, max_enqueued_batches,
+                                enable_input_batch_split(), get_split_func()),
+                            callback, &queue));
     EXPECT_EQ(queue->SchedulingCapacity(), input_batch_size_limit);
   }
 }
 
 TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
-  if (enable_lazy_split()) {
-    GTEST_SKIP()
-        << "BatchPaddingPolicy::kBatchDown is not supported for lazy split.";
-  }
-
   // Set up a fake clock, which only advances when we explicitly tell it to.
   test_util::FakeClockEnv env(Env::Default());
   Notification start_teardown, stop_teardown;
@@ -1115,8 +1076,9 @@ TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
     first_batch_processed.WaitForNotification();
 
     // Ensure the scheduler correctly updates the starting time of the new
-    // batch.
-    env.AdvanceByMicroseconds(options.batch_timeout_micros - 1);
+    // batch. We should only wait 2/3 of the batch timeout now.
+    auto new_batch_timeout_micros = options.batch_timeout_micros * 2 / 3;
+    env.AdvanceByMicroseconds(new_batch_timeout_micros - 1);
     EXPECT_FALSE(second_batch_processed.WaitForNotificationWithTimeout(
         absl::Milliseconds(10)));
     env.AdvanceByMicroseconds(1);
@@ -1129,28 +1091,20 @@ TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
 
 // TODO(b/161857471):
 // Add test coverage when input-split and no-split returns differently.
-INSTANTIATE_TEST_SUITE_P(
-    Parameter, SharedBatchSchedulerTest,
-    ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
-                                      /*enable_lazy_split=*/true),
-                      std::make_tuple(/*enable_input_batch_split=*/true,
-                                      /*enable_lazy_split=*/false),
-                      std::make_tuple(/*enable_input_batch_split=*/false,
-                                      /*enable_lazy_split=*/false)));
+INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerTest,
+                         ::testing::Bool());
 
 class SharedBatchSchedulerPriorityTest
     : public ::testing::TestWithParam<
-          std::tuple<bool, bool, MixedPriorityBatchingPolicy>>,
+          std::tuple<bool, MixedPriorityBatchingPolicy>>,
       public SharedBatchSchedulerTestBase {
  protected:
   bool enable_input_batch_split() const override {
     return std::get<0>(GetParam());
   }
 
-  bool enable_lazy_split() const override { return std::get<1>(GetParam()); }
-
   MixedPriorityBatchingPolicy mixed_priority_batching_policy() const {
-    return std::get<2>(GetParam());
+    return std::get<1>(GetParam());
   }
 };
 
@@ -1386,26 +1340,20 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(
         std::make_tuple(
             /*enable_input_batch_split=*/true,
-            /*enable_lazy_split=*/false,
             MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize),
         std::make_tuple(/*enable_input_batch_split=*/true,
-                        /*enable_lazy_split=*/false,
                         MixedPriorityBatchingPolicy::
                             kLowPriorityPaddingWithNextAllowedBatchSize),
         std::make_tuple(
             /*enable_input_batch_split=*/false,
-            /*enable_lazy_split=*/false,
             MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize),
         std::make_tuple(/*enable_input_batch_split=*/false,
-                        /*enable_lazy_split=*/false,
                         MixedPriorityBatchingPolicy::
                             kLowPriorityPaddingWithNextAllowedBatchSize),
         std::make_tuple(
             /*enable_input_batch_split=*/false,
-            /*enable_lazy_split=*/false,
             MixedPriorityBatchingPolicy::kPriorityIsolation),
         std::make_tuple(/*enable_input_batch_split=*/false,
-                        /*enable_lazy_split=*/false,
                         MixedPriorityBatchingPolicy::kPriorityIsolation)));
 
 using SharedBatchSchedulerPriorityPolicyTest = SharedBatchSchedulerTest;
@@ -1679,16 +1627,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
 // Lazy split is to be removed. The mixed priority batching is only supported
 // when the lazy split is not enabled.
-INSTANTIATE_TEST_SUITE_P(
-    Parameter, SharedBatchSchedulerPriorityPolicyTest,
-    ::testing::Values(std::make_tuple(/*enable_input_batch_split=*/true,
-                                      /*enable_lazy_split=*/false),
-                      std::make_tuple(/*enable_input_batch_split=*/true,
-                                      /*enable_lazy_split=*/false),
-                      std::make_tuple(/*enable_input_batch_split=*/false,
-                                      /*enable_lazy_split=*/false),
-                      std::make_tuple(/*enable_input_batch_split=*/false,
-                                      /*enable_lazy_split=*/false)));
+INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityPolicyTest,
+                         ::testing::Bool());
 
 #ifdef PLATFORM_GOOGLE
 // This benchmark relies on https://github.com/google/benchmark features,
@@ -1743,7 +1683,6 @@ void CreateQueues() {
       CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
                          batch_timeout_micros, INT_MAX /* unbounded queue */,
                          true /* enable_large_batch_splitting */,
-                         false /* enable_lazy_split */,
                          split_func_for_size_one_task),
       process_batch_callback));
   queue_labels->push_back(std::string("EagerSplit"));
@@ -1754,19 +1693,9 @@ void CreateQueues() {
                          batch_timeout_micros, INT_MAX /* unbounded queue */,
                          false /* enable_large_batch_splitting */,
 
-                         false /* enable_lazy_split */, nullptr /* no func */),
+                         nullptr /* no func */),
       process_batch_callback));
   queue_labels->push_back(std::string("NoSplit"));
-
-  queues->push_back(CreateQueue(
-      CreateSharedBatchScheduler(5),
-      CreateQueueOptions(max_execution_batch_size, input_batch_size_limit,
-                         batch_timeout_micros, INT_MAX /* unbounded queue */,
-                         true /* enable_large_batch_splitting */,
-                         true /* enable_lazy_split */,
-                         split_func_for_size_one_task),
-      process_batch_callback));
-  queue_labels->push_back(std::string("LazySplit"));
 }
 
 void BM_QueueSchedule(::testing::benchmark::State& state) {

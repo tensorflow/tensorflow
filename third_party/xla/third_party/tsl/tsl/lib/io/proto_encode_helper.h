@@ -49,7 +49,7 @@ class ProtoEncodeHelper {
     Encode32(combine(tag, WIRETYPE_VARINT));
     EncodeBool(v);
   }
-  void WriteString(int tag, StringPiece v) {
+  void WriteString(int tag, absl::string_view v) {
     Encode32(combine(tag, WIRETYPE_LENGTH_DELIMITED));
     Encode32(v.size());
     EncodeBytes(v.data(), v.size());
@@ -58,7 +58,7 @@ class ProtoEncodeHelper {
     Encode32(combine(tag, WIRETYPE_LENGTH_DELIMITED));
     Encode32(len);
   }
-  void WriteRawBytes(StringPiece v) { EncodeBytes(v.data(), v.size()); }
+  void WriteRawBytes(absl::string_view v) { EncodeBytes(v.data(), v.size()); }
 
  private:
   // Note: this module's behavior must match the protocol buffer wire encoding

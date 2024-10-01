@@ -44,10 +44,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
@@ -190,7 +190,7 @@ static const char *const kCublasNotInitializedExplanation =
 bool CUDABlas::Init() {
   absl::MutexLock lock(&mu_);
 
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  gpu::ScopedActivateContext sac{parent_};
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
@@ -223,7 +223,7 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
 
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
-    gpu::ScopedActivateExecutorContext sac{parent_};
+    gpu::ScopedActivateContext sac{parent_};
     cublasDestroy(blas_);
   }
 }
@@ -232,7 +232,7 @@ bool CUDABlas::SetStream(Stream *stream) {
   CHECK(stream != nullptr);
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  gpu::ScopedActivateContext sac{parent_};
 
   cublasStatus_t ret = cublasSetStream(blas_, AsGpuStreamValue(stream));
   if (ret != CUBLAS_STATUS_SUCCESS) {
@@ -246,7 +246,7 @@ bool CUDABlas::SetStream(Stream *stream) {
 cudaStream_t CUDABlas::CUDAStream(Stream *stream) {
   CHECK(stream != nullptr);
   CHECK(AsGpuStreamValue(stream) != nullptr);
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  gpu::ScopedActivateContext sac{parent_};
   return AsGpuStreamValue(stream);
 }
 
@@ -395,7 +395,7 @@ absl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
     }
   }
 
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  gpu::ScopedActivateContext sac{parent_};
   ScopedCublasPointerMode pointer_mode{blas_};
   if (!pointer_mode.Init(pointer_mode_host ? CUBLAS_POINTER_MODE_HOST
                                            : CUBLAS_POINTER_MODE_DEVICE)) {

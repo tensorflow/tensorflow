@@ -28,7 +28,6 @@ package_group(
 tf_proto_library(
     name = "memory_space_assignment_proto",
     srcs = ["memory_space_assignment.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
@@ -427,6 +426,8 @@ cc_library(
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

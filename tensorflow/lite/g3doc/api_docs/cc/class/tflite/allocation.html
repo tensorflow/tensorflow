@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::Allocation Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>Allocation</h1><b>This is an abstract class.</b><br/><br/><code>#include &lt;allocation.h&gt;</code><p>A memory allocation handle. This could be a mmap or shared memory. </p><h2>Summary</h2><h3>Inheritance</h3>Direct Known Subclasses:<a href="/lite/api_docs/cc/class/tflite/file-copy-allocation">tflite::FileCopyAllocation</a>, <a href="/lite/api_docs/cc/class/tflite/memory-allocation">tflite::MemoryAllocation</a>, <a href="/lite/api_docs/cc/class/tflite/m-m-a-p-allocation">tflite::MMAPAllocation</a><table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_allocation_1ab62cb9ed509a75199aefe16b91fd3f54">~Allocation</a>()</code>
+<br/>
+</td>
+</tr>
+</table><table class="constants responsive">
+<tr>
+<th colspan="2">
+<h3>Public types</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1a57c1ac8cad05ad10eae5e8ce02b6f6f6">Type</a></code>
+</td>
+<td>enum</td>
+</tr>
+</table><table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Protected attributes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1a1b717e96538436dd52529058945b5cc7">error_reporter_</a></code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *</code>
+</div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1a84b2356c30a797105b0d7eac75412d52">base</a>() const =0</code>
+</td>
+<td>
+<div>
+<code>virtual const void *</code>
+</div>
+<div>Base pointer of this allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1ae9df951fa4dee4efdd494fb8285191c1">bytes</a>() const =0</code>
+</td>
+<td>
+<div>
+<code>virtual size_t</code>
+</div>
+<div>Size in bytes of the allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1ac6a4b9793db49252160bf68a47810bd8">type</a>() const </code>
+</td>
+<td>
+<div>
+<code>Type</code>
+</div>
+<div>Return the type of the <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a>. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1a323eac69f78345003896774dacf5c663">valid</a>() const =0</code>
+</td>
+<td>
+<div>
+<code>virtual bool</code>
+</div>
+<div>Whether the allocation is valid. </div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Protected functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_allocation_1adb0a80162b3ff5e56ea8182acaae2afc">Allocation</a>(<a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter, Type type)</code>
+</td>
+<td>
+<div>
+<code></code>
+</div>
+</td>
+</tr>
+</table><h2>Public types</h2><div id="classtflite_1_1_allocation_1a57c1ac8cad05ad10eae5e8ce02b6f6f6">
+<h3>Type</h3>
+<pre class="prettyprint"> Type</pre>
+<div></div>
+</div><h2>Protected attributes</h2><div id="classtflite_1_1_allocation_1a1b717e96538436dd52529058945b5cc7">
+<h3>error_reporter_</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> * error_reporter_</pre>
+<div></div>
+</div><h2>Public functions</h2><div id="classtflite_1_1_allocation_1a84b2356c30a797105b0d7eac75412d52">
+<h3>base</h3>
+<pre class="prettyprint">virtual const void * base() const =0</pre>
+<div>
+<p>Base pointer of this allocation. </p>
+</div>
+</div><div id="classtflite_1_1_allocation_1ae9df951fa4dee4efdd494fb8285191c1">
+<h3>bytes</h3>
+<pre class="prettyprint">virtual size_t bytes() const =0</pre>
+<div>
+<p>Size in bytes of the allocation. </p>
+</div>
+</div><div id="classtflite_1_1_allocation_1ac6a4b9793db49252160bf68a47810bd8">
+<h3>type</h3>
+<pre class="prettyprint">Type type() const </pre>
+<div>
+<p>Return the type of the <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a>. </p>
+</div>
+</div><div id="classtflite_1_1_allocation_1a323eac69f78345003896774dacf5c663">
+<h3>valid</h3>
+<pre class="prettyprint">virtual bool valid() const =0</pre>
+<div>
+<p>Whether the allocation is valid. </p>
+</div>
+</div><div id="classtflite_1_1_allocation_1ab62cb9ed509a75199aefe16b91fd3f54">
+<h3>~Allocation</h3>
+<pre class="prettyprint">virtual  ~Allocation()</pre>
+<div></div>
+</div><h2>Protected functions</h2><div id="classtflite_1_1_allocation_1adb0a80162b3ff5e56ea8182acaae2afc">
+<h3>Allocation</h3>
+<pre class="prettyprint"> Allocation(
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter,
+  Type type
+)</pre>
+<div></div>
+</div></body>
+</html>

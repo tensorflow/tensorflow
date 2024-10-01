@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/lib/monitoring/cell_reader.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla {

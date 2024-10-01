@@ -1,14 +1,14 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_xla//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     licenses = ["notice"],
 )
@@ -16,7 +16,7 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tsl/profiler:friends",
+        "@local_xla//xla/tsl/profiler:friends",
     ],
 )
 
@@ -55,7 +55,7 @@ cc_library(
     visibility = internal_visibility([
         "@local_xla//xla:__subpackages__",
         "//tsl/platform/cloud:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":math_utils",
@@ -68,6 +68,7 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":math_utils",
         "//tsl/platform:logging",
@@ -187,7 +188,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/gpu:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:types",
@@ -377,7 +378,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/python:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform",
@@ -392,7 +393,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/gpu:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:logging",

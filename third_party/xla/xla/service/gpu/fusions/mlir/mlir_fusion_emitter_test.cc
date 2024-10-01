@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -96,18 +98,20 @@ class MlirFusionEmitterTest : public HloTestBase {
                          mlir::affine::AffineDialect, mlir::arith::ArithDialect,
                          mlir::complex::ComplexDialect, mlir::math::MathDialect,
                          mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-                         mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect>();
+                         mlir::gpu::GPUDialect, mlir::NVVM::NVVMDialect,
+                         mlir::ROCDL::ROCDLDialect>();
     mlir::DialectRegistry registry;
     mlir::func::registerInlinerExtension(registry);
     mlir::registerBuiltinDialectTranslation(registry);
     mlir::registerLLVMDialectTranslation(registry);
     mlir::registerNVVMDialectTranslation(registry);
+    mlir::registerROCDLDialectTranslation(registry);
     context_.appendDialectRegistry(registry);
   }
 
   mlir::MLIRContext context_;
   stream_executor::DeviceDescription device_info_ =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo();
+      TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
 };
 
 constexpr absl::string_view kModule = R"(
@@ -167,15 +171,22 @@ TEST_F(MlirFusionEmitterTest, CreateLLVMModule) {
   llvm::raw_string_ostream stream(out);
   stream << *llvm_module;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto filecheck_result, RunFileCheck(out, R"(
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto filecheck_result,
+      RunFileCheck(
+          out, absl::StrReplaceAll(
+                   R"(
     // CHECK: define void @fusion(ptr noalias %[[IN:.*]], ptr noalias %[[OUT:.*]])
-    // CHECK:   %[[TID:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x()
+    // CHECK:   %[[TID:.*]] = call i32 TIDX()
     // CHECK:   %[[IN_PTR:.*]] = getelementptr inbounds float, ptr %[[IN]], i32 %[[TID]]
     // CHECK:   %[[VAL:.*]] = load float, ptr %[[IN_PTR]], align 4
     // CHECK:   %[[OUT_PTR:.*]] = getelementptr inbounds float, ptr %[[OUT]], i32 %[[TID]]
     // CHECK:   store float %[[VAL]], ptr %[[OUT_PTR]], align 4
     // CHECK:   ret void
-  )"));
+  )",
+                   {{"TIDX", device_info_.cuda_compute_capability().major == -1
+                                 ? "@llvm.amdgcn.workitem.id.x"
+                                 : "@llvm.nvvm.read.ptx.sreg.tid.x"}})));
   EXPECT_TRUE(filecheck_result);
 }
 

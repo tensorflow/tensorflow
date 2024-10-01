@@ -15,12 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_timer.h"
 
-#include <cmath>
-#include <cstdlib>
 #include <memory>
 #include <random>
-#include <string_view>
-#include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -30,13 +26,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -94,12 +87,10 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
       *semaphore_ = GpuSemaphoreState::kRelease;
     }
   }
-  float elapsed_milliseconds = NAN;
-  if (!GpuDriver::GetEventElapsedTime(context_, &elapsed_milliseconds,
-                                      start_event_->gpu_event(),
-                                      stop_event_->gpu_event())) {
-    return absl::InternalError("Error stopping the timer");
-  }
+  TF_ASSIGN_OR_RETURN(
+      float elapsed_milliseconds,
+      GpuDriver::GetEventElapsedTime(context_, start_event_->gpu_event(),
+                                     stop_event_->gpu_event()));
   is_stopped_ = true;
   if (return_random_durations) {
     return RandomDuration();

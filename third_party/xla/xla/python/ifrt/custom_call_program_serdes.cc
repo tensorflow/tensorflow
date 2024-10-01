@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -27,10 +28,11 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/custom_call_program.h"
 #include "xla/python/ifrt/custom_call_program.pb.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -52,8 +54,11 @@ class CustomCallProgramSerDes
     CustomCallProgramProto proto;
     proto.set_type(program.type);
     proto.set_name(program.name);
-    proto.set_serialized_program_text(program.serialized_program_text);
-    *proto.mutable_devices() = program.devices.ToProto();
+    // TODO(hyeontaek): Remove absl::Cord flattening once protobuf [CTYPE=CORD]
+    // generates `absl::Cord` support on all platforms.
+    absl::CopyCordToString(program.serialized_program_text,
+                           proto.mutable_serialized_program_text());
+    *proto.mutable_devices() = program.devices->ToProto();
     for (const ArraySpec& spec : program.input_specs) {
       TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto());
     }
@@ -75,7 +80,7 @@ class CustomCallProgramSerDes
           "Failed to parse serialized CustomCallProgramProto");
     }
     TF_ASSIGN_OR_RETURN(
-        DeviceList devices,
+        tsl::RCReference<DeviceList> devices,
         DeviceList::FromProto(deserialize_program_options->lookup_device,
                               proto.devices()));
     std::vector<ArraySpec> input_specs;
@@ -97,10 +102,12 @@ class CustomCallProgramSerDes
       output_specs.push_back(std::move(spec));
     }
 
+    // TODO(hyeontaek): Remove explicit absl::Cord wrapping once protobuf
+    // [CTYPE=CORD] generates `absl::Cord` support on all platforms.
     return std::make_unique<CustomCallProgram>(
         /*type=*/proto.type(), /*name=*/proto.name(),
         /*serialized_program_text=*/
-        std::move(*proto.mutable_serialized_program_text()),
+        absl::Cord(std::move(*proto.mutable_serialized_program_text())),
         /*devices=*/std::move(devices),
         /*input_specs=*/std::move(input_specs),
         /*output_specs=*/std::move(output_specs));

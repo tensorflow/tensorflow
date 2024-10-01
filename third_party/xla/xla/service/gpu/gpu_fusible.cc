@@ -54,7 +54,7 @@ bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
   return absl::c_any_of(GetFusionRoots(computation),
                         [&](const HloInstruction* instr) {
                           return GetDescriptionForTiledTransposeEmitter(
-                                     *instr, FindNonTrivialHero(*instr))
+                                     FindNonTrivialHero(*instr))
                               .has_value();
                         });
 }
@@ -222,7 +222,7 @@ bool IsInputFusibleTranspose(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
     return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return GetDescriptionForTiledTransposeEmitter(instr, instr).has_value();
+  return GetDescriptionForTiledTransposeEmitter(instr).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -234,8 +234,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   if (!instr.IsMultiOutputFusion()) {
     const auto& hero = FindNonTrivialHero(*fused_expression_root);
     if (IsRealReductionHero(*fused_expression_root, hero) ||
-        GetDescriptionForTiledTransposeEmitter(*fused_expression_root, hero)
-            .has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return &hero;
     }
     return fused_expression_root;
@@ -247,7 +246,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   for (auto* inst : fused_expression_root->mutable_operands()) {
     const auto& hero = FindNonTrivialHero(*inst);
     if (IsRealReductionHero(*inst, hero) ||
-        GetDescriptionForTiledTransposeEmitter(*inst, hero).has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return &hero;
     }
   }
@@ -258,13 +257,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
                                          const HloInstruction* hero2) {
   auto hero1_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero1);
-  auto tiled_transpose_hero1 =
-      GetDescriptionForTiledTransposeEmitter(*hero1, *hero1);
+  auto tiled_transpose_hero1 = GetDescriptionForTiledTransposeEmitter(*hero1);
   bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2);
-  auto tiled_transpose_hero2 =
-      GetDescriptionForTiledTransposeEmitter(*hero2, *hero2);
+  auto tiled_transpose_hero2 = GetDescriptionForTiledTransposeEmitter(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
@@ -332,8 +329,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
                            ? FindNonTrivialHero(*element_instr)
                            : *element_instr;
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
-        GetDescriptionForTiledTransposeEmitter(*element_instr, hero)
-            .has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return hero.operand(0)->shape();
     }
     return element_instr->shape();
@@ -394,7 +390,7 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr) {
 
   switch (instr.opcode()) {
     case HloOpcode::kCopy:
-      return !GetDescriptionForTiledTransposeEmitter(instr, instr).has_value();
+      return !GetDescriptionForTiledTransposeEmitter(instr).has_value();
 
     case HloOpcode::kFusion:
       return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
@@ -633,7 +629,7 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // from potential x-tiling).
       return 4 * 32 * 33 * primitive_size * num_variadic;
     }
-  } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr, instr)) {
+  } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr)) {
     // Tile size for transposition.
     int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());

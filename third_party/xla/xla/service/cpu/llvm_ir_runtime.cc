@@ -159,6 +159,11 @@ llvm::Value* GenerateVF32Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
   return llvm_ir::EmitFastTanh(b, input, /*with_fma=*/true);
 }
 
+llvm::Value* GenerateVF64Tanh(llvm::IRBuilder<>* b, llvm::Value* input,
+                              int32_t /*vector_width*/) {
+  return llvm_ir::EmitFastTanhF64(b, input, /*with_fma=*/true);
+}
+
 llvm::Value* GenerateVF32Exp(llvm::IRBuilder<>* b, llvm::Value* input,
                              int32_t vector_width) {
   VectorSupportLibrary vsl(F32, vector_width, b, "exp_f32");
@@ -404,6 +409,9 @@ void RewriteIRRuntimeFunctions(llvm::Module* module,
   rewrite_calls(kTanhV4F32SymbolName, GenerateVF32Tanh, /*vector_width=*/4);
   rewrite_calls(kTanhV8F32SymbolName, GenerateVF32Tanh, /*vector_width=*/8);
   rewrite_calls(kTanhV16F32SymbolName, GenerateVF32Tanh, /*vector_width=*/16);
+
+  // TODO(penporn): Re-enable after fixing JAX issue #23590.
+  // rewrite_calls("tanh", GenerateVF64Tanh, /*vector_width=*/1);
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);

@@ -21,10 +21,12 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -48,10 +50,20 @@ bool IsShapeFullyStatic(ArrayRef<int64_t> shape) {
   return llvm::all_of(shape, [](int64_t d) { return d >= 0; });
 }
 
-bool AreShapesSupported(const ConvView& data) {
+bool NonBatchDimsFullyStatic(ArrayRef<int64_t> shape) {
+  return IsShapeFullyStatic(shape.drop_front());
+}
+
+bool AreShapesFullyStatic(const ConvView& data) {
   return IsShapeFullyStatic(data.InputShape()) &&
          IsShapeFullyStatic(data.KernelShape()) &&
          IsShapeFullyStatic(data.OutputShape());
+}
+
+bool InputOutputNonBatchDimsFullyStatic(const ConvView& data) {
+  return NonBatchDimsFullyStatic(data.InputShape()) &&
+         IsShapeFullyStatic(data.KernelShape()) &&
+         NonBatchDimsFullyStatic(data.OutputShape());
 }
 
 bool IsPaddingSupported(const ConvView& data) {
@@ -86,8 +98,13 @@ bool IsConvLegal(mhlo::ConvolutionOp op) {
       (!IsSupportedNonTrivialConv(data) &&
        (!IsPaddingSupported(data) || !IsInputDilationSupported(data)));
 
+  const bool are_shapes_supported =
+      ((IsStandardConv(data) || IsDepthwiseConv(data)) &&
+       InputOutputNonBatchDimsFullyStatic(data)) ||
+      AreShapesFullyStatic(data);
+
   return !supported_conv_type || !IsBatchGroupSupported(data) ||
-         !AreShapesSupported(data) || !IsTFLNativeLayout(data) ||
+         !are_shapes_supported || !IsTFLNativeLayout(data) ||
          is_non_supported_trivial_conv || !IsWindowReversalSupported(data);
 }
 
@@ -582,7 +599,7 @@ LogicalResult SliceDepthwiseTransposedConvolution::matchAndRewrite(
 
 //===----------------------------------------------------------------------===//
 
-// Convert a 1-D convolution into a 2-D convolution (which TF supports) so that
+// Convert a 1-D convolution into a 2-D convolution (which TFL supports) so that
 // it can be rewritten by the pattern `Convert2DConvOp`.
 class Conv1DToConv2D : public OpRewritePattern<mhlo::ConvolutionOp> {
  public:
@@ -590,6 +607,18 @@ class Conv1DToConv2D : public OpRewritePattern<mhlo::ConvolutionOp> {
   LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const final;
 };
+
+arith::ConstantOp ShapeToConst(PatternRewriter& rewriter,
+                               ArrayRef<int64_t> shape, Location loc) {
+  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
+                                         rewriter.getIntegerType(32));
+  auto casted_shape = llvm::map_range(shape, [](auto i64) -> int32_t {
+    return (i64 < 0) ? -1 : static_cast<int32_t>(i64);
+  });
+  auto attr =
+      DenseIntElementsAttr::get(attr_type, llvm::to_vector(casted_shape));
+  return rewriter.create<arith::ConstantOp>(loc, attr_type, attr);
+}
 
 std::tuple<llvm::SmallVector<int64_t>, Layout> InsertTrivialSpatialDim(
     const Layout& layout, ArrayRef<int64_t> shape) {
@@ -631,7 +660,7 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
     return rewriter.notifyMatchFailure(op, "Expects trivial lhs dims.");
   }
 
-  if (!AreShapesSupported(view)) {
+  if (!InputOutputNonBatchDimsFullyStatic(view)) {
     return rewriter.notifyMatchFailure(op, "Expects static dims.");
   }
 
@@ -654,8 +683,9 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
   auto [lhs_new_shape, lhs_new_layout] =
       InsertTrivialSpatialDim(view.InputLayout(), view.InputShape());
   auto lhs_new_type = op.getLhs().getType().clone(lhs_new_shape);
-  auto new_lhs =
-      rewriter.create<mhlo::ReshapeOp>(op.getLoc(), lhs_new_type, op.getLhs());
+  auto new_lhs = rewriter.create<TFL::ReshapeOp>(
+      op.getLoc(), lhs_new_type, op.getLhs(),
+      ShapeToConst(rewriter, lhs_new_shape, op.getLoc()));
 
   // Add new trivial spatial dimension to kernel.
   auto [rhs_new_shape, rhs_new_layout] =
@@ -724,8 +754,11 @@ LogicalResult Conv1DToConv2D::matchAndRewrite(mhlo::ConvolutionOp op,
       window_reversal_2d_attr, dnums_2d, op.getFeatureGroupCount(),
       op.getBatchGroupCount(), op.getPrecisionConfigAttr());
 
-  rewriter.replaceOpWithNewOp<mhlo::ReshapeOp>(op, op.getResult().getType(),
-                                               conv2d_op.getResult());
+  auto new_out_type = op.getResult().getType();
+  rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
+      op, new_out_type, conv2d_op.getResult(),
+      ShapeToConst(rewriter, new_out_type.getShape(), op.getLoc()));
+
   return success();
 }
 

@@ -273,13 +273,16 @@ class PerDeviceCollector {
                               StatType::kMemoryResidencyDetails)),
                           *plane->GetOrCreateStatMetadata(std::move(value)));
     } else if (event.type == CuptiTracerEventType::CudaGraph) {
-      if (event.cuda_graph_info.orig_graph_id) {
-        std::string value =
-            absl::StrCat("orig_graph_id:", event.cuda_graph_info.orig_graph_id);
-        VLOG(7) << "Add CudaGraph stat. " << value;
+      if (event.source == CuptiTracerEventSource::Activity) {
         xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
-                                GetStatTypeStr(StatType::kCudaGraphDetails)),
-                            *plane->GetOrCreateStatMetadata(std::move(value)));
+                                GetStatTypeStr(StatType::kCudaGraphExecId)),
+                            event.graph_id);
+      } else {
+        if (event.cuda_graph_info.orig_graph_id) {
+          xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                  GetStatTypeStr(StatType::kCudaGraphOrigId)),
+                              event.cuda_graph_info.orig_graph_id);
+        }
       }
     }
 

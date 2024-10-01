@@ -28,10 +28,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {

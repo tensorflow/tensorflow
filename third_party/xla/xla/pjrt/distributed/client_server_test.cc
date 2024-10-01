@@ -386,6 +386,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
+    client_options.poll_for_error_from_service_at_startup = false;
     client_options.missed_heartbeat_callback =
         [&](absl::Status status, bool coordinator_initiated) {};
     auto client = GetClient(node_id, client_options);

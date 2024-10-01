@@ -105,6 +105,7 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     const HloFusionInstruction& fusion) const {
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
+  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
 
   auto indexing =
       ComputeThreadIdToOutputIndexing(0, entry_function.getContext());
@@ -124,19 +125,15 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
     }
   }
 
-  auto body_builder = [&](ValueRange output_tensors, ValueRange dim_values,
-                          ValueRange symbol_values) -> SmallVector<Value> {
-    llvm::SmallVector<Value> first_output_indices =
-        mlir_converter::ApplyIndexing(*indexing, dim_values, symbol_values,
-                                      builder);
+  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+                          ValueRange output_tensors) -> SmallVector<Value> {
     auto root_fn = call_targets(
         fusion.fused_instructions_computation()->root_instruction());
-
     // Generate the operands for the root function: input tensors +
     // output indices.
     SmallVector<Value> operands(
         entry_function.getArguments().take_front(num_inputs));
-    absl::c_copy(first_output_indices, std::back_inserter(operands));
+    absl::c_copy(map_results, std::back_inserter(operands));
     auto result_scalars =
         builder.create<PureCallOp>(root_fn, operands).getResults();
 
@@ -147,15 +144,16 @@ absl::Status MlirLoopFusion::EmitEntryFunction(
       llvm::SmallVector<Value> output_indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(*result_shapes.front(), *root_shape,
                         builder.getContext()),
-          first_output_indices, {}, builder);
+          map_results, {}, builder);
       result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
           value, tensor, output_indices));
     }
     return result_tensors;
   };
 
-  builder.create<mlir::func::ReturnOp>(
-      EmitThreadLoopNest(builder, output_tensor_args, *indexing, body_builder));
+  builder.create<mlir::func::ReturnOp>(mlir_converter::EmitXlaLoopOp(
+      builder, thread_and_block_ids, output_tensor_args, *indexing,
+      body_builder));
 
   return absl::OkStatus();
 }

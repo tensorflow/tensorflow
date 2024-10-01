@@ -32,6 +32,7 @@ import numpy as onp
 import numpy.random as npr
 
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gradient_checker_v2
@@ -86,7 +87,7 @@ def _dtype(x):
     return x.dtype.as_numpy_dtype
   return (getattr(x, 'dtype', None) or
           onp.dtype(python_scalar_dtypes.get(type(x), None)) or
-          onp.asarray(x).dtype)
+          numpy_compat.np_asarray(x).dtype)
 
 
 def is_sequence(x):
@@ -192,7 +193,7 @@ def scalar_mul(xs, a):
 def rand_like(rng, x):
   shape = onp.shape(x)
   dtype = _dtype(x)
-  randn = lambda: onp.asarray(rng.randn(*shape), dtype=dtype)
+  randn = lambda: numpy_compat.np_asarray(rng.randn(*shape), dtype=dtype)
   if onp.issubdtype(dtype, onp.complexfloating):
     return randn() + dtype.type(1.0j) * randn()
   else:
@@ -339,7 +340,7 @@ def _cast_to_shape(value, shape, dtype):
     return onp.dtype(dtype).type(value)
   elif shape is PYTHON_SCALAR_SHAPE:
     # explicitly cast to Python scalar via https://stackoverflow.com/a/11389998
-    return onp.asarray(value).item()
+    return numpy_compat.np_asarray(value).item()
   elif type(shape) in (list, tuple):
     assert onp.shape(value) == tuple(shape)
     return value
@@ -383,12 +384,14 @@ def _rand_dtype(rand, shape, dtype, scale=1., post=lambda x: x):
     An ndarray of the given shape and dtype using random values based on a call
     to rand but scaled, converted to the appropriate dtype, and post-processed.
   """
-  r = lambda: onp.asarray(scale * rand(*_dims_of_shape(shape)), dtype)
+  r = lambda: numpy_compat.np_asarray(scale * rand(*_dims_of_shape(shape)),
+                                      dtype)
   if onp.issubdtype(dtype, onp.complexfloating):
     vals = r() + 1.0j * r()
   else:
     vals = r()
-  return _cast_to_shape(onp.asarray(post(vals), dtype), shape, dtype)
+  return _cast_to_shape(numpy_compat.np_asarray(post(vals), dtype), shape,
+                        dtype)
 
 
 def rand_default(scale=3):
@@ -473,7 +476,8 @@ def rand_some_inf():
     vals = onp.where(posinf_flips, onp.array(onp.inf, dtype=dtype), vals)
     vals = onp.where(neginf_flips, onp.array(-onp.inf, dtype=dtype), vals)
 
-    return _cast_to_shape(onp.asarray(vals, dtype=dtype), shape, dtype)
+    return _cast_to_shape(numpy_compat.np_asarray(vals, dtype=dtype), shape,
+                          dtype)
 
   return rand
 
@@ -500,7 +504,8 @@ def rand_some_nan():
     vals = base_rand(shape, dtype)
     vals = onp.where(nan_flips, onp.array(onp.nan, dtype=dtype), vals)
 
-    return _cast_to_shape(onp.asarray(vals, dtype=dtype), shape, dtype)
+    return _cast_to_shape(numpy_compat.np_asarray(vals, dtype=dtype), shape,
+                          dtype)
 
   return rand
 
@@ -535,7 +540,8 @@ def rand_some_inf_and_nan():
     vals = onp.where(neginf_flips, onp.array(-onp.inf, dtype=dtype), vals)
     vals = onp.where(nan_flips, onp.array(onp.nan, dtype=dtype), vals)
 
-    return _cast_to_shape(onp.asarray(vals, dtype=dtype), shape, dtype)
+    return _cast_to_shape(numpy_compat.np_asarray(vals, dtype=dtype), shape,
+                          dtype)
 
   return rand
 
@@ -553,7 +559,8 @@ def rand_some_zero():
     vals = base_rand(shape, dtype)
     vals = onp.where(zeros, onp.array(0, dtype=dtype), vals)
 
-    return _cast_to_shape(onp.asarray(vals, dtype=dtype), shape, dtype)
+    return _cast_to_shape(numpy_compat.np_asarray(vals, dtype=dtype), shape,
+                          dtype)
 
   return rand
 
@@ -686,8 +693,8 @@ class TestCase(parameterized.TestCase):
       self.assertTrue(hasattr(y, '__array__') or onp.isscalar(y))
       if check_dtypes:
         self.assertDtypesMatch(x, y)
-      x = onp.asarray(x)
-      y = onp.asarray(y)
+      x = numpy_compat.np_asarray(x)
+      y = numpy_compat.np_asarray(y)
       self.assertArraysAllClose(x, y, check_dtypes=False, atol=atol, rtol=rtol)
     elif x == y:
       return
@@ -761,7 +768,7 @@ class TestCase(parameterized.TestCase):
 
     python_shapes = nest.map_structure(onp.shape, python_ans)
     onp_shapes = nest.map_structure(
-        lambda x: onp.shape(onp.asarray(x)), python_ans
+        lambda x: onp.shape(numpy_compat.np_asarray(x)), python_ans
     )
     self.assertEqual(python_shapes, onp_shapes)
 

@@ -1200,6 +1200,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let hasVerifier = 1;
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {0}; }
@@ -1641,6 +1643,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
     [Pure,
      TFL_OperandHasRank<0, 1>,
      TFL_OperandHasRankAtLeast<1, 2>,
+     AffineQuantizedOpInterface,
      DynamicRangeQuantizedOpInterface,
      QuantizableResult
     ]> {
@@ -1652,7 +1655,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI4]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
@@ -1660,6 +1663,9 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {1}; }
   }];
@@ -2417,6 +2423,8 @@ equivalent to setting:
   let hasVerifier = 1;
 
   let hasCanonicalizer = 1;
+
+  let hasFolder = 1;
 }
 
 def TFL_SumOp: TFL_Op<"sum", [
@@ -2443,6 +2451,8 @@ def TFL_SumOp: TFL_Op<"sum", [
 
   let hasOptions = 1;
   let customOption = "ReducerOptions";
+
+  let hasFolder = 1;
 
   // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
   //
@@ -2721,6 +2731,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -2904,6 +2916,8 @@ def TFL_ReluOp: TFL_Op<"relu", [
   let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8, QI16]>:$y);
+
+  let hasFolder = 1;
 
   // This builder doesn't work with quantized type, so it can only be used by
   // non-quantization tablegen patterns. Currently, it is used by the
@@ -3143,6 +3157,8 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
       with only 1 element which is the axis index.
       TODO: Add support for multiple elements.
   }];
+
+  let hasFolder = 1;
 
   let arguments = (
     ins

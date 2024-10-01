@@ -47,8 +47,8 @@ const char* const kXlaCompileTimeConstantInputsAttr =
 namespace {
 // Returns a string describing how an edge from src to dst would
 // create a cycle.
-string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
-                     int dst) {
+string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
+                     int src, int dst) {
   int32_t max_path_size = graph.num_node_ids() + 1;
   std::vector<int32> path(max_path_size);
   int32_t path_size = cycles->FindPath(dst, src, max_path_size, path.data());
@@ -108,7 +108,7 @@ bool HasForwardedRefInput(const Node& node) {
 }
 
 absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
-                                               GraphCycles* cycles) {
+                                               xla::GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.

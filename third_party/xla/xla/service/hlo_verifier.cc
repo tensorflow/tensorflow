@@ -1262,9 +1262,9 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
   }
 
   auto& fused_parameters = fusion->fused_parameters();
-  if (fused_parameters.size() != fusion->operand_count()) {
+  if (fused_parameters.size() > fusion->operand_count()) {
     return Internal(
-        "Fused parameter count (%d) does not match the number of operands (%d)"
+        "Fused parameter count (%d) is greater than the number of operands (%d)"
         " passed to the fusion instruction in: %s.",
         fused_parameters.size(), fusion->operand_count(),
         fusion->ToString().c_str());
@@ -2654,7 +2654,7 @@ absl::Status CheckFusionInstruction(HloInstruction* fusion) {
 
   // Fused parameter instructions must be numbered contiguously and match up
   // (shapes equal) with their respective operand.
-  CHECK_EQ(fusion->operands().size(), fused_parameters.size());
+  CHECK_GE(fusion->operands().size(), fused_parameters.size());
   std::vector<bool> parameter_numbers(fused_parameters.size(), false);
   for (auto fused_param : fused_parameters) {
     int64_t param_no = fused_param->parameter_number();

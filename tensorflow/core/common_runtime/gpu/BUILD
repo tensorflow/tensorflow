@@ -1,5 +1,5 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@local_xla//xla/tsl:tsl.bzl", "if_hermetic_cuda_libs")
+load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -144,7 +144,7 @@ filegroup(
 cc_library(
     name = "gpu_runtime_hermetic_cuda_deps",
     visibility = ["//visibility:public"],
-    deps = if_hermetic_cuda_libs([
+    deps = if_cuda_libs([
         "@local_xla//xla/tsl/cuda:cudart",
         "@local_xla//xla/tsl/cuda:cublas",
         "@local_xla//xla/tsl/cuda:cufft",
@@ -204,6 +204,7 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
         "@local_xla//xla/tsl/framework:device_id_utils",
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.

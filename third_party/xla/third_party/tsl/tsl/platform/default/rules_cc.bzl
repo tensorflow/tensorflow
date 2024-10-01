@@ -15,7 +15,7 @@ def cc_library(name, deps = None, **kwargs):
 
     Args:
       name: name of target.
-      deps: deps with `xla:bazel_issue_21519` added.
+      deps: deps with `xla/tsl:bazel_issue_21519` added.
       **kwargs: passed to native.cc_library.
     """
 
@@ -25,6 +25,6 @@ def cc_library(name, deps = None, **kwargs):
     # Horrifying, but needed to prevent a cycle, as `bazel_issue_21519` is an
     # alias of `empty`.
     if name != "empty":
-        deps = deps + ["@local_xla//xla:bazel_issue_21519"]  # buildifier: disable=list-append
+        deps = deps + ["@local_xla//xla/tsl:bazel_issue_21519"]  # buildifier: disable=list-append
 
     native.cc_library(name = name, deps = deps, **kwargs)

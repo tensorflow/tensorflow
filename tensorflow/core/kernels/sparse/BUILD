@@ -58,7 +58,7 @@ tf_kernel_library(
         "zeros_op.h",
     ],
     gpu_deps = [
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
         "//tensorflow/core/kernels:gpu_device_array",
     ],
     gpu_srcs = [

@@ -670,8 +670,10 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
+  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
@@ -687,7 +689,6 @@ set(_ALL_TFLITE_SRCS
   ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
-  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
 
 if(_TFLITE_ENABLE_MMAP)

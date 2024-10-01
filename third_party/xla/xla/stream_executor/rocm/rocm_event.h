@@ -16,16 +16,15 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_
 
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 
 namespace stream_executor::gpu {
 
-class GpuContest;
-
 // This class implements Event::PollForStatus for ROCm devices.
 class RocmEvent : public GpuEvent {
  public:
-  explicit RocmEvent(GpuContext *context) : GpuEvent(context) {}
+  explicit RocmEvent(Context *context) : GpuEvent(context) {}
 
   Event::Status PollForStatus() override;
 };

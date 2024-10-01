@@ -76,8 +76,8 @@ class TfHostCallback {
   std::vector<DtypeAndShape> result_type_and_shapes_;
 };
 
-absl::StatusOr<std::unique_ptr<tensorflow::StaticDeviceMgr>>
-CreateTfStaticDeviceMgr();
+absl::StatusOr<std::unique_ptr<tensorflow::DynamicDeviceMgr>>
+CreateTfDynamicDeviceMgr();
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

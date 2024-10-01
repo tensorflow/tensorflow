@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -40,6 +41,18 @@ using llvm::ArrayRef;
 using mlir::Operation;
 using mlir::ShapedType;
 using mlir::Value;
+
+// Returns true if the value is the min float value.
+inline bool IsNegInfiniteValue(APFloat value) {
+  if (!value.isNegative()) return false;
+  return value.isInfinity();
+}
+
+// Returns true if the value is the max float value.
+inline bool IsPosInfiniteValue(APFloat value) {
+  if (value.isNegative()) return false;
+  return value.isInfinity();
+}
 
 // Returns true if all tensor value in `values` has static shape and same shape.
 inline bool OpHasSameStaticShapes(Operation* op) {
@@ -281,6 +294,40 @@ inline ShapedType GetTransposedType(Value input,
   auto transposed_type =
       RankedTensorType::get(transposed_shape, input_type.getElementType());
   return transposed_type;
+}
+
+// Return the resultant shape if the shape of the supplied attribute/value is
+// expanded by n leading 1s'.
+inline SmallVector<int32_t> GetExpandedShape(Value input_val, int n) {
+  auto input_shape = mlir::cast<ShapedType>(input_val.getType()).getShape();
+  SmallVector<int32_t> expanded_shape;
+  expanded_shape.reserve(input_shape.size() + n);
+  for (int i = 0; i < n; ++i) {
+    expanded_shape.push_back(1);
+  }
+  expanded_shape.insert(expanded_shape.end(), input_shape.begin(),
+                        input_shape.end());
+  return expanded_shape;
+}
+
+// Return the resultant shape as a DenseElementsAttr if the shape of the
+// supplied attribute/value is expanded by n leading 1s'.
+inline DenseElementsAttr GetExpandedShapeAttr(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get({static_cast<int>(expanded_shape.size())},
+                            mlir::IntegerType::get(input_val.getContext(), 32)),
+      llvm::ArrayRef(expanded_shape));
+}
+
+// Return the resultant shape type if the shape of the supplied attribute/value
+// is expanded by n leading 1s'.
+inline ShapedType GetExpandedShapeType(Value input_val, int n) {
+  auto expanded_shape = GetExpandedShape(input_val, n);
+  return RankedTensorType::get(
+      SmallVector<int64_t>{expanded_shape.begin(), expanded_shape.end()},
+      mlir::cast<ShapedType>(input_val.getType()).getElementType());
 }
 
 // Returns shape of a ranked tensor.

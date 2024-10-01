@@ -23,6 +23,9 @@ permissions:
   contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   # A bit tricky here: this lets us invoke python files outside of `bazel run`

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SHARDING_PROPAGATION_H_
 #define XLA_SERVICE_SHARDING_PROPAGATION_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,27 +26,25 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/dot_as_convolution_util.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
 // Infers the shardings for a dot HLO op from the shardings on its operands,
 // which are expected to have sharding annotations.
 bool InferDotShardingFromOperands(
-    HloInstruction* instruction, const CallGraph& call_graph,
+    HloInstruction* instruction,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
-    bool may_combine_partial_sharding, bool is_spmd);
+    int64_t aggressiveness, bool may_combine_partial_sharding);
 
 // Infers the shardings for a convolution HLO op from the shardings on its
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
-                                          const CallGraph& call_graph,
                                           int64_t aggressiveness,
-                                          bool may_combine_partial_sharding,
-                                          bool is_spmd);
+                                          bool may_combine_partial_sharding);
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
@@ -152,6 +151,36 @@ class ShardingPropagation : public HloModulePass {
       int64_t aggressiveness, bool is_spmd,
       const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
+
+  absl::StatusOr<bool> RunToFixPoint(
+      int64_t aggressiveness, bool propagate_shard_group,
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      const CallGraph& call_graph, HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
+          unspecified_dims,
+      absl::flat_hash_map<HloInstruction*, int64_t>&
+          instruction_to_shard_group_id,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_as_group,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_like_group,
+      int64_t& iterations);
+
+  // If instruction is a while, or the root or a parameter of a while body,
+  // then propagate its sharding to the while instruction, to its body root,
+  // and to its condition parameter.
+  void MaybeComputationPropagation(
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* changed);
+
+  // Gets instructions that are related through a computation and need to share
+  // the same sharding.
+  std::vector<HloInstruction*> GetRelatedInstructions(
+      HloInstruction* inst, const ComputationMap& computation_map);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;

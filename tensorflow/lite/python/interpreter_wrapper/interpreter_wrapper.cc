@@ -396,6 +396,13 @@ int InterpreterWrapper::NumTensors(int subgraph_index) const {
   return interpreter_->subgraph(subgraph_index)->tensors_size();
 }
 
+int InterpreterWrapper::NumSubgraphs() const {
+  if (interpreter_ == nullptr) {
+    return 0;
+  }
+  return interpreter_->subgraphs_size();
+}
+
 std::string InterpreterWrapper::TensorName(int tensor_index,
                                            int subgraph_index) const {
   const Subgraph* subgraph = interpreter_->subgraph(subgraph_index);

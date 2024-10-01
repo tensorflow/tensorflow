@@ -80,6 +80,17 @@ struct DeviceMesh {
     device_array.Each(f);
   }
 };
+
+template <class T>
+inline bool AreValuesIota(absl::Span<const T> values) {
+  for (int i = 1; i < values.size(); ++i) {
+    if (values[i] - values[i - 1] != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace spmd
 }  // namespace xla
 

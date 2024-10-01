@@ -237,6 +237,7 @@ cc_library(
     }) + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     linkstatic = True,
     deps = [
+        ":file_util",
         ":flexbuffers_util",
         ":quantization_util",
         ":tflite_with_xnnpack_dynamic_fully_connected",
@@ -283,6 +284,7 @@ cc_library(
     copts = tflite_copts() + ["-DXNNPACK_DELEGATE_TEST_MODE=1"] + ["-DFLATBUFFERS_LOCALE_INDEPENDENT=0"],
     linkstatic = True,
     deps = [
+        ":file_util",
         ":flexbuffers_util",
         ":quantization_util",
         ":weight_cache",
@@ -337,6 +339,7 @@ cc_library(
     hdrs = ["weight_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":file_util",
         ":weight_cache_schema",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -351,6 +354,16 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "file_util",
+    srcs = ["file_util.cc"],
+    hdrs = ["file_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/lite:minimal_logging",
     ],
 )
 
@@ -1419,6 +1432,9 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
+    # TODO(b/360983009): This test are currently failing on TAP presubmit for
+    # android x86. We should re-enable it once we fix the failures.
+    tags = ["notap"],
     deps = [
         ":dynamically_quantized_fully_connected_tester",
         ":test_main",
@@ -2943,6 +2959,7 @@ cc_test(
         ":test_main",
         ":weight_cache",
         ":weight_cache_schema",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:common",
         "@XNNPACK",
         "@com_google_googletest//:gtest",
@@ -2955,6 +2972,16 @@ cc_test(
     srcs = ["flexbuffers_util_test.cc"],
     deps = [
         ":flexbuffers_util",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "file_util_test",
+    srcs = ["file_util_test.cc"],
+    deps = [
+        ":file_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
     ],

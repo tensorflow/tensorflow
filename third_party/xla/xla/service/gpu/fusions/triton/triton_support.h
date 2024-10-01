@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -52,6 +53,13 @@ CodegenDecision IsTritonSupportedInstruction(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+namespace internal {
+// TODO(b/363981282): Remove the function below once all ops are tested via
+// HLOs. This is exposed for testing purposes only and will be removed in the
+// near future. Do not use. This functions only returns a partial result.
+bool IsTritonUnsupportedOpcode(HloOpcode opcode);
+}  // namespace internal
 
 }  // namespace gpu
 }  // namespace xla

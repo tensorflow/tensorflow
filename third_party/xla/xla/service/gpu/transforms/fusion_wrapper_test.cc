@@ -25,6 +25,28 @@ namespace {
 
 class FusionWrapperTest : public HloTestBase {};
 
+TEST_F(FusionWrapperTest, ConvolutionWorks) {
+  RunAndFilecheckHloRewrite(R"(HloModule TestModule
+
+ENTRY TestComputation {
+  input = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
+  kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
+  ROOT conv = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(input, kernel), dim_labels=0123bf_i0123o->f0123b, window={size=1x2x1x4}
+})",
+                            FusionWrapper(), R"(
+// CHECK: %wrapped_convolution_computation (param_0: f32[1,10,1,10,5,20], param_1: f32[20,1,2,1,4,15]) -> f32[15,1,9,1,7,5] {
+// CHECK:   %param_0 = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
+// CHECK:   %param_1 = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
+// CHECK:   ROOT %conv.1 = f32[15,1,9,1,7,5]{5,4,3,2,1,0} convolution(%param_0, %param_1), window={size=1x2x1x4}, dim_labels=0123bf_i0123o->f0123b
+// CHECK: }
+
+// CHECK: ENTRY %TestComputation (input: f32[1,10,1,10,5,20], kernel: f32[20,1,2,1,4,15]) ->  f32[15,1,9,1,7,5] {
+// CHECK:   %input = f32[1,10,1,10,5,20]{5,4,3,2,1,0} parameter(0)
+// CHECK:   %kernel = f32[20,1,2,1,4,15]{5,4,3,2,1,0} parameter(1)
+// CHECK:   ROOT %wrapped_convolution = f32[15,1,9,1,7,5]{5,4,3,2,1,0} fusion(%input, %kernel), kind=kLoop, calls=%wrapped_convolution_computation
+// CHECK: })");
+}
+
 TEST_F(FusionWrapperTest, SimpleOp) {
   RunAndFilecheckHloRewrite(R"(
       HloModule TestModule

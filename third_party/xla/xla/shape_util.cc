@@ -1169,6 +1169,16 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return absl::c_linear_search(shape.dimensions(), 1);
 }
 
+/* static */ absl::StatusOr<int64_t>
+ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
+  if (shape.rank() == 1 && shape.layout().tiles_size() == 3 &&
+      shape.layout().tiles()[2].dimensions().size() == 2) {
+    return shape.layout().tiles()[2].dimension(0);
+  }
+  return InvalidArgument("Shape %s is not a 1D interleaved array.",
+                         ShapeUtil::HumanStringWithLayout(shape));
+}
+
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
   return FilterDimensions(
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
@@ -1976,138 +1986,6 @@ struct ParallelState {
   }
   shape.DeleteDimensions(dims_to_delete);
   return shape;
-}
-
-// Returns the indices of the first elements of all consecutive subarrays of the
-// given array. For example:
-// ConsecutiveSegments({m, m+1, m+2, n, k, k+1}) = {0, 3, 4}
-static absl::InlinedVector<size_t, 3> ConsecutiveSegments(
-    absl::Span<const int64_t> xs) {
-  absl::InlinedVector<size_t, 3> is = {0};
-  for (size_t i = 1; i < xs.size(); ++i) {
-    if (1 != xs[i] - xs[i - 1]) {
-      is.push_back(i);
-    }
-  }
-  return is;
-}
-
-// Merges the sequences of dimensions of the given shape which start at the
-// given indices `segs`.
-static Shape MergeDimensions(absl::Span<const size_t> segs,
-                             const Shape& shape) {
-  std::vector<int64_t> dimensions;
-  const auto size = segs.size();
-  dimensions.reserve(size);
-  for (size_t i = 1; i <= size; ++i) {
-    dimensions.push_back(std::accumulate(
-        shape.dimensions().begin() + segs[i - 1],
-        shape.dimensions().begin() +
-            (segs.size() == i ? shape.dimensions().size() : segs[i]),
-        int64_t{1}, std::multiplies<int64_t>()));
-  }
-  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
-                                                  dimensions);
-}
-
-static absl::InlinedVector<int64_t, 3> MajorToMinorLayout(const Shape& s) {
-  absl::Span<const int64_t> minor_to_major = LayoutUtil::MinorToMajor(s);
-  return absl::InlinedVector<int64_t, 3>{minor_to_major.rbegin(),
-                                         minor_to_major.rend()};
-}
-
-static std::optional<absl::InlinedVector<int64_t, 3>>
-GetNormalizedTransposeShapeHelper(
-    const Shape& output_shape, absl::Span<int64_t const> output_to_input,
-    absl::InlinedVector<int64_t, 3>& permutation) {
-  absl::InlinedVector<size_t, 3> segments =
-      ConsecutiveSegments(output_to_input);
-  // This means that after normalization there is actually no transpose.
-  if (segments.size() == 1) {
-    return std::nullopt;
-  }
-  Shape normalized_shape = MergeDimensions(segments, output_shape);
-  if (segments.size() == 2) {
-    // If we have two segments, we know that exactly two dimensions are swapped.
-    // Insert a 1-dimension at the front and detect a 021 transpose.
-    // TODO(b/328656780): Don't insert the extra 1-dimension once the emitter
-    // supports any number of dimensions >= 2.
-    permutation = {0, 2, 1};
-    return absl::InlinedVector<int64_t, 3>{1, normalized_shape.dimensions(0),
-                                           normalized_shape.dimensions(1)};
-  }
-  // We have at least 3 segments. Derive the permutation from the segments.
-  std::vector<int64_t> segment_to_normalized_dim(output_shape.rank(), -1);
-  for (size_t segment : segments) {
-    segment_to_normalized_dim[output_to_input[segment]] = 0;
-  }
-  int64_t normalized_dim = 0;
-  for (int64_t i = 0; i < segment_to_normalized_dim.size(); ++i) {
-    if (segment_to_normalized_dim[i] >= 0) {
-      segment_to_normalized_dim[i] = normalized_dim++;
-    }
-  }
-  permutation.reserve(segments.size());
-  for (int64_t i = 0; i < segments.size(); ++i) {
-    permutation.push_back(
-        segment_to_normalized_dim[output_to_input[segments[i]]]);
-  }
-  absl::InlinedVector<int64_t, 3> normalized_dims(
-      normalized_shape.dimensions().begin(),
-      normalized_shape.dimensions().end());
-  return normalized_dims;
-}
-
-/* static */ std::optional<absl::InlinedVector<int64_t, 3>>
-ShapeUtil::GetNormalizedLogicalTransposeShape(
-    const Shape& output_shape, absl::Span<int64_t const> dimensions,
-    absl::InlinedVector<int64_t, 3>& permutation) {
-  permutation.clear();
-  if (!LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-    // Only works on default layouts.
-    return std::nullopt;
-  }
-  // Drop degenerate dimensions.
-  absl::InlinedVector<int64_t, 3> delta(output_shape.rank() + 1, 0);
-  auto input_dimensions = ComposePermutations(output_shape.dimensions(),
-                                              InversePermutation(dimensions));
-  for (int i = 0; i < output_shape.rank(); ++i) {
-    delta[i + 1] = delta[i];
-    if (input_dimensions[i] == static_cast<int64_t>(1)) {
-      ++delta[i + 1];
-    }
-  }
-  absl::InlinedVector<int64_t, 3> new_dimensions;
-  for (int i = 0; i < dimensions.size(); i++) {
-    if (output_shape.dimensions(i) != 1) {
-      new_dimensions.push_back(dimensions[i] - delta[dimensions[i]]);
-    }
-  }
-
-  return GetNormalizedTransposeShapeHelper(
-      DropDegenerateDimensions(output_shape), new_dimensions, permutation);
-}
-
-/* static */ std::optional<absl::InlinedVector<int64_t, 3>>
-ShapeUtil::GetNormalizedTransposeShape(
-    const Shape& input_shape, const Shape& output_shape,
-    absl::InlinedVector<int64_t, 3>& permutation) {
-  permutation.clear();
-  if (!ShapeUtil::CompatibleIgnoringElementType(input_shape, output_shape)) {
-    return std::nullopt;
-  }
-
-  absl::InlinedVector<int64_t, 3> major_to_minor_input =
-      MajorToMinorLayout(input_shape);
-  absl::InlinedVector<int64_t, 3> major_to_minor_output =
-      MajorToMinorLayout(output_shape);
-  std::vector<int64_t> output_to_input = ComposePermutations(
-      InversePermutation(major_to_minor_input), major_to_minor_output);
-
-  return GetNormalizedTransposeShapeHelper(
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          output_shape),
-      output_to_input, permutation);
 }
 
 Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {

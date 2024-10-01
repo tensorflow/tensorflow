@@ -487,7 +487,6 @@ cc_library(
 tf_proto_library(
     name = "analysis/analysis_proto",
     srcs = ["analysis/analysis.proto"],
-    cc_api_version = 2,
 )
 
 cc_library(

@@ -436,8 +436,10 @@ def parse_single_example_v2(
   Raises:
     ValueError: if any feature is invalid.
   """
-  if not features:
+  if features is None:
     raise ValueError("Invalid argument: features cannot be None.")
+  if not features:
+    raise ValueError("Invalid argument: features cannot be empty.")
   with ops.name_scope(name, "ParseSingleExample", [serialized, example_names]):
     serialized = ops.convert_to_tensor(serialized, name="serialized")
     serialized = _assert_scalar(serialized, "serialized")

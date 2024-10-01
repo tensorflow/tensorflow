@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -648,6 +649,114 @@ TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementsRemoveTuple) {
       GmockMatch(
           m::Add(m::Parameter(0), m::Parameter(1)).WithShape(F32, {32, 32})));
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+}
+
+TEST_F(
+    HloDceTest,
+    MultiOutputFusionRemoveUnusedTupleElementsRemoveTupleMultiUsersPerOutput) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    p2 = f32[32,32]{1,0} parameter(2) // becomes dead
+    add = f32[32,32]{1,0} add(p0, p1)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p2, add, p2)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    param2 = f32[32,32]{1,0} parameter(2)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1, param2), kind=kLoop, calls=fused_add
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    gte.1.again = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(gte.1, gte.1.again)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte.0");
+  EXPECT_EQ(gte_0, nullptr);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte.1");
+  EXPECT_EQ(gte_1, nullptr);
+  HloInstruction* gte_1_again = FindInstruction(module.get(), "gte.1.again");
+  EXPECT_EQ(gte_1_again, nullptr);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_FALSE(fusion->shape().IsTuple());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0), fusion);
+  EXPECT_EQ(root->operand(1), fusion);
+}
+
+TEST_F(
+    HloDceTest,
+    MultiOutputFusionRemoveUnusedTupleElementsRemoveTupleNonContiguousRemoval) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    p2 = f32[32,32]{1,0} parameter(2) // becomes dead
+    add = f32[32,32]{1,0} add(p0, p1)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p2, add, p2, p2)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    param2 = f32[32,32]{1,0} parameter(2)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1, param2), kind=kLoop, calls=fused_add
+    gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0  // dead
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    gte.1.again = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    gte.3 = f32[32,32]{1,0} get-tuple-element(fusion), index=3
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(gte.1, gte.1.again, gte.3)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+
+  // We expect that the dead parameter and the dead tuple entry are removed.
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte.0");
+  EXPECT_EQ(gte_0, nullptr);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte.1");
+  EXPECT_NE(gte_1, nullptr);
+  EXPECT_EQ(static_cast<HloGetTupleElementInstruction*>(gte_1)->tuple_index(),
+            0);
+  HloInstruction* gte_1_again = FindInstruction(module.get(), "gte.1.again");
+  EXPECT_EQ(
+      static_cast<HloGetTupleElementInstruction*>(gte_1_again)->tuple_index(),
+      0);
+  EXPECT_NE(gte_1_again, nullptr);
+  HloInstruction* gte_3 = FindInstruction(module.get(), "gte.3");
+  EXPECT_NE(gte_3, nullptr);
+  EXPECT_EQ(static_cast<HloGetTupleElementInstruction*>(gte_3)->tuple_index(),
+            1);
+
+  HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  ASSERT_NE(fusion, nullptr);
+  EXPECT_TRUE(fusion->shape().IsTuple());
+  EXPECT_EQ(fusion->shape().tuple_shapes_size(), 2);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand_count(), 3);
+  EXPECT_EQ(root->operand(0), gte_1);
+  EXPECT_EQ(root->operand(1), gte_1_again);
+  EXPECT_EQ(root->operand(2), gte_3);
 }
 
 TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {

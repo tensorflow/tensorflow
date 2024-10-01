@@ -49,3 +49,9 @@ def FoldQuantWeightsIntoTposeConv : Pat<
   (TFL_TransposeConvOp $output_shape, $quant_weights,
     $quant_input, $bias, $padding, $stride_h, $stride_w, $faf), 
   [(TensorOf<[QI8, QUI8, QI16]> $quant_weights)]>;
+
+// EmbeddingLookup supports quantized table tensors.
+def FoldQuantWeightsIntoEmbeddingLookup : Pat<
+  (TFL_EmbeddingLookupOp:$output $indices, (TFL_DequantizeOp $table)),
+  (TFL_EmbeddingLookupOp $indices, $table),
+  [(TensorOf<[QI4, QI8, QUI8]> $table), (TensorOf<[F32]> $output)]>;

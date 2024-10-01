@@ -450,10 +450,8 @@ class WindowPrefetchedAllocation final : public Allocation {
 
  private:
   // This method is called by Process() to create window prefetch instructions.
-  // These instructions include a pair of async WindowPrefetch outside the
-  // fusion and a WindowPrefetchBuffer inside the fusion. The
-  // WindowPrefetchBuffer is used for consuming the appended window buffer
-  // operands.
+  // These instructions include a pair of async WindowPrefetch which is passed
+  // to the fusion.
   absl::Status InsertWindowPrefetchInstruction(
       HloInstruction* producing_instruction, HloInstruction* use_instruction,
       HloComputation* computation);

@@ -349,9 +349,6 @@ class TfPjRtClient : public PjRtClient {
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return wrapped_->CreateDeviceToHostChannelHandle();
   }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return wrapped_->CreateHostToDeviceChannelHandle();
-  }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return wrapped_->GetTopologyDescription();

@@ -143,6 +143,7 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
             "to be sorted in ascending order.");
       }
       *(row_ids_before_padding + i) = current_row_id;
+      previous_row_id = current_row_id;
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {

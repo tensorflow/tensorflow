@@ -37,8 +37,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
-namespace m = ::xla::match;
-
 namespace xla {
 namespace {
 

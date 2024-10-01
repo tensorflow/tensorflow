@@ -8,7 +8,6 @@ package(
     default_visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/serving/servables/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/ifrt:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",

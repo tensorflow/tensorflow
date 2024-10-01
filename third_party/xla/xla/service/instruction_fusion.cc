@@ -1054,6 +1054,13 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
+  return ShouldFuse(consumer, operand_index, ShouldFuseInPlaceOp);
+}
+
+FusionDecision InstructionFusion::ShouldFuse(
+    HloInstruction* consumer, int64_t operand_index,
+    std::function<FusionDecision(const HloInstruction*, const HloInstruction*)>
+        inplace_op_fusion_decider) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Don't fuse across a root instruction.
@@ -1068,8 +1075,7 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
     return may_duplicate_ ? "expensive producer would be duplicated"
                           : "fusion pass cannot duplicate";
   }
-
-  return ShouldFuseInPlaceOp(producer, consumer);
+  return inplace_op_fusion_decider(producer, consumer);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

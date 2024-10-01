@@ -25,3 +25,14 @@ tf_proto_library(
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
+
+tf_proto_library(
+    name = "test_log_proto",
+    srcs = ["test_log.proto"],
+    make_default_target_header_only = True,
+    protodeps = if_google([
+        "@com_google_protobuf//:any",
+        "@com_google_protobuf//:wrappers",
+    ]),
+    visibility = ["//visibility:public"],
+)

@@ -37,8 +37,8 @@ Unmqr              //      ----        // rocsolver_Xunmqr  //   hipsolverXunmqr
 #include <unordered_map>
 #include <vector>
 
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/default/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
@@ -58,7 +58,7 @@ namespace tensorflow {
 namespace {
 
 using stream_executor::gpu::GpuExecutor;
-using stream_executor::gpu::ScopedActivateExecutorContext;
+using stream_executor::gpu::ScopedActivateContext;
 
 inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
@@ -176,7 +176,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
           std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
               info_checker_callback,
           std::vector<HostLapackInfo> host_lapack_infos) {
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        ScopedActivateContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -804,6 +804,43 @@ static inline Status TrsmImpl(SolverFnT solver,
   }
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
+
+template <typename Scalar, typename SolverFnT>
+Status MatInvBatchedImpl(SolverFnT solver,
+                         rocblas_handle rocm_blas_handle, int n,
+                         const Scalar* const host_a_dev_ptrs[], int lda,
+                         int* dev_pivots,
+                         const Scalar* const host_a_inverse_dev_ptrs[],
+                         int ldainv, DeviceLapackInfo* dev_lapack_info,
+                         int batch_size) {
+  mutex_lock lock(handle_map_mutex);
+  using ROCmScalar = typename ROCmComplexT<Scalar>::type;
+
+  GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
+               batch_size);
+
+  GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
+               ldainv, dev_lapack_info, batch_size);
+
+  return OkStatus();
+}
+
+#define MATINVBATCHED_INSTANCE(Scalar, type_prefix)                           \
+  template <>                                                                 \
+  Status GpuSolver::MatInvBatched<Scalar>(                                    \
+      int n, const Scalar* const host_a_dev_ptrs[], int lda,                  \
+      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,              \
+      DeviceLapackInfo* dev_lapack_info, int batch_size) {                    \
+    Tensor pivots;                                                            \
+    context_->allocate_scoped_tensor(DataTypeToEnum<int>::value,              \
+                                     TensorShape{batch_size, n}, &pivots);    \
+    auto pivots_mat = pivots.template matrix<int>();                          \
+    int* dev_pivots = pivots_mat.data();                                      \
+    return MatInvBatchedImpl(                                                 \
+        BLAS_SOLVER_FN(matinvbatched, type_prefix),                           \
+        rocm_blas_handle_, n, host_a_dev_ptrs, lda, dev_pivots,               \
+        host_a_inverse_dev_ptrs, ldainv, dev_lapack_info, batch_size);        \
+  }
 
 #define TRSM_BATCHED_INSTANCE(Scalar, type_prefix)                            \
   template <>                                                                 \

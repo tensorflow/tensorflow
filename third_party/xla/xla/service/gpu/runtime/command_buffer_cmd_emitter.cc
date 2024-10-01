@@ -294,6 +294,13 @@ static absl::Status AppendCommands(
     case Thunk::Kind::kWaitForStreams:
       return append(Convert<WaitForStreamsThunk>(thunk));
 
+    case Thunk::Kind::kCommandBuffer:
+      return Internal(
+          "Error trying to emit command for a CommandBufferThunk. Input HLO "
+          "must already contain command buffers and XLA should not run command "
+          "buffer scheduling pass the second time. It it happens in the test, "
+          "try explicitly disabling command buffers in tested HLO module.");
+
     default:
       return Internal("Unsupported thunk kind: %s",
                       Thunk::KindToString(thunk.kind()));

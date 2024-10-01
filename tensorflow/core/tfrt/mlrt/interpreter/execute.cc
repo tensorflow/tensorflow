@@ -178,6 +178,7 @@ void UnwindOnError(ExecutionContext& context, int64_t pc) {
   if (!context.function_stack_.empty()) {
     function_name = context.function_stack_.back().function_object().name();
   }
+  context.LogError(context.status());
   context.LogError(absl::InternalError(absl::StrCat(
       "UnwindOnError: start from function ", function_name,
       " with stack size: ", context.function_stack_.size(), " at pc: ", pc,

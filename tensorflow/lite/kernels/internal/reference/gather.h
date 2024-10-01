@@ -15,11 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_GATHER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_GATHER_H_
 
+#include <cstdint>
 #include <cstring>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace reference_ops {
@@ -68,11 +71,18 @@ inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
     inner_size *= input_shape.Dims(i);
   }
 
+  int input_flat_size = input_shape.FlatSize();
+  int output_flat_size = output_shape.FlatSize();
+
   if (int4_input) {
-    // TODO(b/298210669) It doesn't handle the case that inner_size is not
+    // TODO(b/298210669) It doesn't handle the case when sizes are not
     // divisible by 2.
     TFLITE_DCHECK_EQ(inner_size % 2, 0);
     inner_size /= 2;
+    TFLITE_DCHECK_EQ(input_flat_size % 2, 0);
+    input_flat_size /= 2;
+    TFLITE_DCHECK_EQ(output_flat_size % 2, 0);
+    output_flat_size /= 2;
   }
 
   int coord_size = 1;
@@ -80,22 +90,24 @@ inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
     coord_size *= coords_shape.Dims(i);
   }
 
-  int flat_size = input_shape.FlatSize();
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int outer = 0; outer < outer_size; ++outer) {
       for (int i = 0; i < coord_size; ++i) {
         // TODO(rsun): replace memcpy with a for loop
-        int64_t from_pos = (((batch * outer_size) + outer) * axis_size +
-                            coords_data[batch * coord_size + i]) *
-                           inner_size;
-        if (from_pos < 0 || from_pos + inner_size > flat_size) {
+        const int64_t coord = coords_data[batch * coord_size + i];
+        if (coord < 0 || coord >= axis_size) {
           return kTfLiteError;
         }
-
-        std::memcpy(
-            output_data +
-                (((batch * outer_size) + outer) * coord_size + i) * inner_size,
-            &input_data[from_pos], sizeof(T) * inner_size);
+        const int64_t from_pos =
+            (((batch * outer_size) + outer) * axis_size + coord) * inner_size;
+        TFLITE_DCHECK(from_pos >= 0);
+        TFLITE_DCHECK(from_pos + inner_size <= input_flat_size);
+        const int64_t to_pos =
+            (((batch * outer_size) + outer) * coord_size + i) * inner_size;
+        TFLITE_DCHECK(to_pos >= 0);
+        TFLITE_DCHECK(to_pos + inner_size <= output_flat_size);
+        std::memcpy(&output_data[to_pos], &input_data[from_pos],
+                    sizeof(T) * inner_size);
       }
     }
   }

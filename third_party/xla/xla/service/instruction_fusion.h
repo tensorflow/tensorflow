@@ -37,8 +37,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -197,6 +197,16 @@ class InstructionFusion : public HloModulePass {
   // Subtypes can override this with target-specific heuristics.
   virtual FusionDecision ShouldFuse(HloInstruction* consumer,
                                     int64_t operand_index);
+
+  // Returns whether a 'producer' at given operand index can be fused into the
+  // consumer. It uses the provided function to check the legality of a possible
+  // fusion when either the producer or the consumer contains an operation which
+  // updates an operand in place.
+  virtual FusionDecision ShouldFuse(
+      HloInstruction* consumer, int64_t operand_index,
+      std::function<FusionDecision(const HloInstruction*,
+                                   const HloInstruction*)>
+          inplace_op_fusion_decider);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not

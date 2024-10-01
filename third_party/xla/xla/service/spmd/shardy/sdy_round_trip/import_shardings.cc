@@ -18,7 +18,10 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/strings/escaping.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -71,21 +74,6 @@ using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
-
-// Parses `stringAttr` to an attribute of type `AttrTy`.
-//
-// NOTE: assumes `stringAttr` is of type `StringAttr`.
-template <typename AttrTy>
-AttrTy parseStringAttr(Attribute stringAttr) {
-  return mlir::cast<AttrTy>(mlir::parseAttribute(
-      mlir::cast<StringAttr>(stringAttr), stringAttr.getContext()));
-}
-
-// Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
-template <typename AttrTy>
-AttrTy parseStringAttr(DictionaryAttr dictAttr, llvm::StringRef attrName) {
-  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
-}
 
 // Builds the shardings coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
@@ -188,7 +176,7 @@ class SdyRoundTripImportShardingsPass
     // Insert the meshes before any functions.
     builder.setInsertionPointToStart(moduleOp.getBody());
     for (NamedAttribute mesh : sdyMeshes) {
-      auto meshAttr = parseStringAttr<MeshAttr>(mesh.getValue());
+      auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
       symbolTable.insert(builder.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
     }

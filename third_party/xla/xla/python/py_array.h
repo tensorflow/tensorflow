@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_numpy.h"
@@ -250,7 +250,7 @@ class PyArray : public nanobind::object {
     if (ifrt_array_ptr == nullptr) {
       return 0;
     }
-    return ifrt_array_ptr->sharding().devices().size();
+    return ifrt_array_ptr->sharding().devices()->size();
   }
 
   static nanobind::handle type() {
@@ -280,7 +280,7 @@ class PyArray : public nanobind::object {
 
   static absl::StatusOr<std::vector<PyArray>> BatchedCopyToDeviceWithSharding(
       absl::Span<const PyArray> py_arrays,
-      absl::Span<const ifrt::DeviceList> dst_device_lists,
+      absl::Span<const tsl::RCReference<ifrt::DeviceList>> dst_device_lists,
       absl::Span<const nanobind::object> dst_shardings);
 
   static absl::StatusOr<PyArray> BatchedDevicePut(

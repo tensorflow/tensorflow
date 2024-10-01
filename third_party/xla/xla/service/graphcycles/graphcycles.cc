@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/service/graphcycles/ordered_set.h"
 #include "tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace xla {
 
 namespace {
 
@@ -486,4 +486,4 @@ std::string GraphCycles::DebugString() const {
   return result;
 }
 
-}  // namespace tensorflow
+}  // namespace xla

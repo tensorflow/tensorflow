@@ -268,7 +268,17 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
       se::DeviceMemoryBase output_data,
       params.buffer_allocations->GetDeviceAddress(output_buffer_));
 
-  VLOG(3) << absl::StreamFormat("ConvolutionThunk::Execute");
+  VLOG(3) << absl::StreamFormat(
+      "Convolution: input_batch=%d input_dims=%s input_channels=%d "
+      "kernel_dims=%s kernel_channels=%d kernel_filters=%d output_dims=%s "
+      "strides=%s padding_before=%s padding_after=%s base_dilation=%s "
+      "window_dilation=%s feature_group_count=%d",
+      input_batch_, ToString(input_dims_), input_channels_,
+      ToString(kernel_dims_), kernel_channels_, kernel_filters_,
+      ToString(output_dims_), ToString(strides_), ToString(padding_before_),
+      ToString(padding_after_), ToString(base_dilation_),
+      ToString(window_dilation_), feature_group_count_);
+
   VLOG(3) << absl::StreamFormat("  input: %s in slice %s (%p)",
                                 input_shape_.ToString(true),
                                 input_buffer_.ToString(), input_data.opaque());
@@ -325,8 +335,7 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
                                            se::DeviceMemoryBase kernel,
                                            se::DeviceMemoryBase output) {
   auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      std::optional<std::function<void()>> done_callback =
-                          std::nullopt) {
+                      std::function<void()> done_callback = nullptr) {
     using scalar_type = decltype(type_tag);
     internal::EigenConv2D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
@@ -365,8 +374,7 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
                                            se::DeviceMemoryBase kernel,
                                            se::DeviceMemoryBase output) {
   auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      std::optional<std::function<void()>> done_callback =
-                          std::nullopt) {
+                      std::function<void()> done_callback = nullptr) {
     using scalar_type = decltype(type_tag);
     internal::EigenConv3D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),

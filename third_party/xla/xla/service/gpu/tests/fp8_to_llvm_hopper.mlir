@@ -20,14 +20,14 @@ module attributes {
 
 // CHECK-LABEL: e4m3_mapping
 tt.func @e4m3_mapping(
-    %arg0: tensor<16x256xf8E4M3FNUZ, #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>,
-    %arg1: tensor<256x16xf8E4M3FNUZ, #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
+    %arg0: tensor<16x256xf8E4M3FN, #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>>,
+    %arg1: tensor<256x16xf8E4M3FN, #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
   ) {
   %cst = arith.constant dense<0.000000e+00> : tensor<16x16xf32, #mma>
   // CHECK: mma.{{.*}}.e4m3.e4m3.f32
   %res = tt.dot %arg0, %arg1, %cst {allowTF32 = true, maxNumImpreciseAcc = 0 : i32}
-      : tensor<16x256xf8E4M3FNUZ, #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> *
-        tensor<256x16xf8E4M3FNUZ, #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
+      : tensor<16x256xf8E4M3FN, #triton_gpu.dot_op<{opIdx = 0, parent = #mma, kWidth = 4}>> *
+        tensor<256x16xf8E4M3FN, #triton_gpu.dot_op<{opIdx = 1, parent = #mma, kWidth = 4}>>
         -> tensor<16x16xf32, #mma>
   tt.return
 }

@@ -910,7 +910,7 @@ Status DeadnessAnalysisImpl::GetInputPreds(
     if (should_process) {
       auto it = predicate_map_.find(InputEdgeToTensorId(in_edge));
       if (it == predicate_map_.end()) {
-        GraphCycles graph_cycles;
+        xla::GraphCycles graph_cycles;
         TF_RETURN_IF_ERROR(
             CreateCycleDetectionGraph(&graph_, &graph_cycles).status());
 

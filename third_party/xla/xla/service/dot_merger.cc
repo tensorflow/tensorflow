@@ -330,7 +330,7 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp,
   }
 
   // Build a dependency graph representing the whole computation.
-  tensorflow::GraphCycles graph;
+  GraphCycles graph;
 
   absl::flat_hash_map<HloInstruction*, int32_t> graph_ids_map;
   auto graph_id = [&](HloInstruction* instr) {

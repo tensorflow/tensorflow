@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -247,7 +248,7 @@ class CompileOnlyIfRtClient final
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
-      std::optional<ifrt::DeviceList> devices,
+      std::optional<tsl::RCReference<ifrt::DeviceList>> devices,
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override {
     return Unimplemented("CopyArrays not available with compile-only client.");
@@ -317,7 +318,7 @@ class CompileOnlyIfRtClient final
   const ifrt::PjRtTopology& topology() const { return *topology_; }
 
   absl::StatusOr<std::shared_ptr<ifrt::Topology>> GetTopologyForDevices(
-      const xla::ifrt::DeviceList& devices) const override {
+      const tsl::RCReference<xla::ifrt::DeviceList>& devices) const override {
     return topology_;
   }
 

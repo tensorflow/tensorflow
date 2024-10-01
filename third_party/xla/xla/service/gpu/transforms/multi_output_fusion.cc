@@ -407,6 +407,7 @@ absl::StatusOr<bool> MultiOutputFusion::DoMultiOutputFusion() {
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
                                     /*per_second_rates=*/{},
+                                    /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
                                    device_info_);
   TF_RETURN_IF_ERROR(computation_->Accept(&cost_analysis));

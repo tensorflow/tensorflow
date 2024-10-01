@@ -76,7 +76,6 @@ tf_proto_library(
     srcs = [
         "conv_parameters.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",
@@ -135,7 +134,6 @@ tf_proto_library(
     srcs = [
         "autotune_map.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",
@@ -205,7 +203,6 @@ tf_cuda_only_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

@@ -15,32 +15,33 @@ limitations under the License.
 
 #include "xla/service/cpu/compiler_functor.h"
 
-#include <algorithm>
-#include <iterator>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Passes/OptimizationLevel.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/StandardInstrumentations.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SmallVectorMemoryBuffer.h"
+#include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/llvm_ir_runtime.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -102,8 +103,18 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
-  if (pre_optimization_hook_) {
-    pre_optimization_hook_(module);
+  // Get a target machine for compilation. If compilations run concurrently on
+  // multiple threads, `CompilerFunctor` user (in most cases `SimpleOrcJIT`)
+  // must guarantee that target machine builder will return a unique
+  // TargetMachine for each compilation, as it is not thread safe.
+  std::shared_ptr<llvm::TargetMachine> target_machine =
+      target_machine_builder_();
+
+  {  // Synchronize access to user-defined hooks.
+    absl::MutexLock lock(&mutex_);
+    if (pre_optimization_hook_) {
+      pre_optimization_hook_(module);
+    }
   }
 
   llvm::OptimizationLevel opt_level;
@@ -140,10 +151,10 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   llvm::StandardInstrumentations si(module.getContext(), false);
   si.registerCallbacks(pic, &mam);
 
-  llvm::PassBuilder pb(target_machine_, pto, {}, &pic);
+  llvm::PassBuilder pb(target_machine.get(), pto, {}, &pic);
 
   // Add the appropriate TargetLibraryInfo.
-  llvm::Triple target_triple(target_machine_->getTargetTriple());
+  llvm::Triple target_triple(target_machine->getTargetTriple());
   auto target_library_info_impl =
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
@@ -184,26 +195,32 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   VLOG(2) << "IR after optimizations";
 
-  if (post_optimization_hook_) {
-    post_optimization_hook_(module);
+  {  // Synchronize access to user-defined hooks.
+    absl::MutexLock lock(&mutex_);
+    if (post_optimization_hook_) {
+      post_optimization_hook_(module);
+    }
   }
 
   // Generate code.
   llvm::MCContext* mc_context;
   llvm::legacy::PassManager codegen_passes;
-  target_machine_->addPassesToEmitMC(codegen_passes, mc_context, ostream);
+  target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
   std::unique_ptr<llvm::MemoryBuffer> mc_memory_buffer(
       new llvm::SmallVectorMemoryBuffer(std::move(mc_stream_buffer)));
 
-  if (post_codegen_hook_) {
-    llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
-        llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
-    if (obj_file) {
-      post_codegen_hook_(*obj_file.get());
-    } else {
-      LOG(WARNING) << "Could not convert memory buffer to object file!";
+  {  // Synchronize access to user-defined hooks.
+    absl::MutexLock lock(&mutex_);
+    if (post_codegen_hook_) {
+      llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
+          llvm::object::ObjectFile::createObjectFile(*mc_memory_buffer);
+      if (obj_file) {
+        post_codegen_hook_(*obj_file.get());
+      } else {
+        LOG(WARNING) << "Could not convert memory buffer to object file!";
+      }
     }
   }
 

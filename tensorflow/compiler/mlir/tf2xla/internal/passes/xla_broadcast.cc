@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -87,8 +88,6 @@ using mlir::tf_device::ReplicateOp;
 #define GEN_PASS_DEF_XLABROADCASTPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
-const char kICIWeightDistributionMlirBridgeMarker[] =
-    "ici_weight_distribution_mlir_bridge_marker";
 
 struct XlaBroadcast : public impl::XlaBroadcastPassBase<XlaBroadcast> {
   void runOnOperation() override;
@@ -278,6 +277,9 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   std::string device = tensorflow::GetDeviceAliasForHostOfLogicalCore(0);
   LaunchOp launch = tensorflow::WrapOpInLaunch(
       &before_cluster_builder, val_bcast.getLoc(), assigned_id, device);
+
+  launch->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                  before_cluster_builder.getBoolAttr(true));
 
   Value all_reduce =
       CreateAllReduce(replicate, inner_builder, launch.getResult(0));

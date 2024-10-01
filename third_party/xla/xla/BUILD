@@ -25,7 +25,7 @@ package(
 
 exports_files([
     "lit.cfg.py",
-])
+] + if_google(["lit_google_cfg.py"]))
 
 xla_package_groups()
 
@@ -60,7 +60,6 @@ filegroup(
 tf_proto_library(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
-    cc_api_version = 2,
     create_grpc_library = True,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
@@ -69,7 +68,6 @@ tf_proto_library(
 tf_proto_library(
     name = "xla_proto",
     srcs = ["xla.proto"],
-    cc_api_version = 2,
     create_grpc_library = True,
     make_default_target_header_only = True,
     protodeps = [
@@ -312,6 +310,7 @@ xla_cc_test(
     name = "fp_util_test",
     srcs = ["fp_util_test.cc"],
     deps = [
+        ":bit_cast",
         ":fp_util",
         ":test",
         ":util",
@@ -516,8 +515,8 @@ xla_cc_test(
         ":test",
         ":util",
         ":xla_data_proto_cc",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
@@ -574,6 +573,7 @@ xla_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -596,6 +596,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -606,7 +607,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -640,6 +640,7 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -666,11 +667,11 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/core:bitmap",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -693,6 +694,7 @@ xla_cc_test(
         ":literal_comparison",
         ":literal_util",
         ":test_helpers",
+        ":xla_data_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -721,7 +723,6 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -731,6 +732,7 @@ cc_library(
     hdrs = ["metric_table_report.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -1219,7 +1221,6 @@ cc_library(
 tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [":autotuning_proto"],
     visibility = ["//visibility:public"],
@@ -1316,11 +1317,6 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "sort_json",
     srcs = ["sort_json.cc"],
     hdrs = ["sort_json.h"],
@@ -1345,13 +1341,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
-)
-
-# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
-alias(
-    name = "bazel_issue_21519",
-    actual = ":empty",
-    visibility = ["//visibility:public"],
 )
 
 bzl_library(

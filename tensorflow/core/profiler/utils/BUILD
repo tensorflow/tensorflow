@@ -237,6 +237,7 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
+    visibility = [":friends"],
     deps = [
         ":gpu_event_stats",
         ":hlo_module_map",
@@ -253,7 +254,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:group_events",
         "@local_tsl//tsl/profiler/utils:tf_op_utils",
@@ -262,6 +262,7 @@ cc_library(
         "@local_tsl//tsl/profiler/utils:tpu_xplane_utils",
         "@local_tsl//tsl/profiler/utils:trace_utils",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
         "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
@@ -403,9 +404,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 

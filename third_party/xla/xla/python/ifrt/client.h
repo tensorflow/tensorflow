@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -135,8 +136,8 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // device.
   virtual absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
-      ArrayCopySemantics semantics) = 0;
+      std::optional<tsl::RCReference<DeviceList>> devices,
+      std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
@@ -218,7 +219,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
 
   // Returns a topology that covers the provided devices.
   virtual absl::StatusOr<std::shared_ptr<Topology>> GetTopologyForDevices(
-      const DeviceList& devices) const = 0;
+      const tsl::RCReference<DeviceList>& devices) const = 0;
 
   // Returns the default layout on `device` for a buffer with `dtype` and
   // single-shard dimensions `dims`.

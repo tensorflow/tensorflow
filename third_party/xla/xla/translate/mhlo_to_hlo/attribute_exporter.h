@@ -19,7 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -33,6 +37,10 @@ namespace xla {
 // Converts the conv dimensions attribute to XLA HLO.
 ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
     mlir::mhlo::ConvDimensionNumbersAttr input);
+
+// Converts the dot algorithm attribute to XLA HLO.
+absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
+    mlir::mhlo::DotAlgorithmAttr attr);
 
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);

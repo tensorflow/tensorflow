@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -1373,8 +1374,11 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     bool remove_unused_operands) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
-      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
-      << ShapeUtil::HumanString(new_instruction->shape());
+      << absl::StreamFormat(
+             "\"%s\" (%s) vs \"%s\" (%s)", old_instruction->name(),
+             old_instruction->shape().ToString(/*print_layout=*/true),
+             new_instruction->name(),
+             new_instruction->shape().ToString(/*print_layout=*/true));
   return ReplaceInstructionWithDifferentShape(
       old_instruction, new_instruction, preserve_sharding,
       relay_control_dependency, remove_unused_operands);
@@ -1424,6 +1428,20 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   if (new_instruction->frontend_attributes().map().empty()) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
+  }
+  if (auto old_original_value = old_instruction->original_value()) {
+    // Fusions are handled separately. The original_value attribute of fused
+    // instructions is copied when they are added into the fused computation.
+    if (new_instruction->opcode() != HloOpcode::kFusion) {
+      if (ShapeUtil::Compatible(old_instruction->shape(),
+                                new_instruction->shape())) {
+        new_instruction->set_original_value(old_original_value);
+      } else {
+        LOG(WARNING)
+            << "Expect the new instruction to have the same shape with the old "
+               "instruction when copying over original_value\n";
+      }
+    }
   }
 
   // Like the metadata above, if the user didn't specify any sharding

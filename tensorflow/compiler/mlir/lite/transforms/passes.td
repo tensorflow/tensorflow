@@ -443,6 +443,12 @@ def WhileOutlinePass : Pass<"tfl-while-loop-outline", "mlir::ModuleOp"> {
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
 
+def IfOutlinePass : Pass<"tfl-if-outline", "mlir::ModuleOp"> {
+  let summary = "Hoist if op regions into functions";
+  let constructor = "CreateIfOutlinePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
 def LegalizeTensorListPass : Pass<"tfl-legalize-tensorlist", "mlir::ModuleOp"> {
   let summary = "Legalize TensorFlow tensorlist ops to TensorFlow Lite custom.";
   let constructor = "CreateLegalizeTensorListPass()";
@@ -461,7 +467,8 @@ def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
-def UnfreezeMutableGlobalTensorsPass : Pass<"unfreeze-mutable-global-tensors", "mlir::ModuleOp"> {
-  let summary = "Pass to unfreeze mutable global tensor ops";
-  let constructor = "CreateUnfreezeMutableGlobalTensorsPass()";
+def CanonicalizeBoundaryValuePass : Pass<"canonicalize-boundary-value", "mlir::ModuleOp"> {
+  let summary = "Canonicalize the IR representations of boundary values";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::arith::ArithDialect"];
+  let constructor = "CreateCanonicalizeBoundaryValuePass()";
 }

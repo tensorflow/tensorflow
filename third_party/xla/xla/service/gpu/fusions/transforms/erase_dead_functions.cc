@@ -51,8 +51,8 @@ llvm::DenseSet<mlir::func::FuncOp> FindLiveFunctions(mlir::ModuleOp module) {
     auto func = worklist.front();
     worklist.pop();
     func.walk([&](mlir::CallOpInterface call) {
-      auto callee =
-          mlir::cast<mlir::func::FuncOp>(call.resolveCallable(&symbol_table));
+      auto callee = mlir::cast<mlir::func::FuncOp>(
+          call.resolveCallableInTable(&symbol_table));
       if (live_funcs.insert(callee).second) {
         worklist.push(callee);
       }

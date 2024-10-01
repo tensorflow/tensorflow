@@ -86,6 +86,7 @@ AnalyticalLatencyEstimator::AnalyticalLatencyEstimator(
   cost_analysis_.emplace(
       GpuHloCostAnalysis::Options{shape_size_function_,
                                   /*per_second_rates=*/{},
+                                  /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true},
       gpu_info_);
   TF_CHECK_OK(computation->Accept(&cost_analysis_.value()));

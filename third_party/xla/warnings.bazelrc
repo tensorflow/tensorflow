@@ -42,7 +42,6 @@ build:warnings --copt=-Wno-bitwise-instead-of-logical
 build:warnings --copt=-Wno-comment
 build:warnings --copt=-Wno-compound-token-split
 build:warnings --copt=-Wno-deprecated-non-prototype
-build:warnings --copt=-Wno-enum-constexpr-conversion
 build:warnings --copt=-Wno-misleading-indentation
 build:warnings --copt=-Wno-psabi
 build:warnings --copt=-Wno-unqualified-std-cast-call

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -44,10 +47,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace stream_executor::gpu {
 
@@ -93,14 +92,17 @@ static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
 }
 
 // Some of the tests rely on CUDA 12.3+ features.
-static bool IsAtLeastCuda12300() {
-#if defined(TENSORFLOW_USE_ROCM)
-  return false;
-#endif
-#if CUDA_VERSION >= 12030
+static bool IsAtLeastCuda12300(
+    const stream_executor::StreamExecutor* executor) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
+    return false;
+  }
+  if (std::min({executor->GetDeviceDescription().runtime_version(),
+                executor->GetDeviceDescription().driver_version()}) <
+      SemanticVersion{12, 3, 0}) {
+    return false;
+  }
   return true;
-#endif
-  return false;
 }
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
@@ -157,14 +159,18 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 }
 
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
-#if defined(TENSORFLOW_USE_ROCM)
-  GTEST_SKIP() << "Not supported on ROCM";
-#endif
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "Command buffer tracing is not supported";
-#endif
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().runtime_version() <
+          SemanticVersion{12, 3, 0}) {
+    GTEST_SKIP() << "Command buffer tracing is not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -688,12 +694,12 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIf) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -774,12 +780,18 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
-#if CUDA_VERSION < 12040
-  GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.1.";
-#endif
   Platform* platform = GpuPlatform();
-
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().driver_version() <
+          SemanticVersion{12, 4, 0}) {
+    GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -837,12 +849,12 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfElse) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -932,13 +944,191 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(GpuCommandBufferTest, ConditionalCase) {
-  if (!IsAtLeastCuda12300()) {
+TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  // See b/362769658.
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load addition kernel.
+  MultiKernelLoaderSpec add_spec(/*arity=*/3);
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=2, b=3, c=0, index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 2, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 3, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+
+  // if (index == 0) c = a + b
+  CommandBuffer::Builder branch0 = [&](CommandBuffer* branch0_cmd) {
+    return branch0_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, c);
+  };
+
+  // if (index == 1) c = a * b
+  CommandBuffer::Builder branch1 = [&](CommandBuffer* branch1_cmd) {
+    return absl::OkStatus();
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `c` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+
+  std::vector<int32_t> expected_add = {5, 5, 5, 5};
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `1`
+  TF_ASSERT_OK(stream->Memset32(&index, 1, sizeof(int32_t)));
+
+  // Submit the same command buffer, but this time it should take the empty path
+  // and do nothing.
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `-1` (out of bound index value).
+  TF_ASSERT_OK(stream->Memset32(&index, -1, sizeof(int32_t)));
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `2` (out of bound index value).
+  TF_ASSERT_OK(stream->Memset32(&index, 2, sizeof(int32_t)));
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+}
+
+class GpuCommandBufferCaseTest : public testing::TestWithParam<int> {
+ protected:
+  int GetNumCases() { return GetParam(); }
+
+  int GetEffectiveIndex(int i) {
+    return (i < 0 || i >= GetNumCases()) ? GetNumCases() - 1 : i;
+  }
+};
+
+TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load multiplication kernel.
+  MultiKernelLoaderSpec mul_spec(/*arity=*/3);
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
+
+  constexpr int64_t kLength = 1;
+  int64_t byte_length = sizeof(int32_t) * kLength;
+
+  // Prepare arguments: index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
+
+  const int kNumCases = GetNumCases();
+  std::vector<DeviceMemory<int32_t>> values;
+  std::vector<DeviceMemory<int32_t>> results;
+  std::vector<CommandBuffer::Builder> branches;
+  values.resize(kNumCases);
+  results.resize(kNumCases);
+  branches.resize(kNumCases);
+  for (int i = 0; i < kNumCases; ++i) {
+    values[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&values[i], i, byte_length));
+    results[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&results[i], 0, byte_length));
+    branches[i] = [&, i](CommandBuffer* branch_cmd) {
+      // result = i * i;
+      return branch_cmd->Launch(mul, ThreadDim(), BlockDim(kLength), values[i],
+                                values[i], results[i]);
+    };
+  }
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->Case(index, branches));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  // We test the out of bounds cases as well ( i < 0, i >= kNumCases).
+  for (int i = -1; i <= kNumCases; ++i) {
+    // Set index.
+    TF_ASSERT_OK(stream->Memset32(&index, i, sizeof(int32_t)));
+
+    // Submit case.
+    TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+    TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+    int effective_index = GetEffectiveIndex(i);
+
+    // Check all results are 0 except case index submitted.
+    for (int z = 0; z < kNumCases; ++z) {
+      std::vector<int32_t> dst(kLength, 42);
+      TF_ASSERT_OK(stream->Memcpy(dst.data(), results[z], byte_length));
+
+      // Build expected result vector.
+      std::vector<int32_t> expected;
+      expected.resize(kLength);
+      for (int p = 0; p < kLength; ++p) {
+        if (effective_index == z) {
+          expected[p] = effective_index * effective_index;
+        } else {
+          expected[p] = 0;
+        }
+      }
+
+      ASSERT_EQ(dst, expected)
+          << "For result " << z << " after running case " << i;
+      TF_ASSERT_OK(stream->Memset32(&results[z], 0, byte_length));
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, GpuCommandBufferCaseTest,
+                         testing::Range(1, 32),
+                         testing::PrintToStringParamName());
+
+TEST(GpuCommandBufferTest, ConditionalCase) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1022,12 +1212,12 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalFor) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1071,12 +1261,12 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhile) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1137,13 +1327,96 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
+// TODO(b/339653343): Re-enable when not failing.
+TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
   }
 
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load addition kernel.
+  MultiKernelLoaderSpec add_spec(/*arity=*/3);
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
+
+  // Load inc_and_cmp kernel.
+  MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
+  TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
+                          IncAndCmpKernel::Create(executor, icmp_spec));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
+  // Value of `pred` is not important, as it will be updated by `cond_builder`
+  // below.
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<bool> pred_then = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  static constexpr bool kFalse = false;
+  static constexpr bool kTrue = true;
+  TF_ASSERT_OK(stream->Memcpy(&pred, &kFalse, 1));
+  TF_ASSERT_OK(stream->Memcpy(&pred_then, &kTrue, 1));
+  TF_ASSERT_OK(stream->Memset32(&loop_counter, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  int32_t num_iters = 10;
+
+  CommandBuffer::Builder then_builder =
+      // Then body: b = a + b
+      [&](CommandBuffer* then_cmd) {
+        return then_cmd->Launch(add, ThreadDim(), BlockDim(length), a, b, b);
+      };
+
+  auto nested_cmd = executor->CreateCommandBuffer(nested).value();
+  // TODO(b/339653343): Adding this If condition causes AddNestedCommandBuffer
+  // to fail.
+  TF_ASSERT_OK(nested_cmd->If(pred_then, then_builder));
+
+  // Loop cond: loop_counter++ < num_iters;
+  CommandBuffer::ExecutionScopeBuilder cond_builder =
+      [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
+        return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(length),
+                                loop_counter, pred, num_iters);
+      };
+
+  CommandBuffer::Builder body_builder =
+      [&](CommandBuffer* body_cmd) -> absl::Status {
+    CHECK_OK(body_cmd->AddNestedCommandBuffer(*nested_cmd));
+    return absl::OkStatus();
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->While(pred, cond_builder, body_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  std::vector<int32_t> expected = {10, 10, 10, 10};
+  ASSERT_EQ(dst, expected);
+}
+
+TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1233,12 +1506,12 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 

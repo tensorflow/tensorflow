@@ -231,10 +231,11 @@ TEST(ElementWise, Abs) {
                                          3.f, -2.f, 10.f, 1.f,  //
                                      });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.ExtractVector<float>(m.output()), ElementsAreArray({
-                                                      0.f, 6.2f, 2.f, 4.f,  //
-                                                      3.f, 2.f, 10.f, 1.f,  //
-                                                  }));
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              Pointwise(FloatingPointEq(), {
+                                               0.f, 6.2f, 2.f, 4.f,  //
+                                               3.f, 2.f, 10.f, 1.f,  //
+                                           }));
 }
 
 TEST(ElementWise, AbsInt32) {

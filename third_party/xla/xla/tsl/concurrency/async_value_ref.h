@@ -969,8 +969,16 @@ template <typename T, typename F, typename R = std::invoke_result_t<F>,
           std::enable_if_t<std::is_constructible_v<T, R>>* = nullptr>
 AsyncValueRef<T> MakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
   auto result = MakeUnconstructedAsyncValueRef<T>();
-  executor.Execute([result, f = std::forward<F>(f)] { result.emplace(f()); });
+  executor.Execute(
+      [result, f = std::forward<F>(f)]() mutable { result.emplace(f()); });
   return result;
+}
+
+// A `MakeAsyncValueRef` overload that automatically infers the type of result
+// from `f`.
+template <typename F, typename R = std::invoke_result_t<F>>
+AsyncValueRef<R> MakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
+  return MakeAsyncValueRef<R>(executor, std::forward<F>(f));
 }
 
 // Allocates an AsyncValueRef that is constructed from the result of calling an
@@ -988,7 +996,7 @@ template <typename T, typename F, typename R = std::invoke_result_t<F>,
               std::is_constructible_v<T, typename R::value_type>>* = nullptr>
 AsyncValueRef<T> TryMakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
   auto result = MakeUnconstructedAsyncValueRef<T>();
-  executor.Execute([result, f = std::forward<F>(f)] {
+  executor.Execute([result, f = std::forward<F>(f)]() mutable {
     absl::StatusOr<typename R::value_type> status_or = f();
     if (ABSL_PREDICT_TRUE(status_or.ok())) {
       result.emplace(std::move(status_or).value());
@@ -997,6 +1005,16 @@ AsyncValueRef<T> TryMakeAsyncValueRef(AsyncValue::Executor& executor, F&& f) {
     }
   });
   return result;
+}
+
+// A `TryMakeAsyncValueRef` overload that automatically infers the type of
+// result from `f`.
+template <typename F, typename R = std::invoke_result_t<F>,
+          std::enable_if_t<internal::is_status_or_v<R>>* = nullptr>
+AsyncValueRef<typename R::value_type> TryMakeAsyncValueRef(
+    AsyncValue::Executor& executor, F&& f) {
+  return TryMakeAsyncValueRef<typename R::value_type>(executor,
+                                                      std::forward<F>(f));
 }
 
 //===----------------------------------------------------------------------===//

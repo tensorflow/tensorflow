@@ -29,6 +29,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt_proxy/common:grpc_credentials",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
+        "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "@com_github_grpc_grpc//:grpc",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/functional:any_invocable",
@@ -122,7 +123,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:program_serdes",
@@ -226,6 +226,7 @@ cc_library(
     srcs = ["host_buffer.cc"],
     hdrs = ["host_buffer.h"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

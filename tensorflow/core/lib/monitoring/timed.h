@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_MONITORING_TIMED_H_
 #define TENSORFLOW_CORE_LIB_MONITORING_TIMED_H_
 
+#include "xla/tsl/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tsl/lib/monitoring/timed.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

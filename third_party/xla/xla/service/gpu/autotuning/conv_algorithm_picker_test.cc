@@ -20,19 +20,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
+#include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -43,6 +49,16 @@ namespace m = ::xla::match;
 
 class GpuConvAlgorithmPickerTest : public HloTestBase {
  public:
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+  stream_executor::dnn::VersionInfo GetDnnVersion() {
+    return GetDnnVersionInfoOrDefault(backend().default_stream_executor());
+  }
+
   GpuConvAlgorithmPickerTest() { AutotunerUtil::ClearAutotuneResults(); }
 };
 
@@ -123,6 +139,71 @@ ENTRY main {
                         .algorithm()
                         .algo_id() != 14);
   }
+}
+
+TEST_F(GpuConvAlgorithmPickerTest, SetAlgorithmGraphConvF8) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::HOPPER)) {
+    GTEST_SKIP() << "FP8 convolutions require Hopper or newer architecture.";
+  }
+  constexpr absl::string_view kHlo = R"(
+HloModule module
+apply {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] maximum(a, b)
+}
+ENTRY main {
+  input = f8e4m3fn[1,6,6,128] parameter(0)
+  filter = f8e4m3fn[16,3,3,128] parameter(1)
+  input_scale = f32[] parameter(2)
+  input_scale_bcast = f32[1,6,6,128] broadcast(input_scale), dimensions={}
+  filter_scale = f32[] parameter(3)
+  filter_scale_bcast = f32[16,3,3,128] broadcast(filter_scale), dimensions={}
+  input_f32 = f32[1,6,6,128] convert(input)
+  input_unscaled = f32[1,6,6,128] multiply(input_f32, input_scale_bcast)
+  filter_f32 = f32[16,3,3,128] convert(filter)
+  filter_unscaled = f32[16,3,3,128] multiply(filter_f32, filter_scale_bcast)
+  conv_a = f32[1,6,6,16] convolution(input_unscaled, filter_unscaled), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  z_scale = f32[] parameter(4)
+  z_scale_bcast = f32[1,6,6,16] broadcast(z_scale), dimensions={}
+  conv_a_scaled = f32[1,6,6,16] multiply(conv_a, z_scale_bcast)
+  c1 = f32[] constant(-448.)
+  c1_bcast = f32[1,6,6,16] broadcast(c1), dimensions={}
+  c2 = f32[] constant(448.)
+  c2_bcast = f32[1,6,6,16] broadcast(c2), dimensions={}
+  conv_a_clamped = f32[1,6,6,16] clamp(c1_bcast, conv_a_scaled, c2_bcast)
+  conv_a_clamped_f8 = f8e4m3fn[1,6,6,16] convert(conv_a_clamped)
+  abs_conv_a = f32[1,6,6,16] abs(conv_a)
+  c0 = f32[] constant(-inf)
+  amax = f32[] reduce(abs_conv_a, c0), dimensions={0,1,2,3}, to_apply=apply
+  ROOT conv_f8 = (f8e4m3fn[1,6,6,16], f32[]) tuple(conv_a_clamped_f8, amax)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                          PlatformUtil::GetStreamExecutors(platform));
+  ASSERT_GT(executors.size(), 0);
+  se::StreamExecutor* stream_exec = executors[0];
+
+  const se::GpuComputeCapability& cc = GetCudaComputeCapability();
+  bool changed;
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(ConvRewriter(cc), m.get()));
+  ASSERT_TRUE(changed);
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed,
+      RunHloPass(CudnnFusedConvRewriter(
+                     GetCudaComputeCapability(), GetDnnVersion(),
+                     stream_exec->GetDeviceDescription().runtime_version()),
+                 m.get()));
+  ASSERT_TRUE(changed);
+
+  DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(changed,
+                          RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
+  ASSERT_TRUE(changed);
 }
 
 }  // namespace

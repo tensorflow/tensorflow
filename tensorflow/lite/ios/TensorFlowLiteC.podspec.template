@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name             = 'TensorFlowLiteC'
+  s.name             = '${POD_NAME}'
   s.version          = '${TFL_BUILD_VERSION}'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
@@ -40,14 +40,14 @@ Pod::Spec.new do |s|
 
   s.subspec 'CoreML' do |coreml|
     coreml.weak_framework = 'CoreML'
-    coreml.dependency 'TensorFlowLiteC/Core'
+    coreml.dependency "#{s.name}/Core"
     coreml.vendored_frameworks = 'Frameworks/TensorFlowLiteCCoreML.xcframework'
     coreml.resource_bundle = { 'TensorFlowLiteCCoreML' => 'Frameworks/TensorFlowLiteCCoreML.xcframework/PrivacyInfo.xcprivacy' }
   end
 
   s.subspec 'Metal' do |metal|
     metal.weak_framework = 'Metal'
-    metal.dependency 'TensorFlowLiteC/Core'
+    metal.dependency "#{s.name}/Core"
     metal.vendored_frameworks = 'Frameworks/TensorFlowLiteCMetal.xcframework'
     metal.resource_bundle = { 'TensorFlowLiteCMetal' => 'Frameworks/TensorFlowLiteCMetal.xcframework/PrivacyInfo.xcprivacy' }
   end

@@ -29,12 +29,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tensorflow/lite/core/model_builder.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 
@@ -47,9 +47,8 @@ namespace lite {
 namespace toco_legacy {
 namespace {
 
+using mlir::TFL::FlatBufferModelAbslError;
 using tflite::BuiltinOperator_CONV_2D;
-using tflite::FlatBufferModel;  // to remove when mlir version is ready, from
-                                // model.h
 using tflite::QuantizationParametersT;
 using tflite::SubGraphT;
 using tflite::TensorT;
@@ -57,12 +56,12 @@ using tflite::TensorType_FLOAT16;
 using tflite::TensorType_FLOAT32;
 using tflite::TensorType_INT8;
 
-std::unique_ptr<FlatBufferModel> ReadModel(const char* model) {
+std::unique_ptr<FlatBufferModelAbslError> ReadModel(const char* model) {
   auto model_path = tsl::io::JoinPath(*g_test_model_dir, model);
-  return FlatBufferModel::BuildFromFile(model_path.c_str());
+  return FlatBufferModelAbslError::BuildFromFile(model_path.c_str());
 }
 
-std::unique_ptr<FlatBufferModel> ReadConvModel() {
+std::unique_ptr<FlatBufferModelAbslError> ReadConvModel() {
   return ReadModel(mlir::lite::internal::kConvModelWith0Plus10Weights);
 }
 

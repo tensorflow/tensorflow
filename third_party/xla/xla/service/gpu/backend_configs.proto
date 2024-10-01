@@ -261,6 +261,10 @@ message CudnnfMHABackendConfig {
 
   // Whether force deterministic for bwd
   bool force_deterministic = 23;
+
+  // Sliding window length
+  // ignored if the value <= 0
+  int32 sliding_window_length = 24;
 }
 
 // Generic backend config for XLA:GPU

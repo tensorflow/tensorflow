@@ -40,11 +40,11 @@
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -649,14 +649,14 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
   for (const auto& handle : copy_arrays_request.array_handles()) {
     TF_ASSIGN_OR_RETURN(arrays.emplace_back(), GetArray(handle));
   }
-  std::optional<DeviceList> devices;
+  std::optional<tsl::RCReference<DeviceList>> devices;
   if (!copy_arrays_request.device_ids().empty()) {
-    DeviceList::Devices ds;
+    BasicDeviceList::Devices ds;
     for (const auto& device_id : copy_arrays_request.device_ids()) {
       TF_ASSIGN_OR_RETURN(ds.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices.emplace(std::move(ds));
+    devices.emplace(BasicDeviceList::Create(std::move(ds)));
   }
   std::optional<MemoryKind> memory_kind;
   if (copy_arrays_request.has_memory_kind()) {
@@ -1024,15 +1024,15 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
                       xla::ifrt::LoadedExecutable::ExecuteOptions::FromProto(
                           execute.execute_options()));
 
-  std::optional<DeviceList> devices;
+  std::optional<tsl::RCReference<DeviceList>> devices;
   if (!execute.device_ids().empty()) {
-    DeviceList::Devices d;
+    BasicDeviceList::Devices d;
     d.reserve(execute.device_ids_size());
     for (const int32_t device_id : execute.device_ids()) {
       TF_ASSIGN_OR_RETURN(d.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices = DeviceList(std::move(d));
+    devices = BasicDeviceList::Create(std::move(d));
   }
 
   TF_ASSIGN_OR_RETURN(

@@ -34,7 +34,7 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
 InputBuffer::~InputBuffer() { delete[] buf_; }
 
 absl::Status InputBuffer::FillBuffer() {
-  StringPiece data;
+  absl::string_view data;
   absl::Status s = file_->Read(file_pos_, size_, &data, buf_);
   if (data.data() != buf_) {
     memmove(buf_, data.data(), data.size());
@@ -225,7 +225,7 @@ absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
   bytes_to_read -= bytes_remain_in_buf;
 
   // Read the remaining bytes from file.
-  StringPiece data;
+  absl::string_view data;
   absl::Status s = file_->Read(file_pos_, bytes_to_read, &data, limit_);
   if (data.data() != limit_) {
     memmove(limit_, data.data(), data.size());

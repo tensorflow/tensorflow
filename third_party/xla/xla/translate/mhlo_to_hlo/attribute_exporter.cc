@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Support/LLVM.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/Base.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -57,6 +61,44 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   }
 
   return output;
+}
+
+absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
+    mlir::mhlo::DotAlgorithmAttr attr) {
+  auto algorithm = mlir::hlo::detail::getKnownDotAlgorithm(
+      attr.getLhsPrecisionType(), attr.getRhsPrecisionType(),
+      attr.getAccumulationType(), attr.getLhsComponentCount(),
+      attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
+      attr.getAllowImpreciseAccumulation());
+  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+
+  switch (algorithm.value()) {
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32_FAST_ACCUM:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F16:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F16;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F32:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_BF16:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_BF16;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X6:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::F32_F32_F32:
+      return xla::PrecisionConfig::ALG_DOT_F32_F32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::F64_F64_F64:
+      return xla::PrecisionConfig::ALG_DOT_F64_F64_F64;
+  }
+  return Internal("Unknown dot algorithm");
 }
 
 // Convert replica group from MLIR encoding to HLO.

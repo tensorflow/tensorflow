@@ -628,7 +628,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     else:
       fft_length = (size * 2, size, size * 2)
       axes = (-3, -2, -1)
-    self._CompareBackward_fftn(
+    self._CompareForward_fftn(
         r2c.astype(np_rtype),
         fft_length=fft_length,
         axes=axes,
@@ -640,7 +640,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     c2r = self._generate_valid_irfft_input(
         c2r, np_ctype, r2c, np_rtype, 2 if not test.is_built_with_rocm() else dims, fft_length
     )
-    self._CompareForward_fftn(c2r, fft_length, axes, rtol=tol)
+    self._CompareBackward_fftn(c2r, fft_length, axes, rtol=tol)
 
   @parameterized.parameters(
       itertools.product(range(1, 4), (5, 6), (np.float32, np.float64))

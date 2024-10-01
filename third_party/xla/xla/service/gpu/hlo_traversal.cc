@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -255,7 +256,7 @@ std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
     return ForComputation(instruction->fused_instructions_computation());
   }
 
-  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  auto fusion_adaptor = absl::WrapUnique(new HloFusionAdaptor);
   fusion_adaptor->AddInstruction(instruction);
   return fusion_adaptor;
 }
@@ -263,7 +264,7 @@ std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForInstruction(
 /*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForProducerConsumer(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  auto fusion_adaptor = absl::WrapUnique(new HloFusionAdaptor);
   fusion_adaptor->AddInstruction(producer);
   fusion_adaptor->AddInstruction(consumer);
   return fusion_adaptor;
@@ -272,7 +273,7 @@ std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForProducerConsumer(
 /*static*/
 std::unique_ptr<HloFusionAdaptor> HloFusionAdaptor::ForComputation(
     const HloComputation* computation) {
-  auto fusion_adaptor = std::make_unique<HloFusionAdaptor>();
+  auto fusion_adaptor = absl::WrapUnique(new HloFusionAdaptor);
   fusion_adaptor->AddComputation(computation);
   return fusion_adaptor;
 }
@@ -465,6 +466,12 @@ HloInstructionAdaptor::GetOperands() const {
     }
   }
   return operands;
+}
+
+HloInstructionAdaptor::HloInstructionAdaptor(const HloInstruction& instruction,
+                                             const HloFusionAdaptor* parent)
+    : instruction_(&instruction), parent_(parent) {
+  CHECK_NE(parent, nullptr) << "Parent fusion adaptor must not be null";
 }
 
 HloInstructionAdaptor HloInstructionAdaptor::GetOperand(int index) const {

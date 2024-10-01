@@ -11,7 +11,7 @@ add {
   ROOT t = (f32[], f32[]) tuple(add, mul)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[3,4,5]{2,1,0} parameter(0)
   param_1 = f32[3,4,5]{2,1,0} parameter(1)
   param_2 = f32[] parameter(2)
@@ -24,12 +24,12 @@ fused_computation {
 }
 
 // CHECK: @main
-// CHECK:     %[[R0:.*]], %[[R1:.*]], %[[R2:.*]] = xla_gpu.pure_call @fused_computation_tuple
+// CHECK:     %[[R0:.*]], %[[R1:.*]], %[[R2:.*]] = xla_gpu.pure_call @fusion_tuple
 // CHECK-DAG: tensor.insert %[[R0]]
 // CHECK-DAG: tensor.insert %[[R1]]
 // CHECK-DAG: tensor.insert %[[R2]]
 
-// CHECK: @fused_computation_tuple
+// CHECK: @fusion_tuple
 // CHECK:   %[[REDUCTION:.*]]:2 = scf.for
 // CHECK:   %[[LOG:.*]] = math.log
 // CHECK:   return %[[REDUCTION]]#0, %[[REDUCTION]]#1, %[[LOG]]

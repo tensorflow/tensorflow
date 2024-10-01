@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -221,7 +222,7 @@ Status WriteProtoToUniqueFile(const tensorflow::protobuf::MessageLite& proto,
 }  // anonymous namespace
 
 string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, const string& type_name,
+                  const string& suffix, absl::string_view type_name,
                   std::function<Status(WritableFile*)> dumper) {
   string filepath;
   std::unique_ptr<WritableFile> file;
@@ -233,8 +234,8 @@ string DumpToFile(const string& name, const string& dirname,
 
   status = dumper(file.get());
   if (!status.ok()) {
-    return StrCat("(failed to dump ", type_name, " to '", filepath,
-                  "': ", status.ToString(), ")");
+    return absl::StrCat("(failed to dump ", type_name, " to '", filepath,
+                        "': ", status.ToString(), ")");
   }
   LOG(INFO) << "Dumped " << type_name << " to " << filepath;
   return filepath;

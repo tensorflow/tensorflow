@@ -241,6 +241,7 @@ xla_cc_binary(
         "nomsan",
         "notsan",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_cpu",
         ":pjrt_c_api_cpu_version_script.lds",
@@ -317,8 +318,8 @@ xla_cc_binary(
     ],
     linkshared = True,
     tags = [
+        "no_mac",  # No GPU on mac.
         "noasan",
-        "nomac",  # No GPU on mac.
         "nomsan",
         "notsan",
     ],
@@ -360,9 +361,7 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "no_rocm", #TODO(rocm): TEMP, sync 24-06-03
-    ] + if_google([
+    tags = if_google([
         "config-cuda-only",
     ]),
     deps = [

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -117,11 +118,11 @@ absl::StatusOr<tsl::RCReference<BasicStringArray>> BasicStringArray::Create(
           return;
         }
 
-        if (sharding->devices().size() != (*buffers).size()) {
+        if (sharding->devices()->size() != (*buffers).size()) {
           auto error = absl::FailedPreconditionError(absl::StrCat(
               "Number of buffers: ", (*buffers).size(),
               " does not match the number of devices in sharding: ",
-              sharding->devices().size()));
+              sharding->devices()->size()));
           buffers_promise.Set(error);
           ready_promise.Set(error);
           return;
@@ -192,7 +193,7 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  int num_shards = sharding_->devices().size();
+  int num_shards = sharding_->devices()->size();
 
   // For each single device array we are going to pre-make:
   //   (1) a Promise-Future pair for passing the buffers,
@@ -288,7 +289,7 @@ Future<> BasicStringArray::CopyToHostBuffer(
 }
 
 absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
-    std::optional<xla::ifrt::DeviceList> devices,
+    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
@@ -297,13 +298,13 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
     return absl::FailedPreconditionError("Array has already been deleted");
   }
 
-  TF_ASSIGN_OR_RETURN(auto new_sharding,
-                      sharding().WithDeviceAssignment(devices, memory_kind));
-  if (new_sharding->devices().size() != sharding_->devices().size()) {
+  TF_ASSIGN_OR_RETURN(auto new_sharding, sharding().WithDeviceAssignment(
+                                             std::move(devices), memory_kind));
+  if (new_sharding->devices()->size() != sharding_->devices()->size()) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Number of devices in new sharding: ", new_sharding->devices().size(),
+        "Number of devices in new sharding: ", new_sharding->devices()->size(),
         " does not match the number of devices in the current sharding: ",
-        sharding_->devices().size()));
+        sharding_->devices()->size()));
   }
 
   struct BufferBackingStore {
@@ -405,7 +406,8 @@ absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::FullyReplicatedShard(
 
   return BasicStringArray::Create(
       client_, shape_,
-      SingleDeviceSharding::Create(sharding_->devices().at(0), MemoryKind()),
+      SingleDeviceSharding::Create(sharding_->devices()->devices().front(),
+                                   MemoryKind()),
       std::move(buffers_future), std::move(on_done_with_buffer));
 }
 

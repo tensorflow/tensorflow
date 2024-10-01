@@ -1006,7 +1006,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
   }
-  if (hlo.opcode() == HloOpcode::kReduce) {
+  if (hlo.opcode() == HloOpcode::kReduce ||
+      hlo.opcode() == HloOpcode::kAllReduce ||
+      hlo.opcode() == HloOpcode::kAllReduceStart ||
+      hlo.opcode() == HloOpcode::kAllReduceDone) {
     return "Reductions are not fused yet.";
   }
   if (hlo.opcode() == HloOpcode::kPad) {
@@ -1020,7 +1023,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   DimOrdersAndReqsOrError result_or_error =
       GetPropagatedDimOrdersAndRequirements(hlo, src_dim_order,
                                             transform_direction, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(result_or_error)) {
+  if (std::holds_alternative<FusionDecision>(result_or_error)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(result_or_error).Explain();
     return result_or_error;
   }
   DimOrdersAndReqs dim_orders_and_requirements =
@@ -1075,10 +1081,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       if (i == *src_operand_index) {
         continue;
       }
-      // Currently only broadcasts of scalar constants or parameters
-      // are accepted as other inputs of non-unary operations
-      // in the output fusion.
-      if (hlo_query::IsBroadcastOfScalarConstant(*operand) ||
+      // Currently only broadcasts of scalars or parameters are accepted as
+      // other inputs of non-unary operations in the output fusion.
+      if ((operand->opcode() == HloOpcode::kBroadcast &&
+           ShapeUtil::IsScalar(operand->operand(0)->shape())) ||
           operand->opcode() == HloOpcode::kParameter) {
         continue;
       }

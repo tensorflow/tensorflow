@@ -104,7 +104,6 @@ cc_library(
 tf_proto_library(
     name = "cpu_topology_proto",
     srcs = ["cpu_topology.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -230,6 +229,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_computation",

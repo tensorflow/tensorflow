@@ -83,12 +83,13 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputation& root_computation,
       const mlir_converter::CallTargetProvider& call_target_provider,
-      mlir::ValueRange output_args) const;
+      mlir::ValueRange output_args,
+      mlir::ValueRange thread_and_block_ids) const;
   void EmitReadFromShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputations& computations,
-      const WriteResult& written) const;
+      const WriteResult& written, mlir::ValueRange thread_and_block_ids) const;
 
  private:
   const HloFusionAnalysis& analysis_;

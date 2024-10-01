@@ -67,10 +67,10 @@ tf_cc_test(
     ],
     deps = [
         ":quantization_utils",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
-        "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
@@ -91,14 +91,15 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:model_utils",
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:quantization_utils",
+        ":model_utils",
+        ":portable_tensor_utils",
+        ":quantization_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@flatbuffers//:runtime_cc",
     ] + select({
@@ -128,11 +129,11 @@ tf_cc_test(
     ],
     deps = [
         ":quantize_weights",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
         "@com_google_googletest//:gtest",
         "@flatbuffers",
         "@local_tsl//tsl/platform:path",

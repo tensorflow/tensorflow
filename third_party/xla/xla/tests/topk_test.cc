@@ -49,5 +49,19 @@ XLA_TEST_F(TopkTest, SmallestTopK) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(TopkTest, TopKOfTranspose) {
+  // Regression test for b/362565176
+  std::string_view hlo_text_module = R"(
+    HloModule topk
+
+    ENTRY main {
+      %Arg_0.1 = f32[2048,6]{1,0} parameter(0)
+      t = f32[6,2048]{0,1} transpose(%Arg_0.1), dimensions={1,0}
+      ROOT %topk.2 = (f32[6,8]{1,0}, s32[6,8]{1,0}) topk(t), k=8, largest=true
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla

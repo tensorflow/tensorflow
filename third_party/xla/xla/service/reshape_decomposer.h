@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_RESHAPE_DECOMPOSER_H_
 #define XLA_SERVICE_RESHAPE_DECOMPOSER_H_
 
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 

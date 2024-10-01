@@ -57,6 +57,10 @@ fi
 venv=$(mktemp -d)
 "python${TFCI_PYTHON_VERSION}" -m venv "$venv"
 python="$venv/bin/python3"
+# TODO(b/366266944) Remove the check after tf docker image upgrade for NumPy 2.
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 2 ]]; then
+  "$python" -m pip install numpy==2.0.0
+fi
 "$python" -m pip install *.whl $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
 if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
   "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'

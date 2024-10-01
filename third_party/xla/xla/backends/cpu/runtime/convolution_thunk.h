@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -94,7 +96,22 @@ class ConvolutionThunk final : public Thunk {
     int64_t x;
     int64_t y;
     int64_t z;
+
+    std::string ToString(int rank) const {
+      switch (rank) {
+        case 2:
+          return absl::StrFormat("[%d,%d]", x, y);
+        case 3:
+          return absl::StrFormat("[%d,%d,%d]", x, y, z);
+        default:
+          return absl::StrFormat("[invalid rank %d]", rank);
+      }
+    }
   };
+
+  std::string ToString(Dims dims) const {
+    return dims.ToString(convolution_rank_);
+  }
 
   BufferAllocation::Slice input_buffer_;
   Shape input_shape_;

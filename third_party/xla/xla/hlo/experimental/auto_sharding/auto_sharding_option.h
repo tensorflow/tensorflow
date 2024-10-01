@@ -125,10 +125,6 @@ struct AutoShardingOption {
   // strategies for N-D mesh shape.
   bool solve_nd_sharding_iteratively = true;
 
-  // If it is not empty, forcibly use simple heuristic strategies
-  // instead of the ILP solver. This is used for ablation study.
-  std::string force_simple_heuristic;
-
   // If true, forcibly set the strategy of some instructions.
   bool force_strategy = false;
   std::vector<int64_t> force_strategy_inst_indices;
@@ -204,8 +200,12 @@ struct AutoShardingOption {
   // Split constant expressions as well when invoking HloConstantSplitter.
   bool enable_expression_constant_splitter = false;
 
-  // Whether to post-process the solution by reshaping / resharding tensors.
-  bool insert_resharding_reshapes = false;
+  // Whether to post-process the solution by reshaping/resharding tensors for
+  // non-dot/conv ops. We insert the reshapes for dots/convs as this empirically
+  // gives better auto-sharding outcomes.
+  // TODO(b/365834709) Investigate the need for resharding reshapes across all
+  // ops in a principled manner.
+  bool insert_resharding_reshapes_for_non_dot_ops = false;
 
   // Prints a debug string.
   std::string ToString() const;

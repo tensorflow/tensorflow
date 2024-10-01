@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -44,6 +45,7 @@ class GpuHloCostAnalysisTest : public HloTestBase {
  public:
   HloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
                                     /*per_second_rates=*/{},
+                                    /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true};
   GpuHloCostAnalysis analysis_{options_};
   GpuHloCostAnalysisTest() : HloTestBase() {}

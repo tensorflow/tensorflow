@@ -171,8 +171,11 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   CallFrameBuilder builder(operands_.size(), results_.size());
 
   for (auto& operand : operands_) {
-    if (!operand.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!operand.has_value()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
     if (!operand->slice.allocation())
       return Internal("custom call argument missing buffer allocation");
 
@@ -182,8 +185,11 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   }
 
   for (auto& result : results_) {
-    if (!result.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!result.has_value()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
     if (!result->slice.allocation())
       return Internal("custom call result missing buffer allocation");
 
