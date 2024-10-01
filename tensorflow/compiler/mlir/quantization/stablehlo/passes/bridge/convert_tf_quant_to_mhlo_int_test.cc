@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -69,7 +69,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
   void SetUp() override {
     DialectRegistry dialects;
     dialects.insert<TF::TensorFlowDialect, func::FuncDialect, chlo::ChloDialect,
-                    mhlo::MhloDialect, quant::QuantizationDialect>();
+                    mhlo::MhloDialect, quant::QuantDialect>();
     ctx_ = std::make_unique<MLIRContext>(dialects);
     ctx_->loadAllAvailableDialects();
 

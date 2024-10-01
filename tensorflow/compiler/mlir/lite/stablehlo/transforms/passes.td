@@ -54,7 +54,7 @@ def ComposeUniformQuantizedTypePass : Pass<"compose-uniform-quantized-type", "Mo
   }];
   let dependentDialects = [
     "stablehlo::StablehloDialect",
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
   ];
 }
 
@@ -68,7 +68,7 @@ def UniformQuantizedStableHloToTflPass
   }];
   let dependentDialects = [
     "stablehlo::StablehloDialect",
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
     "mlir::TFL::TFLDialect",
   ];
 }

@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -279,7 +279,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
   mhlo::registerAllMhloDialects(registry);
   stablehlo::registerAllDialects(registry);
   registry.insert<mlir::func::FuncDialect, mlir::tf_type::TFTypeDialect,
-                  mlir::quant::QuantizationDialect>();
+                  mlir::quant::QuantDialect>();
   mlir::quant::RegisterOps();
 
   MLIRContext context(registry);

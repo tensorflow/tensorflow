@@ -1,3 +1,196 @@
+diff --ruN a/stablehlo/examples/c++/ExampleAdd.cpp b/stablehlo/examples/c++/ExampleAdd.cpp
+--- stablehlo/examples/c++/ExampleAdd.cpp
++++ stablehlo/examples/c++/ExampleAdd.cpp
+@@ -18,7 +18,7 @@
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/LogicalResult.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Block.h"
+ #include "mlir/IR/Builders.h"
+@@ -43,7 +43,7 @@
+       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
+   module->getContext()->loadDialect<mlir::func::FuncDialect>();
+   module->getContext()->loadDialect<mlir::stablehlo::StablehloDialect>();
+-  module->getContext()->loadDialect<mlir::quant::QuantizationDialect>();
++  module->getContext()->loadDialect<mlir::quant::QuantDialect>();
+   module->setName("test_module");
+ 
+   /** create function **/
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
+@@ -17,7 +17,7 @@
+ #include <utility>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+ #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+ #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
+@@ -18,7 +18,7 @@
+ #include <utility>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+ #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+ #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -31,7 +31,7 @@
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.h b/stablehlo/stablehlo/dialect/ChloOps.h
+--- stablehlo/stablehlo/dialect/ChloOps.h
++++ stablehlo/stablehlo/dialect/ChloOps.h
+@@ -20,7 +20,7 @@
+ #include "llvm/ADT/APFloat.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "mlir/Bytecode/BytecodeOpInterface.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinTypes.h"
+diff --ruN a/stablehlo/stablehlo/dialect/Register.cpp b/stablehlo/stablehlo/dialect/Register.cpp
+--- stablehlo/stablehlo/dialect/Register.cpp
++++ stablehlo/stablehlo/dialect/Register.cpp
+@@ -17,7 +17,7 @@
+ #include "stablehlo/dialect/Register.h"
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+ #include "mlir/IR/DialectRegistry.h"
+ #include "stablehlo/dialect/ChloOps.h"
+@@ -30,7 +30,7 @@
+ void registerAllDialects(mlir::DialectRegistry &registry) {
+   // clang-format off
+   registry.insert<mlir::func::FuncDialect,
+-                  mlir::quant::QuantizationDialect,
++                  mlir::quant::QuantDialect,
+                   mlir::sparse_tensor::SparseTensorDialect>();
+   registry.insert<mlir::chlo::ChloDialect,
+                   mlir::stablehlo::StablehloDialect,
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -52,7 +52,7 @@
+ #include "llvm/Support/Regex.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Complex/IR/Complex.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -21,7 +21,7 @@
+ #include <optional>
+ 
+ #include "llvm/ADT/StringRef.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -52,7 +52,7 @@
+ #include "llvm/Support/Regex.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -20,7 +20,7 @@
+ #include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/TypeSwitch.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -31,7 +31,7 @@
+ #include "llvm/Support/Path.h"
+ #include "llvm/Support/SourceMgr.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.h b/stablehlo/stablehlo/tests/CheckOps.h
+--- stablehlo/stablehlo/tests/CheckOps.h
++++ stablehlo/stablehlo/tests/CheckOps.h
+@@ -17,7 +17,7 @@
+ #define STABLEHLO_DIALECT_CHECKOPS_H_
+ 
+ #include "mlir/Bytecode/BytecodeOpInterface.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Dialect.h"
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
+@@ -1338,24 +1338,24 @@
+ 
+ // -----
+ 
++// expected-error@+1 {{scale out of expressed type range}}
+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>) {
+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 1.055040e+05>>'}}
+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>
+    func.return
+ }
+ 
+ // -----
+ 
++// expected-error@+1 {{scale out of expressed type range}}
+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>) {
+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 4.9604639999999998E-8>>'}}
+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>
+    func.return
+ }
+ 
+ // -----
+ 
++// expected-error@+1 {{illegal quantized dimension: -1}}
+ func.func @quantized_element_type_c11(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>) {
+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:-1, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
+   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>
+   func.return
+ }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
@@ -427,6 +620,51 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility
 +  }) : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi32>, tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32>
 +  func.return %0 : tensor<?x2x4x7x9xi32>
 +}
+diff --ruN a/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp b/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
+--- stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
++++ stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
+@@ -24,7 +24,7 @@
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/LogicalResult.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/DialectRegistry.h"
+@@ -237,7 +237,7 @@
+     },
+     [](DialectRegistry &registry) {
+       registry.insert<func::FuncDialect>();
+-      registry.insert<quant::QuantizationDialect>();
++      registry.insert<quant::QuantDialect>();
+       registry.insert<stablehlo::check::CheckDialect>();
+       registry.insert<stablehlo::interpreter::InterpreterDialect>();
+       registry.insert<stablehlo::StablehloDialect>();
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
+--- stablehlo/stablehlo/transforms/Passes.h
++++ stablehlo/stablehlo/transforms/Passes.h
+@@ -19,7 +19,7 @@
+ #include <memory>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/Pass/Pass.h"
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
+--- stablehlo/stablehlo/transforms/Passes.td
++++ stablehlo/stablehlo/transforms/Passes.td
+@@ -68,7 +68,7 @@
+   let summary = "Legalize VHLO to StableHLO.";
+   let dependentDialects = [
+     "mlir::func::FuncDialect",
+-    "mlir::quant::QuantizationDialect",
++    "mlir::quant::QuantDialect",
+     "mlir::shape::ShapeDialect",
+     "mlir::stablehlo::StablehloDialect",
+   ];
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
@@ -614,4 +852,51 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander
  
      newScatterOp.getUpdateComputation().takeBody(op.getUpdateComputation());
      rewriter.replaceOp(op, newScatterOp.getResults());
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
+@@ -15,7 +15,7 @@
+ 
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Transforms/DialectConversion.h"  // Include for TypeConverter
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
+@@ -24,8 +24,8 @@
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+@@ -1331,7 +1331,7 @@
+     populateReturnOpTypeConversionPattern(patterns, converter);
+ 
+     ConversionTarget target(*op->getContext());
+-    target.addIllegalDialect<quant::QuantizationDialect>();
++    target.addIllegalDialect<quant::QuantDialect>();
+     auto isLegal = [&converter](Operation *op) {
+       return converter.isLegal(op);
+     };
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
+@@ -17,7 +17,7 @@
+ 
+ #include "llvm/ADT/STLExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantTypes.h"
++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/TypeRange.h"
 

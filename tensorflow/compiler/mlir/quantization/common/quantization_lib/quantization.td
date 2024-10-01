@@ -20,7 +20,7 @@ limitations under the License.
 #define TF_Quantization
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 
 //===----------------------------------------------------------------------===//
 // QuantizedType definitions.
