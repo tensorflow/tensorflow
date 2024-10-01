@@ -338,9 +338,10 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     core::ScopedUnref unref(col_impl);
     tsl::profiler::TraceMeConsumer consumer(
         [ctx, col_ctx] {
-          string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
-                                          ctx->op_kernel().type_string_view());
-          return profiler::TraceMeEncode(
+          string op =
+              tsl::profiler::TraceMeOp(ctx->op_kernel().name_view(),
+                                       ctx->op_kernel().type_string_view());
+          return tsl::profiler::TraceMeEncode(
               std::move(op),
               {{"step_id", ctx->step_id()},
                {"iter_id", ctx->frame_iter().iter_id},
@@ -369,9 +370,9 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   int64_t trace_id = tsl::profiler::TraceMe::ActivityStart([cp]() {
-    return profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
-                                   {{"group_key", cp->group.group_key},
-                                    {"group_size", cp->group.group_size}});
+    return tsl::profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
+                                        {{"group_key", cp->group.group_key},
+                                         {"group_size", cp->group.group_size}});
   });
 
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,

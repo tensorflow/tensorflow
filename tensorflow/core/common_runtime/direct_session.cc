@@ -525,12 +525,12 @@ Status DirectSession::RunInternal(
               options_.config.experimental().session_metadata();
           string model_id = strings::StrCat(model_metadata.name(), ":",
                                             model_metadata.version());
-          return profiler::TraceMeEncode("SessionRun",
-                                         {{"id", step_id},
-                                          {"_r", 1} /*root_event*/,
-                                          {"model_id", model_id}});
+          return tsl::profiler::TraceMeEncode("SessionRun",
+                                              {{"id", step_id},
+                                               {"_r", 1} /*root_event*/,
+                                               {"model_id", model_id}});
         } else {
-          return profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
