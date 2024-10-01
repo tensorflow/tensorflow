@@ -68,7 +68,7 @@ else
         bazel test \
               --config=rocm \
               -k \
-              --test_tag_filters=-no_gpu,-no_rocm \
+              --test_tag_filters=-no_gpu,-cuda-only \
               --jobs=30 \
               --local_ram_resources=60000 \
               --local_cpu_resources=15 \

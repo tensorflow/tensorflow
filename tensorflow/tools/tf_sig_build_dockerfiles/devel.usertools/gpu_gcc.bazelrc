@@ -66,20 +66,20 @@ test --test_summary=short
 # Pass --config=nonpip to run the same suite of tests. If you want to run just
 # one test for investigation, you don't need --config=nonpip; just run the
 # bazel test invocation as normal.
-test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-cuda-only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:nonpip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-cuda-only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --test_lang_filters=py --test_size_filters=small,medium
 test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # "nonpip_large" will run tests marked as large as well
-test:nonpip_filters_large --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm,-benchmark-test,-tpu,-v1only
-test:nonpip_filters_large --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-no_rocm
+test:nonpip_filters_large --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-cuda-only,-benchmark-test,-tpu,-v1only
+test:nonpip_filters_large --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_cuda11,-cuda-only
 test:nonpip_filters_large --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium,large
 test:nonpip_large --config=nonpip_filters_large -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # "nonpip_filter_multi_gpu" will run a defined set of multi-gpu tests
-test:nonpip_filters_multi_gpu --test_tag_filters=-no_gpu,-no_rocm
-test:nonpip_filters_multi_gpu --build_tag_filters=-no_gpu,-no_rocm
+test:nonpip_filters_multi_gpu --test_tag_filters=-no_gpu,-cuda-only
+test:nonpip_filters_multi_gpu --build_tag_filters=-no_gpu,-cuda-only
 test:nonpip_filters_multi_gpu --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium,large --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048
 test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
 //tensorflow/core/nccl:nccl_manager_test_2gpu \
@@ -121,8 +121,8 @@ test:pip_venv --action_env PYTHON_LIB_PATH="/bazel_pip/lib/python3/site-packages
 test:pip_venv --python_path="/bazel_pip/bin/python3"
 test:pip_venv --define=no_tensorflow_py_deps=true
 # Yes, we don't exclude the gpu tests on pip for some reason.
-test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-no_rocm,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-cuda-only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:pip_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_cuda11,-no_pip,-nopip,-cuda-only,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pip_filters --test_lang_filters=py --test_size_filters=small,medium
 test:pip --config=pip_venv --config=pip_filters -- //bazel_pip/tensorflow/... -//bazel_pip/tensorflow/python/integration_testing/... -//bazel_pip/tensorflow/compiler/tf2tensorrt/... -//bazel_pip/tensorflow/compiler/xrt/... -//bazel_pip/tensorflow/core/tpu/... -//bazel_pip/tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -166,17 +166,17 @@ build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.14_config_nccl"
 build:rbe --repo_env=TF_PYTHON_CONFIG_REPO="@sigbuild-r2.14_config_python"
 
 # For continuous builds
-test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
-test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
+test:pycpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
+test:pycpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
 test:pycpp_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
-test:pycpp_large_filters --test_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
-test:pycpp_large_filters --build_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_rocm
+test:pycpp_large_filters --test_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
+test:pycpp_large_filters --build_tag_filters=-no_oss,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-cuda-only
 test:pycpp_large_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium,large
 test:pycpp_large --config=pycpp_large_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # For XLA (rocm)
-test:xla_cpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going
-test:xla_cpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm
+test:xla_cpp_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-cuda-only --keep_going
+test:xla_cpp_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-cuda-only
 test:xla_cpp --config=xla_cpp_filters -- //xla/... //build_tools/...
