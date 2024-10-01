@@ -780,7 +780,7 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
   if (!debug_options_.xla_gpu_experimental_disable_binary_libraries()) {
     // Add cuBLAS reference config, if available.
     if (algorithm_util::IsSupportedByCublasOrCublasLt(
-            dot->precision_config().algorithm()) &&
+            dot->precision_config().algorithm(), GetComputeCapability()) &&
         !dot->sparse_operands() && IsAutotuningEnabled()) {
       configs.push_back(CuBlasConfig{});
     }

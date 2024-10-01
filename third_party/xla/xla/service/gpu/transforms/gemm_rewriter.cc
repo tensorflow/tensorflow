@@ -1991,7 +1991,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.precision_config().operand_precision());
     const PrecisionConfig::Algorithm algorithm =
         backend_config.precision_config().algorithm();
-    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm)) return false;
+    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm, gpu_version_))
+      return false;
 
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,

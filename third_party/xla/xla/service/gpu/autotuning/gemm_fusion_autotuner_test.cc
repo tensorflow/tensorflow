@@ -25,7 +25,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -197,59 +199,101 @@ class StatelessAutotunerTest : public HloTestBase {
                                       debug_options, nullptr);
     return autotuner.GenerateConfigs(fusion);
   }
+
+  se::CudaComputeCapability GetCudaComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .cuda_compute_capability();
+  }
+
+  // Returns the config for the current device.
+  absl::StatusOr<std::vector<GemmFusionAutotunerImpl::BackendConfig>>
+  GetPossibleMatmulAutotuneConfigs(const HloModule& module) {
+    DeviceConfig device_config{backend().default_stream_executor(),
+                               backend().memory_allocator()};
+    AutotuneConfig autotune_config{device_config, GetDebugOptionsForTest()};
+    GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
+                                      GetDebugOptionsForTest(), nullptr);
+    const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
+        module.entry_computation()->root_instruction());
+    return autotuner.GenerateConfigs(fusion);
+  }
+
+  bool hasCublasConfig(
+      const std::vector<GemmFusionAutotunerImpl::BackendConfig>& configs) {
+    return std::any_of(
+        configs.begin(), configs.end(),
+        [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+          return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
+              config);
+        });
+  }
 };
+
+constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
+  HloModule module
+
+  computation {
+    p0 = f32[1024,1024] parameter(0)
+    p1 = f32[1024,1024] parameter(1)
+    ROOT r = f32[1024,1024] dot(p0, p1),
+      algorithm=$0,
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = f32[1024,1024] parameter(0)
+    p1 = f32[1024,1024] parameter(1)
+    ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+      kind=kCustom,
+      calls=computation
+  }
+)";
 
 TEST_F(StatelessAutotunerTest, NoCublasFallbackForTf32Tf32F32X3Algorithm) {
   // There is no cublas implementation for dot_tf32_tf32_f32_x3 at the moment.
   // At the same time cublas f32 is faster than triton for this algorithm.
   // But we don't want to fallback to cuBLAS in this case because we lose the
   // precision guarantees.
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-    HloModule module
-
-    computation {
-      p0 = f32[1024,1024] parameter(0)
-      p1 = f32[1024,1024] parameter(1)
-      ROOT r = f32[1024,1024] dot(p0, p1),
-        algorithm=dot_tf32_tf32_f32_x3,
-        lhs_contracting_dims={1},
-        rhs_contracting_dims={0}
-    }
-
-    ENTRY main {
-      p0 = f32[1024,1024] parameter(0)
-      p1 = f32[1024,1024] parameter(1)
-      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
-        kind=kCustom,
-        calls=computation
-    }
-  )"));
-
-  const se::CudaComputeCapability ampere{se::CudaComputeCapability::AMPERE,
-                                         /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
-      auto ampere_configs,
-      GetPossibleMatmulAutotuneConfigs(*module, ampere, GetToolkitVersion(),
-                                       GetDebugOptionsForTest()));
-  EXPECT_FALSE(std::any_of(
-      ampere_configs.begin(), ampere_configs.end(),
-      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
-        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
-            config);
-      }));
+      auto module, ParseAndReturnVerifiedModule(absl::Substitute(
+                       kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3")));
 
-  const se::CudaComputeCapability hopper{se::CudaComputeCapability::HOPPER,
-                                         /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          GetPossibleMatmulAutotuneConfigs(*module));
+  EXPECT_FALSE(hasCublasConfig(configs))
+      << "There is no cublas implementation for dot_tf32_tf32_f32_x3. That is "
+         "why we don't want to fallback to cublas.";
+}
+
+TEST_F(StatelessAutotunerTest,
+       NoCublasFallbackForBf16Bf16F32AlgorithmOnHopper) {
+  // There is no cublas implementation for dot_bf16_bf16_f32 at the moment.
+  // At the same time cublas f32 is faster than triton for this algorithm.
+  // But we don't want to fallback to cuBLAS in this case because we lose the
+  // precision guarantees.
   TF_ASSERT_OK_AND_ASSIGN(
-      auto hopper_configs,
-      GetPossibleMatmulAutotuneConfigs(*module, hopper, GetToolkitVersion(),
-                                       GetDebugOptionsForTest()));
-  EXPECT_FALSE(std::any_of(
-      hopper_configs.begin(), hopper_configs.end(),
-      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
-        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
-            config);
-      }));
+      auto module, ParseAndReturnVerifiedModule(absl::Substitute(
+                       kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          GetPossibleMatmulAutotuneConfigs(*module));
+  switch (GetCudaComputeCapability().major) {
+    case se::CudaComputeCapability::AMPERE:
+      EXPECT_TRUE(hasCublasConfig(configs))
+          << "There is a cublas implementation for dot_bf16_bf16_f32 on Ampere";
+      break;
+    case se::CudaComputeCapability::HOPPER:
+      EXPECT_FALSE(hasCublasConfig(configs))
+          << "There is no cublas implementation for dot_bf16_bf16_f32 on "
+             "Hopper. That is why we don't want to fallback to cublas.";
+      break;
+    default:
+      // We don't know what to expect for other compute capabilities.
+      EXPECT_FALSE(hasCublasConfig(configs));
+  }
 }
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
@@ -261,13 +305,6 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
     debug_options.set_xla_gpu_cublas_fallback(false);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(0);
     return debug_options;
-  }
-
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
   }
 
   void CheckTritonAutotuning(absl::string_view hlo,
