@@ -72,6 +72,7 @@ tf_proto_library(
     has_services = 1,
     create_grpc_library = True,
     create_java_proto = False,
+    create_kotlin_proto = False,
     create_service = True,
     protodeps = if_google(["@com_google_protobuf//:any"]),
     visibility = ["//visibility:public"],
@@ -103,6 +104,7 @@ tf_proto_library(
 tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
+    create_kotlin_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
