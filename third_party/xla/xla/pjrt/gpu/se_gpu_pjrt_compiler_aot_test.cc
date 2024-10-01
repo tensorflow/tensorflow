@@ -44,7 +44,7 @@ limitations under the License.
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/amdgpu_compiler.h"
 #endif
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/protobuf.h"

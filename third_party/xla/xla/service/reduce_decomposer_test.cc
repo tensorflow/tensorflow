@@ -18,7 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/filecheck.h"

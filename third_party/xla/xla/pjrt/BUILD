@@ -247,7 +247,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/client:xla_computation",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
@@ -408,7 +408,7 @@ cc_library(
     visibility = ["//xla:friends"],
     deps = [
         "//xla:shape_util",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -425,7 +425,7 @@ cc_library(
     visibility = ["//xla:friends"],
     deps = [
         "//xla:shape_util",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -891,8 +891,8 @@ xla_cc_test(
     deps = [
         ":tf_pjrt_client",
         "//xla:literal_util",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt/cpu:cpu_client",
-        "//xla/service:hlo_parser",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
