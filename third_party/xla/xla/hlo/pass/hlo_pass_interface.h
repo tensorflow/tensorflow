@@ -17,12 +17,16 @@ limitations under the License.
 #define XLA_HLO_PASS_HLO_PASS_INTERFACE_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -66,23 +70,21 @@ class HloPassInterface {
 
   // Run the pass on the given HLO module with specified execution_threads.
   // Empty execution_threads list means all execution_threads are included.
-  // Returns whether it modified the module. Note that due to C++ inheritance
-  // hides overloaded function, Run(HloModule* module) is not a member function
-  // of a subclass unless it's explicitly brought to the subclass besides
-  // implementing the virtual version, for instance,
+  // Returns whether it modified the module.
   //
+  // When a derived class overrides one of the overloaded functions, C++ hides
+  // the non-overridden overloaded functions in the derived class. The the
+  // non-overridden overloaded functions may be called with 1. explicit
+  // qualification, 2. casting, or 3. brought to the derived class with `using
+  // BaseClass::OverloadedFunction`. Example declaration with `using` for the
+  // Run function:
   //   class MyNewPass : public HloModulePass {
-  //    public:
-  //      MyNewPass();
-  //      absl::string_view name() const override { return "my-new-pass"; }
-  //
   //      using HloPassInterface::Run;
   //      absl::StatusOr<bool> Run(
   //        HloModule* module,
   //        const absl::flat_hash_set<absl::string_view>& execution_threads)
   //        override;
   //   };
-  //
   absl::StatusOr<bool> Run(HloModule* module) {
     return Run(module, /*execution_threads=*/{});
   }
@@ -115,23 +117,8 @@ class HloPassInterface {
   // Ideally, the module group variant would be named "Run" as well, but C++
   // does not handle overloaded virtual methods well.
   //
-  // Note that due to C++ inheritance hides overloaded function,
-  // RunOnModuleGroup(HloModuleGroup* module_group) is not a member function of
-  // a subclass unless it's explicitly brought to the subclass besides
-  // implementing the virtual version, for instance,
-  //
-  //   class MyNewPass : public HloModuleGroupPass {
-  //    public:
-  //      MyNewPass();
-  //      absl::string_view name() const override { return "my-new-pass"; }
-  //
-  //      using HloPassInterface::RunOnModuleGroup;
-  //      absl::StatusOr<bool> RunOnModuleGroup(
-  //        HloModuleGroup* module_group,
-  //        const absl::flat_hash_set<absl::string_view>& execution_threads)
-  //        override;
-  //   };
-  //
+  // See the caveat about non-overridden overloaded functions in the Run
+  // function above.
   absl::StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
     return RunOnModuleGroup(module_group, /*execution_threads=*/{});
   }

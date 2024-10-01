@@ -52,13 +52,11 @@ class CollectivePermuteCycleDecomposer : public HloModulePass {
  public:
   explicit CollectivePermuteCycleDecomposer(int64_t threshold_in_bytes)
       : threshold_in_bytes_(threshold_in_bytes) {}
+
   absl::string_view name() const override {
     return "collective-permute-cycle-decomposer";
   }
 
-  using HloPassInterface::Run;
-  // Runs CollectivePermuteCycleDecomposer pass on computations in 'module'.
-  // Returns whether the 'module' was changed.
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
