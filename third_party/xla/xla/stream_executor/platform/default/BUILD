@@ -11,11 +11,6 @@ package(
 )
 
 cc_library(
-    name = "platform",
-    textual_hdrs = ["initialize.h"],
-)
-
-cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
     compatible_with = [],

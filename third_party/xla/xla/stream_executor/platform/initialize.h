@@ -16,12 +16,22 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
 
-#include "xla/stream_executor/platform/platform.h"
+namespace stream_executor {
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
-#include "xla/stream_executor/platform/google/initialize.h"  // IWYU pragma: export
-#else
-#include "xla/stream_executor/platform/default/initialize.h"  // IWYU pragma: export
-#endif
+// Simple initializer class that can be used to run arbitrary initialization
+// routines at module load time.
+class Initializer {
+ public:
+  typedef void (*InitializerFunc)();
+  explicit Initializer(InitializerFunc func) { func(); }
+};
+
+}  // namespace stream_executor
+
+#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(name, body)               \
+  namespace {                                                                 \
+  ::stream_executor::Initializer stream_executor_initializer_module##_##name( \
+      []() { body; });                                                        \
+  }
 
 #endif  // XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_
