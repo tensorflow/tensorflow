@@ -21,8 +21,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"

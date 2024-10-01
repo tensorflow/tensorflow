@@ -1,22 +1,24 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
-# buildifier: disable=out-of-order-load
 
-# buildifier: disable=out-of-order-load
-
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_hipblaslt",
+    "rocm_library",
+)
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
+load("//xla/tests:build_defs.bzl", "xla_test")
 load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_hipblaslt",
-    "if_rocm_is_configured",
-    "rocm_library",
+    "//xla/tsl:tsl.bzl",
+    "if_google",
+    "internal_visibility",
+    "tsl_copts",
 )
-load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -31,28 +33,41 @@ package_group(
 
 cc_library(
     name = "rocm_diagnostics",
-    srcs = if_rocm_is_configured(["rocm_diagnostics.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_diagnostics.h"]),
-    deps = if_rocm_is_configured([
+    srcs = ["rocm_diagnostics.cc"],
+    hdrs = ["rocm_diagnostics.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        "//xla/stream_executor/gpu:gpu_diagnostics_header",
+        "//xla/stream_executor/platform",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "//xla/stream_executor/gpu:gpu_diagnostics_header",
-        "//xla/stream_executor/platform",
-        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:logging",
-    ]),
+        "@local_tsl//tsl/platform:platform_port",
+    ],
 )
 
 cc_library(
     name = "rocm_driver",
-    srcs = if_rocm_is_configured(["rocm_driver.cc"]),
-    hdrs = if_rocm_is_configured([
-        "rocm_driver_wrapper.h",
+    srcs = ["rocm_driver.cc"],
+    hdrs = [
         "rocm_driver.h",
+        "rocm_driver_wrapper.h",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         ":rocm_diagnostics",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
@@ -71,28 +86,31 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
-    ]),
+    ],
 )
 
 cc_library(
     name = "rocm_runtime",
-    srcs = if_rocm_is_configured(["rocm_runtime.cc"]),
-    hdrs = if_rocm_is_configured([
-        "rocm_driver_wrapper.h",
-        "rocm_driver.h",
+    srcs = ["rocm_runtime.cc"],
+    hdrs = ["rocm_runtime.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
+        ":rocm_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_runtime_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/base:core_headers",
@@ -107,116 +125,180 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ]),
-)
-
-cc_library(
-    name = "rocm_collectives",
-    srcs = if_rocm_is_configured(["rocm_collectives.cc"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        "//xla/stream_executor/gpu:gpu_collectives_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ]),
-)
-
-cc_library(
-    name = "rocm_activation",
-    srcs = [],
-    hdrs = if_rocm_is_configured(["rocm_activation.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        ":rocm_driver",
-        "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_activation",
-        "//xla/stream_executor/platform",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
     name = "rocm_event",
-    srcs = if_rocm_is_configured(["rocm_event.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_event.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    srcs = ["rocm_event.cc"],
+    hdrs = ["rocm_event.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":rocm_driver",
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_event_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-    ]),
+        "//xla/stream_executor/gpu:scoped_activate_context",
+    ],
 )
 
 cc_library(
     name = "rocm_executor",
-    srcs = if_rocm_is_configured(["rocm_executor.cc"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        ":rocm_collectives",
+    srcs = ["rocm_executor.cc"],
+    hdrs = ["rocm_executor.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":rocm_diagnostics",
         ":rocm_driver",
         ":rocm_event",
         ":rocm_kernel",
         ":rocm_platform_id",
         ":rocm_runtime",
+        ":rocm_version_parser",
         "//xla/stream_executor",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:event_based_timer",
+        "//xla/stream_executor:fft",
+        "//xla/stream_executor:host_memory_allocation",
         "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor/gpu:gpu_activation_header",
-        "//xla/stream_executor/gpu:gpu_collectives_header",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_command_buffer",
+        "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
-        "//xla/stream_executor/gpu:gpu_runtime_header",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ],
     alwayslink = True,
+)
+
+xla_test(
+    name = "rocm_executor_test",
+    srcs = ["rocm_executor_test.cc"],
+    backends = ["gpu_amd_any"],
+    tags = ["rocm-only"],
+    deps = [":rocm_executor"],
 )
 
 cc_library(
     name = "rocm_kernel",
-    srcs = if_rocm_is_configured(["rocm_kernel.cc"]),
-    visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        "//xla/stream_executor/gpu:gpu_kernel_header",
+    srcs = ["rocm_kernel.cc"],
+    hdrs = ["rocm_kernel.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-    alwayslink = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_kernel_header",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:logging",
+    ],
 )
 
-rocm_library(
-    name = "hip_conditional_kernels",
-    srcs = if_rocm_is_configured(["hip_conditional_kernels.cu.cc"]),
-    deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
+xla_test(
+    name = "rocm_kernel_test",
+    srcs = ["rocm_kernel_test.cc"],
+    backends = ["gpu_amd_any"],
+    deps = [
+        ":rocm_kernel",
+        ":rocm_runtime",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "command_buffer_kernels",
+    srcs = ["command_buffer_kernels.cc"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
     name = "rocm_platform",
-    srcs = if_rocm_is_configured(["rocm_platform.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_platform.h"]),
+    srcs = ["rocm_platform.cc"],
+    hdrs = ["rocm_platform.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        # keep sorted
-        ":rocm_collectives",
+    deps = [
         ":rocm_driver",
         ":rocm_executor",
         ":rocm_platform_id",
@@ -231,7 +313,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",
-    ]),
+    ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
@@ -244,44 +326,55 @@ cc_library(
 
 cc_library(
     name = "rocblas_if_static",
-    deps = if_static([
-        ":rocblas_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "rocblas_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:rocblas",
     ]),
 )
 
 cc_library(
     name = "rocblas_wrapper",
-    hdrs = if_rocm_is_configured(["rocblas_wrapper.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    hdrs = ["rocblas_wrapper.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":rocblas_if_static",
         ":rocm_executor",
         ":rocm_platform_id",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_for_kernels",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "rocblas_plugin",
-    srcs = if_rocm_is_configured(["rocm_blas.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_blas.h"]),
+    srcs = ["rocm_blas.cc"],
+    hdrs = ["rocm_blas.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         ":hipblas_lt_header",
         ":rocblas_if_static",
         ":rocblas_wrapper",
@@ -295,11 +388,11 @@ cc_library(
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_hdr_lib",
@@ -311,77 +404,89 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:logging",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "hipfft_if_static",
-    deps = if_static([
-        ":hipfft_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "hipfft_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:hipfft",
     ]),
 )
 
 cc_library(
     name = "hipfft_plugin",
-    srcs = if_rocm_is_configured(["rocm_fft.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_fft.h"]),
+    srcs = ["rocm_fft.cc"],
+    hdrs = ["rocm_fft.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         ":hipfft_if_static",
         ":rocm_complex_converters",
         ":rocm_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "miopen_if_static",
-    deps = if_static([
-        ":miopen_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "miopen_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:miopen",
     ]),
 )
 
 cc_library(
     name = "miopen_plugin",
-    srcs = if_rocm_is_configured(["rocm_dnn.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_dnn.h"]),
+    srcs = ["rocm_dnn.cc"],
+    hdrs = ["rocm_dnn.h"],
     copts = [
         # STREAM_EXECUTOR_CUDNN_WRAP would fail on Clang with the default
         # setting of template depth 256
         "-ftemplate-depth-512",
     ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         ":miopen_if_static",
         ":rocm_diagnostics",
         ":rocm_driver",
@@ -393,11 +498,11 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_for_kernels",
@@ -415,115 +520,143 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:logging",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "hiprand_if_static",
-    deps = if_static([
-        ":hiprand_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "hiprand_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:hiprand",
     ]),
 )
 
 cc_library(
     name = "hipsparse_if_static",
-    deps = if_static([
-        ":hipsparse_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "hipsparse_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:hipsparse",
     ]),
 )
 
 cc_library(
     name = "hipsparse_wrapper",
-    srcs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
-    hdrs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
-    deps = if_rocm_is_configured([
+    srcs = ["hipsparse_wrapper.h"],
+    hdrs = ["hipsparse_wrapper.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":hipsparse_if_static",
         ":rocm_executor",
         ":rocm_platform_id",
-        "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "rocsolver_if_static",
-    deps = if_static([
-        ":rocsolver_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "rocsolver_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:rocsolver",
     ]),
 )
 
 cc_library(
     name = "rocsolver_wrapper",
-    srcs = if_rocm_is_configured(["rocsolver_wrapper.h"]),
-    hdrs = if_rocm_is_configured(["rocsolver_wrapper.h"]),
-    deps = if_rocm_is_configured([
+    srcs = ["rocsolver_wrapper.h"],
+    hdrs = ["rocsolver_wrapper.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocsolver_if_static",
-        "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "hipsolver_if_static",
-    deps = if_static([
-        ":hipsolver_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "hipsolver_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:hipsolver",
     ]),
 )
 
 cc_library(
     name = "hipsolver_wrapper",
-    hdrs = if_rocm_is_configured(["hipsolver_wrapper.h"]),
-    deps = if_rocm_is_configured([
+    hdrs = ["hipsolver_wrapper.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        ":hipsolver_if_static",
         ":rocm_executor",
         ":rocm_platform_id",
-        ":hipsolver_if_static",
-        "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
+        "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:env",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "hipblaslt_if_static",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     deps = if_rocm_hipblaslt([
         "@local_config_rocm//rocm:hipblaslt",
     ]),
@@ -531,14 +664,20 @@ cc_library(
 
 cc_library(
     name = "amdhipblaslt_plugin",
-    srcs = if_rocm_is_configured(["hip_blas_lt.cc"]),
-    hdrs = if_rocm_is_configured([
+    srcs = ["hip_blas_lt.cc"],
+    hdrs = [
         "hip_blas_lt.h",
-        "hipblaslt_wrapper.h",
         "hip_blas_utils.h",
+        "hipblaslt_wrapper.h",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         ":hip_blas_utils",
         ":hipblas_lt_header",
         ":rocblas_plugin",
@@ -552,10 +691,10 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:host_or_device_scalar",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/status",
@@ -563,7 +702,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-    ]) + if_static([
+    ] + if_static([
         ":hipblaslt_if_static",
     ]),
     alwayslink = True,
@@ -571,14 +710,20 @@ cc_library(
 
 cc_library(
     name = "hipblas_lt_header",
-    hdrs = if_rocm_is_configured([
+    hdrs = [
         "hip_blas_lt.h",
-        "hipblaslt_wrapper.h",
         "hip_blas_utils.h",
+        "hipblaslt_wrapper.h",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        # keep sorted
+    deps = [
         "//xla:types",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
@@ -591,15 +736,21 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-    ]),
+    ],
 )
 
 cc_library(
     name = "hip_blas_utils",
-    srcs = if_rocm_is_configured(["hip_blas_utils.cc"]),
-    hdrs = if_rocm_is_configured(["hip_blas_utils.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    srcs = ["hip_blas_utils.cc"],
+    hdrs = ["hip_blas_utils.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":hipblas_lt_header",
         ":rocblas_plugin",
         "//xla/stream_executor",
@@ -609,29 +760,35 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-    ]),
+    ],
 )
 
 cc_library(
     name = "roctracer_if_static",
-    deps = if_static([
-        ":roctracer_if_rocm_configured",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
     ]),
-)
-
-cc_library(
-    name = "roctracer_if_rocm_configured",
-    deps = if_rocm_is_configured([
+    deps = if_static([
         "@local_config_rocm//rocm:roctracer",
     ]),
 )
 
 cc_library(
     name = "roctracer_wrapper",
-    srcs = if_rocm_is_configured(["roctracer_wrapper.h"]),
-    hdrs = if_rocm_is_configured(["roctracer_wrapper.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
+    srcs = ["roctracer_wrapper.h"],
+    hdrs = ["roctracer_wrapper.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
         ":rocm_executor",
         ":rocm_platform_id",
         ":roctracer_if_static",
@@ -640,56 +797,78 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:env",
-    ]),
+    ],
     alwayslink = True,
 )
 
 rocm_library(
     name = "rocm_helpers",
-    srcs = if_rocm_is_configured(["rocm_helpers.cu.cc"]),
-    deps = if_rocm_is_configured([
+    srcs = ["rocm_helpers.cu.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
         "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
     alwayslink = True,
 )
 
 cc_library(
     name = "rocm_complex_converters",
-    hdrs = if_rocm_is_configured(["rocm_complex_converters.h"]),
-    deps = ["@com_google_absl//absl/log:check"] + if_rocm_is_configured([
+    hdrs = ["rocm_complex_converters.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "@com_google_absl//absl/log:check",
         "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(
     name = "all_runtime",
     copts = tsl_copts(),
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        ":miopen_plugin",
+    deps = [
+        ":amdhipblaslt_plugin",
         ":hipfft_plugin",
+        ":miopen_plugin",
         ":rocblas_plugin",
         ":rocm_driver",
-        ":rocm_platform",
         ":rocm_helpers",
-        ":amdhipblaslt_plugin",
-    ]),
+        ":rocm_platform",
+    ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "rocm_rpath",
-    data = [],
     linkopts = select({
         "//conditions:default": [
             "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
         ],
     }),
-    deps = [],
 )
 
 cc_library(
     name = "stream_executor_rocm",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
     deps = [
         ":rocm_rpath",
         "//xla/stream_executor",
@@ -703,4 +882,36 @@ cc_library(
     ] + if_static(
         [":all_runtime"],
     ),
+)
+
+cc_library(
+    name = "rocm_version_parser",
+    srcs = ["rocm_version_parser.cc"],
+    hdrs = ["rocm_version_parser.h"],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "rocm_version_parser_test",
+    srcs = ["rocm_version_parser_test.cc"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        ":rocm_version_parser",
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
 )

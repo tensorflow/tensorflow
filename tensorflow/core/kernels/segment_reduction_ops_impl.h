@@ -59,14 +59,14 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/util/gpu_solvers.h"
+using stream_executor::gpu::ScopedActivateContext;
 
-using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
+using stream_executor::gpu::ScopedActivateContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -287,7 +287,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      ScopedActivateContext scoped_activation{stream->parent()};
 
       Index output_rows = *output_rows_host.data();
       output_rows++;
@@ -920,7 +920,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      ScopedActivateContext scoped_activation{stream->parent()};
 
       SegmentId last_segment_id = *last_segment_id_host.data();
       SegmentId output_rows = last_segment_id + 1;

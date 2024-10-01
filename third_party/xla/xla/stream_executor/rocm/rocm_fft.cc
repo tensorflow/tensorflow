@@ -18,10 +18,10 @@ limitations under the License.
 #include <complex>
 
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform/port.h"
@@ -49,7 +49,7 @@ namespace wrap {
   struct WrapperShim__##__name {                                 \
     template <typename... Args>                                  \
     hipfftResult operator()(GpuExecutor *parent, Args... args) { \
-      gpu::ScopedActivateExecutorContext sac{parent};            \
+      ScopedActivateContext sac{parent};                         \
       return ::__name(args...);                                  \
     }                                                            \
   } __name;
@@ -78,7 +78,7 @@ namespace wrap {
     }                                                                    \
     template <typename... Args>                                          \
     hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
-      gpu::ScopedActivateExecutorContext sac{parent};                    \
+      ScopedActivateContext sac{parent};                                 \
       return DynLoad()(args...);                                         \
     }                                                                    \
   } __name;                                                              \

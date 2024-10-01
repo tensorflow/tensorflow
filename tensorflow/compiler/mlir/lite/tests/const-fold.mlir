@@ -348,6 +348,78 @@ func.func @min_with_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64
   // CHECK: return %[[ARG0]], %[[ARG0]]
 }
 
+// CHECK-LABEL: @min_dense_splat_int
+func.func @min_dense_splat_int() -> tensor<4xi32> {
+  %0 = arith.constant dense<[-10, -1, 42, 100]> : tensor<4xi32>
+  %1 = arith.constant dense<5> : tensor<4xi32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK:  arith.constant dense<[-10, -1, 5, 5]> : tensor<4xi32>
+
+// CHECK-LABEL: @min_dense_splat_float
+func.func @min_dense_splat_float() -> tensor<4xf32> {
+  %0 = arith.constant dense<[-10.0, -1.0, 42.0, 100.0]> : tensor<4xf32>
+  %1 = arith.constant dense<5.0> : tensor<4xf32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %2 : tensor<4xf32>
+}
+
+// CHECK: arith.constant dense<[-1.000000e+01, -1.000000e+00, 5.000000e+00, 5.000000e+00]> : tensor<4xf32>
+
+// CHECK-LABEL: @min_dense_float
+func.func @min_dense_float() -> tensor<2xf32> {
+  %0 = arith.constant dense<[-10.0, 10.0]> : tensor<2xf32>
+  %1 = arith.constant dense<[5.0, 5.0]> : tensor<2xf32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+
+  func.return %2 : tensor<2xf32>
+}
+
+// CHECK: arith.constant dense<[-1.000000e+01, 5.000000e+00]> : tensor<2xf32>
+
+// CHECK-LABEL: @max_dense_splat_int
+func.func @max_dense_splat_int() -> tensor<4xi32> {
+  %0 = arith.constant dense<[-10, -1, 42, 100]> : tensor<4xi32>
+  %1 = arith.constant dense<5> : tensor<4xi32>
+
+  %2 = "tfl.maximum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK:  arith.constant dense<[5, 5, 42, 100]> : tensor<4xi32>
+
+// CHECK-LABEL: @max_dense_splat_float
+func.func @max_dense_splat_float() -> tensor<4xf32> {
+  %0 = arith.constant dense<[-10.0, -1.0, 42.0, 100.0]> : tensor<4xf32>
+  %1 = arith.constant dense<5.0> : tensor<4xf32>
+
+  %2 = "tfl.maximum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %2 : tensor<4xf32>
+}
+
+// CHECK: arith.constant dense<[5.000000e+00, 5.000000e+00, 4.200000e+01, 1.000000e+02]> : tensor<4xf32>
+
+// CHECK-LABEL: @max_dense_float
+func.func @max_dense_float() -> tensor<2xf32> {
+  %0 = arith.constant dense<[-10.0, 10.0]> : tensor<2xf32>
+  %1 = arith.constant dense<[5.0, 5.0]> : tensor<2xf32>
+
+  %2 = "tfl.maximum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+
+  func.return %2 : tensor<2xf32>
+}
+
+// CHECK: arith.constant dense<[5.000000e+00, 1.000000e+01]> : tensor<2xf32>
+
 // CHECK-LABEL: @mul_int
 func.func @mul_int() -> (tensor<i32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
   %0 = arith.constant dense<8> : tensor<i32>
@@ -1009,6 +1081,15 @@ func.func @cast_f32_to_i32() -> tensor<8xi32> {
 
 // CHECK: %cst = arith.constant dense<[-1, 0, 1, 0, 0, 2147483647, -2147483648, 0]> : tensor<8xi32>
 
+// CHECK-LABEL: @cast_f32_to_i64
+func.func @cast_f32_to_i64() -> tensor<4xi64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 1.5, 0.99]> : tensor<4xf32>
+  %0 = "tfl.cast"(%cst) : (tensor<4xf32>) -> tensor<4xi64>
+  func.return %0 : tensor<4xi64>
+}
+
+// CHECK: %cst = arith.constant dense<[-1, 0, 1, 0]> : tensor<4xi64>
+
 // CHECK-LABEL: @cast_i32_to_f32
 func.func @cast_i32_to_f32() -> tensor<5xf32> {
   %cst = arith.constant dense<[-1, 0, 2, 2147483647, -2147483648]> : tensor<5xi32>
@@ -1134,6 +1215,18 @@ func.func @ConstantFoldFullyConnectedCheckPrecision() -> tensor<1xf32> {
   // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: fully_connected_with_unit_dim
+func.func @fully_connected_with_unit_dim() -> tensor<1x5xf32> {
+  %0 = "tfl.pseudo_const"() <{value = dense<1.0> : tensor<1x5xf32>}> : () -> tensor<1x5xf32>
+  %1 = "tfl.pseudo_const"() <{value = dense<1.0> : tensor<5x5xf32>}> : () -> tensor<5x5xf32>
+  %2 = "tfl.pseudo_const"() <{value = dense<1.0> : tensor<1x5xf32>}> : () -> tensor<1x5xf32>
+  %3 = "tfl.fully_connected"(%0, %1, %2) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x5xf32>, tensor<5x5xf32>, tensor<1x5xf32>) -> tensor<1x5xf32>
+  return %3 : tensor<1x5xf32>
+}
+
+// CHECK:     %cst = arith.constant dense<6.000000e+00> : tensor<1x5xf32>
+// CHECK-NOT: fully_connected
+
 // CHECK-LABEL: @ShapeOpI32
 func.func @ShapeOpI32(%arg0 : tensor<576x72xf32>) -> tensor<2xi32> {
   %0 = "tfl.shape"(%arg0) : (tensor<576x72xf32>) -> tensor<2xi32>
@@ -1245,6 +1338,18 @@ func.func @less_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
 
+// CHECK-LABEL: @less_int64
+func.func @less_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
+
 // CHECK-LABEL: @less_float
 func.func @less_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
@@ -1263,6 +1368,18 @@ func.func @less_equal_int() -> tensor<4xi1> {
   %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
 
   %2 = "tfl.less_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @less_equal_int64
+func.func @less_equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.less_equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
 
   func.return %2 : tensor<4xi1>
 }
@@ -1293,6 +1410,18 @@ func.func @greater_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[true, false, true, false]> : tensor<4xi1>
 
+// CHECK-LABEL: @greater_int64
+func.func @greater_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.greater"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, false]> : tensor<4xi1>
+
 // CHECK-LABEL: @greater_float
 func.func @greater_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
@@ -1311,6 +1440,18 @@ func.func @greater_equal_int() -> tensor<4xi1> {
   %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
 
   %2 = "tfl.greater_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, true, true, false]> : tensor<4xi1>
+
+// CHECK-LABEL: @greater_equal_int64
+func.func @greater_equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.greater_equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
 
   func.return %2 : tensor<4xi1>
 }
@@ -1341,6 +1482,18 @@ func.func @equal_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
 
+// CHECK-LABEL: @equal_int64
+func.func @equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
+
 // CHECK-LABEL: @equal_float
 func.func @equal_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
@@ -1359,6 +1512,18 @@ func.func @not_equal_int() -> tensor<4xi1> {
   %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi32>
 
   %2 = "tfl.not_equal"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, false, true, true]> : tensor<4xi1>
+
+// CHECK-LABEL: @not_equal_int64
+func.func @not_equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.not_equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
 
   func.return %2 : tensor<4xi1>
 }
@@ -1551,6 +1716,48 @@ func.func @relu() -> tensor<3xf32> {
 
 // CHECK: %cst = arith.constant dense<[0.000000e+00, 0.000000e+00, 9.900000e-01]> : tensor<3xf32>
 
+// CHECK-LABEL: slice
+func.func @slice_first_dim() -> tensor<1x1x5x6xf32> {
+  %cst_0 = arith.constant dense<9.000000e+00> : tensor<2x1x5x6xf32>
+  %cst_1 = arith.constant dense<0> : tensor<4xi32>
+  %cst_2 = arith.constant dense<[1, 1, 5, 6]> : tensor<4xi32>
+  %0 = "tfl.slice"(%cst_0, %cst_1, %cst_2) : (tensor<2x1x5x6xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x1x5x6xf32>
+  func.return %0 : tensor<1x1x5x6xf32>
+}
+
+// CHECK %cst = arith.constant dense<9.000000e+00> : tensor<1x1x5x6xf32>
+
+// CHECK-LABEL: slice_trivial
+func.func @slice_trivial(%arg0: tensor<2x1x5x6xf32>) -> tensor<2x1x5x6xf32> {
+  %cst_1 = arith.constant dense<0> : tensor<4xi32>
+  %cst_2 = arith.constant dense<[2, 1, 5, 6]> : tensor<4xi32>
+  %0 = "tfl.slice"(%arg0, %cst_1, %cst_2) : (tensor<2x1x5x6xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<2x1x5x6xf32>
+  func.return %0 : tensor<2x1x5x6xf32>
+}
+
+// CHECK-NOT: tfl.slice
+
+
+// CHECK-LABEL: sum
+func.func @sum() -> tensor<2xf32> {
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[[[0.0, 1.0], [2.0, 3.0]], [[4.0, 5.0], [6.0, 7.0]]]> : tensor<2x2x2xf32>
+  %0 = "tfl.sum"(%cst_1, %cst) <{keep_dims = false}> : (tensor<2x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: arith.constant dense<[1.200000e+01, 1.600000e+01]> : tensor<2xf32>
+
+// CHECK-LABEL: sum_keep_dims
+func.func @sum_keep_dims() -> tensor<1x1x2xf32> {
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[[[0.0, 1.0], [2.0, 3.0]], [[4.0, 5.0], [6.0, 7.0]]]> : tensor<2x2x2xf32>
+  %0 = "tfl.sum"(%cst_1, %cst) <{keep_dims = true}> : (tensor<2x2x2xf32>, tensor<2xi32>) -> tensor<1x1x2xf32>
+  func.return %0 : tensor<1x1x2xf32>
+}
+
+// CHECK-LITERAL: arith.constant dense<[[[1.200000e+01, 1.600000e+01]]]> : tensor<1x1x2xf32>
+
 // CHECK-LABEL: gather
 func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   %params = arith.constant dense<[
@@ -1624,3 +1831,89 @@ func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   // If the return value is the same constant twice, the result is the same as expected
   // CHECK: return [[CST]], [[CST]]
 }
+
+
+// CHECK-LABEL: reverse_2_dims
+func.func @reverse_2_dims() -> tensor<2x3x2xi32> {
+  %input = "tfl.pseudo_const"() <{value = dense<[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]> : tensor<2x3x2xi32>}> : () -> tensor<2x3x2xi32>
+  %axis = "tfl.pseudo_const"() <{value = dense<[0, 1]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  %reverse = "tfl.reverse_v2"(%input, %axis) : (tensor<2x3x2xi32>, tensor<2xi32>) -> tensor<2x3x2xi32>
+  return %reverse : tensor<2x3x2xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[11, 12], [9, 10], [7, 8]], [[5, 6], [3, 4], [1, 2]]]> : tensor<2x3x2xi32>
+// CHECK:         return %cst : tensor<2x3x2xi32>
+
+// CHECK-LABEL: reverse_1_dim
+func.func @reverse_1_dim() -> tensor<2x3x2xi32> {
+  %input = "tfl.pseudo_const"() <{value = dense<[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]> : tensor<2x3x2xi32>}> : () -> tensor<2x3x2xi32>
+  %axis = "tfl.pseudo_const"() <{value = dense<[2]> : tensor<1xi32>}> : () -> tensor<1xi32>
+  %reverse = "tfl.reverse_v2"(%input, %axis) : (tensor<2x3x2xi32>, tensor<1xi32>) -> tensor<2x3x2xi32>
+  return %reverse : tensor<2x3x2xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[2, 1], [4, 3], [6, 5]], [[8, 7], [10, 9], [12, 11]]]> : tensor<2x3x2xi32>
+// CHECK:         return %cst : tensor<2x3x2xi32>
+
+// CHECK-LABEL: @slice_no_op
+func.func @slice_no_op() -> tensor<2x3x2xi32> {
+  %cst_1 = arith.constant dense<[[[0, 1], [2, 3], [4, 5]], [[6, 7], [8, 9], [10, 11]]]> : tensor<2x3x2xi32>
+  %cst_2 = arith.constant dense<0> : tensor<3xi32>
+  %cst_3 = arith.constant dense<[2, 3, 2]> : tensor<3xi32>
+  %0 = "tfl.slice"(%cst_1, %cst_2, %cst_3) : (tensor<2x3x2xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<2x3x2xi32>
+  return %0 : tensor<2x3x2xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[0, 1], [2, 3], [4, 5]], [[6, 7], [8, 9], [10, 11]]]> : tensor<2x3x2xi32>
+// CHECK-NOT:     slice
+
+// CHECK-LABEL: @slice_some_dims
+func.func @slice_some_dims() -> tensor<2x2x1xi32> {
+  %cst_1 = arith.constant dense<[[[0, 1], [2, 3], [4, 5]], [[6, 7], [8, 9], [10, 11]]]> : tensor<2x3x2xi32>
+  %cst_2 = arith.constant dense<[0, 1, 1]> : tensor<3xi32>
+  %cst_3 = arith.constant dense<[2, 2, 1]> : tensor<3xi32>
+  %0 = "tfl.slice"(%cst_1, %cst_2, %cst_3) : (tensor<2x3x2xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<2x2x1xi32>
+  return %0 : tensor<2x2x1xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[3], [5]], [[9], [11]]]> : tensor<2x2x1xi32>
+// CHECK-NOT:     slice
+
+// CHECK-LABEL: @slice_all_dims
+func.func @slice_all_dims() -> tensor<1x2x1xi32> {
+  %cst_1 = arith.constant dense<[[[0, 1], [2, 3], [4, 5]], [[6, 7], [8, 9], [10, 11]]]> : tensor<2x3x2xi32>
+  %cst_2 = arith.constant dense<[1, 1, 1]> : tensor<3xi32>
+  %cst_3 = arith.constant dense<[1, 2, 1]> : tensor<3xi32>
+  %0 = "tfl.slice"(%cst_1, %cst_2, %cst_3) : (tensor<2x3x2xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x1xi32>
+  return %0 : tensor<1x2x1xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[9], [11]]]> : tensor<1x2x1xi32>
+// CHECK-NOT:     slice
+
+// CHECK-LABEL: @slice_some_dims_i64
+func.func @slice_some_dims_i64() -> tensor<2x2x1xi32> {
+  %cst_1 = arith.constant dense<[[[0, 1], [2, 3], [4, 5]], [[6, 7], [8, 9], [10, 11]]]> : tensor<2x3x2xi32>
+  %cst_2 = arith.constant dense<[0, 1, 1]> : tensor<3xi64>
+  %cst_3 = arith.constant dense<[2, 2, 1]> : tensor<3xi64>
+  %0 = "tfl.slice"(%cst_1, %cst_2, %cst_3) : (tensor<2x3x2xi32>, tensor<3xi64>, tensor<3xi64>) -> tensor<2x2x1xi32>
+  return %0 : tensor<2x2x1xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[3], [5]], [[9], [11]]]> : tensor<2x2x1xi32>
+// CHECK-NOT:     slice
+
+// CHECK-LABEL: @slice_big_float
+func.func @slice_big_float() -> tensor<1x1x1792x256xf32> {
+  %cst_1 = arith.constant dense<9.000000e+00> : tensor<2x1x1792x256xf32>
+  %cst_2 = arith.constant dense<[1, 0, 0, 0]> : tensor<4xi32>
+  %cst_3 = arith.constant dense<[1, 1, 1792, 256]> : tensor<4xi32>
+  %0 = "tfl.slice"(%cst_1, %cst_2, %cst_3) : (tensor<2x1x1792x256xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x1x1792x256xf32>
+  return %0 : tensor<1x1x1792x256xf32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<9.000000e+00> : tensor<1x1x1792x256xf32>
+// CHECK-NOT:     slice
+
+
+

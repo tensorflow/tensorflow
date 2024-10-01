@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.numpy_compat import np_reshape
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -151,9 +152,9 @@ def constant_value(
 
   def _inner_factory(pylist, dtype, shape, name=None):  # pylint: disable=unused-argument
     if dtype is object or dtype is None:
-      return np.reshape(np.array(pylist, dtype=dtype), shape)
+      return np_reshape(np.array(pylist, dtype=dtype), shape)
     else:
-      return np.reshape(np.array(pylist).astype(dtype), shape)
+      return np_reshape(np.array(pylist).astype(dtype), shape)
 
   return _constant_value(
       _ragged_factory, _inner_factory, pylist, dtype, ragged_rank, inner_shape

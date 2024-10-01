@@ -762,9 +762,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
         return absl::InvalidArgumentError(
             "Op can only handle 1 or 2 operand(s).");
       }
-      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
-        return absl::UnimplementedError("Does not accept INT32 input.\n");
-      }
       if (op_sig.inputs[1].dims.size() != 1) {
         return absl::UnimplementedError("Only support 1D indices\n");
       }
@@ -1064,8 +1061,15 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
       return absl::OkStatus();
     }
+    case kTfLiteBuiltinReverseV2: {
+      RETURN_IF_ERROR(CheckInputsConstsOutputs(op_sig,
+                                               /*required_runtime_inputs=*/1,
+                                               /*required_const_inputs=*/1,
+                                               /*required_outputs=*/1));
+      return CheckAxesAreInt32Const(op_sig, 1);
+    }
 
-    // One argument elemenetwise operations
+    // One argument elementwise operations
     case kTfLiteBuiltinAbs:
     case kTfLiteBuiltinCeil:
     case kTfLiteBuiltinCos:
@@ -1101,6 +1105,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinNotEqual:
     case kTfLiteBuiltinPow:
+    case kTfLiteBuiltinStablehloRemainder:
     case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinSub: {
       if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/2,
@@ -1128,6 +1133,37 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     }
 
     // Stable HLO ops
+    case kTfLiteBuiltinStablehloBroadcastInDim:
+      if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                    /*required_const_inputs=*/1,
+                                    /*required_outputs=*/1)
+               .ok()) {
+        return absl::InvalidArgumentError(
+            "requires one runtime input, one const input, and one output");
+      }
+      if (op_sig.inputs[1].dims.size() != 1) {
+        return absl::InvalidArgumentError("Only support 1D indices");
+      }
+      if (op_sig.inputs[1].type != kTfLiteInt32) {
+        return absl::InvalidArgumentError("Only support int32 indices");
+      }
+      if (op_sig.inputs[0].dims.size() != op_sig.inputs[1].dims[0]) {
+        return absl::InvalidArgumentError(
+            "Require size(indices) = rank(operand)");
+      }
+      return absl::OkStatus();
+    case kTfLiteBuiltinStablehloCbrt:
+      if (op_sig.inputs[0].type != kTfLiteFloat16 &&
+          op_sig.inputs[0].type != kTfLiteFloat32 &&
+          op_sig.inputs[0].type != kTfLiteBFloat16) {
+        return absl::InvalidArgumentError("Only support float inputs");
+      }
+      if (op_sig.inputs[0].type != op_sig.outputs[0].type) {
+        return absl::InvalidArgumentError("Input and output types must match");
+      }
+      return CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                      /*required_const_inputs=*/0,
+                                      /*required_outputs=*/1);
     case kTfLiteBuiltinStablehloClamp:
       if ((op_sig.inputs.at(0).type != op_sig.inputs.at(1).type) ||
           (op_sig.inputs.at(1).type != op_sig.inputs.at(2).type)) {

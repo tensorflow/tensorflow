@@ -26,7 +26,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/test.h"
@@ -55,11 +57,11 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   // directly.
   absl::StatusOr<tsl::RCReference<Array>> CreateArray(
       absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-      ShardingParam sharding_param, DeviceList device_list);
+      ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list);
 
   // Picks a given number of devices.
   // Error when `count` is larger than the total number of devices.
-  absl::StatusOr<DeviceList> PickDevices(int count);
+  absl::StatusOr<tsl::RCReference<DeviceList>> PickDevices(int count);
 
   mlir::MLIRContext mlir_context_;
   std::shared_ptr<Client> client_;

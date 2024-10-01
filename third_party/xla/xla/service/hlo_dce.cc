@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <set>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -66,95 +68,112 @@ bool IsRemovableWhile(HloInstruction* instruction,
   return true;
 }
 
+// Returns true if it found and removed unused outputs.
+absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
+    HloComputation* computation) {
+  HloInstruction* fusion_instruction = computation->FusionInstruction();
+  if (!fusion_instruction) {
+    return false;
+  }
+
+  if (computation->root_instruction()->opcode() != HloOpcode::kTuple ||
+      computation->root_instruction()->has_sharding() ||
+      !fusion_instruction->output_operand_aliasing().empty() ||
+      fusion_instruction->HasControlDependencies() ||
+      fusion_instruction->IsCustomFusion()) {
+    return false;
+  }
+
+  // The order of the used outputs is relevant for the algorithm below.
+  std::set<int64_t> used_tuple_elements;
+
+  // We only support this cleanup if all users of the fusion instruction are
+  // GetTupleElement ops, and there is at least one user of
+  // 'fusion_instruction'.
+  if (fusion_instruction->users().empty()) {
+    return false;
+  }
+
+  for (HloInstruction* gte : fusion_instruction->users()) {
+    if (gte->opcode() != HloOpcode::kGetTupleElement) {
+      return false;
+    }
+    used_tuple_elements.insert(gte->tuple_index());
+  }
+
+  // If all outputs are used, nothing to clean up.
+  if (used_tuple_elements.size() ==
+      computation->root_instruction()->operand_count()) {
+    return false;
+  }
+
+  std::vector<Shape> tuple_shapes;
+  tuple_shapes.reserve(used_tuple_elements.size());
+  for (int64_t tuple_index : used_tuple_elements) {
+    tuple_shapes.push_back(
+        fusion_instruction->shape().tuple_shapes(tuple_index));
+  }
+  Shape new_shape = tuple_shapes.size() == 1
+                        ? tuple_shapes[0]
+                        : ShapeUtil::MakeTupleShape(tuple_shapes);
+  *fusion_instruction->mutable_shape() = std::move(new_shape);
+
+  // Update the users of the old fusion instruction.
+  if (tuple_shapes.size() > 1) {
+    for (HloInstruction* gte : fusion_instruction->users()) {
+      auto it = used_tuple_elements.lower_bound(gte->tuple_index());
+      int64_t new_tuple_index = std::distance(used_tuple_elements.begin(), it);
+      gte->set_tuple_index(new_tuple_index);
+    }
+  } else {
+    // Since we iterate over users while removing them .. make a local copy
+    // first.
+    std::vector<HloInstruction*> users(fusion_instruction->users());
+    for (HloInstruction* gte : users) {
+      // Replace and change control successors to be dependent on the fusion
+      // instruction itself.
+      TF_ASSIGN_OR_RETURN(std::ignore, gte->parent()->ReplaceInstruction(
+                                           gte, fusion_instruction,
+                                           /*preserve_sharding=*/true,
+                                           /*relay_control_dependency=*/true));
+    }
+  }
+
+  // Update the root of the fusion computation.
+  if (tuple_shapes.size() > 1) {
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(used_tuple_elements.size());
+    for (int64_t tuple_index : used_tuple_elements) {
+      new_operands.push_back(
+          computation->root_instruction()->mutable_operand(tuple_index));
+    }
+    auto new_tuple =
+        computation->AddInstruction(HloInstruction::CreateTuple(new_operands));
+    TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
+        computation->root_instruction(), new_tuple));
+  } else {
+    TF_RETURN_IF_ERROR(
+        computation->root_instruction()->ReplaceAllUsesWithDifferentShape(
+            computation->root_instruction()->mutable_operand(
+                *used_tuple_elements.begin())));
+  }
+
+  // We always updated the fusion if we got here.
+  return true;
+}
+
 }  // namespace
 
 /*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
-  bool changed = false;
-  // Cleanup unused tuple elements in multi-output fusion roots. We do this
-  // first, because it may create dead roots which we can clean up next.
-  if (auto* fusion_instruction = computation->FusionInstruction();
-      fusion_instruction != nullptr &&
-      computation->root_instruction()->opcode() == HloOpcode::kTuple &&
-      !computation->root_instruction()->has_sharding() &&
-      fusion_instruction->output_operand_aliasing().empty() &&
-      !fusion_instruction->HasControlDependencies() &&
-      fusion_instruction->user_count() <
-          computation->root_instruction()->operand_count() &&
-      !fusion_instruction->IsCustomFusion()) {
-    std::vector<int64_t> used_tuple_elements;
-    used_tuple_elements.reserve(fusion_instruction->user_count());
-    // We only support this cleanup if all users of the fusion instruction are
-    // GetTupleElement ops, and there is at least one user of
-    // 'fusion_instruction'.
-    bool supported = fusion_instruction->user_count() > 0;
-    for (HloInstruction* gte : fusion_instruction->users()) {
-      if (gte->opcode() != HloOpcode::kGetTupleElement) {
-        supported = false;
-        break;
-      }
-      used_tuple_elements.push_back(gte->tuple_index());
-    }
-    if (supported) {
-      std::sort(used_tuple_elements.begin(), used_tuple_elements.end());
-      std::vector<Shape> tuple_shapes;
-      tuple_shapes.reserve(used_tuple_elements.size());
-      for (int64_t tuple_index : used_tuple_elements) {
-        tuple_shapes.push_back(
-            fusion_instruction->shape().tuple_shapes(tuple_index));
-      }
-      Shape new_shape = tuple_shapes.size() == 1
-                            ? tuple_shapes[0]
-                            : ShapeUtil::MakeTupleShape(tuple_shapes);
-      *fusion_instruction->mutable_shape() = std::move(new_shape);
+  // We do this first, because it may create dead roots which we can clean up
+  // next.
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      RemoveMultiOutputFusionsUnusedOutputs(computation));
 
-      // Update the users of the old fusion instruction.
-      if (tuple_shapes.size() > 1) {
-        for (HloInstruction* gte : fusion_instruction->users()) {
-          auto it =
-              std::lower_bound(used_tuple_elements.begin(),
-                               used_tuple_elements.end(), gte->tuple_index());
-          int64_t new_tuple_index =
-              std::distance(used_tuple_elements.begin(), it);
-          gte->set_tuple_index(new_tuple_index);
-        }
-      } else {
-        HloInstruction* gte = fusion_instruction->users()[0];
-        // Replace and change control successors to be dependent on the fusion
-        // instruction itself.
-        TF_ASSIGN_OR_RETURN(bool replaced,
-                            gte->parent()->ReplaceInstruction(
-                                gte, fusion_instruction,
-                                /*preserve_sharding=*/true,
-                                /*relay_control_dependency=*/true));
-        if (replaced) {
-          changed |= replaced;
-        }
-      }
-      // Update the root of the fusion computation.
-      if (tuple_shapes.size() > 1) {
-        std::vector<HloInstruction*> new_operands;
-        new_operands.reserve(used_tuple_elements.size());
-        for (int64_t tuple_index : used_tuple_elements) {
-          new_operands.push_back(
-              computation->root_instruction()->mutable_operand(tuple_index));
-        }
-        auto new_tuple = computation->AddInstruction(
-            HloInstruction::CreateTuple(new_operands));
-        TF_RETURN_IF_ERROR(computation->ReplaceInstructionWithDifferentShape(
-            computation->root_instruction(), new_tuple));
-      } else {
-        TF_RETURN_IF_ERROR(
-            computation->root_instruction()->ReplaceAllUsesWithDifferentShape(
-                computation->root_instruction()->mutable_operand(
-                    used_tuple_elements[0])));
-      }
-    }
-  }
-
-  // Remove any dead roots and their dead transitive operands. Collect them
-  // into a separate list first to avoid problems with iterating through the
-  // computation's instruction while simultaneously removing instructions.
+  // Remove any dead roots and their dead transitive operands. Collect
+  // them into a separate list first to avoid problems with iterating through
+  // the computation's instruction while simultaneously removing instructions.
   std::vector<HloInstruction*> dead_roots;
   for (auto* instruction : computation->instructions()) {
     auto maybe_collective_op = DynCast<HloCollectiveInstruction>(instruction);

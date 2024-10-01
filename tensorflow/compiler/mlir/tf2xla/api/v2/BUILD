@@ -91,10 +91,10 @@ tf_cc_test(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/tsl/lib/monitoring:test_utils",
     ],
 )
 
@@ -199,10 +199,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/platform:error_logging",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/monitoring:counter",
     ],
 )
 
@@ -270,5 +270,36 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_executor_to_graph_test",
+    srcs = ["tf_executor_to_graph_test.cc"],
+    data = [
+        "testdata/valid_executor.mlir",
+        "testdata/valid_graph.txt",
+    ],
+    deps = [
+        ":tf_executor_to_graph",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:read_all",
     ],
 )

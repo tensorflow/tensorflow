@@ -62,6 +62,7 @@ cc_library(
         ":custom_logging_op",
         ":logging_op",
         ":logging_op_resolver",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",

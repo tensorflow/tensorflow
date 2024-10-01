@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -330,7 +330,7 @@ class UniqueOpGPU : public AsyncOpKernel {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
+      se::gpu::ScopedActivateContext scoped_activation{
           context->op_device_context()->stream()->parent()};
 
       Tensor unique_input_inds;

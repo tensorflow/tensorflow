@@ -37,8 +37,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
-namespace m = ::xla::match;
-
 namespace xla {
 namespace {
 
@@ -75,6 +73,36 @@ class HostOffloadLegalizeTest : public HloTestBase {
     return false;
   }
 };
+
+TEST_F(HostOffloadLegalizeTest, TestWithAsyncCall) {
+  const std::string& hlo_string = R"(
+HloModule jit_update, entry_computation_layout={(f32[20,3,256,133]{2,3,1,0:T(8,128)S(5)})->(f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)})}
+
+%async_computation {
+  %param_0 = f32[20,3,256,133] parameter(0)
+  ROOT %offloaded-custom-call = f32[4096] custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY main {
+  %param.246 = f32[20,3,256,133] parameter(0)
+  %async-start = ((f32[20,3,256,133]), f32[4096], u32[]) async-start(%param.246), async_execution_thread="host", calls=%async_computation
+  %async-done = f32[4096] custom-call-done(%async-start)
+  copy.16744 = f32[20,3,256,133]{2,1,0,3:T(4,128)} copy(param.246)
+  custom-call.7832 = f32[20,3,256,133]{2,1,0,3:T(4,128)} custom-call(copy.16744), custom_call_target="MoveToDevice"
+  ROOT tuple.16745 = (f32[20,3,256,133]{2,1,0,3:T(4,128)}, f32[4096]{0:T(1024)}) tuple(custom-call.7832, %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  HloInstruction* custom_call =
+      FindInstruction(module.get(), "custom-call.7832");
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  XLA_VLOG_LINES(1, module->ToString());
+}
 
 TEST_F(HostOffloadLegalizeTest, NoCopyWithOptBarrierMoreElaborate) {
   const std::string& hlo_string = R"(

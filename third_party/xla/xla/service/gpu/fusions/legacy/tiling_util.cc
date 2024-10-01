@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
@@ -334,7 +335,12 @@ IndexingMap GetIndexingMapForTiling(AffineMap block_offsets,
     offsets.push_back(block + thread);
   }
   std::vector<DimVar> dimension_ranges{
-      {{0, threads_per_block - 1}}, {}, {}, {{0, num_blocks - 1}}, {}, {},
+      DimVar{0, threads_per_block - 1, ToVariableName(VariableKind::kThreadX)},
+      DimVar{0, 0, ToVariableName(VariableKind::kThreadY)},
+      DimVar{0, 0, ToVariableName(VariableKind::kThreadZ)},
+      DimVar{0, num_blocks - 1, ToVariableName(VariableKind::kBlockX)},
+      DimVar{0, 0, ToVariableName(VariableKind::kBlockY)},
+      DimVar{0, 0, ToVariableName(VariableKind::kBlockZ)},
   };
   auto affine_map = mlir::AffineMap::get(block_offsets.getNumDims(),
                                          block_offsets.getNumSymbols(), offsets,

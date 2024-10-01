@@ -726,6 +726,11 @@ class ShapeUtil {
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
 
+  // Extracts the packing factor for a 1D interleaved array based on the layout.
+  // For example, bf16[1024]{0:T(1024)(128)(2,1)} -> 2
+  static absl::StatusOr<int64_t> PackedFactorFor1DInterleavedArray(
+      const Shape& shape);
+
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 

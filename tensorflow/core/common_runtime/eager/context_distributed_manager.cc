@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "google/protobuf/any.pb.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/coordination_config.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "absl/base/thread_annotations.h"
@@ -1075,8 +1075,10 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
                   absl::StrCat("/job:", coord_task.job_name(),
                                "/task:", coord_task.task_id()));
               if (!s.ok()) {
-                LOG(INFO) << "Preemption not exported to coordination service: "
-                          << s;
+                // Dev note: `ALREADY_EXISTS` errors are expected if multiple
+                // workers receive a SIGTERM.
+                VLOG(3) << "Preemption not exported to coordination service: "
+                        << s;
               }
             }
           });

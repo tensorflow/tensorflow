@@ -29,7 +29,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,6 +48,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -159,17 +164,18 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
   return absl::OkStatus();
 }
 
-// The group key encapsulates all of the properties which must match for it to
-// be possible to combine the instructions.
-using GroupKey = std::tuple<std::optional<int64_t>, int64_t, bool, bool,
-                            PrimitiveType, std::vector<std::vector<int64_t>>>;
+}  // namespace
 
-// Returns a key that will be equal for instructions that might be combined, or
-// different if not.
-std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
-                                   const HloDomainMap& domain_map,
-                                   bool combine_by_dim,
-                                   bool combine_different_dtypes = true) {
+/* static */ std::string& AllGatherCombiner::GetGroupKeyExtraArgs(
+    AllGatherCombiner::GroupKey& key) {
+  return std::get<6>(key);
+}
+
+/* static */ std::optional<AllGatherCombiner::GroupKey>
+AllGatherCombiner::CombineKey(const HloInstruction* instruction,
+                              const HloDomainMap& domain_map,
+                              bool combine_by_dim,
+                              bool combine_different_dtypes) {
   if (instruction->opcode() != HloOpcode::kAllGather) {
     return std::nullopt;
   }
@@ -194,10 +200,9 @@ std::optional<GroupKey> CombineKey(const HloInstruction* instruction,
                   ag->channel_id().has_value(),
                   ag->use_global_device_ids(),
                   data_type,
-                  replica_groups};
+                  replica_groups,
+                  ""};
 }
-
-}  // namespace
 
 AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
                                      int64_t combine_threshold_count,
@@ -208,9 +213,12 @@ AllGatherCombiner::AllGatherCombiner(int64_t combine_threshold_in_bytes,
       combine_by_dim_(combine_by_dim),
       combine_different_dtypes_(combine_different_dtypes) {}
 
-absl::StatusOr<bool> AllGatherCombiner::Run(
+absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool, bool)>
+        combine_key) {
   VLOG(1) << "Running AllGatherCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -232,8 +240,8 @@ absl::StatusOr<bool> AllGatherCombiner::Run(
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
     auto key_fn = [&](const HloInstruction* instruction) {
-      return CombineKey(instruction, *domain_map, combine_by_dim_,
-                        combine_different_dtypes_);
+      return combine_key(instruction, *domain_map, combine_by_dim_,
+                         combine_different_dtypes_);
     };
     auto combine_fn =
         [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
@@ -248,6 +256,14 @@ absl::StatusOr<bool> AllGatherCombiner::Run(
     changed |= computation_changed;
   }
 
+  return changed;
+}
+
+absl::StatusOr<bool> AllGatherCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  TF_ASSIGN_OR_RETURN(
+      bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }
 

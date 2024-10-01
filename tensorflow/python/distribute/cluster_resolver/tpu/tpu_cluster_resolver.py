@@ -144,7 +144,7 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
     """
     resolver = TPUClusterResolver(tpu, zone, project)
     remote.connect_to_cluster(resolver)
-    tpu_strategy_util.initialize_tpu_system_impl(resolver)
+    tpu_strategy_util.initialize_tpu_system_impl(resolver, TPUClusterResolver)
     return resolver
 
   @staticmethod

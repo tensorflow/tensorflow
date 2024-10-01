@@ -235,21 +235,54 @@ bool HasSameStridedShape(TFL::Conv3DOp op, ArrayRef<int64_t> pre_pad_shape) {
 
 using ::llvm::cast;
 
-// Return true if the product of dimension values of a subsection of the
-// tensor is equal to the non-contracting dimension after a reshape
-bool BroadcastDimsProductEqual(Value input, Value output,
-                               size_t agg_start_idx) {
+// Predicate to check if the product of last few dimensions in LHS is equal to
+// the last dimension in RHS.
+// agg_start_idx is the index in LHS from where the subsection will start.
+bool ContractingDimsProductEqual(Value input, Value output,
+                                 size_t agg_start_idx) {
   ArrayRef<int64_t> input_shape =
       mlir::cast<ShapedType>(input.getType()).getShape();
   ArrayRef<int64_t> output_shape =
       mlir::cast<ShapedType>(output.getType()).getShape();
 
-  int64_t agg_value = 1;
-  for (size_t i = agg_start_idx; i < input_shape.size() - 1; ++i) {
+  int agg_value = 1;
+  for (size_t i = agg_start_idx; i < input_shape.size(); ++i) {
     agg_value *= input_shape[i];
   }
 
-  return (agg_value == output_shape[agg_start_idx]);
+  return (agg_value == output_shape[output_shape.size() - 1]);
+}
+
+// Return true if the product of dimension values of a subsection of the
+// tensor is equal to the non-contracting dimension after a reshape
+bool NonBroadcastingNonContractingDimsProductEqual(Value original,
+                                                   Value updated, bool is_lhs,
+                                                   size_t agg_start_idx,
+                                                   size_t agg_end_idx = 0) {
+  ArrayRef<int64_t> original_shape =
+      mlir::cast<ShapedType>(original.getType()).getShape();
+  ArrayRef<int64_t> updated_shape =
+      mlir::cast<ShapedType>(updated.getType()).getShape();
+
+  int64_t agg_value = 1;
+  // If the end_index is not supplied, we'll assume that the contracting
+  // dimension count is one and skip the one contracting dimension.
+  if (agg_end_idx == 0) {
+    if (is_lhs) {
+      agg_end_idx = original_shape.size() - 2;
+    } else {
+      agg_end_idx = original_shape.size() - 1;
+    }
+  }
+  for (size_t i = agg_start_idx; i <= agg_end_idx; ++i) {
+    agg_value *= original_shape[i];
+  }
+
+  if (is_lhs) {
+    return (agg_value == updated_shape[updated_shape.size() - 2]);
+  } else {
+    return (agg_value == updated_shape[updated_shape.size() - 1]);
+  }
 }
 
 // Returns whether the given type `a` is broadcast-compatible with `b`.
@@ -933,8 +966,8 @@ struct SqueezeReshapesAroundBroadcastOp
         GetI32ElementsAttr(new_reshape_shape_i32, &rewriter));
 
     auto new_inner_reshape_op = rewriter.create<TFL::ReshapeOp>(
-        inner_reshape_op->getLoc(),
-        inner_reshape_input, new_reshape_shape_value);
+        inner_reshape_op->getLoc(), inner_reshape_input,
+        new_reshape_shape_value);
 
     // Create a new reshape_op to replace the old inner reshape_op.
     rewriter.replaceOp(inner_reshape_op, new_inner_reshape_op.getResult());
@@ -2624,6 +2657,105 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
   }
 };
 
+// Move Reshape after FullyConnected to before FullyConnected when possible.
+// For some cases where Reshape-FC-Reshape pattern can not be fused, moving
+// Reshape after to before FC may help remove one Reshape op by folding
+// (Reshape-Reshape)-FC.
+struct MoveReshapeAfterFullyConnected
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  explicit MoveReshapeAfterFullyConnected(MLIRContext *context)
+      : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape.getInput().getDefiningOp());
+
+    if (!fc || fc.getNumResults() != 1 || !fc.getResult(0).hasOneUse()) {
+      return failure();
+    }
+    if (auto before = fc.getInput().getDefiningOp();
+        !before || !mlir::isa<TFL::ReshapeOp>(before)) {
+      return failure();
+    }
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    auto reshape_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(reshape.getResult().getType());
+    if (!input_ty || !fc_ty || !reshape_ty || !input_ty.hasStaticShape() ||
+        !fc_ty.hasStaticShape() || !reshape_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    if (reshape_ty.getRank() < 2 ||
+        reshape_ty.getShape().back() != fc_ty.getShape().back()) {
+      // The movable Reshape after must satisfy:
+      // 1. Reshape output's rank >= 2. (FC does not support 1D tensor input).
+      // 2. FC and Reshape outputs' shape are both (..., N).
+      return failure();
+    }
+
+    llvm::SmallVector<int32_t> new_input_shape(reshape_ty.getShape());
+    new_input_shape.pop_back();
+    new_input_shape.push_back(input_ty.getShape().back());
+
+    auto reshape_before = rewriter.create<TFL::ReshapeOp>(
+        fc.getLoc(), fc.getInput(),
+        rewriter.create<arith::ConstantOp>(
+            fc->getLoc(), GetI32ElementsAttr(new_input_shape, &rewriter)));
+
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        reshape,
+        RankedTensorType::get(reshape_ty.getShape(),
+                              reshape_ty.getElementType()),
+        reshape_before, fc.getFilter(), fc.getBias(),
+        fc.getFusedActivationFunction(), fc.getWeightsFormat(),
+        /*keep_num_dims=*/true, fc.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+};
+
+// When FullyConnected is followed by a Reshape op, the shape of the
+// FullyConnected's output doesn't matter. Enabling FC's keep_num_dims in such
+// case is valid and may help downstream runtime e.g. GPU delegate do better
+// layout planning.
+struct EnableFullyConnectedKeepNumDimsBeforeReshape
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  explicit EnableFullyConnectedKeepNumDimsBeforeReshape(MLIRContext *context)
+      : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape.getInput().getDefiningOp());
+
+    if (!fc || fc.getNumResults() != 1 || fc.getKeepNumDims() ||
+        !fc->hasOneUse()) {
+      return failure();
+    }
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    if (!input_ty || !fc_ty || input_ty.getRank() == 2) {
+      return failure();
+    }
+
+    llvm::SmallVector<int64_t> new_fc_shape(input_ty.getShape());
+    new_fc_shape.pop_back();
+    new_fc_shape.push_back(fc_ty.getShape().back());
+
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        fc, RankedTensorType::get(new_fc_shape, fc_ty.getElementType()),
+        fc.getInput(), fc.getFilter(), fc.getBias(),
+        fc.getFusedActivationFunction(), fc.getWeightsFormat(),
+        /*keep_num_dims=*/true, fc.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2642,7 +2774,11 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
       .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
-           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp>(ctx);
+           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp,
+           FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
+           FuseSqueezingLhsReshapeIntoFC_Output,
+           FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1>(
+          ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
@@ -2679,23 +2815,14 @@ void OptimizePass::runOnOperation() {
       RemoveReshapeBeforeFullyConnected, FuseUnpackAndConcatToReshape,
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
-      FuseTransposeReshapeIntoBatchMatmul>(ctx);
+      FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
+      EnableFullyConnectedKeepNumDimsBeforeReshape>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
   if (GetOptions().enable_canonicalization)
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
-}
-
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    const OptimizePassOptions &options) {
-  return std::make_unique<OptimizePass>(options);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
-  return std::make_unique<OptimizePass>();
 }
 
 }  // namespace TFL

@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/logging.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct half;
@@ -1236,7 +1236,10 @@ class DnnGraph {
   virtual absl::Status Prepare(DnnSupport&, const NumericOptions&) = 0;
   virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
-                               absl::Span<DeviceMemoryBase> operands) const = 0;
+                               absl::Span<DeviceMemoryBase> operands,
+                               int64_t local_device_ordinal) const = 0;
+  virtual void InitDropoutState(int64_t local_device_count, int64_t seed,
+                                int64_t increment) = 0;
 };
 
 using LazyDnnGraph = std::unique_ptr<DnnGraph>;

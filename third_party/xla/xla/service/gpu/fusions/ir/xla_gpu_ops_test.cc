@@ -36,8 +36,8 @@ class XLAGPUOpsTest : public HloTestBase {
 TEST_F(XLAGPUOpsTest, GetConstraintsForVariables) {
   auto map = IndexingMap(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0+s0, d1+s1)", &mlir_context_),
-      /*dimensions=*/{{Interval{0, 5}}, {Interval{0, 2}}},
-      /*range_vars=*/{{Interval{0, 32}}, {Interval{0, 1024}}}, /*rt_vars=*/{});
+      /*dimensions=*/{{DimVar{0, 5}}, {DimVar{0, 2}}},
+      /*range_vars=*/{{RangeVar{0, 32}}, {RangeVar{0, 1024}}}, /*rt_vars=*/{});
   map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
                     Interval{0, 1});
   map.AddConstraint(ParseAffineExpr("s1 mod 4", &mlir_context_),
@@ -71,8 +71,8 @@ TEST_F(XLAGPUOpsTest, GetConstraintsForVariables) {
 TEST_F(XLAGPUOpsTest, GetConstraintsForVariablesEmpty) {
   auto map = IndexingMap(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0+s0, d1+s1)", &mlir_context_),
-      /*dimensions=*/{{Interval{0, 5}}, {Interval{0, 2}}},
-      /*range_vars=*/{{Interval{0, 32}}, {Interval{0, 1024}}}, /*rt_vars=*/{});
+      /*dimensions=*/{{DimVar{0, 5}}, {DimVar{0, 2}}},
+      /*range_vars=*/{{RangeVar{0, 32}}, {RangeVar{0, 1024}}}, /*rt_vars=*/{});
   auto constraints_for_variables = GetConstraintsForVariables(map);
   EXPECT_THAT(constraints_for_variables.constraints_for_dims,
               ElementsAre(IsEmpty(), IsEmpty()));

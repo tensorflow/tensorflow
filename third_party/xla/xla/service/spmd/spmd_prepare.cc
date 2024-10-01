@@ -55,7 +55,6 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   if (scatter->scatter_operand_count() > 1) {
     return false;
   }
-  ScatterDimensionNumbers scatt_dim = scatter->scatter_dimension_numbers();
   HloInstruction* operand = scatter->scatter_operands()[0];
   HloInstruction* indices = scatter->scatter_indices();
   HloInstruction* updates = scatter->scatter_updates()[0];
@@ -109,9 +108,7 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   if (lhs_parallel_dims->operand_parallel_dims !=
           rhs_parallel_dims->operand_parallel_dims ||
       lhs_parallel_dims->indices_parallel_dims !=
-          rhs_parallel_dims->indices_parallel_dims ||
-      lhs_parallel_dims->index_parallel_in_dim !=
-          rhs_parallel_dims->index_parallel_in_dim) {
+          rhs_parallel_dims->indices_parallel_dims) {
     return false;
   }
   if (lhs_parallel_dims->operand_parallel_dims.size() !=

@@ -1067,6 +1067,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   } else {
     Shape new_shape = original;
     new_shape.set_element_type(type);
+    if (new_shape.has_layout() && type == PRED) {
+      new_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
     return new_shape;
   }
 }
@@ -1167,6 +1170,16 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 /* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
   CHECK(shape.IsArray());
   return absl::c_linear_search(shape.dimensions(), 1);
+}
+
+/* static */ absl::StatusOr<int64_t>
+ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
+  if (shape.rank() == 1 && shape.layout().tiles_size() == 3 &&
+      shape.layout().tiles()[2].dimensions().size() == 2) {
+    return shape.layout().tiles()[2].dimension(0);
+  }
+  return InvalidArgument("Shape %s is not a 1D interleaved array.",
+                         ShapeUtil::HumanStringWithLayout(shape));
 }
 
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {

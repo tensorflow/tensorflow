@@ -207,7 +207,6 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":http_request",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:env",
         "//tsl/platform:errors",
         "//tsl/platform:macros",
@@ -218,6 +217,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
         "@curl",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
         "@local_xla//xla/tsl/util:env_var",
     ],
 )
@@ -396,9 +396,9 @@ tsl_cc_test(
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
-        "//tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "//tsl/profiler/utils:time_utils_impl",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
 )
 
@@ -437,12 +437,14 @@ tsl_cc_test(
     srcs = ["curl_http_request_test.cc"],
     deps = [
         ":curl_http_request",
+        "//tsl/platform",
         "//tsl/platform:env_impl",
         "//tsl/platform:path",
         "//tsl/platform:platform_port",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

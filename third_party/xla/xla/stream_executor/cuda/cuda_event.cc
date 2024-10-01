@@ -15,33 +15,23 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_event.h"
 
-#include "absl/log/log.h"
-#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 
 namespace stream_executor {
 namespace gpu {
 
 Event::Status CudaEvent::PollForStatus() {
-  absl::StatusOr<CUresult> status = QueryEvent(context(), gpu_event());
-  if (!status.ok()) {
-    LOG(ERROR) << "Error polling for event status: "
-               << status.status().message();
-    return Event::Status::kError;
+  ScopedActivateContext activated(context());
+  CUresult res = cuEventQuery(gpu_event());
+  if (res == CUDA_SUCCESS) {
+    return Event::Status::kComplete;
+  } else if (res == CUDA_ERROR_NOT_READY) {
+    return Event::Status::kPending;
   }
-
-  switch (status.value()) {
-    case CUDA_SUCCESS:
-      return Event::Status::kComplete;
-    case CUDA_ERROR_NOT_READY:
-      return Event::Status::kPending;
-    default:
-      LOG(INFO) << "Error condition returned for event status: "
-                << status.value();
-      return Event::Status::kError;
-  }
+  return Event::Status::kError;
 }
 
 }  // namespace gpu

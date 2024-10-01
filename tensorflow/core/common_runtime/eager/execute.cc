@@ -1884,7 +1884,10 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         TF_RETURN_IF_ERROR(EagerCopyToDevice(input, &ctx, &ctx.Executor(),
                                              ctx.HostCPU(), false,
                                              &local_cpu_input_handle));
-        TF_RETURN_IF_ERROR(local_cpu_input_handle->Tensor(&input_tensor));
+        core::RefCountPtr<TensorHandle> wrapped_local_cpu_input_handle(
+            local_cpu_input_handle);
+        TF_RETURN_IF_ERROR(
+            wrapped_local_cpu_input_handle->Tensor(&input_tensor));
         input_tensor->AsProtoTensorContent(input_tensor_proto);
         // `TensorHandle::AddResourceShapeMirror` can change `input` but only if
         // `TensorHandle::handle_dtypes_and_shapes_` is not empty. And that

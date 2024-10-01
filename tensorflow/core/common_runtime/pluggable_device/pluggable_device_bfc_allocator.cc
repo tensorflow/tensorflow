@@ -17,7 +17,12 @@ limitations under the License.
 
 #include <cstdlib>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

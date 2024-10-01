@@ -60,6 +60,7 @@ absl::StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kCompare:
       case HloOpcode::kComplex:
       case HloOpcode::kConcatenate:
+      case HloOpcode::kConvolution:
       case HloOpcode::kConvert:
       case HloOpcode::kCopy:
       case HloOpcode::kCos:

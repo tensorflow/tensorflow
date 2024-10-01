@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -93,6 +92,8 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
       // they involve actual computation and not just data movement.
     case F8E5M2:
     case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return !IsReductionCollective(reduction_op);
     default:
       return false;

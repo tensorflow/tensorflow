@@ -53,7 +53,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt_proxy/client/py_module.h"
@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/python/py_client.h"
 #include "xla/python/py_program.h"
 #include "xla/service/cpu/collectives_interface.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"  // NOLINT
 
 #if defined(__linux__)
@@ -181,6 +182,10 @@ NB_MODULE(xla_extension, m_nb) {
   // Exceptions
   nb::exception<XlaRuntimeError> xla_runtime_error(m_nb, "XlaRuntimeError",
                                                    PyExc_RuntimeError);
+  xla_runtime_error.attr("__doc__") = nb::str(
+      "Runtime errors thrown by the JAX runtime. While the JAX runtime may "
+      "raise other exceptions as well, most exceptions thrown by the runtime "
+      "are instances of this class.");
 
   // Types
   nb::enum_<PrimitiveType>(m_nb, "PrimitiveType", nb::is_arithmetic())
@@ -437,7 +442,7 @@ NB_MODULE(xla_extension, m_nb) {
                    "get_topology_for_devices requires >= 1 devices.");
              }
              auto client = py_devices[0]->client();
-             ifrt::DeviceList::Devices ifrt_devices;
+             ifrt::BasicDeviceList::Devices ifrt_devices;
              ifrt_devices.reserve(py_devices.size());
              for (const auto& py_device : py_devices) {
                if (py_device->client().get() != client.get()) {
@@ -447,7 +452,8 @@ NB_MODULE(xla_extension, m_nb) {
                }
                ifrt_devices.push_back(py_device->device());
              }
-             ifrt::DeviceList device_list(std::move(ifrt_devices));
+             tsl::RCReference<ifrt::DeviceList> device_list =
+                 ifrt::BasicDeviceList::Create(std::move(ifrt_devices));
              return xla::ValueOrThrow(
                  client->ifrt_client()->GetTopologyForDevices(device_list));
            });

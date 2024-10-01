@@ -81,7 +81,7 @@ class AvgPoolingOp : public UnaryOp<T> {
     for (int i = 0; i < ksize_.size(); ++i) {
       OP_REQUIRES(context, ksize_[i] > 0,
                   errors::InvalidArgument(
-                      "ksize must be a postive int32 value, got:", ksize_[i]));
+                      "ksize must be a positive int32 value, got:", ksize_[i]));
     }
   }
 
@@ -146,7 +146,7 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     for (int i = 0; i < ksize_.size(); ++i) {
       OP_REQUIRES(context, ksize_[i] > 0,
                   errors::InvalidArgument(
-                      "ksize must be a postive int32 value, got:", ksize_[i]));
+                      "ksize must be a positive int32 value, got:", ksize_[i]));
     }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,

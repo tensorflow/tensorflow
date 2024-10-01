@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/format_utils.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -45,8 +47,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tsl/profiler/utils/format_utils.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -595,6 +595,7 @@ StepSummary ComputeStepTimeSummaryInMs(
     // iterates over each core.
     for (const auto& coreid_and_stepinfo :
          coreid_stepinfo_map.step_info_per_core()) {
+      if (coreid_and_stepinfo.first >= kSparseCoreIndexStart) continue;
       const auto& step_info = coreid_and_stepinfo.second;
       max_per_step_stats_in_ms = std::max(step_info.duration_ps() / kNumPsPerMs,
                                           max_per_step_stats_in_ms);

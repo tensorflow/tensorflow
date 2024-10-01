@@ -196,57 +196,56 @@ mlir::ArrayRef<int64_t> TensorShape(const mt::MakeTensorPtrOp& op) {
   return tensor.getShape();
 }
 
-void CheckOffsetsAreIndices(const mlir::ValueRange offset_values) {
-  for (Value v : offset_values) {
-    EXPECT_NE(v.getDefiningOp<mlir::arith::IndexCastOp>(), nullptr);
+void CheckSizesAreSubtractions(const mlir::ValueRange size_values) {
+  for (Value v : size_values) {
+    EXPECT_NE(v.getDefiningOp<mlir::arith::SubIOp>(), nullptr);
   }
 }
-
 TEST_F(TritonMakeTensorPtrTest, BlockProperties) {
   {
     auto [module, ptr] = CreateTestTensorPtr({15, 20}, {3, 4}, {1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(15, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(0));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({20, 20}, {4, 4}, {1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(20, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(4, 4));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5}, {1}, {1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5, 5, 5}, {1, 1, 1}, {1, 1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5, 5, 5));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1, 1, 1));
     EXPECT_TRUE(ptr.boundary_checks.empty());
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()), ElementsAre(25, 5, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(2, 1, 0));
   }
   {
     auto [module, ptr] = CreateTestTensorPtr({5, 15, 20}, {1, 3, 4}, {1, 1, 1});
-    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getShape()), ElementsAre(5, 15, 20));
+    CheckSizesAreSubtractions(ptr.op.getShape());
     EXPECT_THAT(TensorShape(ptr.op), ElementsAre(1, 4, 4));
     EXPECT_THAT(ptr.boundary_checks, ElementsAre(1));
     EXPECT_THAT(ConstOpValuesToInt(ptr.op.getStrides()),
                 ElementsAre(300, 20, 1));
-    CheckOffsetsAreIndices(ptr.op.getOffsets());
+    EXPECT_THAT(ConstOpValuesToInt(ptr.op.getOffsets()), ElementsAre(0, 0, 0));
     EXPECT_THAT(ptr.op.getOrder(), ElementsAre(2, 1, 0));
   }
 }

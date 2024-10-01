@@ -66,8 +66,6 @@ std::string AutoShardingOption::ToString() const {
     lines.push_back(absl::StrCat("reduce_scatter_cost: ", reduce_scatter_cost));
   }
 
-  lines.push_back(absl::StrCat("force_batch_dim_to_mesh_dim: ",
-                               force_batch_dim_to_mesh_dim));
   lines.push_back(absl::StrCat("allow_replicated_parameters: ",
                                allow_replicated_parameters));
   lines.push_back(
@@ -84,8 +82,6 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
   lines.push_back(absl::StrCat("solve_nd_sharding_iteratively: ",
                                solve_nd_sharding_iteratively));
-  lines.push_back(
-      absl::StrCat("force_simple_heuristic: ", force_simple_heuristic));
   lines.push_back(absl::StrCat("force_strategy: ", force_strategy));
 
   if (force_strategy) {
@@ -142,45 +138,26 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_shardings_small_dims_across_many_devices: ",
                    allow_shardings_small_dims_across_many_devices));
 
-  lines.push_back(
-      absl::StrCat("insert_resharding_reshapes: ", insert_resharding_reshapes));
+  lines.push_back(absl::StrCat("insert_resharding_reshapes_for_non_dot_ops: ",
+                               insert_resharding_reshapes_for_non_dot_ops));
 
   return absl::StrJoin(lines, "\n");
 }
 
+// TODO(pratikf) The device mesh shape handling in this function currently does
+// not work when try_multiple_mesh_shapes is true. Fix it.
 absl::Status AutoShardingOption::CheckAndSetup() {
-  only_allow_divisible_input_output = true;
-  only_allow_divisible_intermediate = false;
-
   if (device_mesh_shape.empty()) {
     return absl::OutOfRangeError(
         "device_mesh_shape is empty and it needs to be specified.");
   }
-  std::vector<int64_t> mesh_dims_greater_than_one_indices =
-      spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
 
-  // TODO(pratikf) The device mesh shape handling in this function currently
-  // does not work when try_multiple_mesh_shapes is true. Fix it.
-  if (mesh_dims_greater_than_one_indices.size() > 3 ||
-      (device_mesh_shape.size() > 3 && try_multiple_mesh_shapes)) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Not supported: only device_mesh_shapes with 3 or less "
-                     "dimensions larger than 1 are supported. Instead we have ",
-                     mesh_dims_greater_than_one_indices.size(),
-                     " dimensions greater than 1."));
-  }
   // All values in device_mesh_shape must be greater than 0.
   if (absl::c_any_of(device_mesh_shape,
                      [](const int64_t i) { return i <= 0; })) {
     return absl::OutOfRangeError(
         absl::StrCat("device_mesh_shape values need to be larger than 0: "
                      "device_mesh_shape=",
-                     absl::StrJoin(device_mesh_shape, ",")));
-  }
-  if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 3) {
-    return absl::OutOfRangeError(
-        absl::StrCat("the auto-sharding pass currently does not support ",
-                     "more than three shardable dims: device_mesh_shape=",
                      absl::StrJoin(device_mesh_shape, ",")));
   }
 
@@ -212,6 +189,8 @@ absl::Status AutoShardingOption::CheckAndSetup() {
   }
 
   if (!try_multiple_mesh_shapes) {
+    std::vector<int64_t> mesh_dims_greater_than_one_indices =
+        spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
     std::vector<int64_t> compressed_device_mesh_shape;
     std::vector<double> compressed_device_mesh_alpha;
     std::vector<double> compressed_device_mesh_beta;

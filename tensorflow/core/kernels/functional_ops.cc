@@ -56,7 +56,7 @@ Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
-Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
+Status ToBool(absl::Span<const Tensor> t, bool* v) {
   if (t.size() != 1) {
     return errors::InvalidArgument(
         "Expected a single scalar which can be converted to a boolean, got ",
@@ -96,7 +96,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
 // Sets "rets" to be the output of "ctx". Validates rets' types based
 // on "kernel".
 Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
-                  gtl::ArraySlice<Tensor> rets) {
+                  absl::Span<const Tensor> rets) {
   if (rets.size() != ctx->num_outputs()) {
     return errors::Internal("Expect to produce ", ctx->num_outputs(),
                             " tensors, but only get ", rets.size());

@@ -836,10 +836,10 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
@@ -952,11 +952,11 @@ filegroup(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
-        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/stream_executor",  # stat_summarizer
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "@local_xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + select({
@@ -1097,8 +1097,12 @@ tf_python_pybind_extension(
         "_pywrap_mlir.pyi",
     ],
     deps = [
+        "//tensorflow/compiler/tf2tensorrt:common_utils",
+        "//tensorflow/compiler/tf2tensorrt:trt_parameters",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
@@ -1253,13 +1257,13 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
+            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -1401,7 +1405,6 @@ py_strict_library(
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":protos_all"],
 # )
 #

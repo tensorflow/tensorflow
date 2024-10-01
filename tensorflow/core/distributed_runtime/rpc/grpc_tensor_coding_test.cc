@@ -65,7 +65,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
     }
   }
   void DoTestForStrings(DataType dt) {
-    gtl::InlinedVector<tstring, 4> v;
+    absl::InlinedVector<tstring, 4UL> v;
     for (int elems = 0; elems <= 10000; elems++) {
       if (elems < 100 || (elems % 1000 == 0)) {
         Tensor a(dt, TensorShape({1, static_cast<int64_t>(v.size())}));

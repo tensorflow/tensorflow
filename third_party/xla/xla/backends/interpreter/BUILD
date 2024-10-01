@@ -20,6 +20,7 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_h",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -37,6 +38,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:batchnorm_expander",
         "//xla/service:cholesky_expander",
         "//xla/service:compiler",
@@ -48,7 +50,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_module_config",
-        "//xla/service:hlo_pass_pipeline",
         "//xla/service:layout_assignment",
         "//xla/service:qr_expander",
         "//xla/service:topk_rewriter",

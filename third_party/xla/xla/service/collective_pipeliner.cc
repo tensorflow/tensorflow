@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -272,8 +275,8 @@ bool CollectSimpleDependencies(HloInstruction* i,
   for (HloInstruction* op : i->mutable_operands()) {
     absl::InlinedVector<HloInstruction*, 4> to_add;
     if (op->opcode() == HloOpcode::kBroadcast) {
-      to_add.push_back(op);
       if (deps_set.insert(op).second) {
+        to_add.push_back(op);
         op = op->mutable_operand(0);
         if (op->opcode() == HloOpcode::kConstant) {
           if (deps_set.insert(op).second) {
@@ -315,6 +318,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
   absl::flat_hash_set<HloInstruction*> added_instructions;
   HloInstruction* folded_instr = instr;
   std::vector<HloInstruction*> formatting_ops;
+  absl::flat_hash_set<HloInstruction*> formatting_set;
   // Returns if this is an acceptable user of a pipelined instruction.
   // Generic elementwise ops can have multiple operands that require the inputs
   // of being saved across the loop. So protect them through
@@ -408,11 +412,12 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     auto& data = stack.back();
     HloInstruction* instr = data.first;
     if (data.second == 0 && instr != folded_instr) {
-      if (!CollectSimpleDependencies(instr, formatting_ops,
-                                     added_instructions)) {
+      if (!CollectSimpleDependencies(instr, formatting_ops, formatting_set)) {
         return empty_pair;
       }
-      formatting_ops.push_back(instr);
+      if (formatting_set.insert(instr).second) {
+        formatting_ops.push_back(instr);
+      }
     }
     if (data.second == instr->user_count()) {
       stack.pop_back();
@@ -622,6 +627,39 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
 };
+
+std::string ToString(const WhileMoveInfo& move_info) {
+  // Combine the dynamic-update-slices and output indices into a single vector
+  // so we can print them together.
+  CHECK_EQ(move_info.dynamic_update_slices.size(),
+           move_info.output_indices.size());
+  std::vector<std::pair<decltype(move_info.dynamic_update_slices)::value_type,
+                        decltype(move_info.output_indices)::value_type>>
+      zip_result;
+  zip_result.reserve(move_info.dynamic_update_slices.size());
+  for (int64_t i = 0; i < move_info.dynamic_update_slices.size(); ++i) {
+    zip_result.push_back(std::make_pair(move_info.dynamic_update_slices[i],
+                                        move_info.output_indices[i]));
+  }
+  return absl::StrFormat(
+      "\tCollectives:\n\t\t%s\n\tDynamicUpdateSlices:\n\t\t%s\n\tFormatting "
+      "ops:\n\t\t%s\n\tSliced index: %d",
+      absl::StrJoin(move_info.collectives_to_move, ",\n\t\t",
+                    [](std::string* out, HloInstruction* instr) {
+                      absl::StrAppend(out, instr->name());
+                    }),
+      absl::StrJoin(zip_result, ",\n\t\t",
+                    [](std::string* out, const auto& item) {
+                      absl::StrAppend(
+                          out, absl::StrFormat("%s (%d)", item.first->name(),
+                                               item.second));
+                    }),
+      absl::StrJoin(move_info.formatting_ops, ",\n\t\t",
+                    [](std::string* out, HloInstruction* instr) {
+                      absl::StrAppend(out, instr->name());
+                    }),
+      move_info.sliced_idx);
+}
 
 // Set channel_id of instruction to next available to avoid collisions.
 void UpdateInstructionChannelId(HloInstruction* cloned_instr,
@@ -1588,7 +1626,8 @@ absl::Status UpdateSendRecvValidation(
 }
 
 // Function that does the work of pushing forward instructions that have been
-// determined that can be pipelined. Rough transformation: while (i < LAYERS) {
+// determined that can be pipelined. Rough transformation:
+// while (i < LAYERS) {
 //   p0 = param(0)
 //   p1 = param(1)
 //   x = computation(p0)
@@ -2293,9 +2332,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
   // Create the new tuple with the original while tuple size.
   std::vector<HloInstruction*> new_output_tuple;
   new_output_tuple.resize(operands_indices_count, nullptr);
+  InstructionMap pipelined_map;
   // Reproduce computation to the output after the loop on the full shape.
   for (auto& to_move : loop_analysis.GetMoveInfos()) {
-    InstructionMap pipelined_map;
     for (int64_t i = 0; i < to_move.collectives_to_move.size(); ++i) {
       HloInstruction* collective = to_move.collectives_to_move[i];
       int64_t gte_index = collective_to_new_tuple_index[collective];
@@ -2382,6 +2421,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     //  an effect on the instruction itself (like say broadcast, slices ...
     //  etc).
     for (HloInstruction* formatting_op : to_move.formatting_ops) {
+      if (pipelined_map.contains(formatting_op)) {
+        continue;
+      }
       if (!to_add_batch_set.contains(formatting_op) &&
           formatting_op->opcode() != HloOpcode::kBroadcast) {
         HloInstruction* cloned_not_to_batch = loop_computation->AddInstruction(
@@ -2944,20 +2986,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     if (VLOG_IS_ON(1)) {
       int64_t id = 0;
       for (auto& to_move : loop_analysis->GetMoveInfos()) {
-        VLOG(1) << "Move info id: " << id++ << " with "
-                << to_move.collectives_to_move.size() << " collectives "
-                << to_move.dynamic_update_slices.size()
-                << " dynamic update slices" << to_move.formatting_ops.size()
-                << " formatting ops";
-        for (HloInstruction* collective : to_move.collectives_to_move) {
-          VLOG(1) << "\t" << collective->name();
-        }
-        for (int64_t i = 0; i < to_move.dynamic_update_slices.size(); ++i) {
-          HloDynamicUpdateSliceInstruction* dyn_update =
-              to_move.dynamic_update_slices[i];
-          VLOG(1) << "\t\t" << dyn_update->name();
-          VLOG(1) << "\t\t" << to_move.output_indices[i];
-        }
+        VLOG(1) << "MoveInfo #" << id++ << "\n" << ToString(to_move);
       }
     }
     if (config_.pipelining_direction == PipeliningDirection::kForward) {

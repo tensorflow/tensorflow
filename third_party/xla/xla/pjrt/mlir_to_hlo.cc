@@ -58,12 +58,12 @@ limitations under the License.
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -206,6 +206,11 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloCreateCompatibilityExpanderPass(
+          {std::string(target)}));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -264,7 +269,6 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
     if (!llvm::isa<mlir::ModuleOp>(op) &&
         !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
                    mlir::chlo::ChloDialect>(op->getDialect())) {
-      std::cout << op->getDialect()->getNamespace().str() << "\n";
       all_stablehlo = false;
       return mlir::WalkResult::interrupt();
     }

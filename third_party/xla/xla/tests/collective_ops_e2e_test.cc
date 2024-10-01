@@ -18,6 +18,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,6 +55,13 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
 
 class CollectiveOpsTestE2E : public HloTestBase {
  public:
+  CollectiveOpsTestE2E() {
+    replacements_[kF8E4M3DatatypePlaceholder] =
+        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+    replacements_[kF8E5M2DatatypePlaceholder] =
+        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+  }
+
   bool IsCuda() {
     return std::holds_alternative<se::CudaComputeCapability>(Capability());
   }
@@ -93,10 +101,11 @@ class CollectiveOpsTestE2E : public HloTestBase {
                             CreateExecutable(std::move(module),
                                              /*run_hlo_passes=*/true));
     EXPECT_TRUE(executable->has_module());
-    HloInstruction* gemm_op =
-        FindInstruction(&executable->module(), HloOpcode::kCustomCall);
-    EXPECT_THAT(gemm_op, NotNull());
-    EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+    std::vector<HloInstruction*> gemm_ops =
+        FindInstructions(&executable->module(), HloOpcode::kCustomCall);
+    for (HloInstruction* gemm_op : gemm_ops) {
+      EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+    }
   }
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
@@ -108,6 +117,13 @@ class CollectiveOpsTestE2E : public HloTestBase {
         /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
         num_replicas, /*run_hlo_passes=*/false, &device_assignment);
   }
+
+ protected:
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
+
+ private:
+  static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
+  static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
 };
 
 // E2E tests for collective ops. These will generally verify some HLO transform
@@ -432,6 +448,50 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
+}
+
+TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
+  // TODO(b/369751308): Re-enable this test after the threading issues are
+  // fixed.
+  GTEST_SKIP() << "This test is flaky. See b/369751308";
+
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2, 2] broadcast(id), dimensions={}
+    a0 = u32[2, 2] constant({{10, 15}, {20, 25}})
+    a1 = u32[2, 2] add(id2, a0)
+    all2all = u32[2, 2] all-to-all(a1), dimensions={0}
+    ROOT out = u32[4] reshape(all2all)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_TRUE(executable->has_module());
+  HloModule* executable_module = &executable->module();
+
+  // Verify that the all-to-all is not decomposed into a tuple all-to-all.
+  const HloInstruction* all_to_all =
+      FindInstruction(executable_module, HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
 }
 
 XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
@@ -808,46 +868,24 @@ ENTRY main.12 {
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
 }
 
-TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
-       WindowedEinsumE2EAllGatherAndReduceScatterF8) {
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed, WindowedEinsumE2EAllGatherF8) {
   absl::string_view kModuleReplicatedStr = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[192,48]{1,0}, bf16[], bf16[], bf16[], bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
-ENTRY main.12 {
-  Arg_0.1 = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  Arg_1.2 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
-  Arg_2.3 = bf16[] parameter(3)
-  Arg_3.4 = bf16[] parameter(4)
-  broadcast = bf16[2,16,48]{2,1,0} broadcast(Arg_2.3), dimensions={}
-  broadcast.1 = bf16[48,192]{1,0} broadcast(Arg_3.4), dimensions={}
-  convert = bf16[2,16,48]{2,1,0} convert(Arg_0.1)
-  convert.1 = bf16[48,192]{1,0} convert(Arg_1.2)
-  multiply = bf16[2,16,48]{2,1,0} multiply(broadcast, convert)
-  multiply.1 = bf16[48,192]{1,0} multiply(broadcast.1, convert.1)
-  dot.5 = bf16[2,16,192]{2,1,0} dot(multiply, multiply.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  custom-call.7 = bf16[2,16,192]{2,1,0} custom-call(dot.5), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
-  Arg_4.5 = bf16[] parameter(5)
-  broadcast.2 = bf16[2,16,192]{2,1,0} broadcast(Arg_4.5), dimensions={}
-  divide = bf16[2,16,192]{2,1,0} divide(custom-call.7, broadcast.2)
-  constant = bf16[] constant(-448.)
-  broadcast.3 = bf16[2,16,192]{2,1,0} broadcast(constant), dimensions={}
-  constant.1 = bf16[] constant(448.)
-  broadcast.4 = bf16[2,16,192]{2,1,0} broadcast(constant.1), dimensions={}
-  clamp = bf16[2,16,192]{2,1,0} clamp(broadcast.3, divide, broadcast.4)
-  convert.2 = f8e4m3fn[2,16,192]{2,1,0} convert(clamp)
-  Arg_5.6 = bf16[] parameter(6)
-  broadcast.5 = bf16[2,16,192]{2,1,0} broadcast(Arg_5.6), dimensions={}
-  convert.3 = bf16[2,16,192]{2,1,0} convert(convert.2)
-  multiply.2 = bf16[2,16,192]{2,1,0} multiply(convert.3, broadcast.5)
-  Arg_6.7 = f8e4m3fn[192,48]{1,0} parameter(2), sharding={devices=[4,1]<=[4]}
-  Arg_7.8 = bf16[] parameter(7)
-  broadcast.6 = bf16[192,48]{1,0} broadcast(Arg_7.8), dimensions={}
-  convert.4 = bf16[192,48]{1,0} convert(Arg_6.7)
-  multiply.3 = bf16[192,48]{1,0} multiply(convert.4, broadcast.6)
-  dot.6 = bf16[2,16,48]{2,1,0} dot(multiply.2, multiply.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  tuple.10 = (bf16[2,16,48]{2,1,0}) tuple(dot.6)
-  ROOT get-tuple-element.11 = bf16[2,16,48]{2,1,0} get-tuple-element(tuple.10), index=0, sharding={devices=[1,4,1]<=[4]}
-} // main.12
+ENTRY main {
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[48,192]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[48,192]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[48,192]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
 )";
 
   // Disable the dot merger pass which can prevent the creation of FP8 GEMM
@@ -867,29 +905,106 @@ ENTRY main.12 {
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherReshapeF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[2,24,192]{2,1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fn[2,24,192]{2,1,0} parameter(1), sharding={devices=[1,1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
+  scale_rhs_bcast = bf16[2,24,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[2,24,192]{2,1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[2,24,192]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  rhs_reshaped = bf16[48,192]{1,0} reshape(rhs_scaled)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_reshaped), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_),
+      /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllGatherMultiConsumerF8) {
   absl::string_view kModuleReplicatedStr = R"(
 HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
 ENTRY main {
-  rhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  lhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(3)
+  scale_rhs0 = bf16[] parameter(4)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs0_bcast = bf16[48,192]{1,0} broadcast(scale_rhs0), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs0_bf16 = bf16[48,192]{1,0} convert(rhs0)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs0_scaled = bf16[48,192]{1,0} multiply(scale_rhs0_bcast, rhs0_bf16)
+  dot0 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  rhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  scale_rhs1 = bf16[] parameter(5)
+  scale_rhs1_bcast = bf16[48,192]{1,0} broadcast(scale_rhs1), dimensions={}
+  rhs1_bf16 = bf16[48,192]{1,0} convert(rhs1)
+  rhs1_scaled = bf16[48,192]{1,0} multiply(scale_rhs1_bcast, rhs1_bf16)
+  dot1 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT add = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EReduceScatterF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,192]{2,1,0}, f8e4m3fn[192,48]{1,0}, bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fn[2,16,192]{2,1,0} parameter(0), sharding={devices=[1,1,4]<=[4]}
+  rhs = f8e4m3fn[192,48]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  scale_lhs = bf16[] parameter(2)
   scale_rhs = bf16[] parameter(3)
-  scale_lhs0 = bf16[] parameter(4)
-  scale_rhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
-  scale_lhs0_bcast = bf16[48,192]{1,0} broadcast(scale_lhs0), dimensions={}
-  rhs_bf16 = bf16[2,16,48]{2,1,0} convert(rhs)
-  lhs0_bf16 = bf16[48,192]{1,0} convert(lhs0)
-  rhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
-  lhs0_scaled = bf16[48,192]{1,0} multiply(scale_lhs0_bcast, lhs0_bf16)
-  dot0 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  lhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
-  scale_lhs1 = bf16[] parameter(5)
-  scale_lhs1_bcast = bf16[48,192]{1,0} broadcast(scale_lhs1), dimensions={}
-  lhs1_bf16 = bf16[48,192]{1,0} convert(lhs1)
-  lhs1_scaled = bf16[48,192]{1,0} multiply(scale_lhs1_bcast, lhs1_bf16)
-  dot1 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  ROOT add.8 = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+  scale_lhs_bcast = bf16[2,16,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[192,48]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,192]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[192,48]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,192]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[192,48]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,48]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,48]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,4,1]<=[4]}
 } // main
 )";
 
@@ -1023,7 +1138,7 @@ while_body {
   r = bf16[32,128] bitcast(dynamic-slice.k)
   a = bf16[32,128] add(r, r), control-predecessors={constant.2559}
   // A fp8 pattern of quant-dequant before the collective AG.
-  qa = f8e4m3fn[32,128] convert(a)
+  qa = <<F8E4M3>>[32,128] convert(a)
   dqa = bf16[32,128] convert(qa)
   a_scale = bf16[] get-tuple-element(param), index=3
   a_scales = bf16[32,128] broadcast(a_scale), dimensions={}
@@ -1031,7 +1146,7 @@ while_body {
   mb = bf16[128,128] all-gather(dqa_unscaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
   ma = bf16[128,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561), dynamic_slice_sizes={128,128}
 
-  qma = f8e4m3fn[128,128] convert(ma)
+  qma = <<F8E4M3>>[128,128] convert(ma)
   dqma = bf16[128,128] convert(qma)
   ma_scale = bf16[] get-tuple-element(param), index=4
   ma_scales = bf16[128,128] broadcast(ma_scale), dimensions={}
@@ -1061,7 +1176,8 @@ ENTRY entry {
   opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
-  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+  CollectiveOpsVerifyF8Matmul(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
 }
 
 TEST_F(CollectiveOpsTestE2E,
@@ -1157,19 +1273,22 @@ ENTRY entry {
   EXPECT_TRUE(executable->has_module());
 }
 
-TEST_F(CollectiveOpsTestE2E, AllToAllCollectiveQuantizer) {
+TEST_F(CollectiveOpsTestE2E, AllToAllQuantizeCollectiveQuantizer) {
   absl::string_view kModuleReplicatedStr = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->bf16[4,32,128]{2,1,0}}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={()->bf16[2]}, num_partitions=2
 ENTRY entry {
-  param = f32[4,32,128]{2,1,0} parameter(0)
-  all-to-all = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={1}
-  ROOT convert = bf16[4,32,128]{2,1,0} convert(all-to-all)
+  input = f32[2] constant({2., 4.})
+  scale = f32[] constant(2.)
+  scale_bcast = f32[2] broadcast(scale), dimensions={}
+  input_scaled = f32[2] multiply(input, scale_bcast)
+  all-to-all = f32[2] all-to-all(input_scaled), channel_id=1, replica_groups={{0,1}}, dimensions={0}
+  ROOT convert = bf16[2] convert(all-to-all)
 }
 )";
 
   const int64_t kNumReplicas = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
-  const int64_t kNumPartitions = 4;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1185,6 +1304,109 @@ ENTRY entry {
       FindInstruction(&executable->module(), HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
+
+  // Execute the test on 2 partitions.
+  TF_ASSERT_OK_AND_ASSIGN(
+      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
+                              /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assignment(0, i) = i;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
+                                     &assignment, /*run_hlo_passes=*/true,
+                                     /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumPartitions);
+  const bfloat16 four = static_cast<bfloat16>(4.);
+  const bfloat16 eight = static_cast<bfloat16>(8.);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({four, four}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<bfloat16>({eight, eight}, results[1]);
+}
+
+TEST_F(CollectiveOpsTestE2E, DequantizeAllToAllCollectiveQuantizer) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={()->f32[2]}, num_partitions=2
+ENTRY entry {
+  input = bf16[2] constant({2., 4.})
+  input_f32 = f32[2] convert(input)
+  scale = f32[] constant(2.)
+  scale_bcast = f32[2] broadcast(scale), dimensions={}
+  input_scaled = f32[2] multiply(input_f32, scale_bcast)
+  ROOT all-to-all = f32[2] all-to-all(input_scaled), channel_id=1, replica_groups={{0,1}}, dimensions={0}
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_num_partitions(kNumPartitions);
+
+  // Verify that the element type of the all-to-all has been changed to BF16.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+  HloInstruction* all_to_all =
+      FindInstruction(&executable->module(), HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, NotNull());
+  EXPECT_EQ(all_to_all->shape().element_type(), BF16);
+
+  // Execute the test on 2 partitions.
+  TF_ASSERT_OK_AND_ASSIGN(
+      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
+                              /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    assignment(0, i) = i;
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
+                                     &assignment, /*run_hlo_passes=*/true,
+                                     /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumPartitions);
+  LiteralTestUtil::ExpectR1Equal<float>({4., 4.}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
+}
+
+TEST_F(CollectiveOpsTestE2E, NoErrorOnDuplicateChannelId) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->(f32[4,32,128]{2,1,0}, f32[4,32,128]{2,1,0})}, num_partitions=4
+ENTRY entry {
+  param = f32[4,32,128]{2,1,0} parameter(0)
+  all-to-all = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={1}
+  all-to-all.1 = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={0}
+  ROOT tuple = (f32[4,32,128]{2,1,0}, f32[4,32,128]{2,1,0}) tuple(all-to-all, all-to-all.1)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_experimental_ignore_channel_id(true);
+  config.set_debug_options(opts);
+
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
 }
 
 }  // namespace

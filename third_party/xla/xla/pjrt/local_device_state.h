@@ -170,6 +170,8 @@ class LocalDeviceState {
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
+  WorkerThread* cleanup_thread() const { return cleanup_thread_.get(); }
+
   // Enqueues a host callback on 'stream'. `stream` may, but need not, wait for
   // `callback` to complete. It is safe to call runtime methods from the
   // callback.
@@ -198,6 +200,12 @@ class LocalDeviceState {
 
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
+
+  // Whether to allow deleting a buffer before the operation fulfilling the
+  // buffer is scheduled by the host.
+  bool allow_delete_before_fulfill() const {
+    return allow_delete_before_fulfill_;
+  }
 
  private:
   absl::Status SynchronizeAllActivity();
@@ -255,6 +263,12 @@ class LocalDeviceState {
   // semaphore during calls to Execute but release it from a callback and if
   // they are the same thread we might deadlock.
   std::unique_ptr<WorkerThread> callback_thread_;
+
+  // One thread dedicated to cleaning up buffers. Scheduled work on this thread
+  // may wait for other threads to schedule writes to buffers.
+  std::unique_ptr<WorkerThread> cleanup_thread_;
+
+  bool allow_delete_before_fulfill_ = true;
 };
 
 }  // namespace xla

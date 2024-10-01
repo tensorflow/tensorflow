@@ -88,7 +88,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.18.0"
+VERSION = "2.19.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1762,6 +1762,7 @@ def tf_cc_tests(
         srcs,
         deps,
         name = "",
+        data = [],
         linkstatic = 0,
         tags = [],
         size = "medium",
@@ -1779,6 +1780,7 @@ def tf_cc_tests(
             size = size,
             srcs = [src],
             args = args,
+            data = data,
             kernels = kernels,
             linkopts = linkopts,
             linkstatic = linkstatic,
@@ -3580,3 +3582,10 @@ def tf_python_framework_friends():
 
 def if_cuda_tools(if_true, if_false = []):
     return _if_cuda_tools(if_true, if_false)
+
+# The config is used to determine if we need dependency on pre-built wheels.
+def if_wheel_dependency(if_true, if_false = []):
+    return select({
+        "@local_xla//xla/tsl:enable_wheel_dependency": if_true,
+        "//conditions:default": if_false,
+    })

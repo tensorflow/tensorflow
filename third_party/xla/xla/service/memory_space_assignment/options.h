@@ -61,6 +61,8 @@ using WindowPrefetchDetailFunction =
     std::function<WindowPrefetchDetail(const HloInstruction*)>;
 using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
+using IsAsyncSliceImplementedFunction =
+    std::function<bool(const HloInstruction*)>;
 
 // The different options to be passed to the Run() API.
 struct Options {
@@ -123,6 +125,9 @@ struct Options {
   // window prefetch buffer.
   WindowPrefetchNotifyOperandAppendedFunction notify_operand_appended_fn =
       [](HloInstruction*, int64_t, int64_t) {};
+
+  IsAsyncSliceImplementedFunction is_async_slice_implemented_fn =
+      [](const HloInstruction*) { return false; };
 
   // If true, we will try to reduce scoped allocation buffer size for all
   // instructions if their operand/output has been allocated in alternate

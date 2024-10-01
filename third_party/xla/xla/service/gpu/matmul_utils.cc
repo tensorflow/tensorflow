@@ -484,8 +484,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   if (has_vector_bias) {
     int vector_bias_index = has_matrix_bias ? 3 : 2;
     if (primitive_util::IsF8Type(lhs_shape.element_type())) {
-      // FP8 gemms have 4 scales as inputs which come before the vector bias.
-      vector_bias_index += 4;
+      // FP8 gemms have 2 scales as inputs which come before the vector bias.
+      vector_bias_index += 2;
     }
     vector_bias_shape = gemm->operand(vector_bias_index)->shape();
   }

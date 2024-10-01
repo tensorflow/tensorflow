@@ -336,6 +336,20 @@ class GemmDimensionAdapter {
           result.strides[kOutputLHSNonContractingDimensionIndex] *
           result.sizes[kOutputLHSNonContractingDimensionIndex];
     }
+
+    // 0 (kBatchDimensionIndex) is always the batch dimension;
+    // 1 and 2 are the non-batch ones. cuDNN relies on strides to determine
+    // layouts and gets confused when both strides of non-batch dimensions
+    // are equal to 1 - this is the case for tensors with 1-sized dimension
+    // like [A,1]. The stride of the 1-sized dimension does not matter for
+    // correctness because there is no iteration along this dimension, but
+    // setting it to A and representing the tensor as its equivalent [1,A]
+    // helps cuDNN.
+    if (result.strides[1] == 1 && result.strides[2] == 1) {
+      const int one_sized_dim_idx = (result.sizes[1] == 1) ? 1 : 2;
+      result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
+    }
+
     if (!slicing_is_present) {
       result.slices.reset();
     }

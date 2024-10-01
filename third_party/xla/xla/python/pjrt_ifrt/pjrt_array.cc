@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -66,17 +68,19 @@ absl::Status ValidateArrayCreationInput(
   if (pjrt_buffers.empty()) {
     return InvalidArgument("pjrt_buffers must be non-empty");
   }
-  if (sharding->devices().size() != pjrt_buffers.size()) {
+  if (sharding->devices()->size() != pjrt_buffers.size()) {
     return InvalidArgument("device and buffer counts mismatch: %d vs. %d",
-                           sharding->devices().size(), pjrt_buffers.size());
+                           sharding->devices()->size(), pjrt_buffers.size());
   }
 
   // Canonicalize memory kind in case it hasn't been done before.
   MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      sharding->memory_kind(), sharding->devices().front());
-  for (int i = 0; i < sharding->devices().size(); ++i) {
+      sharding->memory_kind(), sharding->devices()->devices().front());
+  const absl::Span<Device* const> sharding_devices =
+      sharding->devices()->devices();
+  for (int i = 0; i < sharding->devices()->size(); ++i) {
     PjRtCompatibleDevice* device =
-        llvm::dyn_cast<PjRtCompatibleDevice>(sharding->devices()[i]);
+        llvm::dyn_cast<PjRtCompatibleDevice>(sharding_devices[i]);
     if (!device) {
       return InvalidArgument("Sharding device %d is not a PjRtDevice", i);
     }
@@ -85,7 +89,7 @@ absl::Status ValidateArrayCreationInput(
           "PjRtBuffer's memory space is addressed by device %s vs sharding is "
           "on device %s",
           pjrt_buffers[i]->device()->DebugString(),
-          sharding->devices()[i]->DebugString());
+          sharding_devices[i]->DebugString());
     }
     MemoryKind buffer_memory_kind =
         MakeMemoryKindFromPjRtBuffer(pjrt_buffers[i].get());
@@ -126,82 +130,6 @@ absl::StatusOr<MemoryKind> GetMemoryKindFromPjRtBuffers(
 
 char PjRtCompatibleArray::ID = 0;
 char PjRtArray::ID = 0;
-
-absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
-  switch (dtype.kind()) {
-#define CASE(DT, PT)                                                      \
-  case DT:                                                                \
-    static_assert(PT ==                                                   \
-                  static_cast<xla::PrimitiveType>(static_cast<int>(DT))); \
-    return PT
-    CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
-    CASE(DType::kPred, xla::PrimitiveType::PRED);
-    CASE(DType::kS2, xla::PrimitiveType::S2);
-    CASE(DType::kS4, xla::PrimitiveType::S4);
-    CASE(DType::kS8, xla::PrimitiveType::S8);
-    CASE(DType::kS16, xla::PrimitiveType::S16);
-    CASE(DType::kS32, xla::PrimitiveType::S32);
-    CASE(DType::kS64, xla::PrimitiveType::S64);
-    CASE(DType::kU2, xla::PrimitiveType::U2);
-    CASE(DType::kU4, xla::PrimitiveType::U4);
-    CASE(DType::kU8, xla::PrimitiveType::U8);
-    CASE(DType::kU16, xla::PrimitiveType::U16);
-    CASE(DType::kU32, xla::PrimitiveType::U32);
-    CASE(DType::kU64, xla::PrimitiveType::U64);
-    CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
-    CASE(DType::kF8E4M3B11FNUZ, xla::PrimitiveType::F8E4M3B11FNUZ);
-    CASE(DType::kF8E4M3FNUZ, xla::PrimitiveType::F8E4M3FNUZ);
-    CASE(DType::kF8E5M2, xla::PrimitiveType::F8E5M2);
-    CASE(DType::kF8E5M2FNUZ, xla::PrimitiveType::F8E5M2FNUZ);
-    CASE(DType::kF16, xla::PrimitiveType::F16);
-    CASE(DType::kF32, xla::PrimitiveType::F32);
-    CASE(DType::kBF16, xla::PrimitiveType::BF16);
-    CASE(DType::kF64, xla::PrimitiveType::F64);
-    CASE(DType::kC64, xla::PrimitiveType::C64);
-    CASE(DType::kC128, xla::PrimitiveType::C128);
-    CASE(DType::kToken, xla::PrimitiveType::TOKEN);
-#undef CASE
-    case DType::kString:
-      return InvalidArgument("Not supported as XLA PrimitiveType: %d",
-                             static_cast<int>(dtype.kind()));
-  }
-  return InvalidArgument("Invalid DType: %d", static_cast<int>(dtype.kind()));
-}
-
-absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
-  switch (primitive_type) {
-    case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
-    case xla::PrimitiveType::PRED:
-    case xla::PrimitiveType::S2:
-    case xla::PrimitiveType::S4:
-    case xla::PrimitiveType::S8:
-    case xla::PrimitiveType::S16:
-    case xla::PrimitiveType::S32:
-    case xla::PrimitiveType::S64:
-    case xla::PrimitiveType::U2:
-    case xla::PrimitiveType::U4:
-    case xla::PrimitiveType::U8:
-    case xla::PrimitiveType::U16:
-    case xla::PrimitiveType::U32:
-    case xla::PrimitiveType::U64:
-    case xla::PrimitiveType::F8E4M3FN:
-    case xla::PrimitiveType::F8E4M3B11FNUZ:
-    case xla::PrimitiveType::F8E4M3FNUZ:
-    case xla::PrimitiveType::F8E5M2:
-    case xla::PrimitiveType::F8E5M2FNUZ:
-    case xla::PrimitiveType::F16:
-    case xla::PrimitiveType::F32:
-    case xla::PrimitiveType::BF16:
-    case xla::PrimitiveType::F64:
-    case xla::PrimitiveType::C64:
-    case xla::PrimitiveType::C128:
-    case xla::PrimitiveType::TOKEN:
-      return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
-    default:
-      return InvalidArgument("Invalid XLA PrimitiveType: %d",
-                             static_cast<int>(primitive_type));
-  }
-}
 
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer) {
   if (pjrt_buffer->memory_space() == nullptr) {
@@ -267,7 +195,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   TF_ASSIGN_OR_RETURN(MemoryKind memory_kind,
                       GetMemoryKindFromPjRtBuffers(pjrt_buffers));
 
-  DeviceList::Devices devices;
+  BasicDeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
   std::vector<Shape> shapes;
   shapes.reserve(pjrt_buffers.size());
@@ -278,10 +206,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     devices.push_back(device);
     shapes.push_back(Shape(pjrt_buffer->dimensions()));
   }
-  auto sharding = ifrt::ConcreteSharding::Create(DeviceList(std::move(devices)),
-                                                 memory_kind,
-                                                 /*shape=*/shape,
-                                                 /*shard_shapes=*/shapes);
+  auto sharding = ifrt::ConcreteSharding::Create(
+      BasicDeviceList::Create(std::move(devices)), memory_kind,
+      /*shape=*/shape,
+      /*shard_shapes=*/shapes);
   return PjRtArray::Create(client, dtype, std::move(shape), std::move(sharding),
                            std::move(pjrt_buffers));
 }
@@ -294,7 +222,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
   TF_ASSIGN_OR_RETURN(auto memory_kind,
                       GetMemoryKindFromPjRtBuffers(pjrt_buffers));
 
-  DeviceList::Devices devices;
+  BasicDeviceList::Devices devices;
   devices.reserve(pjrt_buffers.size());
   std::vector<DynamicShape> dynamic_shapes;
   dynamic_shapes.reserve(pjrt_buffers.size());
@@ -312,7 +240,7 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     dynamic_shapes.push_back(std::move(dynamic_shape));
   }
   auto sharding = ifrt::ConcreteSharding::Create(
-      DeviceList(std::move(devices)), memory_kind,
+      BasicDeviceList::Create(std::move(devices)), memory_kind,
       /*dynamic_shape=*/dynamic_shape,
       /*shard_dynamic_shapes=*/dynamic_shapes);
   return PjRtArray::Create(client, dtype, std::move(dynamic_shape),
@@ -342,12 +270,12 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
   std::vector<tsl::RCReference<Array>> result;
-  result.reserve(sharding_->devices().size());
+  result.reserve(sharding_->devices()->size());
   TF_RETURN_IF_ERROR(std::visit(
       [&](const auto& this_shape) {
         TF_ASSIGN_OR_RETURN(auto shape_and_shardings,
                             sharding_->Disassemble(this_shape));
-        for (int i = 0; i < sharding_->devices().size(); ++i) {
+        for (int i = 0; i < sharding_->devices()->size(); ++i) {
           PjRtBuffers buffers;
           buffers.reserve(1);
           buffers.push_back(GetPjRtBuffer(semantics, i));
@@ -370,10 +298,10 @@ Future<> PjRtArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  if (sharding_->devices().size() != 1) {
+  if (sharding_->devices()->size() != 1) {
     return Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
-                        sharding_->devices().size()));
+                        sharding_->devices()->size()));
   }
 
   auto dtype = ToPrimitiveType(dtype_);
@@ -449,31 +377,33 @@ absl::StatusOr<Memory*> GetMemorySpaceFromMemoryKind(
 }
 
 absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
-    std::optional<xla::ifrt::DeviceList> devices,
+    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
     std::optional<xla::ifrt::MemoryKind> memory_kind,
     ArrayCopySemantics semantics) {
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(auto new_sharding,
                       sharding().WithDeviceAssignment(devices, memory_kind));
-  if (new_sharding->devices().size() != sharding_->devices().size()) {
+  if (new_sharding->devices()->size() != sharding_->devices()->size()) {
     return InvalidArgument(
         "Resharding to a different number of devices: %d; expected %d",
-        new_sharding->devices().size(), sharding_->devices().size());
+        new_sharding->devices()->size(), sharding_->devices()->size());
   }
   // TODO(hyeontaek): We should have an equivalence test for sharding that
   // permits device changes and nothing else.
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
-  CHECK_GT(new_sharding->devices().size(), 0);
+  CHECK_GT(new_sharding->devices()->size(), 0);
   // Canonicalize memory kind in case it hasn't been done before.
   MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
-      new_sharding->memory_kind(), new_sharding->devices().front());
+      new_sharding->memory_kind(), new_sharding->devices()->devices().front());
   bool new_sharding_has_memory_kind =
       canonicalized_sharding_memory_kind.memory_kind().has_value();
+  const absl::Span<Device* const> new_sharding_devices =
+      new_sharding->devices()->devices();
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
     TF_ASSIGN_OR_RETURN(Device * buffer_device,
                         client_->LookupPjRtDevice(pjrt_buffers_[i]->device()));
-    bool devices_equal = buffer_device == new_sharding->devices()[i];
+    bool devices_equal = buffer_device == new_sharding_devices[i];
     bool memories_supported = pjrt_buffers_[i]->memory_space() != nullptr;
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
@@ -500,7 +430,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
       }
     } else {
       PjRtCompatibleDevice* pjrt_device =
-          llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding->devices()[i]);
+          llvm::dyn_cast<PjRtCompatibleDevice>(new_sharding_devices[i]);
       if (!pjrt_device) {
         return InvalidArgument(
             "The destination device is owned by a non-PjRt-compatible client. "
@@ -519,7 +449,7 @@ absl::StatusOr<tsl::RCReference<Array>> PjRtArray::Copy(
       if (new_sharding_has_memory_kind && memories_supported) {
         TF_ASSIGN_OR_RETURN(
             auto memory,
-            GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
+            GetMemorySpaceFromMemoryKind(new_sharding_devices[i],
                                          canonicalized_sharding_memory_kind));
         PjRtMemory* pjrt_memory = llvm::dyn_cast<PjRtMemory>(memory);
         TF_RET_CHECK(pjrt_memory != nullptr);

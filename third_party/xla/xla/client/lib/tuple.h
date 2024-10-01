@@ -16,21 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_TUPLE_H_
 #define XLA_CLIENT_LIB_TUPLE_H_
 
-#include "absl/status/statusor.h"
-#include "xla/client/xla_builder.h"
-#include "xla/shape_tree.h"
-
-namespace xla {
-
-// Returns a ShapeTree where each index is a GetTupleElement instruction for
-// that subshape of the tuple.  The root index is the original argument.
-absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple);
-
-// Assembles a tuple from a ShapeTree that contains the leaves of the tuple.
-// Non-leaf elements of the ShapeTree are ignored.  DisassembleTuple and
-// AssembleTuple are essentially inverse operations.
-XlaOp AssembleTuple(XlaBuilder* builder, ShapeTree<XlaOp> elements);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/builder/lib/tuple.h"
 
 #endif  // XLA_CLIENT_LIB_TUPLE_H_

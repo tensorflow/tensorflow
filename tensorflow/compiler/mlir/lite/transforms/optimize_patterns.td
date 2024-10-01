@@ -826,6 +826,13 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+def MinimumOfReluAnd6ToRelu62 :
+  Pat<(TFL_ReluOp
+        (TFL_MinimumOp $x,
+          (Arith_ConstantOp $y))),
+      (TFL_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
+
 // For both relu1 and relu_0_to_1, the min/max operators commute,
 // so there are two possible orderings we need to rewrite.
 // Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
@@ -1434,6 +1441,23 @@ def MatchGelu : Pat<
    (HasOneUse $mul_out1),
   ]>;
 
+// For Gelu, replaces
+//   0.5 * x * ( erfc( -x * sqrt_1_2 ) )
+def MatchGeluWithErfc : Pat<
+  (TFL_MulOp
+   (TFL_MulOp:$mul_out $arg0, (Arith_ConstantOp F32ElementsAttr:$Cst_1_2), TFL_AF_None),
+   (TF_ErfcOp:$erfc_out
+    (TFL_MulOp:$mul_out1
+     (TFL_NegOp $arg0),
+     (Arith_ConstantOp F32ElementsAttr:$Cst_sqrt_1_2), TFL_AF_None)), TFL_AF_None),
+  (TFL_GeluOp $arg0, ConstBoolAttrFalse),
+  [(FloatValueEquals<"0.5"> $Cst_1_2),
+   (FloatValueEquals<"0.707106769"> $Cst_sqrt_1_2),
+   (HasOneUse $mul_out),
+   (HasOneUse $erfc_out),
+   (HasOneUse $mul_out1),
+  ]>;
+
 // Fetches the output of FC op, from the provided arguments.
 def GetFcOutput : NativeCodeCall<
   "GetFcOutput(&$_builder, $0, $1, $2, $3, $4, $5, $6, $7)">;
@@ -1531,8 +1555,21 @@ def FuseLeakyReluConst : Pat<
 
 // Return true if the product of dimension values of a subsection of the tensor
 // is equal to the non-contracting dimension after a reshape
-class BroadcastDimsProductEqual<int agg_start_idx> : Constraint<CPred<
-  "TFL::BroadcastDimsProductEqual($0, $1, "# agg_start_idx #")">>;
+class NonBroadcastingNonContractingLhsDimsProductEqual<int agg_start_idx, int agg_end_idx=0> : Constraint<CPred<
+  "TFL::NonBroadcastingNonContractingDimsProductEqual($0, $1, true, "# agg_start_idx #","# agg_end_idx #")">>;
+
+class NonBroadcastingNonContractingRhsDimsProductEqual<int agg_start_idx, int agg_end_idx=0> : Constraint<CPred<
+  "TFL::NonBroadcastingNonContractingDimsProductEqual($0, $1, false, "# agg_start_idx #","# agg_end_idx #")">>;
+
+// Predicate to check if the last dimensions of two values is equal.
+def TrailingDimValuesEqual : Constraint<
+  CPred<"mlir::cast<ShapedType>($0.getType()).getShape().back()"
+    "== mlir::cast<ShapedType>($1.getType()).getShape().back()">>;
+
+// Predicate to check if the product of last few dimensions in LHS is equal to
+// the last dimension in RHS.
+class ContractingDimsProductEqual<int agg_start_idx> : Constraint<CPred<
+  "TFL::ContractingDimsProductEqual($0, $1, "# agg_start_idx #")">>;
 
 // Returns true if the dimensions of a subsection of two tensors is equal
 class AreTensorSubSectionShapesEqual<int skip_first, int skip_last> : Constraint<CPred<
@@ -1559,9 +1596,72 @@ def FuseReshapesAroundBatchMatMulLHS: Pat<
   (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
   [(HasRank<2> $rhs),
    (HasRank<2> $initial_shape_change),
-   (BroadcastDimsProductEqual<0> $input, $initial_shape_change),
-   (BroadcastDimsProductEqual<0> $final_shape_change, $bmm_tmp_output),
-   (AreTensorSubSectionShapesEqual<0, 1> $input, $final_shape_change)]>;
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $initial_shape_change),
+   (AnyStaticShapeTensor $final_shape_change),
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (AreTensorSubSectionShapesEqual<0, 1> $input, $final_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0> $final_shape_change, $bmm_tmp_output)]>;
+
+// Pattern to fuse/fold the reshape of TFL_BatchMatMulOp output to expand the
+// dimensions of the output to add a unity broadcast dimension.
+// This pattern assumes that the input has more than one contracting dimensions.
+//
+// This pattern is applied when-
+// 1. The rank of rhs is 2
+// 2. The original input reshape has a) reduction in leading broadcast dim and
+//    b) flattening of the contracting dims.
+def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change
+        $input, (Arith_ConstantOp I32ElementsAttr:$s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp $s1)),
+  (TFL_BatchMatMulOp
+    (TFL_ReshapeOp $input,
+      (Arith_ConstantOp (GetExpandedShapeAttr<1> $initial_shape_change))),
+    $rhs, $adj_x, $adj_y, $bool_attr),
+  [(HasRankAtLeast<4> $input),
+   (HasRank<2> $rhs),
+   (HasRank<2> $initial_shape_change),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $initial_shape_change),
+   (AnyStaticShapeTensor $final_shape_change),
+   (IsBroadcastDimEqualToOne $input),
+   (IsBroadcastDimEqualToOne $final_shape_change),
+   (ContractingDimsProductEqual<2> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $final_shape_change, $bmm_tmp_output)]>;
+
+// Pattern to fuse/fold the reshape of TFL_BatchMatMulOp input.
+//
+// This pattern is applied if-
+// 1. LHS has only one non-broadcasting, non-contracting dimension
+// 2. No batching dimensions on LHS and RHS
+// 3. RHS has a flattened non-broadcasting, non-contracting dimension
+def FuseInputReshape_BatchMatMulWithFlattenedRhsDims: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change
+        $input, (Arith_ConstantOp I32ElementsAttr:$s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp I32ElementsAttr:$s1)),
+  (TFL_ReshapeOp
+    (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr,
+      (returnType (GetExpandedShapeType<1> $bmm_tmp_output))),
+    (Arith_ConstantOp $s1)),
+  [(HasRank<2> $rhs),
+   (HasRank<3> $input),
+   (HasRank<2> $initial_shape_change),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $initial_shape_change),
+   (AnyStaticShapeTensor $final_shape_change),
+   (IsBroadcastDimEqualToOne $input),
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingRhsDimsProductEqual<2> $final_shape_change, $bmm_tmp_output)]>;
 
 // Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
 // This pattern is applied when the rank of rhs is 3
@@ -1576,11 +1676,15 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
   [(HasRankAtLeast<3> $input),
    (HasRank<3> $rhs),
    (HasRank<3> $initial_shape_change),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $initial_shape_change),
+   (AnyStaticShapeTensor $final_shape_change),
    (IsBroadcastDimEqualToOne $rhs),
    (IsBroadcastDimEqualToOne $input),
-   (BroadcastDimsProductEqual<1> $input, $initial_shape_change),
-   (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
-   (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<1> $final_shape_change, $bmm_tmp_output)]>;
 
 
 
@@ -1606,11 +1710,11 @@ def FuseTransposeAfterBatchMatmul : Pat<
   ),
   [(AreLastTwoDimsTransposed $perm_value)]>;
 
-// Fuse redundant RHS TFL_TransposeOp into TFL_BatchMatMulOp if rhs is constant
+// Fuse redundant RHS TFL_TransposeOp into TFL_BatchMatMulOp if rhs is any
 // tensor of rank-2.
 def FuseTransposeIntoBatchMatMulRHS: Pat<
   (TFL_BatchMatMulOp $lhs,
-    (TFL_TransposeOp (TFL_QConstOp:$input $_, $_), (Arith_ConstantOp:$perm_value $p0)),
+    (TFL_TransposeOp $input, (Arith_ConstantOp:$perm_value $p0)),
     $adj_x, $adj_y, $asymmetric_quantize_inputs),
   (TFL_FullyConnectedOp
     $lhs,
@@ -1618,7 +1722,32 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
     ConstBoolAttrTrue, $asymmetric_quantize_inputs),
   [(HasRank<2> $input),
    (AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
+
+// Fuse squeezing LHS reshape into tfl.fully_connected.
+// This will work for any FullyConnected(Reshape(LHS), RHS), provided-
+// 1.The reshape is only squeezing the broadcast dimensions of the LHS.
+// 2. Rank after reshape is 2.
+// 3. keep_num_dims=True
+// Ex- [1,  128, 32] -> [128, 32] or [1, 1, 1, 128, 32] -> [128, 32]
+//
+// We should be able to set keep_num_dims=False and fold the reshape.
+def FuseSqueezingLhsReshapeIntoFC_Output: Pat<
+  (TFL_FullyConnectedOp:$results
+    (TFL_ReshapeOp:$reshaped_input $input, (Arith_ConstantOp $s)),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    $keep_num_dims, $asymmetric_quantize_inputs),
+  (TFL_FullyConnectedOp
+    $input, $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrFalse, $asymmetric_quantize_inputs),
+  [(IsBoolAttrEqual<"true"> $keep_num_dims),
+   (AnyStaticShapeTensor $input),
+   (AnyStaticShapeTensor $reshaped_input),
+   (HasRankAtLeast<3> $input),
+   (HasRank<2> $reshaped_input),
+   (HasRank<2> $filter),
+   (IsReducedTailOfShape $input, $reshaped_input)]>;
 
 // Replace conv-->transpose-->add with conv-->add-->transpose
 // The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose
@@ -1658,6 +1787,28 @@ def FuseSliceAndPack : Pat<(
           (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_)
     ), $_, $_), (replaceWithValue $input0),
     [(IsSame $input0, $input1), (IsSame $input0, $input2)]>;
+
+def FuseSliceAndPack4D : Pat<(
+  TFL_PackOp
+    (variadic
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input0,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"0">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input1,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input2,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"2">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input3,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"3">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_)
+    ), $_, $_), (replaceWithValue $input0),
+    [(IsSame $input0, $input1), (IsSame $input0, $input2), (IsSame $input0, $input3)]>;
 
 // Given a value, checks if dim `d` is static.
 class HasStaticDim<int d> : Constraint<CPred<

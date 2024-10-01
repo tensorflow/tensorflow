@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -77,43 +78,43 @@ TEST_F(TransposeTest, ThreadIndexing021) {
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d3 floordiv 2,
-          d0 floordiv 32 + s1 * 4,
-          (d3 mod 2) * 32 + d0 mod 32
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          bl_x floordiv 2,
+          th_x floordiv 32 + s1 * 4,
+          (bl_x mod 2) * 32 + th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d3 floordiv 2,
-          (d3 mod 2) * 32 + s1 * 4 + d0 floordiv 32,
-          d0 mod 32
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          bl_x floordiv 2,
+          (bl_x mod 2) * 32 + s1 * 4 + th_x floordiv 32,
+          th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
 }
@@ -139,43 +140,43 @@ TEST_F(TransposeTest, ThreadIndexing201_SimplifiedTo021) {
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
           0,
-          d3  * 32 + s1 * 4 + d0 floordiv 32,
-          d0 mod 32
-        )
+          bl_x  * 32 + s1 * 4 + th_x floordiv 32,
+          th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
           0,
-          d0 floordiv 32 + s1 * 4,
-          d3 * 32 + d0 mod 32
-        )
+          th_x floordiv 32 + s1 * 4,
+          bl_x * 32 + th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
 }
@@ -203,44 +204,44 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
   TF_ASSERT_OK_AND_ASSIGN(auto fusion, GetTransposeFusion(analysis));
   mlir::MLIRContext mlir_context;
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d0 floordiv 32 + s0 * 4,
-          d3,
-          d0 mod 32
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          th_x floordiv 32 + s0 * 4,
+          bl_x,
+          th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 5]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 mod 32 in [0, 23]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 1],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
+        s0 in [0, 5],
+        s1 in [0, 0],
+        s2 in [0, 0],
+        th_x mod 32 in [0, 23]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d0 floordiv 32 + s0 * 4,
-          d3,
-          d0 mod 32
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          th_x floordiv 32 + s0 * 4,
+          bl_x,
+          th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 5]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 mod 32 in [0, 23]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 1],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
+        s0 in [0, 5],
+        s1 in [0, 0],
+        s2 in [0, 0],
+        th_x mod 32 in [0, 23]
       )"));
 }
 
@@ -268,8 +269,8 @@ TEST_F(TransposeTest, SameInputIndexingForRealHeroAndSideOutput) {
   mlir::MLIRContext mlir_context;
 
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)->ToString(),
-      fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString());
+      ToString(*fusion->ComputeThreadIdToInputIndexing(0, 0, &mlir_context)),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)));
 }
 
 TEST_F(TransposeTest, ThreadIndexingSideOutput) {
@@ -299,42 +300,42 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
   // Check if side output `%broadcast` get the correct input indexing, which
   // should corresponds to `%input1` with shape [100,32].
   EXPECT_THAT(
-      fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(1, 0, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d3 floordiv 2,
-          d0 floordiv 32 + s1 * 4
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          bl_x floordiv 2,
+          th_x floordiv 32 + s1 * 4
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
   EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
+      ToString(*fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)),
       MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          d3 floordiv 2,
-          d0 floordiv 32 + s1 * 4,
-          (d3 mod 2) * 32 + d0 mod 32
-        )
+        (th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0, s1, s2] -> (
+          bl_x floordiv 2,
+          th_x floordiv 32 + s1 * 4,
+          (bl_x mod 2) * 32 + th_x mod 32
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        th_x in [0, 127],
+        th_y in [0, 0],
+        th_z in [0, 0],
+        bl_x in [0, 199],
+        bl_y in [0, 0],
+        bl_z in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
+        s0 in [0, 0],
+        s1 in [0, 7],
         s2 in [0, 0]
       )"));
 }

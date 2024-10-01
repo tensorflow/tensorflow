@@ -81,7 +81,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -181,7 +181,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -287,7 +287,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -321,7 +321,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -344,7 +344,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -394,7 +394,7 @@ cc_library(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
+        "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ],
 )
 
@@ -423,7 +423,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
+        "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ],
 )
 
@@ -506,11 +506,11 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/monitoring:cell_reader",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 

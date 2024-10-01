@@ -387,6 +387,10 @@ class LiteSessionWrapper : public Session {
 
   Status Close() override { return wrapped_->Close(); }
 
+  Status LocalDeviceManager(const DeviceMgr** device_mgr) override {
+    return wrapped_->LocalDeviceManager(device_mgr);
+  }
+
   Status MakeCallable(const CallableOptions& callable_options,
                       CallableHandle* out_handle) override {
     return wrapped_->MakeCallable(callable_options, out_handle);

@@ -555,9 +555,20 @@ class _EagerTensorBase(
     return self._copy(context.context(), "GPU:" + str(gpu_index))
 
   def set_shape(self, shape) -> None:
-    if not self.shape.is_compatible_with(shape):
+    # pylint: disable=protected-access
+    shape = tensor_shape.as_shape(shape)
+    shape_dims = shape._dims
+    if shape_dims is None:
+      return
+    self_dims = self.shape._dims
+    if len(shape_dims) != len(self_dims):
       raise ValueError(f"Tensor's shape {self.shape} is not compatible "
                        f"with supplied shape {shape}.")
+    for shape_dim, self_dim in zip(shape_dims, self_dims):
+      if shape_dim is not None and self_dim != shape_dim:
+        raise ValueError(f"Tensor's shape {self.shape} is not compatible "
+                         f"with supplied shape {shape}.")
+    # pylint: enable=protected-access
 
   # Methods not supported / implemented for Eager Tensors.
   @property

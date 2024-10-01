@@ -26,7 +26,6 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
@@ -34,6 +33,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -62,13 +62,14 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -551,7 +552,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version,
-                               const int32_t toolkit_version,
+                               se::SemanticVersion toolkit_version,
                                const GemmRewriterOptions options)
       : gpu_version_(gpu_version),
         toolkit_version_(toolkit_version),
@@ -632,7 +633,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction *>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction *>(instr->operand(1))))) {
-          if (IsRocm(gpu_version_) && toolkit_version_ < 60200 &&
+          if (IsRocm(gpu_version_) &&
+              toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
               instr->shape().element_type() != F16 &&
               instr->shape().element_type() != F32) {
             TF_ASSIGN_OR_RETURN(
@@ -1009,7 +1011,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       }
       // FP8 GEMM kernels are only available with CUDA 12.0 and above
-      if (toolkit_version_ < 12000) {
+      if (toolkit_version_ < stream_executor::SemanticVersion{12, 0, 0}) {
         VLOG(1) << "FP8 Custom Calls require CUDA 12.0 or newer.";
         return false;
       }
@@ -1022,7 +1024,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         VLOG(1) << "FP8 Custom Calls require MI300, or later architectures.";
         return false;
       }
-      if (toolkit_version_ < 60000) {
+      if (toolkit_version_ < stream_executor::SemanticVersion{6, 0, 0}) {
         // FP8 GEMM kernels are only available with ROCm 6.0 and above
         VLOG(1) << "FP8 Custom Calls require ROCm 6.0 or newer.";
         return false;
@@ -1081,12 +1083,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
-    Literal one_literal = LiteralUtil::One(F32);
-    HloInstruction *one = instr->AddInstruction(
-        HloInstruction::CreateConstant(one_literal.Clone()));
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
     std::array<HloInstruction *, 2> scales{a.scale, b.scale}, inv_scales,
         scales_f32;
+    HloInstruction *one_constant = nullptr;
+    auto one = [&one_constant, instr]() -> HloInstruction * {
+      if (!one_constant) {
+        one_constant = instr->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::One(F32)));
+      }
+      return one_constant;
+    };
+
     for (int i = 0; i < scales.size(); ++i) {
       if (scales[i]) {
         if (!ShapeUtil::IsScalar(scales[i]->shape())) {
@@ -1097,7 +1105,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
         if (!mult_scale[i]) {
           inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
+              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
         }
         scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
@@ -1105,7 +1113,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
         }
       } else {
-        scales_f32[i] = one;
+        scales_f32[i] = one();
       }
     }
 
@@ -1114,7 +1122,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (IsCuda(gpu_version_) && (d_type == F8E4M3FN || d_type == F8E5M2)) {
       supported_d_type = true;
     }
-    if (IsRocm(gpu_version_) && toolkit_version_ >= 60200 &&
+    if (IsRocm(gpu_version_) &&
+        toolkit_version_ >= stream_executor::SemanticVersion{6, 2, 0} &&
         (d_type == F8E4M3FNUZ || d_type == F8E5M2FNUZ)) {
       supported_d_type = true;
     }
@@ -1122,7 +1131,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1) << "Failed to rewrite " << instr->ToShortString()
               << " into FP8 Custom Call. Output element type must be "
               << (IsCuda(gpu_version_) ? "F8E4M3FN, F8E5M2, BF16, F16 or F32. "
-                  : toolkit_version_ >= 60200
+                  : toolkit_version_ >=
+                          stream_executor::SemanticVersion{6, 2, 0}
                       ? "F8E4M3FNUZ, F8E5M2FNUZ, BF16, F16 or F32. "
                       : "BF16, F16 or F32. ")
               << "Actual element type is " << PrimitiveType_Name(d_type);
@@ -1245,7 +1255,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
-        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1], one, one};
+        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1]};
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1411,13 +1421,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If necessary, invert the scaling factor of D and convert to F32.
+    // If necessary, invert the scaling factor of D and convert to F32. When no
+    // scaling factor was captured, set the factor to one.
     if (d_scale) {
       TF_ASSIGN_OR_RETURN(d_scale,
                           InvertAndConvertScalar(d_scale, !mult_scale));
-      TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
-          gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
+    } else {
+      d_scale = instr->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::One(F32)));
     }
+    existing_gemm->AppendOperand(d_scale);
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -1780,7 +1793,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
     // matmul. We cannot check the patch version, so disable this fusion with
     // CUDA versions less than 12.4.
-    if (IsCuda(gpu_version_) && toolkit_version_ < 12040 &&
+    if (IsCuda(gpu_version_) &&
+        toolkit_version_ < stream_executor::SemanticVersion{12, 4, 0} &&
         IsCublasLtMatmulF8(*gemm)) {
       return absl::OkStatus();
     }
@@ -1827,7 +1841,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
  private:
   se::GpuComputeCapability gpu_version_;
-  int32_t toolkit_version_;
+  stream_executor::SemanticVersion toolkit_version_;
   GemmRewriterOptions options_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
@@ -1882,12 +1896,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
-    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
-    // algorithm) here? Why do we use the default?
-    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        se::gpu::GetBlasComputationType(
-                            PrecisionConfig::ALG_UNSET, a_dtype, output_type,
-                            stream_executor::blas::kDefaultComputePrecision));
+    TF_ASSIGN_OR_RETURN(
+        const se::blas::ComputationType compute_type,
+        se::gpu::GetBlasComputationType(
+            instr.precision_config().algorithm(), a_dtype, output_type,
+            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -2339,7 +2352,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
                                       se::GpuComputeCapability gpu_version,
-                                      int32_t toolkit_version,
+                                      se::SemanticVersion toolkit_version,
                                       GemmRewriterOptions options) {
   GemmRewriterVisitor visitor(gpu_version, toolkit_version, options);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
@@ -2351,7 +2364,8 @@ absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
 }  // anonymous namespace
 
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
-                           int32_t toolkit_version, GemmRewriterOptions options)
+                           se::SemanticVersion toolkit_version,
+                           GemmRewriterOptions options)
     : gpu_version_(gpu_version),
       toolkit_version_(toolkit_version),
       options_(options) {}

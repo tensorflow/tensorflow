@@ -283,6 +283,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                      \
   } while (0)
 
+// `std::unreachable` not available until CC23.
+#ifdef __GNUC__  // GCC, Clang, ICC
+
+#define TFL_UNREACHABLE() (__builtin_unreachable())
+
+#elif defined(_MSC_VER)  // MSVC
+
+#define TFL_UNREACHABLE() (__assume(false))
+
+#endif
+
 /// Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {
   float re, im;  /// real and imaginary parts, respectively.

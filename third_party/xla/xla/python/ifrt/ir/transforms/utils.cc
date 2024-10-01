@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 
 namespace xla {
 namespace ifrt {
@@ -28,6 +29,15 @@ mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module) {
       mlir::dyn_cast_or_null<mlir::func::FuncOp>(module.lookupSymbol("main"));
   CHECK(func);
   return func;
+}
+
+bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to) {
+  if (from.getShape() == to.getShape() &&
+      from.getShardingAttr() == to.getShardingAttr() &&
+      from.getDevices().size() == to.getDevices().size()) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace ifrt

@@ -29,6 +29,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/lite/core:__pkg__",
+        "//tensorflow/lite/experimental/lrt:__subpackages__",
     ],
     deps = [
         ":macros",

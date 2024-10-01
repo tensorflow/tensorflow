@@ -47,7 +47,7 @@ struct AutoShardingSolverResult {
   bool skip_auto_sharding;
 };
 
-AutoShardingSolverResult CallORToolsSolver(
+AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 
 enum AutoShardingViolationCode {

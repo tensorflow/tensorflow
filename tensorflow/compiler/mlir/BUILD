@@ -195,9 +195,11 @@ cc_library(
     hdrs = ["register_common_dialects.h"],
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/core/ir/types:Dialect",
         "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
@@ -240,8 +242,8 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_xla//xla/translate/hlo_to_mhlo:translate_registration",
-        "@local_xla//xla/translate/mhlo_to_hlo:translate_registration",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate_registration",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:translate_registration",
     ],
 )
 

@@ -1,401 +1,617 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -340,6 +340,21 @@
-     ],
- )
- 
-+gentbl_cc_library(
-+    name = "stablehlo_create_compatibility_expander_inc_gen",
-+    tbl_outs = [
-+        (
-+            ["--gen-rewriters"],
-+            "stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.h.inc",
-+        ),
-+    ],
-+    tblgen = "@llvm-project//mlir:mlir-tblgen",
-+    td_file = "stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.td",
-+    deps = [
-+        ":stablehlo_ops_td_files",
-+    ],
-+)
-+
- cc_library(
-     name = "interpreter_ops",
-     srcs = [
-@@ -1086,6 +1101,7 @@
-         "stablehlo/transforms/StablehloAggressiveSimplification.cpp",
-         "stablehlo/transforms/StablehloCanonicalizeDynamism.cpp",
-         "stablehlo/transforms/StablehloConvertToSignless.cpp",
-+        "stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp",
-         "stablehlo/transforms/StablehloLegalizeCompositeToCall.cpp",
-         "stablehlo/transforms/StablehloLegalizeDeprecatedOps.cpp",
-         "stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp",
-@@ -1109,6 +1125,7 @@
-         ":chlo_ops",
-         ":chlo_rewriters_inc_gen",
-         ":linalg_passes",
-+        ":stablehlo_create_compatibility_expander_inc_gen",
-         ":stablehlo_legalize_deprecated_ops_inc_gen",
-         ":stablehlo_ops",
-         ":stablehlo_ops_inc_gen",
-diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
---- stablehlo/stablehlo/dialect/Version.cpp
-+++ stablehlo/stablehlo/dialect/Version.cpp
-@@ -82,7 +82,7 @@
-     case CompatibilityRequirement::WEEK_4:
-       return Version(1, 3, 0);  // v1.3.0 - Jul 15, 2024
-     case CompatibilityRequirement::WEEK_12:
--      return Version(1, 0, 0);  // v1.0.0 - May 14, 2024
-+      return Version(1, 1, 0);  // v1.1.0 - May 30, 2024
-     case CompatibilityRequirement::MAX:
-       return Version::getMinimumVersion();
-   }
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
-@@ -0,0 +1,43 @@
-+// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect --stablehlo-create-compatibility-expander='target=1.0.0' | FileCheck %s --check-prefixes=CHECK
-+// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file --stablehlo-create-compatibility-expander='target=1.6.0' | FileCheck %s --check-prefixes=CHECK-NO-DOWNGRADE
-+
-+// -----
-+
-+// CHECK-LABEL @tan_op_non_complex
-+// CHECK: %[[sine0:.*]] = stablehlo.sine %arg0 : tensor<4xf64>
-+// CHECK-NEXT: %[[cosine1:.*]] = stablehlo.cosine %arg0 : tensor<4xf64>
-+// CHECK-NEXT: %[[div2:.*]] = stablehlo.divide %[[sine0]], %[[cosine1]] : tensor<4xf64>
-+// CHECK-NEXT: return %[[div2]] : tensor<4xf64>
-+func.func @tan_op_non_complex(%arg0: tensor<4xf64>) -> tensor<4xf64> {
-+  // CHECK-NO-DOWNGRADE: stablehlo.tan %arg0 : tensor<4xf64>
-+  %1 = stablehlo.tan %arg0 : tensor<4xf64>
-+  func.return %1 : tensor<4xf64>
+@@ -69,7 +69,7 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 1, 1, 1, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   } : (tensor<3x2x4x7x9xi32>, tensor<4x3x5x2xi32>) -> tensor<4x3x5x8xi32>
+   func.return %0 : tensor<4x3x5x8xi32>
+ }
+@@ -77,9 +77,9 @@
+ // -----
+ 
+ // CHECK-LABEL: @gather_with_batching_no_index_vector_dim
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
+ // CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
+ // CHECK-SAME:   dimension_numbers = #stablehlo.gather<
+@@ -102,7 +102,7 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 1, 1, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   }> : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>) -> tensor<4x3x5x8xi32>
+   func.return %0 : tensor<4x3x5x8xi32>
+ }
+@@ -133,9 +133,305 @@
+       index_vector_dim = 3
+     >,
+     slice_sizes = array<i64: 0, 1, 8>,
+-    indices_are_sorted = true
++    indices_are_sorted = false
+   }> : (tensor<0x2x9xi32>, tensor<0x3x5x1xi32>) -> tensor<0x3x5x8xi32>
+   func.return %0 : tensor<0x3x5x8xi32>
 +}
 +
 +// -----
 +
-+// CHECK-LABEL: @tan_op_complex
-+// CHECK: %[[cst:.*]] = stablehlo.constant dense<1.000000e+00> : tensor<4xf64>
-+// CHECK: %[[complex:.*]] = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
-+// CHECK: %[[real:.*]] = stablehlo.real %[[complex]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+// CHECK: %[[sine:.*]] = stablehlo.sine %[[real]] : tensor<4xf64>
-+// CHECK: %[[cosine:.*]] = stablehlo.cosine %[[real]] : tensor<4xf64>
-+// CHECK: %[[divide1:.*]] = stablehlo.divide %[[sine]], %[[cosine]] : tensor<4xf64>
-+// CHECK: %[[imag:.*]] = stablehlo.imag %[[complex]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+// CHECK: %[[tanh:.*]] = stablehlo.tanh %[[imag]] : tensor<4xf64>
-+// CHECK: %[[complex2:.*]] = stablehlo.complex %[[divide1]], %[[tanh]] : tensor<4xcomplex<f64>>
-+// CHECK: %[[multiply:.*]] = stablehlo.multiply %[[divide1]], %[[tanh]] : tensor<4xf64>
-+// CHECK: %[[negate:.*]] = stablehlo.negate %[[multiply]] : tensor<4xf64>
-+// CHECK: %[[complex3:.*]] = stablehlo.complex %[[cst]], %[[negate]] : tensor<4xcomplex<f64>>
-+// CHECK: %[[divide2:.*]] = stablehlo.divide %[[complex2]], %[[complex3]] : tensor<4xcomplex<f64>>
-+// CHECK: %[[real2:.*]] = stablehlo.real %[[divide2]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+// CHECK: %[[imag2:.*]] = stablehlo.imag %[[divide2]] : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+// CHECK: return %[[real2]], %[[imag2]] : tensor<4xf64>, tensor<4xf64>
-+func.func @tan_op_complex(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> (tensor<4xf64>, tensor<4xf64>) {
-+  %0 = stablehlo.complex %arg0, %arg1 : tensor<4xcomplex<f64>>
-+  // CHECK-NO-DOWNGRADE: stablehlo.tan %0 : tensor<4xcomplex<f64>>
-+  %1 = stablehlo.tan %0 : tensor<4xcomplex<f64>>
-+  %2 = stablehlo.real %1 : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+  %3 = stablehlo.imag %1 : (tensor<4xcomplex<f64>>) -> tensor<4xf64>
-+  func.return %2, %3 : tensor<4xf64>, tensor<4xf64>
++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<3x4x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 1 : tensor<3x4x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<3x4x5x1xi32>, tensor<3x4x5x1xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x4xi32>) -> tensor<3x4x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<3x4x5x8xi32>
++func.func @gather_batching_dims_indices_become_unsorted(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [0, 1],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32>
++  func.return %0 : tensor<3x4x5x8xi32>
 +}
-diff --ruN a/stablehlo/stablehlo/transforms/CMakeLists.txt b/stablehlo/stablehlo/transforms/CMakeLists.txt
---- stablehlo/stablehlo/transforms/CMakeLists.txt
-+++ stablehlo/stablehlo/transforms/CMakeLists.txt
-@@ -20,6 +20,10 @@
- mlir_tablegen(ChloDecompositionPatterns.h.inc --gen-rewriters)
- add_public_tablegen_target(ChloDecompositionPatternsIncGen)
- 
-+set(LLVM_TARGET_DEFINITIONS StablehloCreateCompatibilityExpanderPatterns.td)
-+mlir_tablegen(StablehloCreateCompatibilityExpanderPatterns.h.inc --gen-rewriters)
-+add_public_tablegen_target(StablehloCreateCompatibilityExpanderPatternsIncGen)
 +
- set(LLVM_TARGET_DEFINITIONS StablehloLegalizeDeprecatedOpsPatterns.td)
- mlir_tablegen(StablehloLegalizeDeprecatedOpsPatterns.h.inc --gen-rewriters)
- add_public_tablegen_target(StablehloLegalizeDeprecatedOpsPatternsIncGen)
-@@ -27,6 +31,7 @@
- set(LLVM_TARGET_DEFINITIONS VhloToVersionPatterns.td)
- mlir_tablegen(VhloToVersionPatterns.h.inc --gen-rewriters)
- add_public_tablegen_target(VhloToVersionPatterns)
++// -----
 +
- 
- add_mlir_dialect_library(StablehloPasses
-   PARTIAL_SOURCES_INTENDED
-@@ -37,6 +42,7 @@
-   StablehloAggressiveSimplification.cpp
-   StablehloCanonicalizeDynamism.cpp
-   StablehloConvertToSignless.cpp
-+  StablehloCreateCompatibilityExpander.cpp
-   StablehloLegalizeCompositeToCall.cpp
-   StablehloLegalizeDeprecatedOps.cpp
-   StablehloLegalizeQuantToMath.cpp
-@@ -53,6 +59,7 @@
-   StablehloLegalizeDeprecatedOpsPatternsIncGen
-   PassesIncGen
-   VhloToVersionPatterns
-+  StablehloCreateCompatibilityExpanderPatternsIncGen
- 
-   LINK_LIBS PUBLIC
-   ChloOps
-diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
---- stablehlo/stablehlo/transforms/Passes.h
-+++ stablehlo/stablehlo/transforms/Passes.h
-@@ -25,6 +25,7 @@
- #include "mlir/Pass/Pass.h"
- #include "mlir/Support/LogicalResult.h"
- #include "mlir/Transforms/DialectConversion.h"
-+#include "stablehlo/dialect/Version.h"
- 
- namespace mlir {
- namespace stablehlo {
-@@ -96,6 +97,12 @@
- void populateShapeToStablehloPatterns(MLIRContext *context,
-                                       RewritePatternSet *patterns);
- 
-+/// Collection of patterns to create compatibility expander for StableHLO
-+/// operations.
-+void populateStablehloCreateCompatibilityExpanderPatterns(
-+    RewritePatternSet *patterns, MLIRContext *context,
-+    vhlo::Version targetVersion);
++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted_2
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_become_unsorted_2(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
 +
- //// Additional pass constructors ////
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_remain_sorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = true,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [0, 2],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = true
++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_indices_remain_unsorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
++func.func @gather_batching_dims_indices_remain_unsorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [2, 3],
++      operand_batching_dims = [0, 1],
++      start_indices_batching_dims = [0, 2],
++      start_index_map = [2, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
++  func.return %0 : tensor<2x3x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dims_does_not_overflow_indices_type
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x127x5x1xi8>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x127x5x1xi8>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<4x127x5x1xi8>, tensor<4x127x5x1xi8>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x4xi8>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x4xi8>) -> tensor<4x127x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x127x5x8xi32>
++func.func @gather_batching_dims_does_not_overflow_indices_type(%arg0: tensor<127x2x4x7x9xi32>, %arg1: tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32>
++  func.return %0 : tensor<4x127x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_signless_indices_type
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5x2xi8>) -> tensor<4x128x5x2xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x2xi32>) -> tensor<4x128x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x4xi32>) -> tensor<4x128x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
++func.func @gather_batching_dim_overflows_signless_indices_type(%arg0: tensor<128x2x4x7x9xi32>, %arg1: tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32>
++  func.return %0 : tensor<4x128x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_unsigned_indices_type
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<256x4x5x2xui8>) -> tensor<256x4x5x2xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<256x4x5x1xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<256x4x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim0]], %[[iota_dim1]], %[[convert]], dim = 3 : (tensor<256x4x5x1xi32>, tensor<256x4x5x1xi32>, tensor<256x4x5x2xi32>) -> tensor<256x4x5x4xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x4xi32>) -> tensor<256x4x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<256x4x5x8xi32>
++func.func @gather_batching_dim_overflows_unsigned_indices_type(%arg0: tensor<256x2x4x7x9xi32>, %arg1: tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [0, 1],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32>
++  func.return %0 : tensor<256x4x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_indices_type_and_i32
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x2xi64>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x2147483648x5x1xi64>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x2147483648x5x1xi64>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x2xi64>) -> tensor<4x2147483648x5x4xi64>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x4xi64>) -> tensor<4x2147483648x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x2147483648x5x8xi32>
++func.func @gather_batching_dim_overflows_indices_type_and_i32(%arg0: tensor<2147483648x2x4x7x9xi32>, %arg1: tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32>
++  func.return %0 : tensor<4x2147483648x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_dynamic_size
++// CHECK: operand_batching_dims = [0, 2]
++// CHECK: start_indices_batching_dims = [1, 0]
++func.func @gather_batching_dim_dynamic_size(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1, 3],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1, 3],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32>
++  func.return %0 : tensor<4x?x5x8xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @gather_batching_dim_overflows_and_no_index_vector_dim
++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5xi8>) -> tensor<4x128x5xi32>
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %[[convert]] : (tensor<4x128x5xi32>) -> tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>) -> tensor<4x128x5x3xi32>
++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2],
++// CHECK-SAME:     start_index_map = [0, 2, 1], index_vector_dim = 3>,
++// CHECK-SAME:   indices_are_sorted = false,
++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 8>
++// CHECK-SAME: }> : (tensor<128x2x4x9xi32>, tensor<4x128x5x3xi32>) -> tensor<4x128x5x8xi32>
++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
++func.func @gather_batching_dim_overflows_and_no_index_vector_dim(%arg0: tensor<128x2x4x9xi32>, %arg1: tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32> {
++  %0 = "stablehlo.gather"(%arg0, %arg1) {
++    dimension_numbers = #stablehlo.gather<
++      offset_dims = [3],
++      collapsed_slice_dims = [1],
++      operand_batching_dims = [0, 2],
++      start_indices_batching_dims = [1, 0],
++      start_index_map = [1],
++      index_vector_dim = 3
++    >,
++    slice_sizes = array<i64: 1, 1, 1, 8>,
++    indices_are_sorted = false
++  } : (tensor<128x2x4x9xi32>, tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32>
++  func.return %0 : tensor<4x128x5x8xi32>
+ }
  
- std::unique_ptr<OperationPass<ModuleOp>> createStablehloRefineArgumentsPass(
-diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
---- stablehlo/stablehlo/transforms/Passes.td
-+++ stablehlo/stablehlo/transforms/Passes.td
-@@ -292,3 +292,51 @@
-     "mlir::stablehlo::StablehloDialect",
-   ];
+ // -----
+@@ -156,7 +452,7 @@
+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
+-    indices_are_sorted = true,
++    indices_are_sorted = false,
+     scatter_dimension_numbers = #stablehlo.scatter<
+       update_window_dims = [3],
+       inserted_window_dims = [1, 3],
+@@ -176,9 +472,9 @@
+ // -----
+ 
+ // CHECK-LABEL: @scatter_with_batching_no_index_vector_dim
++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
+ // CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
+ // CHECK-SAME:   indices_are_sorted = false,
+@@ -192,7 +488,7 @@
+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
+-    indices_are_sorted = true,
++    indices_are_sorted = false,
+     scatter_dimension_numbers = #stablehlo.scatter<
+       update_window_dims = [3],
+       inserted_window_dims = [1],
+@@ -208,3 +504,60 @@
+   }) : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>, tensor<4x3x5x8xi32>) -> tensor<3x2x4x9xi32>
+   func.return %0 : tensor<3x2x4x9xi32>
  }
 +
-+def StablehloCreateCompatibilityExpanderPass : Pass<"stablehlo-create-compatibility-expander", "mlir::func::FuncOp"> {
-+  let summary = "Create compatibility expander for StableHLO operations.";
++// -----
 +
-+  let description = [{
-+    StableHLO ops gets updates or new op is introduced in the latest versions.
-+    This opt-in pass expands backward compatibility with older StableHLO
-+    versions by decomposing newer StableHLO operations into equivalent
-+    operations supported by those older versions.
++// CHECK-LABEL: @scatter_batching_dims_indices_remain_sorted
++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
++// CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
++// CHECK-SAME:   indices_are_sorted = true,
++// CHECK-SAME:   dimension_numbers = #stablehlo.scatter<
++// CHECK-SAME:     update_window_dims = [3], inserted_window_dims = [0, 1, 2, 3],
++// CHECK-SAME:     scatter_dims_to_operand_dims = [0, 1, 2, 3], index_vector_dim = 3>,
++// CHECK-SAME:   unique_indices = false}>
++// CHECK:      (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
++// CHECK-NEXT: return %[[scatter]] : tensor<2x5x4x7x9xi32>
++func.func @scatter_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>, %arg2: tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32> {
++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
++    indices_are_sorted = true,
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [3],
++      inserted_window_dims = [2, 3],
++      input_batching_dims = [0, 1],
++      scatter_indices_batching_dims = [0, 2],
++      scatter_dims_to_operand_dims = [2, 3],
++      index_vector_dim = 3
++    >,
++    unique_indices = false
++  }> ({
++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
++    stablehlo.return %arg4 : tensor<i32>
++  }) : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
++  func.return %0 : tensor<2x5x4x7x9xi32>
++}
 +
-+    Why is this an opt-in pass?
++// -----
 +
-+    Occasionally, StableHLO op enhancements are used to greatly simplify the
-+    handling of certain common patterns in the OpenXLA ecosystem. This
-+    includes things like TanOp, which has high framework and compiler support,
-+    as well as gather/scatter batching dimensions, which can be represented
-+    using slices, but makes sharding much more difficult. For this category of
-+    new features, we do not offer automatic downgrade, since it may throw away
-+    important information used in subsequent optimizations. This pass can be
-+    used to expand these ops based on a target version to maximize compatibility
-+    at the expense of potentially less optimal compilation.
-+
-+    ```mlir
-+    func.func @tan_op_non_complex(%arg0: tensor<4xf64>) -> tensor<4xf64> {
-+      %1 = stablehlo.tan %arg0 : tensor<4xf64>
-+      func.return %1 : tensor<4xf64>
-+    }
-+    ```
-+
-+    will become:
-+
-+    ```mlir
-+    func.func @tan_op_non_complex(%arg0: tensor<4xf64>) -> tensor<4xf64> {
-+      %0 = stablehlo.sine %arg0 : tensor<4xf64>
-+      %1 = stablehlo.cosine %arg0 : tensor<4xf64>
-+      %2 = stablehlo.divide %0, %1 : tensor<4xf64>
-+      return %2 : tensor<4xf64>
-+    }
-+    ```
-+  }];
-+  let options = [
-+    Option<"targetVersionOption", "target", "std::string", "",
-+           "The target version. Must be a version of the form #.#.#.">,
-+  ];
-+  let dependentDialects = [
-+    "mlir::stablehlo::StablehloDialect",
-+  ];
++// CHECK-LABEL: @scatter_batching_dim_dynamic_scatter_indices
++// CHECK: input_batching_dims = [0, 2]
++// CHECK: scatter_indices_batching_dims = [1, 0]
++func.func @scatter_batching_dim_dynamic_scatter_indices(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi32>, %arg2: tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32> {
++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
++    indices_are_sorted = false,
++    scatter_dimension_numbers = #stablehlo.scatter<
++      update_window_dims = [3],
++      inserted_window_dims = [1, 3],
++      input_batching_dims = [0, 2],
++      scatter_indices_batching_dims = [1, 0],
++      scatter_dims_to_operand_dims = [1, 3],
++      index_vector_dim = 3
++    >,
++    unique_indices = false
++  }> ({
++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
++    stablehlo.return %arg4 : tensor<i32>
++  }) : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi32>, tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32>
++  func.return %0 : tensor<?x2x4x7x9xi32>
 +}
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
 --- stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
 +++ stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
-@@ -0,0 +1,128 @@
-+/* Copyright 2024 The StableHLO Authors. All Rights Reserved.
-+Licensed under the Apache License, Version 2.0 (the "License");
-+you may not use this file except in compliance with the License.
-+You may obtain a copy of the License at
-+    http://www.apache.org/licenses/LICENSE-2.0
-+Unless required by applicable law or agreed to in writing, software
-+distributed under the License is distributed on an "AS IS" BASIS,
-+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+See the License for the specific language governing permissions and
-+limitations under the License.
-+==============================================================================*/
-+
-+#include <fcntl.h>
-+
-+#include <cassert>
-+
-+#include "llvm/ADT/APFloat.h"
-+#include "llvm/Support/ErrorHandling.h"
-+#include "mlir/Dialect/Func/IR/FuncOps.h"
-+#include "mlir/IR/BuiltinAttributes.h"
-+#include "mlir/IR/PatternMatch.h"
-+#include "mlir/Support/LLVM.h"
-+#include "mlir/Transforms/DialectConversion.h"
-+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-+#include "stablehlo/dialect/StablehloOps.h"
-+#include "stablehlo/dialect/Version.h"
-+#include "stablehlo/transforms/Passes.h"
-+
-+namespace mlir {
-+namespace stablehlo {
-+#define GEN_PASS_DEF_STABLEHLOCREATECOMPATIBILITYEXPANDERPASS
-+#include "stablehlo/transforms/Passes.h.inc"
-+
-+namespace {
-+
-+//===----------------------------------------------------------------------===//
-+// Helpers.
-+//===----------------------------------------------------------------------===//
-+
-+// Creates a constant with all ones.
-+static Value createConstantWithAllOnes(OpBuilder &b, Location loc, Value val) {
-+  auto shapedTy = dyn_cast<mlir::ShapedType>(val.getType());
-+  if (!shapedTy) llvm_unreachable("Unsupported shaped type.");
-+
-+  mlir::DenseElementsAttr elementsAttr =
-+      mlir::DenseElementsAttr::get(shapedTy, 1.0);
-+
-+  return b.create<mlir::stablehlo::ConstantOp>(loc, val.getType(),
-+                                               elementsAttr);
+@@ -22,8 +22,11 @@
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/MathExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
+@@ -75,6 +78,42 @@
+   return result;
+ }
+ 
++bool fitsInIntegralType(int64_t size, IntegerType type) {
++  if (type.isUnsigned()) {
++    return llvm::isUIntN(type.getWidth(), size);
++  } else {
++    return llvm::isIntN(type.getWidth(), size);
++  }
 +}
 +
-+// Check user-specified target version.
-+vhlo::Version validateTargetVersion(llvm::StringRef versionRef) {
-+  auto failOrVersion = vhlo::Version::fromString(versionRef);
-+  if (failed(failOrVersion)) {
-+    assert(!versionRef.empty() &&
-+           "No target version specified. Target version must be of the form "
-+           "`#.#.#`.");
-+    assert(versionRef.empty() &&
-+           "Invalid target version argument. Target version must be of the "
-+           "form `#.#.#`.");
++// If `type` is an integer type in which `size` doesn't fit, promote it to i32
++// or i64 (depending on `size`).
++Type promoteTypeForSize(Type type, int64_t size, OpBuilder &builder) {
++  // Gather/Scatter should have an integer type, but we check just in case.
++  auto intType = dyn_cast<IntegerType>(type);
++  if (!intType || fitsInIntegralType(size, intType)) {
++    return type;
 +  }
-+  vhlo::Version targetVersion = *failOrVersion;
-+  assert((vhlo::Version::getMinimumVersion() <= targetVersion) &&
-+         "target version is less than minimum supported.");
-+  assert((targetVersion <= vhlo::Version::getCurrentVersion()) &&
-+         "target version is greater than current version.");
-+  return targetVersion;
++  if (fitsInIntegralType(size, builder.getI32Type())) {
++    return builder.getI32Type();
++  }
++  return builder.getI64Type();
 +}
 +
-+//===----------------------------------------------------------------------===//
-+// Pass
-+//===----------------------------------------------------------------------===//
++// If `indices_batching_dims` and `updated_index_map` are both sorted, then the
++// `indices_are_sorted` property is preserved.
++//
++// This is because each concatenated iota is monotonically increasing, sorted
++// indices batching dims mean their order corresponds to the order of batching
++// dims in the operand, and a sorted updated start index map means the order of
++// the index vector dim corresponds to the order of operand dims.
++bool getUpdatedIndicesAreSorted(bool indices_are_sorted,
++                                ArrayRef<int64_t> indices_batching_dims,
++                                ArrayRef<int64_t> updated_index_map) {
++  return indices_are_sorted && llvm::is_sorted(indices_batching_dims) &&
++         llvm::is_sorted(updated_index_map);
++}
 +
-+struct StablehloCreateCompatibilityExpanderPass
-+    : public impl::StablehloCreateCompatibilityExpanderPassBase<
-+          StablehloCreateCompatibilityExpanderPass> {
-+  StablehloCreateCompatibilityExpanderPass()
-+      : StablehloCreateCompatibilityExpanderPassBase<
-+            StablehloCreateCompatibilityExpanderPass>() {}
-+  StablehloCreateCompatibilityExpanderPass(
-+      const StablehloCreateCompatibilityExpanderPassOptions &opts)
-+      : StablehloCreateCompatibilityExpanderPassBase<
-+            StablehloCreateCompatibilityExpanderPass>(opts) {}
+ // Returns an updated indices tensor such that an `IotaOp` is prepended for each
+ // dim in `indicesBatchingDims` with a `ConcatenateOp`.
+ //
+@@ -85,16 +124,31 @@
+                           PatternRewriter &rewriter) {
+   Location loc = indices.getLoc();
+   auto indicesType = cast<RankedTensorType>(indices.getType());
++  Type elementType = indicesType.getElementType();
 +
-+ public:
-+  LogicalResult initialize(MLIRContext *context) override {
-+    auto targetVersion = validateTargetVersion(targetVersionOption);
-+
-+    config.useTopDownTraversal = true;
-+    RewritePatternSet patterns_(context);
-+    populateStablehloCreateCompatibilityExpanderPatterns(&patterns_, context,
-+                                                         targetVersion);
-+    patterns = std::move(patterns_);
-+    return success();
++  // The batching dim sizes might not fit in the existing element type,
++  // in which case we need to promote it.
++  for (int64_t batchingDim : indicesBatchingDims) {
++    elementType = promoteTypeForSize(
++        elementType, indicesType.getDimSize(batchingDim), rewriter);
++  }
++  if (elementType != indicesType.getElementType()) {
++    indicesType = RankedTensorType::get(indicesType.getShape(), elementType);
++    indices = rewriter.create<ConvertOp>(loc, indicesType, indices);
 +  }
 +
-+  void runOnOperation() override {
-+    auto func = getOperation();
-+    if (failed(applyPatternsAndFoldGreedily(func, patterns, config))) {
-+      func.emitError(
-+          "Failed to converge StableHLOCreateCompatibilityExpanderPass in ")
-+          << config.maxIterations << " iterations";
-+      signalPassFailure();
+   bool indexVectorDimOnLastDim = indexVectorDim == indicesType.getRank();
+-
+   SmallVector<int64_t> iotaShape(indicesType.getShape());
+   if (indexVectorDimOnLastDim) {
+     iotaShape.push_back(1);
+   } else {
+     iotaShape[indexVectorDim] = 1;
+   }
+-  auto iotaType =
+-      RankedTensorType::get(iotaShape, indicesType.getElementType());
++  auto iotaType = RankedTensorType::get(iotaShape, elementType);
++
++  if (indexVectorDimOnLastDim) {
++    indices = rewriter.create<ReshapeOp>(loc, iotaType, indices);
++  }
+ 
+   SmallVector<Value> indicesToConcat;
+   indicesToConcat.reserve(indicesBatchingDims.size() + 1);
+@@ -102,12 +156,7 @@
+     indicesToConcat.push_back(
+         rewriter.create<IotaOp>(loc, iotaType, batchingDim));
+   }
+-  if (indexVectorDimOnLastDim) {
+-    indicesToConcat.push_back(
+-        rewriter.create<ReshapeOp>(loc, iotaType, indices));
+-  } else {
+-    indicesToConcat.push_back(indices);
+-  }
++  indicesToConcat.push_back(indices);
+   return rewriter.create<ConcatenateOp>(loc, indicesToConcat, indexVectorDim);
+ }
+ 
+@@ -125,9 +174,17 @@
+                                 PatternRewriter &rewriter) const override {
+     GatherDimensionNumbersAttr dimNumbers = op.getDimensionNumbers();
+     ArrayRef<int64_t> operandBatchingDims = dimNumbers.getOperandBatchingDims();
++    ArrayRef<int64_t> startIndicesBatchingDims =
++        dimNumbers.getStartIndicesBatchingDims();
+     if (operandBatchingDims.empty()) {
+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
+         diag << "gather op has no batching dims";
++      });
 +    }
-+  }
 +
-+ private:
-+  FrozenRewritePatternSet patterns;
-+  GreedyRewriteConfig config;
-+};
++    if (!op.getStartIndices().getType().hasStaticShape()) {
++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
++        diag << "gather op has start indices with dynamic shape, can't expand";
+       });
+     }
+ 
+@@ -136,16 +193,18 @@
+     SmallVector<int64_t> newStartIndexMap =
+         llvm::to_vector(llvm::concat<const int64_t>(
+             operandBatchingDims, dimNumbers.getStartIndexMap()));
+-    Value newIndices = createConcatIndices(
+-        op.getStartIndices(), dimNumbers.getIndexVectorDim(),
+-        dimNumbers.getStartIndicesBatchingDims(), rewriter);
++    Value newIndices = createConcatIndices(op.getStartIndices(),
++                                           dimNumbers.getIndexVectorDim(),
++                                           startIndicesBatchingDims, rewriter);
+     rewriter.replaceOpWithNewOp<GatherOp>(
+         op, op.getOperand(), newIndices,
+         GatherDimensionNumbersAttr::get(
+             op.getContext(), dimNumbers.getOffsetDims(), newCollapsedSliceDims,
+             /*operandBatchingDims=*/{}, /*startIndicesBatchingDims=*/{},
+             newStartIndexMap, dimNumbers.getIndexVectorDim()),
+-        op.getSliceSizes(), /*indicesAreSorted=*/false);
++        op.getSliceSizes(),
++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
++                                   startIndicesBatchingDims, newStartIndexMap));
+ 
+     return success();
+   }
+@@ -161,9 +220,17 @@
+                                 PatternRewriter &rewriter) const override {
+     ScatterDimensionNumbersAttr dimNumbers = op.getScatterDimensionNumbers();
+     ArrayRef<int64_t> inputBatchingDims = dimNumbers.getInputBatchingDims();
++    ArrayRef<int64_t> scatterIndicesBatchingDims =
++        dimNumbers.getScatterIndicesBatchingDims();
+     if (inputBatchingDims.empty()) {
+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
+         diag << "scatter op has no batching dims";
++      });
++    }
 +
-+#include "stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.h.inc"
-+
-+}  // namespace
-+
-+void populateStablehloCreateCompatibilityExpanderPatterns(
-+    RewritePatternSet *patterns, MLIRContext *context,
-+    vhlo::Version targetVersion) {
-+  // StableHLO TanOp is introduced in v1.4.0.
-+  if (targetVersion < vhlo::Version(1, 4, 0)) {
-+    patterns->add<TanOp_ComplexElementType_CompatiblityExpander>(context);
-+    patterns->add<TanOp_CompatiblityExpander>(context);
-+  }
-+}
-+
-+}  // namespace stablehlo
-+}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.td b/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.td
---- stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.td
-+++ stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpanderPatterns.td
-@@ -0,0 +1,47 @@
-+/* Copyright 2022 The StableHLO Authors.
-+
-+Licensed under the Apache License, Version 2.0 (the "License");
-+you may not use this file except in compliance with the License.
-+You may obtain a copy of the License at
-+
-+    http://www.apache.org/licenses/LICENSE-2.0
-+
-+Unless required by applicable law or agreed to in writing, software
-+distributed under the License is distributed on an "AS IS" BASIS,
-+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+See the License for the specific language governing permissions and
-+limitations under the License.
-+==============================================================================*/
-+
-+include "mlir/IR/OpBase.td"
-+include "stablehlo/dialect/StablehloOps.td"
-+
-+def ComplexElementType : Type<
-+  CPred<"isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
-+  "Complex element type">;
-+
-+def NonComplexElementType : Type<
-+  CPred<"!isa<ComplexType>(cast<ShapedType>($_self).getElementType())">,
-+  "Non-complex element type">;
-+
-+def createConstantWithAllOnes : NativeCodeCall<"createConstantWithAllOnes($_builder, $_loc, $0)">;
-+
-+// Express `tan` as
-+//   sine(x) / cosine(x)
-+def TanOp_CompatiblityExpander : Pat<(StableHLO_TanOp NonComplexElementType:$input),
-+  (StableHLO_DivOp
-+    (StableHLO_SineOp $input),
-+    (StableHLO_CosineOp $input)
-+  )>;
-+
-+// Express `tan(a + bi)` as
-+//   (tan(a) + i tanh(b)) / (1 - i tan(a) * tanh(b))
-+def TanOp_ComplexElementType_CompatiblityExpander : Pat<(StableHLO_TanOp ComplexElementType:$input),
-+  (StableHLO_DivOp
-+    (StableHLO_ComplexOp
-+      (StableHLO_TanOp:$tan (StableHLO_RealOp $input)),
-+      (StableHLO_TanhOp:$tanh (StableHLO_ImagOp $input))),
-+    (StableHLO_ComplexOp
-+      (createConstantWithAllOnes $tan),
-+      (StableHLO_NegOp (StableHLO_MulOp $tan, $tanh)))
-+  )>;
++    if (!op.getScatterIndices().getType().hasStaticShape()) {
++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
++        diag << "gather op has start indices with dynamic shape, can't expand";
+       });
+     }
+ 
+@@ -174,7 +241,7 @@
+             inputBatchingDims, dimNumbers.getScatterDimsToOperandDims()));
+     Value newIndices = createConcatIndices(
+         op.getScatterIndices(), dimNumbers.getIndexVectorDim(),
+-        dimNumbers.getScatterIndicesBatchingDims(), rewriter);
++        scatterIndicesBatchingDims, rewriter);
+     auto newScatterOp = rewriter.create<ScatterOp>(
+         op.getLoc(), op->getResultTypes(), op.getInputs(), newIndices,
+         op.getUpdates(),
+@@ -183,7 +250,10 @@
+             newInsertedWindowDims,
+             /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
+             newScatterDimsToOperandDims, dimNumbers.getIndexVectorDim()),
+-        /*indicesAreSorted=*/false, op.getUniqueIndices());
++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
++                                   scatterIndicesBatchingDims,
++                                   newScatterDimsToOperandDims),
++        op.getUniqueIndices());
+ 
+     newScatterOp.getUpdateComputation().takeBody(op.getUpdateComputation());
+     rewriter.replaceOp(op, newScatterOp.getResults());
 

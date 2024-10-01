@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <optional>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/metrics.h"

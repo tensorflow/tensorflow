@@ -791,20 +791,20 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
 class FusionDecisionTest : public HloTestBase {};
 
 TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
-  FusionDecision a = {};
-  FusionDecision b = "not possible";
+  FusionDecision a = FusionDecision::Allow();
+  FusionDecision b = FusionDecision::Forbid("not possible");
   EXPECT_TRUE(!a || !b);
 
-  a = "not possible";
-  b = {};
+  a = FusionDecision::Forbid("not possible");
+  b = FusionDecision::Allow();
   EXPECT_TRUE(!a || !b);
 
-  a = "impossible";
-  b = "very impossible";
+  a = FusionDecision::Forbid("impossible");
+  b = FusionDecision::Forbid("very impossible");
   EXPECT_TRUE(!a || !b);
 
-  a = {};
-  b = {};
+  a = FusionDecision::Allow();
+  b = FusionDecision::Allow();
   EXPECT_FALSE(!a || !b);
 }
 

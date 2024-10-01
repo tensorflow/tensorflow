@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
@@ -1148,9 +1149,26 @@ class Subgraph {
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
     }
+
+    if (delegate.weight_cache_provider_.IsActive() &&
+        delegate.weight_cache_provider_.CanStartBuildStep()) {
+      if (!delegate.weight_cache_provider_.StartBuildStep()) {
+        TF_LITE_KERNEL_LOG(
+            context, "XNNPack delegate failed to start cache build step.");
+        return nullptr;
+      }
+    }
     status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
                                    delegate.workspace(), delegate.threadpool(),
                                    flags, &runtime_ptr);
+    if (delegate.weight_cache_provider_.IsActive() &&
+        delegate.weight_cache_provider_.CanStartBuildStep()) {
+      if (!delegate.weight_cache_provider_.StopBuildStep()) {
+        TF_LITE_KERNEL_LOG(context,
+                           "XNNPack delegate failed to stop cache build step.");
+        return nullptr;
+      }
+    }
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -1163,17 +1181,6 @@ class Subgraph {
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
-
-    // The weights cache needs to be finalized only once. Prepare will be called
-    // for each partition after all the partitions have been created (therefore
-    // all the weights are known and have been packed).
-    if (delegate->weight_cache_provider_.IsActive()) {
-      if (!delegate->weight_cache_provider_.Finalize()) {
-        TF_LITE_KERNEL_LOG(context,
-                           "XNNPack delegate failed to finalize cache.");
-        return kTfLiteError;
-      }
-    }
 
     if (enable_subgraph_reshaping) {
       xnn_status status = xnn_status_invalid_state;
@@ -1231,6 +1238,7 @@ class Subgraph {
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
                       Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+
     bool any_pointers_changed = false;
     for (std::pair<int, void*> io_info : externals_) {
       const TfLiteTensor& tensor = context->tensors[io_info.first];
@@ -4236,26 +4244,6 @@ class Subgraph {
         &output_max));
 
     uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
-    size_t num_nonbatch_dims = 0;
-    int ic = 1;
-    int input_dims_remaining = NumDimensions(&input_tensor) - 1;
-    // Which input dimensions are part of input_channels.
-    if (dynamically_quantized) {
-      while (ic != input_channels && input_dims_remaining >= 0) {
-        ic *= input_tensor.dims->data[input_dims_remaining];
-        --input_dims_remaining;
-        ++num_nonbatch_dims;
-      }
-      if (ic != input_channels) {
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "Could not determine how many input dimensions to use for "
-            "input_channels: %s node #%d",
-            EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
-            node_index);
-        return kTfLiteError;
-      }
-    }
     if (subgraph != nullptr) {
       if (dynamically_quantized) {
         TfLiteAffineQuantization* filter_params =
@@ -4280,8 +4268,8 @@ class Subgraph {
             &input_tensor.dims->data[0],
             &input_tensor.dims->data[NumDimensions(&input_tensor)]);
         xnn_status status = xnn_define_dynamically_quantized_tensor_value(
-            subgraph, xnn_datatype_qdint8, input_dims.size(), num_nonbatch_dims,
-            input_dims.data(), XNN_INVALID_VALUE_ID,
+            subgraph, xnn_datatype_qdint8, input_dims.size(),
+            /*num_non_batch_dims=*/1, input_dims.data(), XNN_INVALID_VALUE_ID,
             /*flags=*/0, &dq_quantized_id);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(logging_context,
@@ -7942,6 +7930,34 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     static_unpacked_data_map_[t] = tensor_offset;
   }
 
+  // Now that the unpacking is done, we can update the weight cache mappings.
+  //
+  // We do it in a separate loop because `static_unpacked_data_` may need to
+  // reallocate (and therefore invalidate the pointers) when it is grown.
+  for (int t : sorted_quasi_static_tensors_to_unpack) {
+    const int producer_index = quasi_static_tensors_producers[t];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    if (context->GetNodeAndRegistration(context, producer_index, &node,
+                                        &registration) != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Unable to get node and registration for node %d.",
+                         producer_index);
+      TfLiteIntArrayFree(nodes_to_delegate);
+      return nullptr;  // Hard error.
+    }
+    const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
+    const auto tensor_offset = static_unpacked_data_map_[t];
+    char* unpacked_data = static_unpacked_data_.data() + tensor_offset;
+    const auto static_unpacked_input_it_ =
+        static_unpacked_data_map_.find(node->inputs->data[0]);
+    const char* packed_data =
+        static_unpacked_input_it_ != static_unpacked_data_map_.end()
+            ? static_unpacked_data_.data() + static_unpacked_input_it_->second
+            : static_cast<const char*>(input_tensor.data.data);
+    weight_cache_provider_.RemapDataBuffer(packed_data, unpacked_data);
+  }
+
   // Add nodes that unpack static data consumed by delegated nodes.
   // Note: this is done purely to avoid the overhead of running these nodes
   // again in TFLite interpreter which would allocate memory for their
@@ -8086,6 +8102,14 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
   }
   auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
   xnn_delete_weights_cache(weights_cache);
+}
+
+bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
+  return tflite::xnnpack::InMemoryFileDescriptorAvailable();
+}
+
+const char* TfLiteXNNPackDelegateInMemoryFilePath() {
+  return tflite::xnnpack::kInMemoryCachePath;
 }
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {

@@ -198,13 +198,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
           hlo, dim_order, TransformDirection::kOutputToInput, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -223,13 +229,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
           hlo, TransformDirection::kOutputToInput,
           /*src_operand_index=*/std::nullopt, dim_order, gpu_version,
           properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -247,13 +259,19 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           user, TransformDirection::kInputToOutput, user.operand_index(&hlo),
           hlo_dim_order, gpu_version, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -606,12 +624,43 @@ HlosAndRequirements FuseDotOutput(
                          context.requirements(), builder, fusion_params);
 }
 
+namespace {
+
+class Decision {
+ public:
+  // Returns true if the emitter capable of emitting the fusion (profitable or
+  // not).
+  bool CanFuse() const { return fusing_decision_.CanFuse() || able_to_fuse_; }
+
+  // Returns true if it's profitable to fuse.
+  bool WantToFuse() const { return fusing_decision_.CanFuse(); }
+
+  static Decision Allow() { return {FusionDecision::Allow(), true}; };
+
+  static Decision Deny(std::string_view value) {
+    return {FusionDecision::Forbid(value), false};
+  }
+
+  static Decision NotProfitable(std::string_view value) {
+    return {FusionDecision::Forbid(value), true};
+  }
+
+ private:
+  Decision(FusionDecision decision, bool able_to_fuse)
+      : fusing_decision_(std::move(decision)), able_to_fuse_(able_to_fuse) {}
+
+  FusionDecision fusing_decision_;
+  bool able_to_fuse_;
+};
+
+}  // namespace
+
 // Fuses dot and the compatible and profitable to fuse operations around it
 // into a new fusion computation constructed using the builder. fusion_inputs
 // get populated with the non-fused instructions that become operands of the
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
-absl::StatusOr<FusionDecision> CreateDotFusion(
+absl::StatusOr<Decision> CreateDotFusion(
     const HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
     HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -621,7 +670,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
           legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
-    return is_supported;
+    return Decision::Deny(is_supported.Explain());
   }
 
   // Verify sparse dot constraints.
@@ -665,13 +714,37 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
         const_cast<HloInstruction*>(fused_output_and_reqs.original_hlo);
   }
 
+  // We cannot handle int4 parameters if the batch dimension is the minor one.
+  // The cost of analysis could be expensive, so we only do it if we have to.
+  bool has_int4_param =
+      absl::c_any_of(fusion_inputs, [](const HloInstruction* hlo) {
+        return hlo->shape().element_type() == PrimitiveType::S4;
+      });
+  if (has_int4_param) {
+    // Trace the position of the batch dimension of the dot to the parameters.
+    auto analysis_or = TritonFusionAnalysis::Execute(dot);
+    if (analysis_or.ok()) {
+      const auto& analysis = analysis_or.value();
+      if (!analysis.IsBatchDimMinorForInt4Parameter(
+              dot, TritonFusionAnalysis::Scope::LHS) ||
+          !analysis.IsBatchDimMinorForInt4Parameter(
+              dot, TritonFusionAnalysis::Scope::RHS)) {
+        return Decision::Deny(
+            "Fusion is not possible because the parameter with the type S4 has "
+            "minor batch dimension.");
+      }
+    }
+  }
+
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
+      algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
-    return FusionDecision{};
+    return Decision::Allow();
   }
 
   bool is_pure_matmul = true;
@@ -686,11 +759,10 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     }
     return absl::OkStatus();
   });
-  if (!is_pure_matmul) {
-    return FusionDecision{};
-  }
 
-  return "No profitable operations to fuse.";
+  if (is_pure_matmul) return Decision::NotProfitable("Pure Matmul");
+
+  return Decision::Allow();
 }
 
 // Extracts into fused computations parts of HLO graph including dot()
@@ -722,10 +794,10 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction*> fusion_inputs;
     HloInstruction* fusion_output = nullptr;
     TF_ASSIGN_OR_RETURN(
-        const FusionDecision should_fuse,
+        const Decision decision,
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
-    if (builder.last_added_instruction() == nullptr) {
+    if (!decision.CanFuse()) {
       return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
@@ -736,7 +808,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
       if (!CublasRequiresPadding(
               *Cast<HloDotInstruction>(dot),
               std::get<se::CudaComputeCapability>(gpu_version_)) &&
-          !should_fuse) {
+          !decision.WantToFuse()) {
         return absl::OkStatus();
       }
     }
@@ -792,7 +864,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
   HloComputation::Builder builder("disposable");
   return CreateDotFusion(dot, gpu_version, builder, fusion_inputs,
                          /*fusion_output_ptr=*/nullptr)
-      ->CanFuse();
+      ->WantToFuse();
 }
 
 absl::StatusOr<bool> GemmFusion::Run(

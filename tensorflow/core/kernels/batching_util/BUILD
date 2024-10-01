@@ -265,6 +265,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

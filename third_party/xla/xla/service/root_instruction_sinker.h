@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_ROOT_INSTRUCTION_SINKER_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 

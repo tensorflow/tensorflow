@@ -65,20 +65,17 @@ CallFrameBuilder::AttributesBuilder::AttributesBuilder() = default;
 CallFrameBuilder::AttributesBuilder::~AttributesBuilder() = default;
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttribute attr) {
-  attrs_.try_emplace(std::move(name), FromFlatAttribute(std::move(attr)));
+                                                 Attribute attr) {
+  attrs_.try_emplace(std::move(name), std::move(attr));
 }
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttributesMap attrs) {
-  AttributesBuilder builder;
-  for (auto& [name, attr] : attrs) builder.Insert(name, std::move(attr));
-
-  auto attrs_map = std::make_unique<AttributesMap>(builder.Build());
-  attrs_.try_emplace(std::move(name), Dictionary{std::move(attrs_map)});
+                                                 AttributesMap attrs) {
+  attrs_.try_emplace(std::move(name),
+                     Dictionary{std::make_shared<AttributesMap>(attrs)});
 }
 
-void CallFrameBuilder::AttributesBuilder::Append(FlatAttributesMap attrs) {
+void CallFrameBuilder::AttributesBuilder::Append(AttributesMap attrs) {
   for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
 }
 
@@ -97,12 +94,24 @@ void CallFrameBuilder::AddBufferArg(se::DeviceMemoryBase memory,
   args_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
 }
 
+void CallFrameBuilder::AddTokenArg() {
+  DCHECK(args_.capacity() > args_.size())
+      << "CallFrame builder `num_args` argument was too small";
+  args_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
+}
+
 void CallFrameBuilder::AddBufferRet(se::DeviceMemoryBase memory,
                                     PrimitiveType type,
                                     absl::Span<const int64_t> dims) {
   DCHECK(rets_.capacity() > rets_.size())
       << "CallFrame builder `num_rets` argument was too small";
   rets_.push_back(Buffer{memory, type, {dims.begin(), dims.end()}});
+}
+
+void CallFrameBuilder::AddTokenRet() {
+  DCHECK(rets_.capacity() > rets_.size())
+      << "CallFrame builder `num_rets` argument was too small";
+  rets_.push_back(Buffer{se::DeviceMemoryBase(), PrimitiveType::TOKEN, {}});
 }
 
 void CallFrameBuilder::AddAttributes(AttributesMap attrs) {

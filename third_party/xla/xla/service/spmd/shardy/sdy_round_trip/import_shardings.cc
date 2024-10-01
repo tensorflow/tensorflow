@@ -18,10 +18,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
-#include <string>
 
-#include "absl/log/check.h"
-#include "absl/strings/escaping.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -71,35 +68,17 @@ using ::mlir::func::FuncOp;
 using ::mlir::mhlo::CustomCallOp;
 
 using ::mlir::sdy::kShardingAttr;
+using ::mlir::sdy::kShardingRuleAttr;
 using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::OpShardingRuleAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Parses `stringAttr` to an attribute of type `AttrTy`.
-//
-// NOTE: assumes `stringAttr` is of type `StringAttr`.
-template <typename AttrTy>
-AttrTy parseStringAttr(Attribute stringAttr) {
-  std::string value;
-  std::string error;
-  CHECK(absl::CUnescape(mlir::cast<StringAttr>(stringAttr).getValue(), &value,
-                        &error))
-      << error;
-  return mlir::cast<AttrTy>(
-      mlir::parseAttribute(value, stringAttr.getContext()));
-}
-
-// Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
-template <typename AttrTy>
-AttrTy parseStringAttr(DictionaryAttr dictAttr, llvm::StringRef attrName) {
-  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
-}
-
-// Builds the shardings coming from Shardy previously. This means
+// Builds the shardy attributes coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardingsPass`).
-void convertShardings(FuncOp funcOp) {
+void convertShardyAttrs(FuncOp funcOp) {
   // Copy over the argument shardings, but not the result shardings yet.
   // We need to wait until after we've converted all the Operations before
   // copying the result shardings.
@@ -122,7 +101,7 @@ void convertShardings(FuncOp funcOp) {
         resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
   }
 
-  // Extract the round-tripped SDY shardings from the operations.
+  // Extract the round-tripped SDY shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
     op->removeAttr(kXlaShardingAttr);
     if (DictionaryAttr dictAttr = getFrontendAttrs(op)) {
@@ -161,6 +140,13 @@ void convertShardings(FuncOp funcOp) {
         }
       }
       removeFrontendAttribute(op, kShardingRoundTripAttr);
+
+      // Import sharding rules.
+      if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
+              dictAttr, kShardingRuleRoundTripAttr)) {
+        op->setAttr(kShardingRuleAttr, shardingRuleAttr);
+        removeFrontendAttribute(op, kShardingRuleRoundTripAttr);
+      }
     }
   });
 }
@@ -203,7 +189,7 @@ class SdyRoundTripImportShardingsPass
     removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardings(funcOp);
+      convertShardyAttrs(funcOp);
     }
   }
 

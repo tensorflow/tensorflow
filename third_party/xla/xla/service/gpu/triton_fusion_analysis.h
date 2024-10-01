@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/triton_tiling_propagation.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,6 +43,11 @@ class TritonFusionAnalysis {
   // form and tells the analysis how to interpret the batch dimensions.
   static absl::StatusOr<TritonFusionAnalysis> Execute(
       const HloComputation& computation, int split_k = 1);
+
+  // Execute the analysis of a dot instruction until it reaches the computation
+  // boundaries.
+  static absl::StatusOr<TritonFusionAnalysis> Execute(
+      const HloDotInstruction& dot, int split_k = 1);
 
   // Execute the analysis of a produce-consumer fusion. Returns absl::OkStatus,
   // if the analysis can find a valid tiling for the producer-consumer fusion.
@@ -85,6 +91,13 @@ class TritonFusionAnalysis {
   std::optional<Scope> QueryInstructionScope(const HloInstruction& hlo) const;
 
   std::string ToString() const;
+
+  // Returns an error if the batch dimension of the parameter with the type S4
+  // is the minor one. This check uses the collected data about the mapping the
+  // dimensions of dot to the corresponding parameters. This is important
+  // because there could be a transpose between the dot and the parameter.
+  bool IsBatchDimMinorForInt4Parameter(const HloInstruction& dot,
+                                       Scope scope) const;
 
  private:
   IterationSpecByInstructionByScopeMap iter_specs_;

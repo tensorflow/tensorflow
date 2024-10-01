@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
+#include <cstdint>
 #include <map>
+#include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -26,9 +32,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/group_events.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -74,6 +77,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
 // Checks that HLO module events are expanded.
 TEST(DerivedTimelineTest, NoHloModuleNameTest) {
   const absl::string_view kKernelDetails = "kernel_details";
+  const uint64_t kCudaGraphExecId = 1;
   XSpace space;
   tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane& plane = *GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
@@ -83,6 +87,9 @@ TEST(DerivedTimelineTest, NoHloModuleNameTest) {
                {{StatType::kKernelDetails, kKernelDetails}});
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kKernelDetails, kKernelDetails}});
+  // Also add a CudaGraph Execution event.
+  CreateXEvent(&plane_builder, &line_builder, "op3", 500, 100,
+               {{StatType::kCudaGraphExecId, kCudaGraphExecId}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&plane);
   // Only the hlo module line is added and other empty lines are removed at the
@@ -99,6 +106,7 @@ TEST(DerivedTimelineTest, NoHloModuleNameTest) {
 TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
+  const uint64_t kCudaGraphExecId = 1;
   XSpace space;
   tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
@@ -110,6 +118,10 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
+  // Also add a CudaGraph Execution event.
+  CreateXEvent(&plane_builder, &line_builder, "op3", 500, 100,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kCudaGraphExecId, kCudaGraphExecId}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // Only the tf op line is added and other empty lines are removed at the end.
@@ -121,7 +133,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
     line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
       EXPECT_EQ(event_visitor.Name(), kTfOpName);
       EXPECT_EQ(event_visitor.OffsetPs(), 0);
-      EXPECT_EQ(event_visitor.DurationPs(), 500);
+      EXPECT_EQ(event_visitor.DurationPs(), 600);
     });
   });
 }
@@ -279,6 +291,64 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
       }
     });
   }
+}
+
+// Checks that XLA Ops mapping to CudaGraph launch has extra stats.
+TEST(DerivedTimelineTest, XloOpHasCudaGraphStats) {
+  constexpr absl::string_view kModuleName = "module";
+  constexpr absl::string_view kHloOpName = "op_level_2";
+  constexpr absl::string_view kKernelDetails = "kernel_details";
+  constexpr int64_t kGroupIdValue = 1;
+  constexpr int64_t kCorrelationIdValue = 10000;
+  const uint64_t kCudaGraphIdValue = 20;
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+
+  // Build Input Plane/Line/Events and derive events from them.
+  XPlane& plane = *GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(&plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kKernelDetails, kKernelDetails},
+                {StatType::kGroupId, kGroupIdValue},
+                {StatType::kHloModule, kModuleName},
+                {StatType::kHloOp, kHloOpName},
+                {StatType::kCorrelationId, kCorrelationIdValue},
+                {StatType::kCudaGraphId, kCudaGraphIdValue}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kKernelDetails, kKernelDetails},
+                {StatType::kGroupId, kGroupIdValue},
+                {StatType::kHloModule, kModuleName},
+                {StatType::kHloOp, kHloOpName},
+                {StatType::kCorrelationId, kCorrelationIdValue},
+                {StatType::kCudaGraphId, kCudaGraphIdValue}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+
+  // Check that the HLO op line is added and has the extra stats for the first
+  // derived event.
+  size_t num_hlo_op_line = 0;
+  size_t num_events = 0;
+  std::optional<XStatVisitor> correlation_id;
+  std::optional<XStatVisitor> cuda_graph_id;
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&plane);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == kThreadIdHloOp) {
+      num_hlo_op_line++;
+      if (num_hlo_op_line == 1) {
+        num_events = line_visitor.NumEvents();
+        line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+          correlation_id = event_visitor.GetStat(StatType::kCorrelationId);
+          cuda_graph_id = event_visitor.GetStat(StatType::kCudaGraphId);
+        });
+      }
+    }
+  });
+  EXPECT_EQ(num_hlo_op_line, 1);
+  EXPECT_EQ(num_events, 1);
+  ASSERT_TRUE(correlation_id.has_value());
+  EXPECT_EQ(correlation_id->IntValue(), kCorrelationIdValue);
+  ASSERT_TRUE(cuda_graph_id.has_value());
+  EXPECT_EQ(cuda_graph_id->UintValue(), kCudaGraphIdValue);
 }
 
 TEST(DerivedTimelineTest, DeriveLinesForXlaCpuOps) {

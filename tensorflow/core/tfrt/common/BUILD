@@ -176,6 +176,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt/cpu:cpu_client",
     ],

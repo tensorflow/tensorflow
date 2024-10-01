@@ -159,12 +159,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -740,8 +740,7 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
 
 absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
     const HloCustomCallInstruction* instr) {
-  TF_RET_CHECK(instr->operand_count() == 6 || instr->operand_count() == 7 ||
-               instr->operand_count() == 8);
+  TF_RET_CHECK(instr->operand_count() > 3 && instr->operand_count() < 8);
   TF_ASSIGN_OR_RETURN(const auto gpu_config,
                       instr->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::GemmBackendConfig& config = gpu_config.gemm_backend_config();
@@ -777,22 +776,22 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
   TF_ASSIGN_OR_RETURN(
       BufferAllocation::Slice b_scale,
       GetAllocationSliceForHlo(instr->operand(a_scale_index + 1)));
+
+  // cublasLT requires c_scale/d_scale to be null when C/D is not FP8.
+  // Currently, C cannot be FP8.
+  BufferAllocation::Slice c_scale, d_scale;
 #if GOOGLE_CUDA
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice c_scale,
-      GetAllocationSliceForHlo(instr->operand(a_scale_index + 2)));
-  TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice d_scale,
-      GetAllocationSliceForHlo(instr->operand(a_scale_index + 3)));
-#else  // TENSORFLOW_USE_ROCM
-  BufferAllocation::Slice c_scale;
-  BufferAllocation::Slice d_scale;
+  if (instr->shape().tuple_shapes(0).element_type() == F8E4M3FN ||
+      instr->shape().tuple_shapes(0).element_type() == F8E5M2) {
+    TF_ASSIGN_OR_RETURN(d_scale,
+                        GetAllocationSliceForHlo(instr->operands().back()));
+  }
 #endif
 
   BufferAllocation::Slice bias;
   if (has_vector_bias) {
     TF_ASSIGN_OR_RETURN(
-        bias, GetAllocationSliceForHlo(instr->operand(a_scale_index + 4)));
+        bias, GetAllocationSliceForHlo(instr->operand(a_scale_index + 2)));
   }
 
   BufferAllocation::Slice d_amax;
@@ -961,9 +960,16 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
                               instr->operands()));
   TF_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
+  // check if sdpa dropout is enabled
+  std::optional<int64_t> dropout_seed = std::nullopt;
+  if (MHACallHasDropout(instr->custom_call_target())) {
+    TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                        instr->backend_config<xla::gpu::GpuBackendConfig>());
+    dropout_seed = gpu_config.cudnn_fmha_backend_config().seed();
+  }
   AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
       fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      kernel_arguments.args()));
+      kernel_arguments.args(), dropout_seed));
   return absl::OkStatus();
 }
 
@@ -2133,7 +2139,9 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
       thunk_info.profile_annotation = async_start->name();
     }
     auto thunk = std::make_unique<NcclThunkType>(
-        thunk_info, NcclApi::Default(), inst, /*buffers=*/std::move(buffers));
+        thunk_info, NcclApi::Default(), inst,
+        /*buffers=*/std::move(buffers),
+        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
     GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();

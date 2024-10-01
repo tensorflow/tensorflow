@@ -82,7 +82,7 @@ def get_checkpoint_factories_and_keys(object_names, object_map=None):
 
         if not saveable_compat.force_checkpoint_conversion_enabled():
           # Make sure the set the name as the legacy saveable name if there
-          # is one (only when checkpoint conversion is diabled)
+          # is one (only when checkpoint conversion is disabled)
           name = key_suffix
 
         checkpoint_factory_map[trackable].append(

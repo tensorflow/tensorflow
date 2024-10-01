@@ -267,8 +267,8 @@ struct Range {
   int64_t hi;
 };
 
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(Range, StructMember<int64_t>("i64"),
-                                             StructMember<int64_t>("i64"));
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(Range, StructMember<int64_t>("lo"),
+                                             StructMember<int64_t>("hi"));
 
 auto handler = Ffi::Bind().Attr<Range>("range").To([](Range range) -> Error{
   return Error::Success();

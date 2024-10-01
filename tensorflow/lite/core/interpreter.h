@@ -341,10 +341,13 @@ class Interpreter {
   /// given signature_key is not valid.  Note, the returned SignatureRunner
   /// instance is owned by and has the same lifetime as the Interpreter object;
   /// additionally, class SignatureRunner is *not* thread-safe.
+  /// This function will additionally apply default delegates unless
+  /// `apply_default_delegate` is set to false.
   /// If you need to specify delegates, you have to do that before calling this
-  /// function. This function will additionally apply default delegates. Thus,
-  /// applying delegates after that might lead to undesirable behaviors.
-  SignatureRunner* GetSignatureRunner(const char* signature_key);
+  /// function or provide `apply_default_delegate` as false and applying
+  /// delegates later.
+  SignatureRunner* GetSignatureRunner(const char* signature_key,
+                                      bool apply_default_delegate = true);
 
   /// \warning Experimental interface, subject to change. \n \brief Returns a
   /// pointer to the AsyncSignatureRunner instance to run the part of the graph

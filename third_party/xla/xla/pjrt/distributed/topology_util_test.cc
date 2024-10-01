@@ -119,7 +119,6 @@ TEST(TopologyTest, BuildGpuTopology) {
   EXPECT_EQ(gpu_topology.num_slices(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
-  EXPECT_EQ(gpu_topology.core_count_per_chip(), 20);
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {

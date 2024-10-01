@@ -52,7 +52,7 @@ class AddNOp : public OpKernel {
 
     // Try to forward and accumulate the result in one of the input buffers.
     int reused_input = -1;
-    gtl::InlinedVector<int, 8> input_indices(num);
+    absl::InlinedVector<int, 8UL> input_indices(num);
     std::iota(input_indices.begin(), input_indices.end(), 0);
     Tensor* output = nullptr;
     for (int input_idx = 0; input_idx < num; ++input_idx) {
@@ -170,10 +170,10 @@ class AddNOp<Device, Variant> : public OpKernel {
   //                     : ctx->input(ix).scalar<Variant>()())
   // This reduces (possibly expensive) copying of Variants from
   // the inputs into temp at the lowest levels of the summation tree.
-  static inline Status AddVariantTo(OpKernelContext* ctx, const int lhs_ix,
-                                    const int rhs_ix,
-                                    gtl::InlinedVector<Variant, 4>* temp,
-                                    gtl::InlinedVector<bool, 4>* temp_filled) {
+  static inline Status AddVariantTo(
+      OpKernelContext* ctx, const int lhs_ix, const int rhs_ix,
+      absl::InlinedVector<Variant, 4UL>* temp,
+      absl::InlinedVector<bool, 4UL>* temp_filled) {
     Variant tmp;
     if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
     const Variant& a = temp_filled->at(lhs_ix)

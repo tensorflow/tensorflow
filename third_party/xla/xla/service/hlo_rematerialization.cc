@@ -724,7 +724,7 @@ class MemoryUsageTracker {
 
   // Get the compact shape of given hlo instruction. An internal cache is used
   // to avoid computing the shape multiple times.
-  absl::StatusOr<Shape> GetCompactShape(const HloInstruction* hlo);
+  absl::StatusOr<const Shape*> GetCompactShape(const HloInstruction* hlo);
 
   // Creates a Buffer representing the given logical buffer. The buffer is added
   // to buffers_ and a reference is returned.
@@ -1506,17 +1506,16 @@ std::string MemoryUsageTracker::ToString() const {
   return output;
 }
 
-absl::StatusOr<Shape> MemoryUsageTracker::GetCompactShape(
+absl::StatusOr<const Shape*> MemoryUsageTracker::GetCompactShape(
     const HloInstruction* hlo) {
   auto it = compact_shape_.find(hlo);
   if (it != compact_shape_.end()) {
-    return it->second;
+    return &it->second;
   }
   const Shape& original_shape = hlo->shape();
   TF_ASSIGN_OR_RETURN(Shape min_shape,
                       options_.compact_shape_function(original_shape));
-  compact_shape_[hlo] = min_shape;
-  return min_shape;
+  return &compact_shape_.emplace(hlo, min_shape).first->second;
 }
 
 bool MemoryUsageTracker::Check() const {
@@ -1660,9 +1659,10 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfCompression(
     return {};
   }
 
-  Shape compact_shape = GetCompactShape(candidate_item->instruction).value();
+  const Shape* compact_shape =
+      GetCompactShape(candidate_item->instruction).value();
   const int64_t memory_reduced =
-      MemoryReducedIfCompressed(candidate_item, compact_shape);
+      MemoryReducedIfCompressed(candidate_item, *compact_shape);
   // Since the compressed and uncompressed buffers need to be alive
   // while performing the compression/uncompression, only perform
   // the compression if the sum of the two sizes is less than the
@@ -1670,7 +1670,7 @@ std::optional<int64_t> MemoryUsageTracker::GetCostOfCompression(
   const int64_t size = options_.hlo_cost_analysis.GetShapeSize(
       candidate_item->instruction->shape());
   const int64_t reduced_size =
-      options_.hlo_cost_analysis.GetShapeSize(compact_shape);
+      options_.hlo_cost_analysis.GetShapeSize(*compact_shape);
   // TODO(victorstone): I don't think this size check is right.
   if (memory_reduced > 0 && size + reduced_size < peak_memory_bytes) {
     return memory_limit_bytes / memory_reduced;
@@ -1907,7 +1907,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
         // computed inside GetCostOfCompression, should we get it from there? Or
         // is it ok to recompute?
         best_strategy.compact_shape =
-            GetCompactShape(block[0]->instruction).value();
+            *GetCompactShape(block[0]->instruction).value();
         best_items = block;
         best_cost = *cost;
       }

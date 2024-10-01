@@ -201,7 +201,7 @@ opt<bool> legalize_custom_tensor_list_ops(
 // NOLINTNEXTLINE
 opt<bool> serialize_stablehlo_ops(
     "serialize-stablehlo-ops",
-    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::desc("Whether serialize stablehlo ops or not"),
     llvm::cl::init(true));
 
 // NOLINTNEXTLINE

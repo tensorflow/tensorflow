@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/threadpool_options.h"
@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -152,7 +153,8 @@ class TfrtSession : public tensorflow::Session {
                        bool tpu_use_tpu_runner, bool use_gpu,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
                        bool enable_mlrt,
-                       tensorflow::BackendCompiler* backend_compiler)
+                       tensorflow::BackendCompiler* backend_compiler,
+                       std::unique_ptr<StaticDeviceMgr> device_manager)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
@@ -160,7 +162,8 @@ class TfrtSession : public tensorflow::Session {
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
         options_{options},
-        backend_compiler_(backend_compiler) {}
+        backend_compiler_(backend_compiler),
+        device_manager_(std::move(device_manager)) {}
 
   Status Create(const GraphDef& graph) override {
     return Create(GraphDef(graph));
@@ -212,9 +215,10 @@ class TfrtSession : public tensorflow::Session {
     // without applying placer or grappler, it is OK for now because it's only
     // used for captured functions in certain tf.data ops
     const auto& fdef_lib = graph.library();
-    TF_ASSIGN_OR_RETURN(auto fallback_state,
-                        tensorflow::tfrt_stub::FallbackState::Create(
-                            session_options, fdef_lib));
+    TF_ASSIGN_OR_RETURN(
+        auto fallback_state,
+        tensorflow::tfrt_stub::FallbackState::CreateWithDeviceMgr(
+            session_options, fdef_lib, device_manager_.get()));
 
     auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
     // Register infra and standard math kernels
@@ -473,9 +477,11 @@ class TfrtSession : public tensorflow::Session {
     return errors::Unimplemented("TfrtSession::ListDevices is Unimplemented.");
   }
   Status LocalDeviceManager(const DeviceMgr** output) override {
-    *output = &graph_executor_->fallback_state().device_manager();
+    *output = device_manager_.get();
     return absl::OkStatus();
   }
+
+  Status Finalize() override { return absl::OkStatus(); }
 
  private:
   tfrt::HostContext* GetHostContext() {
@@ -551,6 +557,7 @@ class TfrtSession : public tensorflow::Session {
   bool enable_mlrt_ = false;
   SessionOptions options_ = SessionOptions();
   tensorflow::BackendCompiler* backend_compiler_ = nullptr;
+  std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 
 std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>
@@ -815,6 +822,10 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session = nullptr;
 
   absl::MutexLock lock(&mutex_);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  device_manager_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
   if (!IsInitialized()) {
     TF_RETURN_IF_ERROR(InitializeLocked({}));
     TF_RETURN_IF_ERROR(InitializerRegistry::Get().RunInitializer(runtime_));
@@ -828,9 +839,10 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
                             options.config.experimental().tfrt_use_ifrt())
                                ? backend_compiler_
                                : nullptr;
-  *out_session = new TfrtSession(
-      options, runtime_, device_target_, tpu_use_tpu_runner_, use_gpu_,
-      std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
+  *out_session =
+      new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
+                      use_gpu_, std::move(inter_op_thread_pools), enable_mlrt_,
+                      backend_compiler, std::move(device_manager_));
   return absl::OkStatus();
 }
 

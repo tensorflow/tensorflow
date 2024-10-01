@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/loop_schedule_linearizer.h"
@@ -48,12 +48,13 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
+  HloVerifierOpts opts =
+      HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
+          LayoutAssignment::InstructionCanChangeLayout);
+  opts.verify_unique_channel_ids =
+      !debug_options.xla_experimental_ignore_channel_id();
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
-      std::make_unique<CpuGpuVerifierMetadata>(
-          HloVerifierOpts{}
-              .MakeLayoutSensitive()
-              .WithInstructionCanChangeLayout(
-                  LayoutAssignment::InstructionCanChangeLayout));
+      std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   pipeline.AddInvariantCheckerDebug<HloVerifier>(std::move(verifier_metadata),
                                                  "hlo verifier (debug)");
 

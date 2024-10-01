@@ -20,6 +20,7 @@ limitations under the License.
 // LINT.IfChange
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <iterator>

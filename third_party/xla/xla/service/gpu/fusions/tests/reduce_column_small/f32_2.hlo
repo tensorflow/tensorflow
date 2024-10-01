@@ -20,4 +20,4 @@ fusion {
 // CHECK: gpu.thread_id x {xla.range = [0 : index, 63 : index]}
 // CHECK-NOT: vector<
 // CHECK: allocate_shared : tensor<32x3xf32>
-// CHECK: shuffle_reduce @add_add{{.*}} to 16 : f32
+// CHECK: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add

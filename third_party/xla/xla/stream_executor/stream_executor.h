@@ -193,6 +193,11 @@ class StreamExecutor {
   virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
 
+  virtual bool HostMemoryUnregister(void* location) { return false; };
+  virtual bool HostMemoryRegister(void* location, uint64_t size) {
+    return false;
+  };
+
   // Blocks the caller while "size" bytes are copied to the given location in
   // device memory.
   virtual absl::Status SynchronousMemcpy(DeviceMemoryBase* device_dst,

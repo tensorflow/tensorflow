@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_BFLOAT16_CONVERSION_FOLDING_H_
 #define XLA_SERVICE_BFLOAT16_CONVERSION_FOLDING_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/float_support.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

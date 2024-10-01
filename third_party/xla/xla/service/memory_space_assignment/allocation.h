@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_ALLOCATION_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_ALLOCATION_H_
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -27,10 +29,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -240,7 +244,8 @@ class CopyAllocation final : public Allocation {
       std::optional<HeapSimulator::Chunk> chunk,
       int64_t copy_start_schedule_after_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
-      std::optional<int64_t> cross_program_prefetch_index = std::nullopt);
+      std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
+      HloInstruction* sync_instruction = nullptr);
 
   // Overridden methods
   //
@@ -263,6 +268,7 @@ class CopyAllocation final : public Allocation {
   bool operator==(const Allocation& other) const override;
 
   // New non-virtual methods
+  const HloInstruction* sync_instruction() const { return sync_instruction_; }
   bool operator==(const CopyAllocation& other) const;
 
   const Allocation& prev_allocation() { return prev_allocation_; }
@@ -286,6 +292,8 @@ class CopyAllocation final : public Allocation {
   int64_t copy_done_schedule_before_;
   HloInstruction* copy_start_ = nullptr;
   HloInstruction* copy_done_ = nullptr;
+  // The sync data movement instruction that this copy is associated with.
+  HloInstruction* sync_instruction_ = nullptr;
 };
 
 // This class represents an allocation resulting from asynchronous sliced
@@ -450,10 +458,8 @@ class WindowPrefetchedAllocation final : public Allocation {
 
  private:
   // This method is called by Process() to create window prefetch instructions.
-  // These instructions include a pair of async WindowPrefetch outside the
-  // fusion and a WindowPrefetchBuffer inside the fusion. The
-  // WindowPrefetchBuffer is used for consuming the appended window buffer
-  // operands.
+  // These instructions include a pair of async WindowPrefetch which is passed
+  // to the fusion.
   absl::Status InsertWindowPrefetchInstruction(
       HloInstruction* producing_instruction, HloInstruction* use_instruction,
       HloComputation* computation);

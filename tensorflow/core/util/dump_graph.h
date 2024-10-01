@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -79,7 +80,7 @@ void SetGraphDumper(
 // This function will create a WritableFile and pass it to the dumper.
 // The dumper callback will be responsible for writing data to the file.
 string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, const string& type_name,
+                  const string& suffix, absl::string_view type_name,
                   std::function<Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow

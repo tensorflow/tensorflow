@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/backend.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/shape.h"
@@ -347,6 +348,32 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
+TEST_F(GpuHloScheduleTest,
+       ScheduleGpuModuleWithMemorySchedulerReturnsPeakMemoryBytes) {
+  absl::string_view kHloText = R"(
+  HloModule m
+
+  ENTRY ar {
+    p0 = f32[32,32] parameter(0)
+    p1 = f32[32,32] parameter(1)
+
+    ROOT _ = f32[32,32]{1,0} custom-call(p0, p1),
+      custom_call_target="__cublas$gemm"
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          kHloText, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true)));
+  int64_t pointer_size =
+      dynamic_cast<GpuCompiler*>(backend().compiler())->GetPointerSize();
+  int64_t peak_memory_bytes = -1;
+  TF_ASSERT_OK_AND_ASSIGN(auto schedule,
+                          ScheduleGpuModuleWithMemoryScheduler(
+                              module.get(), pointer_size, &peak_memory_bytes));
+  EXPECT_GT(peak_memory_bytes, 0);
+}
+
 TEST_F(GpuHloScheduleTest, LHSCostModelCostlyAR) {
   const char* hlo_text = R"(
   HloModule AsyncAR
@@ -536,6 +563,12 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
           kHloString, GetModuleConfig(/*enable_latency_hiding_scheduler=*/true,
                                       /*enable_gpu_async_tracker=*/true,
                                       /*fdo_profile=*/kProfile)));
+
+  HloModuleConfig config(module->config());
+  DebugOptions dboptions(config.debug_options());
+  dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+  config.set_debug_options(dboptions);
+  module->set_config(config);
 
   // `dot1` and `ar-start1` are missing from the profile.
   EXPECT_THAT(ScheduleGpuModule(

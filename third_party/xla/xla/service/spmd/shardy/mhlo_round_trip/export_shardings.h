@@ -35,7 +35,7 @@ HloSharding convertToHloSharding(
     mlir::sdy::TensorShardingAttr sdySharding,
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
-    mlir::ArrayRef<mlir::sdy::AxisRefAttr> manualAxes = {});
+    mlir::ArrayRef<mlir::StringAttr> manualAxes = {});
 
 // Convert the `shardings` into a `StringAttr` representing `xla::HloSharding`
 // for the given `op`.
@@ -45,7 +45,7 @@ mlir::StringAttr convertToHloShardingAttr(
     std::function<mlir::sdy::MeshAttr(mlir::sdy::TensorShardingAttr)>
         getMeshAttr,
     std::function<mlir::StringAttr(const HloSharding&)> getStringAttr,
-    mlir::ArrayRef<mlir::sdy::AxisRefAttr> manualAxes = {});
+    mlir::ArrayRef<mlir::StringAttr> manualAxes = {});
 
 // Creates a pass that converts the shardings from `kShardingAttr` to
 // `kXlaShardingAttr` and removes mesh symbols. Fully or partially manual

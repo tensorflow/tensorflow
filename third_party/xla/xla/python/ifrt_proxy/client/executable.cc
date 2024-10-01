@@ -43,6 +43,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -354,12 +355,12 @@ std::optional<std::vector<OpSharding>> LoadedExecutable::GetOutputShardings()
   return (*info)->output_shardings;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
 LoadedExecutable::GetParameterLayouts() const {
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   TF_RETURN_IF_ERROR(info->parameter_layouts.status());
 
-  std::vector<std::unique_ptr<Layout>> result;
+  std::vector<std::unique_ptr<xla::PjRtLayout>> result;
   result.reserve(info->parameter_layouts->size());
   for (const xla::Layout& layout : *info->parameter_layouts) {
     result.push_back(std::make_unique<xla::PjRtXlaLayout>(layout));
@@ -367,12 +368,12 @@ LoadedExecutable::GetParameterLayouts() const {
   return result;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
 LoadedExecutable::GetOutputLayouts() const {
   TF_ASSIGN_OR_RETURN(auto info, metadata_future_.Await());
   TF_RETURN_IF_ERROR(info->output_layouts.status());
 
-  std::vector<std::unique_ptr<Layout>> result;
+  std::vector<std::unique_ptr<xla::PjRtLayout>> result;
   result.reserve(info->output_layouts->size());
   for (const xla::Layout& layout : *info->output_layouts) {
     result.push_back(std::make_unique<xla::PjRtXlaLayout>(layout));
@@ -399,9 +400,10 @@ absl::StatusOr<xla::ifrt::AttributeMap> LoadedExecutable::GetCostAnalysis()
 }
 
 absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>
-LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
-                          const ExecuteOptions& options,
-                          std::optional<xla::ifrt::DeviceList> devices) {
+LoadedExecutable::Execute(
+    absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
+    const ExecuteOptions& options,
+    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices) {
   auto req = std::make_unique<LoadedExecutableExecuteRequest>();
   req->set_loaded_executable_handle(handle_);
   for (const auto& arg : args) {
@@ -414,7 +416,7 @@ LoadedExecutable::Execute(absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
   }
   TF_ASSIGN_OR_RETURN(*req->mutable_execute_options(), options.ToProto());
   if (devices.has_value()) {
-    for (const auto* device : *devices) {
+    for (const auto* device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
     }
   }

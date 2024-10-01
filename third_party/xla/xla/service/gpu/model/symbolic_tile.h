@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -97,16 +97,21 @@ class ConstraintExpression {
     return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
   }
 
+  // Returns `true` if the constraint expression is satisfied by the provided
+  // parameters, and `false` otherwise.  The caller is responsible for ensuring
+  // that the number of provided parameters is sufficient to verify the
+  // constraints.
+  bool IsSatisfiedBy(absl::Span<const int64_t> parameters) const;
+
   // Accessor for the underlying disjoint conjunctions of constraints. This is
   // expected to be empty if `is_satisfiable()` is `false`.
   absl::Span<ConjointConstraints const> DisjointConjointConstraints() const {
     return disjoint_conjoint_constraints_;
   }
 
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   // Simplifies the constraint expression.
   //
@@ -278,12 +283,9 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
-  std::string RtVarsToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   mlir::AffineMap offset_map() const;
   mlir::AffineMap size_map() const;

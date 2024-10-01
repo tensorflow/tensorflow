@@ -26,7 +26,6 @@ import logging
 import os
 import threading
 from typing import Any, Protocol, Union
-import warnings
 
 import ml_dtypes
 import numpy as np
@@ -51,7 +50,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 283
+_version = 289
 
 # Version number for MLIR:Python components.
 mlir_api_version = 57
@@ -232,10 +231,6 @@ def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
       )
     else:
       memory_fraction = deprecated_memory_fraction
-      warnings.warn(
-          'Use XLA_CLIENT_MEM_FRACTION instead of '
-          'XLA_PYTHON_CLIENT_MEM_FRACTION.'
-      )
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
   collective_memory_size = os.getenv(
       'XLA_PYTHON_CLIENT_COLLECTIVE_MEM_SIZE_MB', ''

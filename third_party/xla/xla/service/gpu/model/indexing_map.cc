@@ -30,7 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/log/check.h"
 #include "absl/numeric/int128.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -48,7 +51,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -783,15 +785,17 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 }  // namespace
 
 static constexpr std::string_view kVarKindDefault = "default";
-static constexpr std::string_view kVarKindThreadX = "thread_x";
-static constexpr std::string_view kVarKindThreadY = "thread_y";
-static constexpr std::string_view kVarKindThreadZ = "thread_z";
-static constexpr std::string_view kVarKindBlockX = "block_x";
-static constexpr std::string_view kVarKindBlockY = "block_y";
-static constexpr std::string_view kVarKindBlockZ = "block_z";
+static constexpr std::string_view kVarKindThreadX = "th_x";
+static constexpr std::string_view kVarKindThreadY = "th_y";
+static constexpr std::string_view kVarKindThreadZ = "th_z";
+static constexpr std::string_view kVarKindBlockX = "bl_x";
+static constexpr std::string_view kVarKindBlockY = "bl_y";
+static constexpr std::string_view kVarKindBlockZ = "bl_z";
+static constexpr std::string_view kVarKindWarp = "warp";
+static constexpr std::string_view kVarKindWarpThread = "th_w";
 
-std::string_view ToString(VariableKind type) {
-  switch (type) {
+std::string_view ToVariableName(VariableKind var_kind) {
+  switch (var_kind) {
     case VariableKind::kDefault:
       return kVarKindDefault;
     case VariableKind::kThreadX:
@@ -806,23 +810,28 @@ std::string_view ToString(VariableKind type) {
       return kVarKindBlockY;
     case VariableKind::kBlockZ:
       return kVarKindBlockZ;
+    case VariableKind::kWarp:
+      return kVarKindWarp;
+    case VariableKind::kWarpThread:
+      return kVarKindWarpThread;
   }
   llvm_unreachable("Unknown VariableType");
 }
 
-VariableKind ToVariableType(std::string_view type_name) {
-  if (type_name == kVarKindDefault) return VariableKind::kDefault;
-  if (type_name == kVarKindThreadX) return VariableKind::kThreadX;
-  if (type_name == kVarKindThreadY) return VariableKind::kThreadY;
-  if (type_name == kVarKindThreadZ) return VariableKind::kThreadZ;
-  if (type_name == kVarKindBlockX) return VariableKind::kBlockX;
-  if (type_name == kVarKindBlockY) return VariableKind::kBlockY;
-  if (type_name == kVarKindBlockZ) return VariableKind::kBlockZ;
-  llvm_unreachable("Unknown VariableType name");
+VariableKind ToVariableType(std::string_view var_name) {
+  if (var_name == kVarKindThreadX) return VariableKind::kThreadX;
+  if (var_name == kVarKindThreadY) return VariableKind::kThreadY;
+  if (var_name == kVarKindThreadZ) return VariableKind::kThreadZ;
+  if (var_name == kVarKindBlockX) return VariableKind::kBlockX;
+  if (var_name == kVarKindBlockY) return VariableKind::kBlockY;
+  if (var_name == kVarKindBlockZ) return VariableKind::kBlockZ;
+  if (var_name == kVarKindWarp) return VariableKind::kWarp;
+  if (var_name == kVarKindWarpThread) return VariableKind::kWarpThread;
+  return VariableKind::kDefault;
 }
 
 std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
-  out << ToString(var_type);
+  out << ToVariableName(var_type);
   return out;
 }
 
@@ -831,14 +840,21 @@ IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
                                          int64_t operand_idx,
                                          mlir::MLIRContext* mlir_context);
 
+std::ostream& operator<<(std::ostream& out, const Interval& interval) {
+  out << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
+  return out;
+}
+
 std::string Interval::ToString() const {
   std::stringstream ss;
-  Print(ss);
+  ss << *this;
   return ss.str();
 }
 
-void Interval::Print(std::ostream& out) const {
-  out << '[' << lower << ", " << upper << "]";
+inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                     const Interval& interval) {
+  os << absl::StrFormat("[%d, %d]", interval.lower, interval.upper);
+  return os;
 }
 
 int64_t Interval::GetLoopTripCount() const {
@@ -958,22 +974,17 @@ Interval Interval::FloorDiv(int64_t rhs) const {
   return {std::min(a, b), std::max(a, b)};
 }
 
-std::ostream& operator<<(std::ostream& out, const Interval& range) {
-  range.Print(out);
-  return out;
-}
-
 bool operator==(const DimVar& lhs, const DimVar& rhs) {
-  return lhs.bounds == rhs.bounds;
+  return lhs.bounds == rhs.bounds && lhs.name == rhs.name;
 }
 
 bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range;
+  return lhs.range == rhs.range && lhs.name == rhs.name;
 }
 
 bool operator==(const RTVar& lhs, const RTVar& rhs) {
   return lhs.feasible_values == rhs.feasible_values && lhs.hlo == rhs.hlo &&
-         lhs.map == rhs.map;
+         lhs.map == rhs.map && lhs.name == rhs.name;
 }
 
 std::vector<DimVar> DimVarsFromTensorSizes(
@@ -981,9 +992,21 @@ std::vector<DimVar> DimVarsFromTensorSizes(
   std::vector<DimVar> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
+    ranges.push_back(DimVar{0, size - 1});
   }
   return ranges;
+}
+std::vector<DimVar> DimVarsFromGPUGrid(absl::Span<const int64_t> grid_sizes) {
+  CHECK_EQ(grid_sizes.size(), 6)
+      << "Grid must be 6-dimensional (th_x, th_y, th_z, bl_x, bl_y, bl_z)";
+  return {
+      DimVar{0, grid_sizes[0] - 1, kVarKindThreadX},
+      DimVar{0, grid_sizes[1] - 1, kVarKindThreadY},
+      DimVar{0, grid_sizes[2] - 1, kVarKindThreadZ},
+      DimVar{0, grid_sizes[3] - 1, kVarKindBlockX},
+      DimVar{0, grid_sizes[4] - 1, kVarKindBlockY},
+      DimVar{0, grid_sizes[5] - 1, kVarKindBlockZ},
+  };
 }
 
 std::vector<RangeVar> RangeVarsFromTensorSizes(
@@ -991,7 +1014,7 @@ std::vector<RangeVar> RangeVarsFromTensorSizes(
   std::vector<RangeVar> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({Interval{0, size - 1}});
+    ranges.push_back({RangeVar{0, size - 1}});
   }
   return ranges;
 }
@@ -1248,71 +1271,8 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
   return result;
 }
 
-std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
-  std::stringstream ss;
-  Print(ss, printer);
-  return ss.str();
-}
-
-void PrintRTVars(const std::vector<RTVar>& rt_vars,
-                 int first_rt_var_symbol_index, std::ostream& out,
-                 const AffineMapPrinter& printer) {
-  for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-    out << printer.GetSymbolName(
-               static_cast<int64_t>(first_rt_var_symbol_index + index))
-        << " in ";
-    rt_var.feasible_values.Print(out);
-    out << "\n  hlo: "
-        << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << "\n  ";
-    printer.Print(out, rt_var.map);
-    out << '\n';
-  }
-}
-
-void IndexingMap::Print(std::ostream& out,
-                        const AffineMapPrinter& printer) const {
-  if (IsKnownEmpty()) {
-    out << "KNOWN EMPTY\n";
-    return;
-  }
-  printer.Print(out, affine_map_);
-  out << "\ndomain:\n";
-  for (const auto& [index, dim_var] : llvm::enumerate(dim_vars_)) {
-    out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
-    dim_var.bounds.Print(out);
-    out << '\n';
-  }
-  for (const auto& [index, range_var] : llvm::enumerate(range_vars_)) {
-    out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
-    range_var.range.Print(out);
-    out << '\n';
-  }
-  int64_t range_vars_count = GetRangeVarsCount();
-  PrintRTVars(rt_vars_, /*first_rt_var_symbol_index=*/range_vars_count, out,
-              printer);
-  std::vector<std::string> expr_range_strings;
-  expr_range_strings.reserve(constraints_.size());
-  for (const auto& [expr, range] : constraints_) {
-    std::stringstream ss;
-    printer.Print(ss, expr);
-    ss << " in ";
-    range.Print(ss);
-    expr_range_strings.push_back(ss.str());
-  }
-  std::sort(expr_range_strings.begin(), expr_range_strings.end());
-  for (const auto& expr_range_string : expr_range_strings) {
-    out << expr_range_string << '\n';
-  }
-}
-
 MLIRContext* IndexingMap::GetMLIRContext() const {
   return IsUndefined() ? nullptr : affine_map_.getContext();
-}
-
-std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
-  AffineMapPrinter printer;
-  indexing_map.Print(out, printer);
-  return out;
 }
 
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
@@ -1325,6 +1285,23 @@ bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
 
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
   return ComposeIndexingMaps(lhs, rhs);
+}
+
+bool IndexingMap::Verify(std::ostream& out) const {
+  if (IsUndefined()) {
+    return true;
+  }
+  if (affine_map_.getNumDims() != dim_vars_.size()) {
+    out << "dim size must match the number of dimensions in "
+           "the affine map";
+    return false;
+  }
+  if (affine_map_.getNumSymbols() != range_vars_.size() + rt_vars_.size()) {
+    out << "range vars size + rt var size must match the number of "
+           "symbols in the affine map";
+    return false;
+  }
+  return true;
 }
 
 // Simplification of IndexingMap has two main parts.
@@ -1677,6 +1654,7 @@ void IndexingMap::ResetToKnownEmpty() {
 }
 
 bool IndexingMap::VerifyVariableIntervals() {
+  // TODO: Check if the variable names are unique.
   return llvm::all_of(dim_vars_,
                       [](const DimVar& dim_var) {
                         return dim_var.bounds.IsFeasible();
@@ -2118,6 +2096,48 @@ bool IndexingMap::IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const {
   unsigned int position = symbol.getPosition();
   CHECK_LE(position, GetSymbolCount());
   return position >= range_vars_.size();
+}
+
+IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
+  int num_symbols = GetSymbolCount();
+  if (IsUndefined() || IsKnownEmpty() || num_symbols == 0) {
+    return *this;
+  }
+  int num_dims = GetDimensionCount();
+
+  MLIRContext* mlir_context = GetMLIRContext();
+  int64_t num_vars = num_dims + num_symbols;
+
+  std::vector<DimVar> new_dim_vars;
+  new_dim_vars.reserve(num_vars);
+
+  // // Populate the existing dims.
+  llvm::append_range(new_dim_vars, GetDimVars());
+
+  // Capture the existing symbols as dims.
+  SmallVector<AffineExpr> syms_replacements;
+  int64_t symbol_id = num_dims;
+  for (const auto& range_var : range_vars_) {
+    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
+    new_dim_vars.push_back(DimVar{range_var.range});
+  }
+  for (const auto& rt_var : rt_vars_) {
+    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
+    new_dim_vars.push_back(DimVar{rt_var.feasible_values});
+  }
+
+  // Update constraints.
+  SmallVector<std::pair<AffineExpr, Interval>, 4> new_constraints;
+  for (const auto& [expr, range] : constraints_) {
+    new_constraints.push_back(
+        std::make_pair(expr.replaceSymbols(syms_replacements), range));
+  }
+
+  AffineMap canonical_map =
+      affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
+  IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
+                               /*rt_vars=*/{}, new_constraints);
+  return new_indexing_map;
 }
 
 }  // namespace gpu

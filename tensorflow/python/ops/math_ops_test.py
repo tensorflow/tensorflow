@@ -1360,6 +1360,14 @@ class RangeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(
         (0,), self.evaluate(x))  # smallest input with potential overflow
 
+  def testInt32Overflow(self):
+    start = 1136033460
+    end = -2110457150
+    step = -1849827689
+    expected = np.arange(start, end, step)
+    actual = math_ops.range(start, end, step)
+    self.assertAllEqual(expected, self.evaluate(actual))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class ErfcinvTest(test_util.TensorFlowTestCase):

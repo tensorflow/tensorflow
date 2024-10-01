@@ -9,7 +9,7 @@ package xla;
 
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
-import "tsl/protobuf/dnn.proto";
+import "xla/tsl/protobuf/dnn.proto";
 
 message CudnnVersion {
   int32 major = 1;
@@ -83,6 +83,10 @@ message AutotuneResult {
     int64 num_ctas = 7;
   }
 
+  message CustomKernelFusionKey {
+    int64 kernel_index = 1;
+  }
+
   int64 scratch_bytes = 8;
   google.protobuf.Duration run_time = 9;
 
@@ -93,10 +97,11 @@ message AutotuneResult {
     GemmKey gemm = 6;
     TritonGemmKey triton = 17;
     CudaConvPlanKey cuda_conv_plan = 15;
+    CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
   }
 
-  // Next ID: 17
+  // Next ID: 19
 }
 
 message AutotuningLog {

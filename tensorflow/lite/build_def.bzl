@@ -211,7 +211,8 @@ def tflite_jni_binary(
         tags = [],
         srcs = [],
         visibility = None,  # 'None' means use the default visibility.
-        local_defines = []):
+        local_defines = [],
+        exec_properties = {}):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
         clean_dep("//tensorflow:macos"): [
@@ -239,6 +240,7 @@ def tflite_jni_binary(
         testonly = testonly,
         visibility = visibility,
         local_defines = local_defines,
+        exec_properties = exec_properties,
     )
 
 def tflite_cc_shared_object(

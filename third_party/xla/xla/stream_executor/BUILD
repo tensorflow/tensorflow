@@ -100,12 +100,15 @@ cc_library(
         ":module_spec",
         ":numeric_options",
         ":platform",
+        ":semantic_version",
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
         "//xla/stream_executor/platform",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_type",
+        "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -120,7 +123,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -129,7 +131,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         ":stream_executor_impl",
     ]) + if_google([
@@ -155,9 +156,10 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":launch_dim",
+        ":semantic_version",
+        "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/math:math_util",
         "@local_tsl//tsl/platform:logging",
     ],
 )
@@ -280,8 +282,8 @@ cc_library(
     name = "data_type",
     hdrs = ["data_type.h"],
     deps = [
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -410,12 +412,12 @@ cc_library(
         ":device_memory",
         ":numeric_options",
         "//xla/stream_executor/platform",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -430,6 +432,7 @@ cc_library(
         ":numeric_options",
         "//xla/stream_executor/platform",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -445,7 +448,6 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
@@ -464,11 +466,11 @@ cc_library(
         ":dnn",
         ":stream",
         ":stream_executor_h",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -590,10 +592,10 @@ cc_library(
         ":kernel",
         ":launch_dim",
         ":platform",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:errors",
     ],
 )
@@ -678,6 +680,37 @@ cc_library(
 )
 
 cc_library(
+    name = "semantic_version",
+    srcs = ["semantic_version.cc"],
+    hdrs = ["semantic_version.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_test(
+    name = "semantic_version_test",
+    srcs = ["semantic_version_test.cc"],
+    deps = [
+        ":semantic_version",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "scratch_allocator",
     hdrs = ["scratch_allocator.h"],
     deps = [
@@ -758,7 +791,7 @@ cc_library(
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
-    ] + if_oss(["@local_tsl//tsl/protobuf:dnn_proto_cc_impl"]),
+    ] + if_oss(["//xla/tsl/protobuf:dnn_proto_cc_impl"]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -849,6 +882,7 @@ xla_cc_test(
     srcs = ["device_description_test.cc"],
     deps = [
         ":device_description",
+        ":semantic_version",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -891,14 +925,28 @@ xla_cc_test(
 alias(
     name = "cuda_platform",
     actual = "//xla/stream_executor/cuda:all_runtime",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
 )
 
 alias(
     name = "rocm_platform",
     actual = "//xla/stream_executor/rocm:all_runtime",
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
 )
 
 alias(
     name = "sycl_platform",
     actual = "//xla/stream_executor/sycl:all_runtime",
+    tags = [
+        "gpu",
+    ],
 )

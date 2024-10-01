@@ -473,22 +473,20 @@ bool InferGatherParallelShardingFromOperands(
     bool may_combine_partial_sharding) {
   CHECK(DynCast<HloGatherInstruction>(instruction));
   bool changed = false;
-  auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
   auto output_parallel_dims = hlo_sharding_util::GetGatherParallelOutputDims(
       *instruction, parallel_dims);
-  // Infer output sharding from scatter operand sharding.
+  // Infer output sharding from gather operand sharding.
   if (hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(0))) {
     changed |= MaybeImproveInstructionSharding(
         hlo_sharding_util::
             InferGatherScatterParallelShardingFromOperandSharding(
                 instruction->operand(0)->sharding(),
                 instruction->operand(0)->shape(), instruction->shape(),
-                absl::MakeConstSpan(aligned_operand_parallel_dims),
+                absl::MakeConstSpan(parallel_dims.operand_parallel_dims),
                 absl::MakeConstSpan(output_parallel_dims)),
         instruction, may_combine_partial_sharding);
   }
-  // Infer output sharding from scatter indices sharding.
+  // Infer output sharding from gather indices sharding.
   if (hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(1))) {
     changed |= MaybeImproveInstructionSharding(
         hlo_sharding_util::
@@ -515,11 +513,8 @@ bool InferScatterParallelShardingFromOperands(
   auto scatter_indices = scatter->scatter_indices();
   auto scatter_updates = scatter->scatter_updates();
   bool changed = false;
-  auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
   auto update_parallel_dims = hlo_sharding_util::GetScatterParallelUpdateDims(
       *instruction, parallel_dims);
-  auto output_parallel_dims = aligned_operand_parallel_dims;
   // Infer output sharding from scatter operand sharding.
   Shape shape = operand_count == 1
                     ? instruction->shape()
@@ -530,8 +525,9 @@ bool InferScatterParallelShardingFromOperands(
           hlo_sharding_util::
               InferGatherScatterParallelShardingFromOperandSharding(
                   scatter_operands[i]->sharding(), scatter_operands[i]->shape(),
-                  shape, absl::MakeConstSpan(aligned_operand_parallel_dims),
-                  absl::MakeConstSpan(output_parallel_dims)),
+                  shape,
+                  absl::MakeConstSpan(parallel_dims.operand_parallel_dims),
+                  absl::MakeConstSpan(parallel_dims.operand_parallel_dims)),
           instruction, {i}, may_combine_partial_sharding);
     }
   }
@@ -541,7 +537,7 @@ bool InferScatterParallelShardingFromOperands(
         InferGatherScatterParallelShardingFromOperandSharding(
             scatter_indices->sharding(), scatter_indices->shape(), shape,
             absl::MakeConstSpan(parallel_dims.indices_parallel_dims),
-            absl::MakeConstSpan(output_parallel_dims));
+            absl::MakeConstSpan(parallel_dims.operand_parallel_dims));
     for (int64_t i = 0; i != operand_count; ++i) {
       changed |= MaybeImproveInstructionSubSharding(
           parallel_sharding_from_indices, instruction, {i},
@@ -556,7 +552,7 @@ bool InferScatterParallelShardingFromOperands(
               InferGatherScatterParallelShardingFromOperandSharding(
                   scatter_updates[i]->sharding(), scatter_updates[i]->shape(),
                   shape, absl::MakeConstSpan(update_parallel_dims),
-                  absl::MakeConstSpan(output_parallel_dims)),
+                  absl::MakeConstSpan(parallel_dims.operand_parallel_dims)),
           instruction, {i}, may_combine_partial_sharding);
     }
   }
@@ -1385,7 +1381,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
     const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector) {
+        allow_spmd_sharding_propagation_to_parameters_vector,
+    bool remove_unknown_shardings) {
   bool changed = false;
 
   const bool use_shard_group = instruction_to_shard_group_id &&
@@ -1465,10 +1462,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
     for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
       HloInstruction* instruction = *it;
       if (instruction->IsCustomCall("Sharding")) {
-        HloSharding original_sharding = instruction->sharding();
         TF_RET_CHECK(instruction->has_sharding())
             << "Sharding instruction must have a sharding attribute";
         VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
+        HloSharding original_sharding = instruction->sharding();
 
         std::vector<int64_t> unspec_dims;
         TF_RETURN_IF_ERROR(sharding_op_util::ParseAttributes(
@@ -1477,7 +1474,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
 
         bool replaced_with_copy =
             replace_sharding_with_copy &&
-            (!original_sharding.IsUnknown() ||
+            (!original_sharding.IsUnknown() || remove_unknown_shardings ||
              instruction->operand(0)->opcode() == HloOpcode::kParameter);
         // Replace the sharding instruction with a copy node so that it does not
         // need special handling.
@@ -2502,6 +2499,21 @@ bool ShardingPropagation::InferShardingFromOperands(
     }
     case HloOpcode::kGather: {
       bool changed = false;
+
+      const GatherDimensionNumbers& dnums =
+          instruction->gather_dimension_numbers();
+      if (!dnums.operand_batching_dims().empty()) {
+        hlo_sharding_util::GatherScatterParallelDims explict_batch_dims;
+        explict_batch_dims.operand_parallel_dims.assign(
+            dnums.operand_batching_dims().begin(),
+            dnums.operand_batching_dims().end());
+        explict_batch_dims.indices_parallel_dims.assign(
+            dnums.start_indices_batching_dims().begin(),
+            dnums.start_indices_batching_dims().end());
+        changed |= InferGatherParallelShardingFromOperands(
+            instruction, explict_batch_dims, may_combine_partial_sharding);
+      }
+
       if (hlo_sharding_util::IsSpatiallyPartitioned(instruction->operand(1))) {
         HloSharding new_sharding = hlo_sharding_util::
             GatherOutputShardingFromIndexIndexPassthroughDimensions(
@@ -2541,11 +2553,26 @@ bool ShardingPropagation::InferShardingFromOperands(
     }
     case HloOpcode::kScatter: {
       auto& scatter = *Cast<HloScatterInstruction>(instruction);
+      bool changed = false;
+
+      const ScatterDimensionNumbers& dnums =
+          instruction->scatter_dimension_numbers();
+      if (!dnums.input_batching_dims().empty()) {
+        hlo_sharding_util::GatherScatterParallelDims explict_batch_dims;
+        explict_batch_dims.operand_parallel_dims.assign(
+            dnums.input_batching_dims().begin(),
+            dnums.input_batching_dims().end());
+        explict_batch_dims.indices_parallel_dims.assign(
+            dnums.scatter_indices_batching_dims().begin(),
+            dnums.scatter_indices_batching_dims().end());
+        changed |= InferScatterParallelShardingFromOperands(
+            instruction, explict_batch_dims, may_combine_partial_sharding);
+      }
+
       const int64_t operand_count = scatter.scatter_operand_count();
       auto scatter_operands = scatter.scatter_operands();
       auto scatter_indices = scatter.scatter_indices();
       auto scatter_updates = scatter.scatter_updates();
-      bool changed = false;
       if (is_spmd_) {
         for (int64_t i = 0; i != operand_count; ++i) {
           if (hlo_sharding_util::IsSpatiallyPartitioned(scatter_operands[i])) {
@@ -2560,10 +2587,9 @@ bool ShardingPropagation::InferShardingFromOperands(
             })) {
           return changed;
         }
-        auto scatter_parallel_dims =
-            hlo_sharding_util::GetScatterParallelBatchDims(*instruction,
-                                                           call_graph);
-        if (scatter_parallel_dims) {
+        if (auto scatter_parallel_dims =
+                hlo_sharding_util::GetScatterParallelBatchDims(*instruction,
+                                                               call_graph)) {
           changed |= InferScatterParallelShardingFromOperands(
               instruction, *scatter_parallel_dims,
               may_combine_partial_sharding);
@@ -2715,6 +2741,10 @@ bool ShardingPropagation::InferShardingFromUsers(
   bool improved_sharding = false;
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
+    if (user->opcode() == HloOpcode::kRngBitGenerator) {
+      instruction->set_sharding(HloSharding::Replicate());
+      return true;
+    }
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(*instruction, *user,
                                                  aggressiveness, is_spmd,
@@ -2738,6 +2768,336 @@ bool ShardingPropagation::InferShardingFromUsers(
   }
   return improved_sharding;
 }
+
+void ShardingPropagation::MaybeComputationPropagation(
+    const ComputationMap& computation_map,
+    const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+    HloInstruction* instruction,
+    absl::flat_hash_set<HloInstruction*>* changed) {
+  auto propagate_to_instruction = [&](HloInstruction* search_inst) {
+    auto related_instructions =
+        GetRelatedInstructions(search_inst, computation_map);
+    if (absl::c_count(related_instructions, instruction)) {
+      for (HloInstruction* inst : related_instructions) {
+        // Do not touch shardings that we are not allowed to change
+        if ((!inst->has_sharding() ||
+             inst->sharding() != instruction->sharding()) &&
+            !provided_shardings.contains(inst)) {
+          VLOG(2) << "Add computation sharding: " << inst->name() << " "
+                  << instruction->sharding().ToString();
+          inst->copy_sharding(instruction);
+          changed->insert(inst);
+          MaybeComputationPropagation(computation_map, provided_shardings, inst,
+                                      changed);
+        }
+      }
+    }
+  };
+
+  if (instruction->opcode() == HloOpcode::kConditional ||
+      instruction->opcode() == HloOpcode::kWhile ||
+      instruction->opcode() == HloOpcode::kCustomCall ||
+      instruction->opcode() == HloOpcode::kCall) {
+    propagate_to_instruction(instruction);
+  }
+
+  if (instruction->opcode() == HloOpcode::kParameter ||
+      instruction->parent()->root_instruction() == instruction) {
+    auto it = computation_map.find(instruction->parent());
+    if (it != computation_map.end()) {
+      propagate_to_instruction(it->second);
+      // Propagate parameter shardings back to conditional's and
+      // call's operands.
+      if (instruction->opcode() == HloOpcode::kParameter &&
+          (it->second->opcode() == HloOpcode::kConditional ||
+           it->second->opcode() == HloOpcode::kCall)) {
+        propagate_to_instruction(instruction);
+      }
+    }
+  }
+}
+
+absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
+    int64_t aggressiveness, bool propagate_shard_group,
+    const ComputationMap& computation_map,
+    const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+    const CallGraph& call_graph, HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
+        unspecified_dims,
+    absl::flat_hash_map<HloInstruction*, int64_t>&
+        instruction_to_shard_group_id,
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+        shard_group_id_to_shard_as_group,
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+        shard_group_id_to_shard_like_group,
+    int64_t& iterations) {
+  bool changed = false;
+  absl::flat_hash_set<const HloInstruction*> already_inferred_from_shard_group;
+  absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
+  absl::flat_hash_set<const HloInstruction*> already_inferred_from_users;
+  bool changed_last_iter = true;
+  const bool may_merge_partial = is_spmd_ && aggressiveness > 0;
+  while (changed_last_iter) {
+    changed_last_iter = false;
+    int64_t inferred_from_shard_group_counter = 0;
+    int64_t inferred_from_operand_counter = 0;
+    int64_t inferred_from_user_counter = 0;
+    int64_t instruction_counter = 0;
+    int64_t already_sharded_counter = 0;
+    for (const HloComputation* computation :
+         module->computations(execution_threads)) {
+      VLOG(2) << "Consider computation: " << computation->name();
+      std::vector<HloInstruction*> instructions =
+          computation->MakeInstructionPostOrder();
+
+      instruction_counter += instructions.size();
+      already_sharded_counter += absl::c_count_if(
+          instructions,
+          [](const HloInstruction* inst) { return inst->has_sharding(); });
+      auto clear_cache = [&](HloInstruction* hlo,
+                             HloInstruction* hlo_for_users = nullptr) {
+        for (auto operand : hlo->operands()) {
+          already_inferred_from_users.erase(operand);
+        }
+        if (hlo_for_users == nullptr) {
+          hlo_for_users = hlo;
+        }
+        for (auto user : hlo_for_users->users()) {
+          already_inferred_from_operands.erase(user);
+          // If the user has called computations, then the parameter
+          // instructions of these called computations are also removed from
+          // already_inferred_from_operands.
+          for (auto c : user->called_computations()) {
+            for (auto parameter : c->parameter_instructions()) {
+              already_inferred_from_operands.erase(parameter);
+            }
+          }
+        }
+        if (instruction_to_shard_group_id.contains(hlo)) {
+          const int64_t shard_group_id = instruction_to_shard_group_id.at(hlo);
+          const absl::flat_hash_set<HloInstruction*>& shard_group =
+              shard_group_id_to_shard_as_group.contains(shard_group_id)
+                  ? shard_group_id_to_shard_as_group.at(shard_group_id)
+                  : shard_group_id_to_shard_like_group.at(shard_group_id);
+          for (HloInstruction* member : shard_group) {
+            if (member != hlo) {
+              already_inferred_from_shard_group.erase(member);
+            }
+          }
+        }
+      };
+      // 1. Iterate the shard groups to take shardings from instructions of
+      // the same group.
+      if (propagate_shard_group) {
+        for (HloInstruction* instruction : instructions) {
+          if (already_inferred_from_shard_group.contains(instruction)) {
+            continue;
+          }
+          if (!instruction_to_shard_group_id.contains(instruction)) {
+            continue;
+          }
+          const int64_t shard_group_id =
+              instruction_to_shard_group_id.at(instruction);
+          const absl::flat_hash_set<HloInstruction*>& shard_group =
+              shard_group_id_to_shard_as_group.contains(shard_group_id)
+                  ? shard_group_id_to_shard_as_group.at(shard_group_id)
+                  : shard_group_id_to_shard_like_group.at(shard_group_id);
+          if (provided_shardings.contains(instruction)) {
+            if (!may_merge_partial) {
+              continue;
+            }
+            auto it = unspecified_dims.find(instruction);
+            if (it != unspecified_dims.end() &&
+                InferUnspecifiedDimsFromShardGroup(instruction, it->second,
+                                                   shard_group)) {
+              ++inferred_from_shard_group_counter;
+              VLOG(2) << "Refined partial sharding (shard group): "
+                      << instruction->ToString();
+              clear_cache(instruction);
+              already_inferred_from_shard_group.insert(instruction);
+              changed_last_iter = true;
+            }
+            continue;
+          }
+          already_inferred_from_shard_group.insert(instruction);
+          if (InferShardingFromShardGroup(instruction, aggressiveness,
+                                          shard_group)) {
+            ++inferred_from_shard_group_counter;
+            changed = true;
+            VLOG(2) << "Add sharding (shard group): "
+                    << instruction->ToString();
+            absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
+            MaybeComputationPropagation(computation_map, provided_shardings,
+                                        instruction, &changed_in_comp_prop);
+            clear_cache(instruction);
+            for (auto hlo : changed_in_comp_prop) {
+              clear_cache(hlo);
+            }
+            changed_last_iter = true;
+          }
+        }
+      }
+      // 2. Iterate the HLO graph in post order taking shardings from
+      // operands.
+      for (HloInstruction* instruction : instructions) {
+        if (already_inferred_from_operands.contains(instruction)) {
+          continue;
+        }
+        if (provided_shardings.contains(instruction)) {
+          if (!may_merge_partial) {
+            continue;
+          }
+          auto it = unspecified_dims.find(instruction);
+          HloInstruction* man_conversion_op_after;
+          if (it != unspecified_dims.end() &&
+              InferUnspecifiedDimsFromOperand(instruction, it->second,
+                                              &man_conversion_op_after)) {
+            ++inferred_from_operand_counter;
+            VLOG(2) << "Refined partial sharding (forward-pass): "
+                    << instruction->ToString();
+            clear_cache(instruction, man_conversion_op_after);
+            already_inferred_from_operands.insert(instruction);
+            changed_last_iter = true;
+          }
+          continue;
+        }
+        already_inferred_from_operands.insert(instruction);
+        if (InferShardingFromOperands(instruction, computation_map,
+                                      aggressiveness, call_graph,
+                                      execution_threads)) {
+          ++inferred_from_operand_counter;
+          changed = true;
+          VLOG(2) << "Add sharding (forward-pass): " << instruction->ToString();
+          absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
+          MaybeComputationPropagation(computation_map, provided_shardings,
+                                      instruction, &changed_in_comp_prop);
+          clear_cache(instruction);
+          for (auto hlo : changed_in_comp_prop) {
+            clear_cache(hlo);
+          }
+          changed_last_iter = true;
+        }
+      }
+      // 3. Iterate the HLO graph in reverse post order taking shardings from
+      // users.
+      for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
+        if ((*it)->IsCustomCall("SPMDFullToShardShape") ||
+            (*it)->IsCustomCall("SPMDShardToFullShape")) {
+          // The manual conversion op is processed together with the sharding
+          // op before it. If the conversion op is removed from cache, the
+          // sharding op should also be removed.
+          if (!already_inferred_from_users.contains(*it)) {
+            already_inferred_from_users.erase((*it)->operand(0));
+          }
+        }
+        if (already_inferred_from_users.contains(*it)) {
+          continue;
+        }
+        if (provided_shardings.contains(*it)) {
+          if (!may_merge_partial) {
+            continue;
+          }
+          auto uit = unspecified_dims.find(*it);
+          HloInstruction* man_conversion_op_after;
+          if (uit != unspecified_dims.end() &&
+              InferUnspecifiedDimsFromUsers(*it, uit->second, aggressiveness,
+                                            is_spmd_, &man_conversion_op_after,
+                                            call_graph)) {
+            ++inferred_from_user_counter;
+            VLOG(2) << "Refined partial sharding (backward-pass): "
+                    << (*it)->ToString();
+            clear_cache(*it, man_conversion_op_after);
+            already_inferred_from_users.insert(*it);
+            if (man_conversion_op_after != nullptr) {
+              already_inferred_from_users.insert(man_conversion_op_after);
+            }
+            changed_last_iter = true;
+          }
+          continue;
+        }
+        already_inferred_from_users.insert(*it);
+        if (InferShardingFromUsers(*it, computation_map, aggressiveness,
+                                   is_spmd_, sharding_helper_.get(),
+                                   call_graph)) {
+          ++inferred_from_user_counter;
+          changed = true;
+          VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
+          absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
+          MaybeComputationPropagation(computation_map, provided_shardings, *it,
+                                      &changed_in_comp_prop);
+          clear_cache(*it);
+          for (auto hlo : changed_in_comp_prop) {
+            clear_cache(hlo);
+          }
+          changed_last_iter = true;
+        }
+      }
+    }
+    VLOG(1) << "Sharding propagation iteration " << iterations << ";"
+            << "\n  total instructions: " << instruction_counter
+            << "\n  instructions already sharded: " << already_sharded_counter
+            << "\n  shardings inferred from shard group: "
+            << inferred_from_shard_group_counter
+            << "\n  shardings inferred from operands: "
+            << inferred_from_operand_counter
+            << "\n  shardings inferred from users: "
+            << inferred_from_user_counter
+            << "\n  aggressiveness: " << aggressiveness;
+    ++iterations;
+  }
+  return changed;
+}
+
+std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
+    HloInstruction* inst, const ComputationMap& computation_map) {
+  if (inst->opcode() == HloOpcode::kWhile) {
+    return std::vector<HloInstruction*>{
+        inst, inst->while_body()->root_instruction(),
+        inst->while_body()->parameter_instruction(0),
+        inst->while_condition()->parameter_instruction(0)};
+  } else if (inst->opcode() == HloOpcode::kConditional) {
+    const auto& called_computations = inst->called_computations();
+    std::vector<HloInstruction*> comps;
+    comps.reserve(called_computations.size() + 1);
+    comps.push_back(inst);
+    for (HloComputation* c : called_computations) {
+      comps.push_back(c->root_instruction());
+    }
+    return comps;
+  } else if (inst->opcode() == HloOpcode::kCustomCall) {
+    if (sharding_helper_ && sharding_helper_->IsCustomCallShardable(inst)) {
+      return sharding_helper_->GetRelatedInstructions(inst);
+    } else {
+      return std::vector<HloInstruction*>{};
+    }
+  } else if (inst->opcode() == HloOpcode::kCall) {
+    HloComputation* callee = inst->called_computations().front();
+    return std::vector<HloInstruction*>{inst, callee->root_instruction()};
+  } else if (inst->opcode() == HloOpcode::kParameter) {
+    auto it = computation_map.find(inst->parent());
+    if (it != computation_map.end()) {
+      if (it->second->opcode() == HloOpcode::kConditional) {
+        HloInstruction* cond = it->second;
+        for (int64_t i = 1; i < cond->operand_count(); ++i) {
+          if (cond->called_computations()[i - 1] == inst->parent()) {
+            return std::vector<HloInstruction*>{inst, cond->mutable_operand(i)};
+          }
+        }
+      }
+      if (it->second->opcode() == HloOpcode::kCall) {
+        HloInstruction* call = it->second;
+        int64_t operand_index = inst->parameter_number();
+        CHECK_LT(operand_index, call->operand_count());
+        return std::vector<HloInstruction*>{
+            inst, call->mutable_operand(operand_index)};
+      }
+    }
+    return std::vector<HloInstruction*>{};
+  } else {
+    CHECK(false);
+  }
+};
 
 absl::StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
@@ -2856,105 +3216,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   // Association of partitionable embedded computations with their parent
   // instruction.
   ComputationMap computation_map;
-
-  // Instructions that are related through a computation and need to share the
-  // same sharding.
-  auto get_related_instructions = [this,
-                                   &computation_map](HloInstruction* inst) {
-    if (inst->opcode() == HloOpcode::kWhile) {
-      return std::vector<HloInstruction*>{
-          inst, inst->while_body()->root_instruction(),
-          inst->while_body()->parameter_instruction(0),
-          inst->while_condition()->parameter_instruction(0)};
-    } else if (inst->opcode() == HloOpcode::kConditional) {
-      const auto& called_computations = inst->called_computations();
-      std::vector<HloInstruction*> comps;
-      comps.reserve(called_computations.size() + 1);
-      comps.push_back(inst);
-      for (HloComputation* c : called_computations) {
-        comps.push_back(c->root_instruction());
-      }
-      return comps;
-    } else if (inst->opcode() == HloOpcode::kCustomCall) {
-      if (sharding_helper_ && sharding_helper_->IsCustomCallShardable(inst)) {
-        return sharding_helper_->GetRelatedInstructions(inst);
-      } else {
-        return std::vector<HloInstruction*>{};
-      }
-    } else if (inst->opcode() == HloOpcode::kCall) {
-      HloComputation* callee = inst->called_computations().front();
-      return std::vector<HloInstruction*>{inst, callee->root_instruction()};
-    } else if (inst->opcode() == HloOpcode::kParameter) {
-      auto it = computation_map.find(inst->parent());
-      if (it != computation_map.end()) {
-        if (it->second->opcode() == HloOpcode::kConditional) {
-          HloInstruction* cond = it->second;
-          for (int64_t i = 1; i < cond->operand_count(); ++i) {
-            if (cond->called_computations()[i - 1] == inst->parent()) {
-              return std::vector<HloInstruction*>{inst,
-                                                  cond->mutable_operand(i)};
-            }
-          }
-        }
-        if (it->second->opcode() == HloOpcode::kCall) {
-          HloInstruction* call = it->second;
-          int64_t operand_index = inst->parameter_number();
-          CHECK_LT(operand_index, call->operand_count());
-          return std::vector<HloInstruction*>{
-              inst, call->mutable_operand(operand_index)};
-        }
-      }
-      return std::vector<HloInstruction*>{};
-    } else {
-      CHECK(false);
-    }
-  };
-
-  // If instruction is a while, or the root or a parameter of a while body,
-  // then propagate its sharding to the while instruction, to its body root,
-  // and to its condition parameter.
-  std::function<void(HloInstruction*, absl::flat_hash_set<HloInstruction*>*)>
-      maybe_computation_propagation =
-          [&](HloInstruction* instruction,
-              absl::flat_hash_set<HloInstruction*>* changed) {
-            auto propagate_to_instruction = [&](HloInstruction* search_inst) {
-              auto related_instructions = get_related_instructions(search_inst);
-              if (absl::c_count(related_instructions, instruction)) {
-                for (HloInstruction* inst : related_instructions) {
-                  if (!inst->has_sharding() ||
-                      inst->sharding() != instruction->sharding()) {
-                    VLOG(2) << "Add computation sharding: " << inst->name()
-                            << " " << instruction->sharding().ToString();
-                    inst->copy_sharding(instruction);
-                    changed->insert(inst);
-                    maybe_computation_propagation(inst, changed);
-                  }
-                }
-              }
-            };
-
-            if (instruction->opcode() == HloOpcode::kConditional ||
-                instruction->opcode() == HloOpcode::kWhile ||
-                instruction->opcode() == HloOpcode::kCustomCall ||
-                instruction->opcode() == HloOpcode::kCall) {
-              propagate_to_instruction(instruction);
-            }
-
-            if (instruction->opcode() == HloOpcode::kParameter ||
-                instruction->parent()->root_instruction() == instruction) {
-              auto it = computation_map.find(instruction->parent());
-              if (it != computation_map.end()) {
-                propagate_to_instruction(it->second);
-                // Propagate parameter shardings back to conditional's and
-                // call's operands.
-                if (instruction->opcode() == HloOpcode::kParameter &&
-                    (it->second->opcode() == HloOpcode::kConditional ||
-                     it->second->opcode() == HloOpcode::kCall)) {
-                  propagate_to_instruction(instruction);
-                }
-              }
-            }
-          };
+  absl::flat_hash_set<const HloInstruction*> provided_shardings;
 
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
@@ -2978,7 +3240,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         // that user shardings are consistent, because such check is already
         // done by HLO verifier.
         const HloInstruction* sharded_inst = nullptr;
-        auto related_instructions = get_related_instructions(instruction);
+        auto related_instructions =
+            GetRelatedInstructions(instruction, computation_map);
         for (auto inst : related_instructions) {
           if (inst->has_sharding()) {
             sharded_inst = inst;
@@ -3004,7 +3267,6 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   }
   // Collect all pre-sharded instructions as we aren't allowed to modify their
   // sharding.
-  absl::flat_hash_set<const HloInstruction*> provided_shardings;
   for (const HloComputation* computation :
        module->computations(execution_threads)) {
     for (const HloInstruction* inst : computation->instructions()) {
@@ -3017,15 +3279,26 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
+  HloInstruction* entry_root = module->entry_computation()->root_instruction();
   if (!allow_spmd_sharding_propagation_to_output_ &&
-      (!module->entry_computation()->root_instruction()->has_sharding() ||
-       !module->entry_computation()
-            ->root_instruction()
-            ->sharding()
-            .IsUnknown())) {
+      (!entry_root->has_sharding() || !entry_root->sharding().IsUnknown())) {
     // Consider the root instruction of the entry module as one with provided
     // sharding as its sharding have to match with the one expected by the host.
-    provided_shardings.insert(module->entry_computation()->root_instruction());
+    if (entry_root->opcode() == HloOpcode::kWhile) {
+      // We intend to propagate shardings into the while body and condition.
+      // With a copy (reshard), we can still modify the sharding of the while
+      // instruction.
+      HloInstruction* copy = module->entry_computation()->AddInstruction(
+          HloInstruction::CreateUnary(entry_root->shape(), HloOpcode::kCopy,
+                                      entry_root));
+      if (entry_root->has_sharding()) {
+        copy->set_sharding(entry_root->sharding());
+      }
+      module->entry_computation()->set_root_instruction(copy);
+      entry_root = copy;
+      any_changed = true;
+    }
+    provided_shardings.insert(entry_root);
   }
 
   if (!allow_spmd_sharding_propagation_to_parameters_) {
@@ -3051,228 +3324,17 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   // strictly improve the sharding of the graph and it can't be improved
   // indefinitely.
   int64_t iterations = 0;
-
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  auto run_to_fix_point = [&](int64_t aggressiveness,
-                              bool propagate_shard_group) {
-    absl::flat_hash_set<const HloInstruction*>
-        already_inferred_from_shard_group;
-    absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
-    absl::flat_hash_set<const HloInstruction*> already_inferred_from_users;
-    bool changed_last_iter = true;
-    const bool may_merge_partial = is_spmd_ && aggressiveness > 0;
-    while (changed_last_iter) {
-      changed_last_iter = false;
-      int64_t inferred_from_shard_group_counter = 0;
-      int64_t inferred_from_operand_counter = 0;
-      int64_t inferred_from_user_counter = 0;
-      int64_t instruction_counter = 0;
-      int64_t already_sharded_counter = 0;
-      for (const HloComputation* computation :
-           module->computations(execution_threads)) {
-        VLOG(2) << "Consider computation: " << computation->name();
-        std::vector<HloInstruction*> instructions =
-            computation->MakeInstructionPostOrder();
-
-        instruction_counter += instructions.size();
-        already_sharded_counter += absl::c_count_if(
-            instructions,
-            [](const HloInstruction* inst) { return inst->has_sharding(); });
-        auto clear_cache = [&](HloInstruction* hlo,
-                               HloInstruction* hlo_for_users = nullptr) {
-          for (auto operand : hlo->operands()) {
-            already_inferred_from_users.erase(operand);
-          }
-          if (hlo_for_users == nullptr) {
-            hlo_for_users = hlo;
-          }
-          for (auto user : hlo_for_users->users()) {
-            already_inferred_from_operands.erase(user);
-            // If the user has called computations, then the parameter
-            // instructions of these called computations are also removed from
-            // already_inferred_from_operands.
-            for (auto c : user->called_computations()) {
-              for (auto parameter : c->parameter_instructions()) {
-                already_inferred_from_operands.erase(parameter);
-              }
-            }
-          }
-          if (instruction_to_shard_group_id.contains(hlo)) {
-            const int64_t shard_group_id =
-                instruction_to_shard_group_id.at(hlo);
-            const absl::flat_hash_set<HloInstruction*>& shard_group =
-                shard_group_id_to_shard_as_group.contains(shard_group_id)
-                    ? shard_group_id_to_shard_as_group.at(shard_group_id)
-                    : shard_group_id_to_shard_like_group.at(shard_group_id);
-            for (HloInstruction* member : shard_group) {
-              if (member != hlo) {
-                already_inferred_from_shard_group.erase(member);
-              }
-            }
-          }
-        };
-        // 1. Iterate the shard groups to take shardings from instructions of
-        // the same group.
-        if (propagate_shard_group) {
-          for (HloInstruction* instruction : instructions) {
-            if (already_inferred_from_shard_group.contains(instruction)) {
-              continue;
-            }
-            if (!instruction_to_shard_group_id.contains(instruction)) {
-              continue;
-            }
-            const int64_t shard_group_id =
-                instruction_to_shard_group_id.at(instruction);
-            const absl::flat_hash_set<HloInstruction*>& shard_group =
-                shard_group_id_to_shard_as_group.contains(shard_group_id)
-                    ? shard_group_id_to_shard_as_group.at(shard_group_id)
-                    : shard_group_id_to_shard_like_group.at(shard_group_id);
-            if (provided_shardings.contains(instruction)) {
-              if (!may_merge_partial) {
-                continue;
-              }
-              auto it = unspecified_dims.find(instruction);
-              if (it != unspecified_dims.end() &&
-                  InferUnspecifiedDimsFromShardGroup(instruction, it->second,
-                                                     shard_group)) {
-                ++inferred_from_shard_group_counter;
-                VLOG(2) << "Refined partial sharding (shard group): "
-                        << instruction->ToString();
-                clear_cache(instruction);
-                already_inferred_from_shard_group.insert(instruction);
-                changed_last_iter = true;
-              }
-              continue;
-            }
-            already_inferred_from_shard_group.insert(instruction);
-            if (InferShardingFromShardGroup(instruction, aggressiveness,
-                                            shard_group)) {
-              ++inferred_from_shard_group_counter;
-              any_changed = true;
-              VLOG(2) << "Add sharding (shard group): "
-                      << instruction->ToString();
-              absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-              maybe_computation_propagation(instruction, &changed_in_comp_prop);
-              clear_cache(instruction);
-              for (auto hlo : changed_in_comp_prop) {
-                clear_cache(hlo);
-              }
-              changed_last_iter = true;
-            }
-          }
-        }
-        // 2. Iterate the HLO graph in post order taking shardings from
-        // operands.
-        for (HloInstruction* instruction : instructions) {
-          if (already_inferred_from_operands.contains(instruction)) {
-            continue;
-          }
-          if (provided_shardings.contains(instruction)) {
-            if (!may_merge_partial) {
-              continue;
-            }
-            auto it = unspecified_dims.find(instruction);
-            HloInstruction* man_conversion_op_after;
-            if (it != unspecified_dims.end() &&
-                InferUnspecifiedDimsFromOperand(instruction, it->second,
-                                                &man_conversion_op_after)) {
-              ++inferred_from_operand_counter;
-              VLOG(2) << "Refined partial sharding (forward-pass): "
-                      << instruction->ToString();
-              clear_cache(instruction, man_conversion_op_after);
-              already_inferred_from_operands.insert(instruction);
-              changed_last_iter = true;
-            }
-            continue;
-          }
-          already_inferred_from_operands.insert(instruction);
-          if (InferShardingFromOperands(instruction, computation_map,
-                                        aggressiveness, *call_graph,
-                                        execution_threads)) {
-            ++inferred_from_operand_counter;
-            any_changed = true;
-            VLOG(2) << "Add sharding (forward-pass): "
-                    << instruction->ToString();
-            absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-            maybe_computation_propagation(instruction, &changed_in_comp_prop);
-            clear_cache(instruction);
-            for (auto hlo : changed_in_comp_prop) {
-              clear_cache(hlo);
-            }
-            changed_last_iter = true;
-          }
-        }
-        // 3. Iterate the HLO graph in reverse post order taking shardings from
-        // users.
-        for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
-          if ((*it)->IsCustomCall("SPMDFullToShardShape") ||
-              (*it)->IsCustomCall("SPMDShardToFullShape")) {
-            // The manual conversion op is processed together with the sharding
-            // op before it. If the conversion op is removed from cache, the
-            // sharding op should also be removed.
-            if (!already_inferred_from_users.contains(*it)) {
-              already_inferred_from_users.erase((*it)->operand(0));
-            }
-          }
-          if (already_inferred_from_users.contains(*it)) {
-            continue;
-          }
-          if (provided_shardings.contains(*it)) {
-            if (!may_merge_partial) {
-              continue;
-            }
-            auto uit = unspecified_dims.find(*it);
-            HloInstruction* man_conversion_op_after;
-            if (uit != unspecified_dims.end() &&
-                InferUnspecifiedDimsFromUsers(
-                    *it, uit->second, aggressiveness, is_spmd_,
-                    &man_conversion_op_after, *call_graph)) {
-              ++inferred_from_user_counter;
-              VLOG(2) << "Refined partial sharding (backward-pass): "
-                      << (*it)->ToString();
-              clear_cache(*it, man_conversion_op_after);
-              already_inferred_from_users.insert(*it);
-              if (man_conversion_op_after != nullptr) {
-                already_inferred_from_users.insert(man_conversion_op_after);
-              }
-              changed_last_iter = true;
-            }
-            continue;
-          }
-          already_inferred_from_users.insert(*it);
-          if (InferShardingFromUsers(*it, computation_map, aggressiveness,
-                                     is_spmd_, sharding_helper_.get(),
-                                     *call_graph)) {
-            ++inferred_from_user_counter;
-            any_changed = true;
-            VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
-            absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-            maybe_computation_propagation(*it, &changed_in_comp_prop);
-            clear_cache(*it);
-            for (auto hlo : changed_in_comp_prop) {
-              clear_cache(hlo);
-            }
-            changed_last_iter = true;
-          }
-        }
-      }
-      VLOG(1) << "Sharding propagation iteration " << iterations << ";"
-              << "\n  total instructions: " << instruction_counter
-              << "\n  instructions already sharded: " << already_sharded_counter
-              << "\n  shardings inferred from shard group: "
-              << inferred_from_shard_group_counter
-              << "\n  shardings inferred from operands: "
-              << inferred_from_operand_counter
-              << "\n  shardings inferred from users: "
-              << inferred_from_user_counter
-              << "\n  aggressiveness: " << aggressiveness;
-      ++iterations;
-    }
-    return absl::OkStatus();
-  };
   for (int64_t aggressiveness = 0; aggressiveness < 4; ++aggressiveness) {
-    TF_RETURN_IF_ERROR(
-        run_to_fix_point(aggressiveness, /*propagate_shard_group=*/true));
+    TF_ASSIGN_OR_RETURN(
+        bool changed,
+        RunToFixPoint(aggressiveness, /*propagate_shard_group=*/true,
+                      computation_map, provided_shardings, *call_graph, module,
+                      execution_threads, unspecified_dims,
+                      instruction_to_shard_group_id,
+                      shard_group_id_to_shard_as_group,
+                      shard_group_id_to_shard_like_group, iterations));
+    any_changed = any_changed || changed;
   }
 
   // Align the shardings from the same shard_as group so that they will adopt
@@ -3342,8 +3404,17 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     }
   }
-  TF_RETURN_IF_ERROR(
-      run_to_fix_point(/*aggressiveness=*/3, /*propagate_shard_group=*/false));
+  {
+    TF_ASSIGN_OR_RETURN(
+        bool changed,
+        RunToFixPoint(/*aggressiveness=*/3, /*propagate_shard_group=*/true,
+                      computation_map, provided_shardings, *call_graph, module,
+                      execution_threads, unspecified_dims,
+                      instruction_to_shard_group_id,
+                      shard_group_id_to_shard_as_group,
+                      shard_group_id_to_shard_like_group, iterations));
+    any_changed = any_changed || changed;
+  }
 
   // Post-process to remove all "shard-barrier-from" and "shard-barrier-to"
   // custom-calls.

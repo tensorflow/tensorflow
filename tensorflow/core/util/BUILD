@@ -278,7 +278,6 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
 )
@@ -544,8 +543,6 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-        "//tensorflow/core/platform:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
@@ -651,7 +648,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
-    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
+    visibility = default_package_visibility,
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
@@ -1019,10 +1016,7 @@ tf_proto_library(
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
 )
 
 cc_library(

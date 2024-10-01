@@ -82,6 +82,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/python/ifrt",
@@ -273,10 +276,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/python/ifrt",
-        "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:pjrt_dtype",
     ],
 )
 
@@ -616,6 +618,7 @@ cc_library(
     srcs = ["checkpoint_loader.cc"],
     hdrs = ["checkpoint_loader.h"],
     deps = [
+        ":ifrt_loaded_variable_registry",
         ":ifrt_loaded_variable_utils",
         ":ifrt_restore_tensor_registry",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
@@ -631,6 +634,7 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/kernel:kernel_runner_utils",
         "//tensorflow/core/tfrt/mlrt/kernel:shard_restore_util",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

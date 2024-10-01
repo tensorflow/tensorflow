@@ -1,5 +1,4 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=true" -canonicalize | FileCheck %s
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=false" -canonicalize | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops -canonicalize | FileCheck %s
 
 module {
   func.func @tanh(%arg0: f32) -> f32 {
@@ -99,4 +98,20 @@ module {
 // Just check that this lowers successfully. We have integration tests to verify
 // correctness.
 // CHECK-LABEL: @double_to_f8
+// CHECK-NOT: arith.truncf
+
+// -----
+
+module {
+  func.func @bf16_to_f8(%arg0: bf16) -> f8E5M2 {
+    %ret = arith.truncf %arg0 : bf16 to f8E5M2
+    return %ret : f8E5M2
+  }
+}
+
+// Verify that we go through f32/f16. We have integration tests to verify
+// correctness.
+// CHECK-LABEL: @bf16_to_f8
+// CHECK: %[[EXT:.*]] = arith.extf {{.*}} : bf16 to f32
+// CHECK: arith.truncf %[[EXT]] : f32 to f16
 // CHECK-NOT: arith.truncf

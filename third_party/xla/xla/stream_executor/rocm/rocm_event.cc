@@ -17,29 +17,24 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocm_driver.h"
+#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 
 namespace stream_executor {
 namespace gpu {
 
 Event::Status RocmEvent::PollForStatus() {
-  absl::StatusOr<hipError_t> status = QueryEvent(context(), gpu_event());
-  if (!status.ok()) {
-    LOG(ERROR) << "Error polling for event status: "
-               << status.status().message();
-    return Event::Status::kError;
+  ScopedActivateContext activated(context());
+  hipError_t res = wrap::hipEventQuery(gpu_event());
+
+  if (res == hipSuccess) {
+    return Event::Status::kComplete;
+  } else if (res == hipErrorNotReady) {
+    return Event::Status::kPending;
   }
 
-  switch (status.value()) {
-    case hipSuccess:
-      return Event::Status::kComplete;
-    case hipErrorNotReady:
-      return Event::Status::kPending;
-    default:
-      LOG(INFO) << "Error condition returned for event status: "
-                << status.value();
-      return Event::Status::kError;
-  }
+  return Event::Status::kError;
 }
 
 }  // namespace gpu

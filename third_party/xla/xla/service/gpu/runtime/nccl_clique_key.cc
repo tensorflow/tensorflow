@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
+#include "tsl/platform/logging.h"
 
 namespace xla::gpu {
 
@@ -44,7 +45,19 @@ NcclCliqueKey::NcclCliqueKey(
     : devices_(std::move(devices)),
       stream_id_(stream_id),
       stream_kind_(stream_kind),
-      participant_groups_(std::move(participant_groups)) {}
+      participant_groups_(std::move(participant_groups)) {
+  for (std::vector<GlobalDeviceId>& group : participant_groups_) {
+    absl::c_sort(group);
+  }
+  // Compare the groups by their first element.
+  auto compare_groups = [](const std::vector<GlobalDeviceId>& lhs,
+                           const std::vector<GlobalDeviceId>& rhs) {
+    CHECK(!lhs.empty());
+    CHECK(!rhs.empty());
+    return lhs[0] < rhs[0];
+  };
+  absl::c_sort(participant_groups_, compare_groups);
+}
 
 absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;

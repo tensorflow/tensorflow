@@ -23,7 +23,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -50,11 +50,29 @@ class OneDnnContractionRewriter : public HloModulePass {
   static bool ShouldRewriteDot(const HloInstruction* dot_instr,
                                bool before_layout_assignment = false);
   static bool ShouldRewriteConv(const HloInstruction* conv_instr);
+  static bool ShouldRewriteInstr(const HloInstruction* instr,
+                                 bool before_layout_assignment = false) {
+    return ShouldRewriteDot(instr, before_layout_assignment) ||
+           ShouldRewriteConv(instr);
+  }
 
  private:
   int intra_op_parallelism_;
   const tsl::thread::ThreadPool* compile_threadpool_;
 };
+
+#define HANDLE_OP_INTERNAL(internal_callee, contraction, ...)          \
+  switch (contraction->backend_config<BackendConfig>()                 \
+              ->backend_config_oneof_case()) {                         \
+    case BackendConfig::BackendConfigOneofCase::kOnednnMatmulConfig:   \
+      return internal_callee<                                          \
+          BackendConfig::BackendConfigOneofCase::kOnednnMatmulConfig>( \
+          contraction, __VA_ARGS__);                                   \
+    default:                                                           \
+      return internal_callee<                                          \
+          BackendConfig::BackendConfigOneofCase::kOnednnConvConfig>(   \
+          contraction, __VA_ARGS__);                                   \
+  }
 
 }  // namespace cpu
 }  // namespace xla

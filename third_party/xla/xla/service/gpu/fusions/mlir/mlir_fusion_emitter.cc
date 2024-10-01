@@ -96,7 +96,6 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -548,6 +547,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
@@ -590,8 +590,14 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateExpandFloatOpsPass(
-      !device.cuda_compute_capability().IsAtLeastAmpere()));
+
+  // This pass has to run before `ExpandFloatOpsPass`.
+  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(device);
+  if (maybe_convert_fp8.has_value()) {
+    pm.addPass(std::move(*maybe_convert_fp8));
+  }
+
+  pm.addPass(CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(CreateLowerToLLVMPass(is_amd));

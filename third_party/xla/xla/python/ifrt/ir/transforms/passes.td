@@ -203,5 +203,109 @@ Verify that each `!ifrt.array` has sharding attribute that is not of type
   let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
 }
 
+def IfrtPopulateAtomProgramMetadataPass :
+    Pass<"ifrt-populate-atom-program-metadata", "mlir::ModuleOp"> {
+  let summary = "Populate metadata from call site to atom functions";
+  let description = [{
+For every CallOp, this pass
+  1. clones the callee's parent ModuleOp
+  2. adds `ifrt.num_devices` attribute to the callee's parent ModuleOp
+  2. attaches shardings and devices to the inputs and outputs of the callee's
+     main FuncOp
+  3. attaches `tf.aliasing_output` attr to the callee main FuncOp's inputs
+     according to `io_aliases`
+  4. attaches `jax.buffer_donor` attr to the callee main FuncOp's inputs
+     according to `donated_input_indices`
+
+For CallOps with the same callee, a different clone will be created for each
+CallOp, even if the populated metadata are the same. User may want to run
+`ifrt-duplicated-callee-elimination` pass to dedup the clones.
+
+For example, the following code
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0, 1]
+    {io_aliases=[array<i32: 1, 0>]}
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>,
+       !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @callee {
+  func.func private @main(%arg0: tensor<2x2xi32>, %arg1: tensor<4x4xi32>)
+      -> tensor<4x4xi32> {}
+}
+```
+
+will be replaced by
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @new_callee::@main(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @new_callee attributes {ifrt.num_devices = 2} {
+  func.func private @new_callee(
+      %arg0: tensor<2x2xi32> {
+        ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>},
+      %arg1: tensor<4x4xi32> {
+        ifrt.sharding = #ifrt.sharding_param<1x2 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>
+        tf.aliasing_output = 0 : i32})
+      -> (tensor<4x4xi32> {
+        ifrt.sharding = #ifrt.sharding_param<1x2 to [0] on 2>,
+        ifrt.devices = #ifrt<devices[0,1]>})
+      {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtPopulateAtomProgramMetadataPass()";
+}
+
+def IfrtReshardToCopyArraysPass :
+    Pass<"ifrt-reshard-to-copy-arrays", "mlir::ModuleOp"> {
+  let summary = "Replaces `ifrt.Reshard` with `ifrt.CopyArrays`";
+  let description = [{
+Replaces each `ifrt.Reshard` op with an `ifrt.Reshard` op with inputs only
+the arrays that are being resharded, and several `ifrt.CopyArrays` ops to copy
+the arrays that are not being resharded. An `ifrt.CopyArrays` op is added for
+unique output `ifrt.DevicesAttr`.
+
+For example, the following code
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [2,3]>
+!array2 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [2,3]>
+func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
+    attributes {ifrt.function} {
+  %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1)
+      : (!array0, !array1) -> (!array1, !array2)
+  return %0, %1: !array1, !array2
+}
+```
+
+will be replaced by:
+
+```mlir
+func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Reshard(%arg1) : (!array1) -> !array2
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+  return %0, %1: !array1, !array2
+}
+```
+  }];
+
+  let constructor = "CreateIfrtReshardToCopyArraysPass()";
+}
 
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

@@ -33,12 +33,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -98,15 +100,12 @@ nb::object CheckAndCanonicalizeMemoryKind(
 }
 
 int Sharding::SafeNumDevices(nb::handle sharding) {
-  // Pure python shardings are not initialized, so we should not
-  // even be casting if they are not initialized.
-  if (nb::inst_check(sharding) && nb::inst_ready(sharding)) {
-    const auto* cpp_sharding = nb::cast<const jax::Sharding*>(sharding);
+  const jax::Sharding* cpp_sharding;
+  if (nb::try_cast<const jax::Sharding*>(sharding, cpp_sharding)) {
     if (cpp_sharding->num_devices_.has_value()) {
       return (*cpp_sharding->num_devices_);
     }
   }
-
   nb::set device_set = sharding.attr("device_set");
   return device_set.size();
 }
@@ -129,7 +128,7 @@ size_t ShardingHash(nb::handle sharding) {
     return absl::Hash<void*>()(single_device_sharding->device().ptr());
   }
 
-  return xla::nb_hash(sharding);
+  return nb::hash(sharding);
 }
 
 bool ShardingEqual(nb::handle a, nb::handle b) {
@@ -216,10 +215,10 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 }
 
 SingleDeviceSharding::SingleDeviceSharding(
-    xla::nb_class_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
-    nb::object memory_kind)
+    xla::nb_class_ptr<xla::PyClient> client,
+    tsl::RCReference<xla::ifrt::DeviceList> device_list, nb::object memory_kind)
     : Sharding(/*num_devices=*/1),
-      device_(client->GetPyDevice(device_list.front())),
+      device_(client->GetPyDevice(device_list->devices().front())),
       memory_kind_(std::move(memory_kind)),
       internal_device_list_(xla::make_nb_class<PyDeviceList>(
           std::move(client), std::move(device_list))) {

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -87,6 +88,18 @@ class HostOffloaderTest : public HloTestBase {
     return false;
   }
 };
+
+absl::flat_hash_set<const HloInstruction*>
+getInstructionsWithOpcodeFromComputation(const HloComputation* computation,
+                                         HloOpcode target_opcode) {
+  absl::flat_hash_set<const HloInstruction*> instructions;
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (instruction->opcode() == target_opcode) {
+      instructions.emplace(instruction);
+    }
+  }
+  return instructions;
+}
 
 TEST_F(HostOffloaderTest, BasicDusDs) {
   const std::string& hlo_string = R"(
@@ -1759,7 +1772,7 @@ ENTRY main {
           {2}),
       Layout::kHostMemorySpace);
 
-  // Now, check the producing while for the following pattern:
+  // Now, check the producing while body for the following pattern:
   //    param      param
   //      |          |
   //     gte  _...  gte  _...
@@ -1833,35 +1846,325 @@ ENTRY main {
                             Layout::kDefaultMemorySpace);
   }
 
-  // Now, check the consuming while for the following pattern:
+  // Now, check the consuming while body for the following pattern:
   //  param
   //  |   |
   // gte gte
   //  |   |
   //  ds  ds
   {
-    // Since we do not do anything meaningful with the result of the
-    // dynamic-slices, there is no easy way to access them from the root.
-    // Instead, search from the parameter and find all dynamic-slices.
-    EXPECT_EQ(consuming_while->while_body()->parameter_instructions().size(),
-              1);
-    const HloInstruction* param =
-        consuming_while->while_body()->parameter_instruction(0);
-    absl::flat_hash_set<const HloInstruction*> dynamic_slices;
-    std::stack<const HloInstruction*> stack;
-    stack.emplace(param);
-    while (!stack.empty()) {
-      const HloInstruction* current = stack.top();
-      stack.pop();
-      if (current->opcode() == HloOpcode::kDynamicSlice) {
-        dynamic_slices.emplace(current);
-        continue;
-      }
-      // Add all users.
-      for (const HloInstruction* user : current->users()) {
-        stack.emplace(user);
-      }
+    const absl::flat_hash_set<const HloInstruction*> dynamic_slices =
+        getInstructionsWithOpcodeFromComputation(consuming_while->while_body(),
+                                                 HloOpcode::kDynamicSlice);
+    // There should only be two dynamic-slices.
+    ASSERT_EQ(dynamic_slices.size(), 2);
+    for (const HloInstruction* dynamic_slice : dynamic_slices) {
+      const HloInstruction* get_tuple_element;
+      const HloInstruction* parameter;
+      ASSERT_THAT(
+          dynamic_slice,
+          GmockMatch(m::DynamicSlice(
+              m::GetTupleElement(&get_tuple_element, m::Parameter(&parameter)),
+              m::Op(), m::Op(), m::Op(), m::Op(), m::Op())));
+
+      // Check that the memory spaces were properly set.
+      // HOST:
+      //  parameter subshape 1
+      //  parameter subshape 2
+      //  get_tuple_element
+      // DEVICE:
+      //  dynamic_slice
+      TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {1}),
+                              Layout::kHostMemorySpace);
+      TestShapeHasMemorySpace(ShapeUtil::GetSubshape(parameter->shape(), {2}),
+                              Layout::kHostMemorySpace);
+      TestShapeHasMemorySpace(get_tuple_element->shape(),
+                              Layout::kHostMemorySpace);
+      TestShapeHasMemorySpace(dynamic_slice->shape(),
+                              Layout::kDefaultMemorySpace);
     }
+  }
+
+  // Finally, ensure that all annotations have been removed.
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, LlmActivationSourceIsAllocateBuffer) {
+  const std::string& hlo_string = R"(
+HloModule llm_while
+
+producing_while_condition {
+  producing_condition_param = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) parameter(0)
+  producing_condition_current_iteration_index = s32[] get-tuple-element(producing_condition_param), index=0
+  producing_condition_iteration_count = s32[] constant(96)
+  ROOT producing_condition_result = pred[] compare(producing_condition_current_iteration_index, producing_condition_iteration_count), direction=LT
+}
+
+consuming_while_condition {
+  consuming_condition_param = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) parameter(0)
+  consuming_condition_current_iteration_index = s32[] get-tuple-element(consuming_condition_param), index=0
+  consuming_condition_iteration_count = s32[] constant(96)
+  ROOT consuming_condition_result = pred[] compare(consuming_condition_current_iteration_index, consuming_condition_iteration_count), direction=LT
+}
+
+producing_while_body {
+  input_tuple.0 = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) parameter(0)
+  current_iteration_index.0 = s32[] get-tuple-element(input_tuple.0), index=0
+  data_0.0 = f32[96,8,6,2048,2048] get-tuple-element(input_tuple.0), index=1
+  data_1.0 = f32[96,8,6,2048,1] get-tuple-element(input_tuple.0), index=2
+  constant_0.0 = s32[] constant(0)
+  constant_1.0 = s32[] constant(1)
+  constant_96 = s32[] constant(96)
+
+  /* Create dummy data used in DUS */
+  slice_data_0 = f32[1,8,6,2048,2048]  constant({...})
+  slice_data_1 = f32[1,8,6,2048,1]  constant({...})
+
+  /* Build DUS index */
+  compare_result.0 = pred[] compare(current_iteration_index.0, constant_0.0), direction=LT
+  add_result = s32[] add(current_iteration_index.0, constant_96)
+  select_result.0 = s32[] select(compare_result.0, add_result, current_iteration_index.0)
+
+  /* Annotate DUS for offload */
+  custom_call_0.0 = f32[1,8,6,2048,2048] custom-call(slice_data_0), custom_call_target="MoveToHost"
+  custom_call_1.0 = f32[1,8,6,2048,1] custom-call(slice_data_1), custom_call_target="MoveToHost"
+
+  dynamic_update_slice_0 = f32[96,8,6,2048,2048] dynamic-update-slice(data_0.0, custom_call_0.0, select_result.0, constant_0.0, constant_0.0, constant_0.0, constant_0.0)
+  dynamic_update_slice_1 = f32[96,8,6,2048,1] dynamic-update-slice(data_1.0, custom_call_1.0, select_result.0, constant_0.0, constant_0.0, constant_0.0, constant_0.0)
+
+  /* Increment iteration index */
+  incremented_index.0 = s32[] add(current_iteration_index.0, constant_1.0)
+  ROOT tuple_result.0 = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(incremented_index.0, dynamic_update_slice_0, dynamic_update_slice_1)
+}
+
+consuming_while_body {
+  input_tuple.1 = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) parameter(0)
+  current_iteration_index.1 = s32[] get-tuple-element(input_tuple.1), index=0
+  data_0.1 = f32[96,8,6,2048,2048] get-tuple-element(input_tuple.1), index=1
+  data_1.1 = f32[96,8,6,2048,1] get-tuple-element(input_tuple.1), index=2
+  constant_0.1 = s32[] constant(0)
+  constant_1.1 = s32[] constant(1)
+  constant_95 = s32[] constant(95)
+  constant_191 = s32[] constant(191)
+
+  /* Build DS index */
+  subtract_0 = s32[] subtract(constant_95, current_iteration_index.1)
+  compare_result.1 = pred[] compare(subtract_0, constant_0.1), direction=LT
+  subtract_1 = s32[] subtract(constant_191, current_iteration_index.1)
+  select_result.1 = s32[] select(compare_result.1, subtract_1, subtract_0)
+
+  dynamic_slice_0 = f32[1,8,6,2048,2048] dynamic-slice(data_0.1, select_result.1, constant_0.1, constant_0.1, constant_0.1, constant_0.1), dynamic_slice_sizes={1,8,6,2048,2048}
+  dynamic_slice_1 = f32[1,8,6,2048,1] dynamic-slice(data_1.1, select_result.1, constant_0.1, constant_0.1, constant_0.1, constant_0.1), dynamic_slice_sizes={1,8,6,2048,1}
+
+  /* Annotate DS for offload */
+  custom_call_0.1 = f32[1,8,6,2048,2048] custom-call(dynamic_slice_0), custom_call_target="MoveToDevice"
+  custom_call_1.1 = f32[1,8,6,2048,1] custom-call(dynamic_slice_1), custom_call_target="MoveToDevice"
+
+  /* Do some work with the dynamic slice outputs. */
+  tanh_0 = f32[1,8,6,2048,2048] tanh(custom_call_0.1)
+  tanh_1 = f32[1,8,6,2048,1] tanh(custom_call_1.1)
+
+  /* Increment iteration index */
+  incremented_index.1 = s32[] add(current_iteration_index.1, constant_1.1)
+  ROOT tuple_result.1 = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(incremented_index.1, data_0.1, data_1.1)
+}
+
+ENTRY main {
+  entry_param_0 = f32[] parameter(0)
+  allocate_buffer_0 = f32[96,8,6,2048,2048] custom-call(), custom_call_target="AllocateBuffer"
+  allocate_buffer_1 = f32[96,8,6,2048,1] custom-call(), custom_call_target="AllocateBuffer"
+  constant_s32_0 = s32[] constant(0)
+  tuple_for_producing_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(constant_s32_0, allocate_buffer_0, allocate_buffer_1)
+  producing_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_producing_while), condition=producing_while_condition, body=producing_while_body
+  while_output_1 = f32[96,8,6,2048,2048] get-tuple-element(producing_while), index=1
+  while_output_2 = f32[96,8,6,2048,1] get-tuple-element(producing_while), index=2
+  tuple_for_consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) tuple(constant_s32_0, while_output_1, while_output_2)
+  consuming_while = (s32[], f32[96,8,6,2048,2048], f32[96,8,6,2048,1]) while(tuple_for_consuming_while), condition=consuming_while_condition, body=consuming_while_body
+  ROOT result = s32[] get-tuple-element(consuming_while), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // First, look for the pattern:
+  //  producing_while
+  //       /  \
+  //     gte  gte  constant
+  //       \  /   /
+  //        \/   /
+  //        tuple
+  //         |
+  //  consuming_while
+  //         |
+  //        gte
+  HloInstruction* consuming_while;
+  HloInstruction* producing_while_0;
+  HloInstruction* producing_while_1;
+  {
+    HloInstruction* tuple;
+    HloInstruction* gte_0;
+    HloInstruction* gte_1;
+    HloInstruction* gte_2;
+    ASSERT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(
+            &gte_2,
+            m::While(
+                &consuming_while,
+                m::Tuple(
+                    &tuple, m::Constant(),
+                    m::GetTupleElement(&gte_0, m::While(&producing_while_0)),
+                    m::GetTupleElement(&gte_1, m::While(&producing_while_1)))),
+            0)));
+    ASSERT_EQ(producing_while_0, producing_while_1);
+
+    // Check that the memory spaces were properly set.
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(
+        ShapeUtil::GetSubshape(consuming_while->shape(), {1}),
+        Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(
+        ShapeUtil::GetSubshape(consuming_while->shape(), {2}),
+        Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(
+        ShapeUtil::GetSubshape(producing_while_0->shape(), {1}),
+        Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(
+        ShapeUtil::GetSubshape(producing_while_0->shape(), {2}),
+        Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
+                            Layout::kHostMemorySpace);
+  }
+
+  // Now, look for the AllocateBuffers leading into the producing while.
+  {
+    HloInstruction* allocate_buffer_0;
+    HloInstruction* allocate_buffer_1;
+    ASSERT_THAT(producing_while_0,
+                GmockMatch(m::While(m::Tuple(
+                    m::Constant(),
+                    m::CustomCall(&allocate_buffer_0, {"AllocateBuffer"}),
+                    m::CustomCall(&allocate_buffer_1, {"AllocateBuffer"})))));
+    // Check that the memory spaces were properly set.
+    ASSERT_TRUE(allocate_buffer_0->shape().has_layout());
+    EXPECT_EQ(allocate_buffer_0->shape().layout().memory_space(),
+              Layout::kHostMemorySpace);
+    ASSERT_TRUE(allocate_buffer_1->shape().has_layout());
+    EXPECT_EQ(allocate_buffer_1->shape().layout().memory_space(),
+              Layout::kHostMemorySpace);
+  }
+
+  // There are 4 computations to look at:
+  //  - Consuming while's body
+  //  - Consuming while's condition
+  //  - Producing while's body
+  //  - Producing while's condition
+
+  // For the condition computations, just check that the parameters have the
+  // right memory space.
+  TestShapeHasMemorySpace(
+      ShapeUtil::GetSubshape(
+          consuming_while->while_condition()->parameter_instruction(0)->shape(),
+          {1}),
+      Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(
+      ShapeUtil::GetSubshape(
+          consuming_while->while_condition()->parameter_instruction(0)->shape(),
+          {2}),
+      Layout::kHostMemorySpace);
+
+  // Now, check the producing while body for the following pattern:
+  //    param      param
+  //      |          |
+  //     gte  _...  gte  _...
+  //     |   /      |   /
+  //     |  /       |  /
+  //     | /        | /
+  //     dus       dus
+  //      |       /
+  //      |      /
+  //  _   |     /
+  //   \  |    /
+  //    \ |   /
+  //     \|  /
+  //    tuple
+  {
+    HloInstruction* tuple;
+    HloInstruction* dynamic_update_slice_0;
+    HloInstruction* dynamic_update_slice_1;
+    HloInstruction* dynamic_update_slice_second_param_0;
+    HloInstruction* dynamic_update_slice_second_param_1;
+    HloInstruction* gte_0;
+    HloInstruction* gte_1;
+    HloInstruction* param_0;
+    HloInstruction* param_1;
+    ASSERT_THAT(producing_while_0->while_body()->root_instruction(),
+                GmockMatch(m::Tuple(
+                    &tuple, m::Op(),
+                    m::DynamicUpdateSlice(
+                        &dynamic_update_slice_0,
+                        m::GetTupleElement(&gte_0, m::Parameter(&param_0)),
+                        m::Op(&dynamic_update_slice_second_param_0), m::Op(),
+                        m::Op(), m::Op(), m::Op(), m::Op()),
+                    m::DynamicUpdateSlice(
+                        &dynamic_update_slice_1,
+                        m::GetTupleElement(&gte_1, m::Parameter(&param_1)),
+                        m::Op(&dynamic_update_slice_second_param_1), m::Op(),
+                        m::Op(), m::Op(), m::Op(), m::Op()))));
+    EXPECT_EQ(param_0, param_1);
+
+    // Check that the memory spaces were properly set.
+    // HOST:
+    //  tuple subshape 1
+    //  tuple subshape 2
+    //  dynamic_update_slice_0 shape
+    //  dynamic_update_slice_1 shape
+    //  gte_0 shape
+    //  gte_1 shape
+    //  param_0 subshape 1
+    //  param_0 subshape 2
+    // DEVICE:
+    //  dynamic_update_slice_second_param_0
+    //  dynamic_update_slice_second_param_1
+
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {2}),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(dynamic_update_slice_0->shape(),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(dynamic_update_slice_1->shape(),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_0->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(gte_1->shape(), Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {1}),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(ShapeUtil::GetSubshape(param_0->shape(), {2}),
+                            Layout::kHostMemorySpace);
+    TestShapeHasMemorySpace(dynamic_update_slice_second_param_0->shape(),
+                            Layout::kDefaultMemorySpace);
+    TestShapeHasMemorySpace(dynamic_update_slice_second_param_1->shape(),
+                            Layout::kDefaultMemorySpace);
+  }
+
+  // Now, check the consuming while body for the following pattern:
+  //  param
+  //  |   |
+  // gte gte
+  //  |   |
+  //  ds  ds
+  {
+    const absl::flat_hash_set<const HloInstruction*> dynamic_slices =
+        getInstructionsWithOpcodeFromComputation(consuming_while->while_body(),
+                                                 HloOpcode::kDynamicSlice);
     // There should only be two dynamic-slices.
     ASSERT_EQ(dynamic_slices.size(), 2);
     for (const HloInstruction* dynamic_slice : dynamic_slices) {
@@ -2088,7 +2391,7 @@ ENTRY main {
           {2}),
       Layout::kHostMemorySpace);
 
-  // Now, check the producing while for the following pattern:
+  // Now, check the producing while body for the following pattern:
   //    param      param
   //      |          |
   //     gte  _...  gte  _...
@@ -2162,35 +2465,16 @@ ENTRY main {
                             Layout::kDefaultMemorySpace);
   }
 
-  // Now, check the consuming while for the following pattern:
+  // Now, check the consuming while body for the following pattern:
   //  param
   //  |   |
   // gte gte
   //  |   |
   //  ds  ds
   {
-    // Since we do not do anything meaningful with the result of the
-    // dynamic-slices, there is no easy way to access them from the root.
-    // Instead, search from the parameter and find all dynamic-slices.
-    EXPECT_EQ(consuming_while->while_body()->parameter_instructions().size(),
-              1);
-    const HloInstruction* param =
-        consuming_while->while_body()->parameter_instruction(0);
-    absl::flat_hash_set<const HloInstruction*> dynamic_slices;
-    std::stack<const HloInstruction*> stack;
-    stack.emplace(param);
-    while (!stack.empty()) {
-      const HloInstruction* current = stack.top();
-      stack.pop();
-      if (current->opcode() == HloOpcode::kDynamicSlice) {
-        dynamic_slices.emplace(current);
-        continue;
-      }
-      // Add all users.
-      for (const HloInstruction* user : current->users()) {
-        stack.emplace(user);
-      }
-    }
+    const absl::flat_hash_set<const HloInstruction*> dynamic_slices =
+        getInstructionsWithOpcodeFromComputation(consuming_while->while_body(),
+                                                 HloOpcode::kDynamicSlice);
     // There should only be two dynamic-slices.
     ASSERT_EQ(dynamic_slices.size(), 2);
     for (const HloInstruction* dynamic_slice : dynamic_slices) {
@@ -2410,7 +2694,7 @@ ENTRY main {
           {1}),
       Layout::kHostMemorySpace);
 
-  // Now, check the producing while for the following pattern:
+  // Now, check the producing while body for the following pattern:
   //    param
   //      |
   //     gte  _
@@ -2446,35 +2730,16 @@ ENTRY main {
                             Layout::kDefaultMemorySpace);
   }
 
-  // Now, check the consuming while for the following pattern:
+  // Now, check the consuming while body for the following pattern:
   //  param
   //    |
   //   gte
   //    |
   //    ds
   {
-    // Since we do not do anything meaningful with the result of the
-    // dynamic-slices, there is no easy way to access them from the root.
-    // Instead, search from the parameter and find all dynamic-slices.
-    EXPECT_EQ(consuming_while->while_body()->parameter_instructions().size(),
-              1);
-    const HloInstruction* param =
-        consuming_while->while_body()->parameter_instruction(0);
-    absl::flat_hash_set<const HloInstruction*> dynamic_slices;
-    std::stack<const HloInstruction*> stack;
-    stack.emplace(param);
-    while (!stack.empty()) {
-      const HloInstruction* current = stack.top();
-      stack.pop();
-      if (current->opcode() == HloOpcode::kDynamicSlice) {
-        dynamic_slices.emplace(current);
-        continue;
-      }
-      // Add all users.
-      for (const HloInstruction* user : current->users()) {
-        stack.emplace(user);
-      }
-    }
+    const absl::flat_hash_set<const HloInstruction*> dynamic_slices =
+        getInstructionsWithOpcodeFromComputation(consuming_while->while_body(),
+                                                 HloOpcode::kDynamicSlice);
     // There should only be one dynamic-slice.
     ASSERT_EQ(dynamic_slices.size(), 1);
     const HloInstruction* dynamic_slice = *dynamic_slices.begin();
@@ -3732,6 +3997,123 @@ ENTRY %main {
   TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, OffloadPassedToEntryComputationRoot) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={()->(s32[]{:T(128)})}
+
+ENTRY %main {
+  c = s32[] constant(1)
+  custom-call.331 = s32[]{:T(128)} custom-call(c), custom_call_target="MoveToHost"
+  custom-call.332 = s32[]{:T(128)} custom-call(custom-call.331), custom_call_target="MoveToDevice"
+  ROOT tuple = (s32[]{:T(128)}) tuple(custom-call.332)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << "module after: " << module->ToString();
+}
+
+// Test to ensure that HostOffloader can handle the case in which a
+// MoveToHost(broadcast(...)) is shared between two
+// DynamicUpdateSlice(MoveToHost(...)) in a while loop body.
+TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
+  const absl::string_view hlo_string = R"(
+    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])} 
+    
+    while_condition {
+      condition_param = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
+      condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=5
+      condition_iteration_count = s32[] constant(16)
+      ROOT condition_result = pred[] compare(condition_current_iteration_index, condition_iteration_count), direction=LT
+    }
+
+    while_body {
+      while_body_input_tuple = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
+      host_tensor_1 = f32[8,1,128,128] get-tuple-element(while_body_input_tuple), index=0
+      host_tensor_2 = f32[8,1,128,128] get-tuple-element(while_body_input_tuple), index=1
+      update_1 = f32[1,1,128,128] get-tuple-element(while_body_input_tuple), index=2
+      update_2 = f32[1,1,128,128] get-tuple-element(while_body_input_tuple), index=3
+      offset_dus = s32[] get-tuple-element(while_body_input_tuple), index=4
+      while_body_num_iter = s32[] get-tuple-element(while_body_input_tuple), index=5
+      mth_tensor_1 = f32[8,1,128,128] custom-call(host_tensor_1), custom_call_target="MoveToHost"
+      mth_tensor_2 = f32[8,1,128,128] custom-call(host_tensor_2), custom_call_target="MoveToHost"
+      constant_zero = s32[] constant(0)
+      host_dus_1 = f32[8,1,128,128]{3,2,1,0:T(8,128)} dynamic-update-slice(mth_tensor_1, update_1, offset_dus, constant_zero, constant_zero, constant_zero)
+      host_dus_2 = f32[8,1,128,128]{3,2,1,0:T(8,128)} dynamic-update-slice(mth_tensor_2, update_2, offset_dus, constant_zero, constant_zero, constant_zero)
+      ROOT while_output_tuple = tuple(host_dus_1,host_dus_2, update_1, update_2, offset_dus, while_body_num_iter)
+    }
+
+    ENTRY main {
+      offset = s32[] parameter(0)
+      update = f32[1,1,128,128] parameter(1)
+      update2 = f32[1,1,128,128] parameter(2)
+      constant = f32[] constant(1.0)
+      /*Shared broadcast between two MoveToHost inside while body.*/
+      broadcast = f32[8,1,128,128] broadcast(constant)
+      shared_host_memory = f32[8,1,128,128] custom-call(broadcast), custom_call_target="MoveToHost"
+      tuple_for_while = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) tuple(shared_host_memory, shared_host_memory, update, update2, offset, offset)
+      ROOT while = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) while(tuple_for_while), condition=while_condition, body=while_body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+}
+
+// Test to ensure HostOffloader removes redundant copies back to host when
+// the output is a non-tuple.
+TEST_F(HostOffloaderTest, RemoveRedundantCopiesBackToHostOutputIsNonTuple) {
+  const absl::string_view hlo_string = R"(
+    HloModule jit_main, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }, entry_computation_layout={(f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)S(5)})->(f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)S(5)})}, allow_spmd_sharding_propagation_to_parameters={false,false}, allow_spmd_sharding_propagation_to_output={false,false}
+
+    %host_fn.6 (Arg_0.7: f32[25769803776]) -> f32[25769803776] {
+      %Arg_0.7 = f32[25769803776]{0} parameter(0), metadata={op_name="jit(main)/jit(main)/pjit"}
+      %constant.8 = f32[] constant(1)
+      %broadcast.9 = f32[25769803776]{0} broadcast(f32[] %constant.8), dimensions={}, metadata={op_name="jit(main)/jit(main)/jit(host_fn)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1448}
+      ROOT %add.10 = f32[25769803776]{0} add(f32[25769803776]{0} %Arg_0.7, f32[25769803776]{0} %broadcast.9), frontend_attributes={_xla_compute_type="host"}, metadata={op_name="jit(main)/jit(main)/jit(host_fn)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1448}
+    }, execution_thread="host"
+
+    ENTRY %main.17 (Arg_0.1: f32[1048576], Arg_1.2: f32[25769803776]) -> (f32[1048576], f32[25769803776]) {
+      %Arg_0.1 = f32[1048576]{0:T(1024)} parameter(0), sharding={replicated}, metadata={op_name="a"}
+      %constant.3 = f32[]{:T(128)} constant(1)
+      %broadcast.4 = f32[1048576]{0:T(1024)} broadcast(f32[]{:T(128)} %constant.3), dimensions={}, metadata={op_name="jit(main)/jit(main)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1454}
+      %add.5 = f32[1048576]{0:T(1024)} add(f32[1048576]{0:T(1024)} %Arg_0.1, f32[1048576]{0:T(1024)} %broadcast.4), metadata={op_name="jit(main)/jit(main)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1454}
+      %custom-call = f32[1048576]{0:T(1024)} custom-call(f32[1048576]{0:T(1024)} %add.5), custom_call_target="MoveToDevice"
+      %Arg_1.2 = f32[25769803776]{0:T(1024)} parameter(1), sharding={replicated}, metadata={op_name="b"}
+      %host-async-start = ((f32[25769803776]{0:T(1024)}), f32[25769803776]{0:T(1024)}, u32[]{:T(128)}) custom-call-start(f32[25769803776]{0:T(1024)} %Arg_1.2), async_execution_thread="host", custom_call_target="HostExecute", called_computations={%host_fn.6}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+      %host-async-done = f32[25769803776]{0:T(1024)} custom-call-done(((f32[25769803776]{0:T(1024)}), f32[25769803776]{0:T(1024)}, u32[]{:T(128)}) %host-async-start), backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+      %redundant-move-to-host = f32[25769803776]{0:T(1024)} custom-call(f32[25769803776]{0:T(1024)} %host-async-done), custom_call_target="MoveToHost"
+      ROOT %output_tuple = (f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)}) tuple(f32[1048576]{0:T(1024)} %custom-call, f32[25769803776]{0:T(1024)} %redundant-move-to-host), sharding={{replicated}, {replicated}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  HloInstruction* async_start =
+      FindInstruction(module.get(), "host-async-start");
+  ASSERT_NE(async_start, nullptr);
+  // Input is on host.
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(async_start->shape(), {0, 0}),
+                          Layout::kHostMemorySpace);
+  // Output is on host.
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(async_start->shape(), {1}),
+                          Layout::kHostMemorySpace);
+  HloInstruction* async_done = FindInstruction(module.get(), "host-async-done");
+  ASSERT_NE(async_done, nullptr);
+  TestShapeHasMemorySpace(async_done->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* output_tuple = FindInstruction(module.get(), "output_tuple");
+  ASSERT_NE(output_tuple, nullptr);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(output_tuple->shape(), {1}),
+                          Layout::kHostMemorySpace);
+}
 }  // namespace
 
 }  // namespace xla

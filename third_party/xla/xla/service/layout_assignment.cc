@@ -85,7 +85,7 @@ BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
                                                bool mandatory, bool dfs,
                                                int64_t priority)
     : LayoutConstraint(mandatory, dfs, priority), buffer_(&buffer) {
-  CHECK(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()).ok());
+  CHECK_OK(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
   layout_.push_back(layout);
 }
 

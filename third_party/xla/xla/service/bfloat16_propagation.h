@@ -21,11 +21,18 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -79,6 +86,9 @@ class BFloat16Propagation : public HloModulePass {
   // Determines whether we should consider changing the precision of the given
   // instruction in the forward pass.
   virtual bool InstructionIsCandidateForBF16Output(HloInstruction* hlo);
+
+ protected:
+  const FloatSupport* bfloat16_support_;
 
  private:
   // ***************************
@@ -220,7 +230,6 @@ class BFloat16Propagation : public HloModulePass {
   // Whether the last processed HLO module has been changed by this pass.
   bool changed_ = false;
 
-  const FloatSupport* bfloat16_support_;
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 };
 

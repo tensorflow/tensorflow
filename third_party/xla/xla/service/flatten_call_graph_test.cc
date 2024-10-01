@@ -15,17 +15,23 @@ limitations under the License.
 
 #include "xla/service/flatten_call_graph.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/status/statusor.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -252,6 +258,56 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
 
   const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
   EXPECT_EQ(1, sub_node.caller_callsites().size());
+}
+
+TEST_F(FlattenCallGraphTest, AsyncCall) {
+  std::string hlo_string = R"(
+HloModule AsyncCall
+
+%called_computation (param_0: f32[4096], param_1: f32[4096]) -> f32[4096] {
+  %param_0 = f32[4096]{0} parameter(0)
+  %param_1 = f32[4096]{0} parameter(1)
+  ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %param_0, f32[4096]{0} %param_1)
+}
+
+ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+  %a = f32[4096]{0} parameter(0)
+  %b = f32[4096]{0} parameter(1)
+  %call-start.0 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
+  %call-done.0 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %call-start.0)
+  %call-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %call-done.0, f32[4096]{0} %b), to_apply=%called_computation
+  %call-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %call-start.1)
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %a, f32[4096]{0} %call-done.1)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  EXPECT_TRUE(result);
+
+  // We expect the entry computation, two async_wrapped computations and two
+  // called_computation computations.
+  EXPECT_EQ(5, module->computation_count());
+
+  EXPECT_EQ(FindInstruction(module.get(), "call-start.0")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "call-done.0")
+                ->async_wrapped_computation());
+  EXPECT_EQ(FindInstruction(module.get(), "call-start.1")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "call-done.1")
+                ->async_wrapped_computation());
+  EXPECT_NE(FindInstruction(module.get(), "call-start.0")
+                ->async_wrapped_computation(),
+            FindInstruction(module.get(), "call-start.1")
+                ->async_wrapped_computation());
+  EXPECT_NE(FindInstruction(module.get(), "call-start.0")
+                ->async_wrapped_instruction()
+                ->called_computations()[0],
+            FindInstruction(module.get(), "call-start.1")
+                ->async_wrapped_instruction()
+                ->called_computations()[0]);
 }
 
 }  // namespace

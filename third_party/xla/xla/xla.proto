@@ -112,10 +112,18 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
-  // go/keep-sorted start
+  // go/keep-sorted start newline_separated=yes skip_lines=1
 
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
+
+  // Experimentally disables binary libraries in GPU compiler passes.
+  bool xla_gpu_experimental_disable_binary_libraries = 329;
+
+  // Gates the experimental feature coupling the Triton Softmax pattern matcher
+  // with priority fusion.
+  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
@@ -663,10 +671,11 @@ message DebugOptions {
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
-  bool xla_gpu_enable_triton_softmax_fusion = 220;
+  reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
 
   bool xla_gpu_enable_priority_fusion = 221;
-  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
+
+  reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
@@ -731,6 +740,9 @@ message DebugOptions {
     WHILE_LOOP_UNROLLING_DOUBLE_BUFFER = 1;
     // Enables full loop unrolling using the same strategy as `DOUBLE_BUFFER`.
     WHILE_LOOP_UNROLLING_FULL_UNROLL = 2;
+    // Enables loop unrolling when we have at least one collective within a
+    // while loop.
+    WHILE_LOOP_UNROLLING_AUTO_UNROLL = 3;
   }
 
   // Determine the while loop unrolling scheme.
@@ -937,9 +949,6 @@ message DebugOptions {
   // If enabled, uses the libnvjitlink library for PTX compilation and linking
   bool xla_gpu_enable_libnvjitlink = 319;
 
-  // If enabled, generates triton gemm kernels for int4 inputs.
-  bool xla_gpu_enable_triton_gemm_int4 = 320;
-
   // If true, XLA will wrap `dot` operations into async computations in an
   // effort to parallelize matrix operations.
   bool xla_gpu_async_dot = 321;
@@ -956,7 +965,28 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Next id: 325
+  // Enables strict PGLE checking. If an FDO profile is specified and latency
+  // hiding scheduler encounters missing instructions in the profile
+  // compilation will halt.
+  bool xla_gpu_enable_pgle_accuracy_checker = 326;
+
+  // Timeouts for RendezvousSingle stuck warning and termination.
+  int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
+  int32 xla_gpu_executable_terminate_timeout_seconds = 328;
+
+  // Whether to ignore channel ids(including verifier channel id checks)
+  // for collectives in the given HLO.
+  bool xla_experimental_ignore_channel_id = 330;
+
+  // DotMerger pass threshold size to be used in MB.
+  int32 xla_gpu_dot_merger_threshold_mb = 331;
+
+  // If enabled, in the absence of user provided knobs might tune pass
+  // configurations based on the HLO. For example it decides to unroll the while
+  // loop by a factor of two if a collective op is present.
+  bool xla_gpu_enable_heuristic_pass_configuration = 332;
+
+  // Next id: 333
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -972,7 +1002,8 @@ message DebugOptions {
   // xla_gpu_graph_level
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206;
+  // xla_gpu_enable_triton_gemm_int4
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206, 320;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -1111,7 +1142,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 35.
+// Next id: 36.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1145,6 +1176,10 @@ message HloModuleConfigProto {
 
   DebugOptions debug_options = 14;
   DeviceAssignmentProto static_device_assignment = 15;
+  // The original device assignment before being changed by a simulator.
+  // Simulators, like HybridSim, may change the device assignment to a smaller
+  // topology, to make simulation easier.
+  DeviceAssignmentProto pre_simulation_device_assignment = 35;
   bool allow_separate_sharding_programs = 30;
   repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
   bool alias_passthrough_params = 17;

@@ -69,6 +69,14 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
+            ["-gen-enum-decls"],
+            "xla_gpu_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "xla_gpu_enums.cc.inc",
+        ),
+        (
             [
                 "-gen-attrdef-decls",
             ],
@@ -127,7 +135,6 @@ cc_library(
         ":xla_gpu_ops_inc_gen",
         ":xla_gpu_types_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
-        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",

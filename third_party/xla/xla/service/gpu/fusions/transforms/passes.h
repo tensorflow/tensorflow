@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -36,9 +37,12 @@ std::optional<Interval> GetRange(mlir::Value value);
 // determined.
 std::optional<Interval> GetIVRange(mlir::Value iv);
 
-std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
+std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass();
+std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
+    const se::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
+std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
 std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(
     bool is_amd_gpu = false, const std::string& gpu_arch = "6.0");
@@ -47,8 +51,10 @@ std::unique_ptr<mlir::Pass> CreateLowerXlaGpuToScfPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaGpuLoopsToScfPass();
 std::unique_ptr<mlir::Pass> CreateMergePointersToSameSlicePass();
 std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
+std::unique_ptr<mlir::Pass> CreateFuseLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
 std::unique_ptr<mlir::Pass> CreatePropagateSliceIndicesPass();
+std::unique_ptr<mlir::Pass> CreateRewriteReductionsPass();
 std::unique_ptr<mlir::Pass> CreateSimplifyAffinePass();
 std::unique_ptr<mlir::Pass> CreateSimplifyArithPass();
 std::unique_ptr<mlir::Pass> CreateUnswitchLoopsPass();

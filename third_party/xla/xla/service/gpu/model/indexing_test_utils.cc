@@ -348,13 +348,13 @@ absl::Status VerifyExprsAreIdentical(
   std::vector<DimVar> dims;
   dims.reserve(dimension_ranges.size());
   for (const auto& interval : dimension_ranges) {
-    dims.push_back({interval});
+    dims.push_back(DimVar{interval});
   }
 
   std::vector<RangeVar> symbols;
   symbols.reserve(symbol_ranges.size());
   for (const auto& interval : symbol_ranges) {
-    symbols.push_back({interval});
+    symbols.push_back(RangeVar{interval});
   }
 
   IndexingMap map(mlir::AffineMap::get(dimension_ranges.size(),

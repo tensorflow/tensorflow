@@ -149,8 +149,18 @@ class NcclApiStub final : public NcclApi {
     return UnimplementedError();
   }
 
+  absl::Status SendPtrToPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+                             se::Stream* stream) final {
+    return UnimplementedError();
+  }
+
   absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
                     NcclCommHandle, se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+                               se::Stream* stream) final {
     return UnimplementedError();
   }
 
@@ -169,5 +179,7 @@ NcclApi* NcclApi::Default() {
   static auto* nccl_api = new NcclApiStub();
   return nccl_api;
 }
+
+bool NcclApi::HasNcclSupport() { return false; }
 
 }  // namespace xla::gpu

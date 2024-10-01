@@ -56,11 +56,11 @@ xla_cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
+        "//xla/tsl/lib/io:buffered_inputstream",
+        "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/io:buffered_inputstream",
-        "@local_tsl//tsl/lib/io:random_inputstream",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
@@ -328,7 +328,7 @@ cc_library(
         ":hlo_module_loader",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass_pipeline",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -345,9 +345,9 @@ cc_library(
     hdrs = ["hlo_expand.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:batchnorm_expander",
         "//xla/service:cholesky_expander",
-        "//xla/service:hlo_pass_pipeline",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_verifier",
         "//xla/service:rng_bit_generator_expander",
@@ -477,10 +477,12 @@ cc_library(
         "//xla/service:hlo_parser",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_googlesource_code_re2//:re2",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -622,13 +624,13 @@ xla_cc_binary(
     deps = [
         ":run_hlo_module_lib",
         "//xla:debug_options_flags",
+        "//xla/hlo/translate/mhlo_to_hlo:translate",
+        "//xla/hlo/translate/stablehlo_to_hlo:translate",
         "//xla/service:cpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
-        "//xla/translate/mhlo_to_hlo:translate",
-        "//xla/translate/stablehlo_to_hlo:translate",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -684,10 +686,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_dce",
-        "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -851,6 +853,7 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
@@ -862,7 +865,6 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ] + if_google(["@com_google_protobuf//:duration_cc_proto"]),
 )
 
@@ -879,7 +881,7 @@ xla_test(
     ],
     tags = [
         "config-cuda-only",
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":xla_compile_lib",
@@ -894,6 +896,7 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
@@ -901,7 +904,6 @@ xla_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

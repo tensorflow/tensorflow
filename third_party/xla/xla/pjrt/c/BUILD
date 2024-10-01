@@ -17,9 +17,13 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_google",
     "if_macos",
+    "internal_visibility",
 )
 
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
+)
 
 cc_library(
     name = "pjrt_c_api_hdrs",

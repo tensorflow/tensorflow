@@ -46,6 +46,10 @@ namespace xla {
 // sure we inline all functions except for the shmap_body's when using
 // Shardy. When Shardy is disabled, then we have the same behavior as
 // CallInliner.
+//
+// TODO(bartchr): Move the logic in here into the regular XLA `CallInliner`.
+// Shardy is now proven out so we should have the parent `CallInliner` handle
+// this.
 class ShardyCallInliner : public CallInliner {
  public:
   using CallInliner::CallInliner;

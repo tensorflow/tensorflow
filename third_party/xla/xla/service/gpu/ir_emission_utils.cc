@@ -557,17 +557,7 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
   absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
                                              hero.shape().dimensions().end());
   int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
-      permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
-    if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled) ||
-        (dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-         operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-         dimensions.back() * operand_most_minor_dim >=
-             kMinTotalDimensionsToTransposeTiled)) {
-      return TransposeDescription{&hero, dimensions, permutation};
-    }
-  } else if (IsMlirTransposeEmitterEnabled(hero)) {
+  if (IsMlirTransposeEmitterEnabled(hero)) {
     if (permutation.back() == dimensions.size() - 1) {
       operand_most_minor_dim =
           hero.operand(0)->shape().dimensions(dimensions.size() - 2);
@@ -585,6 +575,22 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
                 dimensions.back() >= kMinDimensionToTransposeTiled2 &&
                 operand_most_minor_dim * dimensions.back() >=
                     kMinTotalDimensionsToTransposeTiled)) {
+      return TransposeDescription{&hero, dimensions, permutation};
+    }
+  } else if (permutation == absl::InlinedVector<int64_t, 3>{1, 0} ||
+             permutation == absl::InlinedVector<int64_t, 3>{0, 2, 1} ||
+             permutation == absl::InlinedVector<int64_t, 3>{2, 1, 0}) {
+    // The old emitter needs a normalization to rank 3.
+    if (permutation.size() == 2) {
+      permutation = {0, 2, 1};
+      dimensions.insert(dimensions.begin(), 1);
+    }
+    if ((dimensions.back() >= kMinDimensionToTransposeTiled &&
+         operand_most_minor_dim >= kMinDimensionToTransposeTiled) ||
+        (dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+         operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+         dimensions.back() * operand_most_minor_dim >=
+             kMinTotalDimensionsToTransposeTiled)) {
       return TransposeDescription{&hero, dimensions, permutation};
     }
   }

@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/types.h"

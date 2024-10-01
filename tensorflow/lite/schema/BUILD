@@ -111,9 +111,10 @@ exports_files([
 #     srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
 #     compatible_with = get_compatible_with_portable(),
 # )
-# copybara:uncomment_end_and_comment_begin
+# copybara:uncomment_end(google-only)
+
 cc_library(
-    name = "schema_fbs",
+    name = "schema_fbs",  # copybara:comment_replace name = "schema_fbs_for_oss",
     hdrs = [
         ":schema_generated.h",
         "//tensorflow/compiler/mlir/lite/schema:schema_generated.h",
@@ -123,7 +124,6 @@ cc_library(
         "@flatbuffers//:runtime_cc",
     ],
 )
-# copybara:comment_end
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).
 flatbuffer_cc_library(

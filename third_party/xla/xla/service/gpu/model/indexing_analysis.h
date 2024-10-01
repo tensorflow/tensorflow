@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 
@@ -43,9 +42,7 @@ using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
 // Contains indexing maps for all N-dimensional tensor input operands that
 // correspond to a particular output.
 struct HloInstructionIndexing {
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  std::string ToString() const;
 
   // Returns true if the indexing was simplified.
   bool Simplify();
@@ -132,6 +129,9 @@ IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           const Shape& output_shape,
                           mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          absl::Span<const int64_t> output_shape,
+                          mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
@@ -159,6 +159,8 @@ std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
 
 // Creates an identity indexing map corresponding to the parameter shape.
 IndexingMap CreateIdentityMap(const Shape& shape,
+                              mlir::MLIRContext* mlir_context);
+IndexingMap CreateIdentityMap(absl::Span<const int64_t> dimensions,
                               mlir::MLIRContext* mlir_context);
 
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(

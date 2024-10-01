@@ -910,10 +910,10 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   Example usage:
 
   >>> a = tf.constant(10)
-  >>> tf.get_static_value(a)
+  >>> print(tf.get_static_value(a))
   10
   >>> b = tf.constant(20)
-  >>> tf.get_static_value(tf.add(a, b))
+  >>> print(tf.get_static_value(tf.add(a, b)))
   30
 
   >>> # `tf.Variable` is not supported.

@@ -100,29 +100,45 @@ struct GemmWithDynamicSlice {
   HloInstruction* bitcast = nullptr;       // result bitcast
   HloInstruction* update_slice = nullptr;  // update result slice
 };
-}  // namespace
 
 // Returns OK if dot instruction is a simple 2D row-major gemm.
-static absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
+absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
   if (dot->operand(0)->shape().dimensions_size() != 2 ||
       dot->operand(1)->shape().dimensions_size() != 2) {
     return absl::InternalError("operands must have rank 2");
   }
 
-  auto& dot_dims = dot->dot_dimension_numbers();
-
-  if (dot_dims.lhs_contracting_dimensions().size() != 1 ||
-      dot_dims.lhs_contracting_dimensions()[0] != 1) {
-    return absl::InternalError("lhs contracting dimensions must be 1");
+  if (dot->shape().layout().minor_to_major().back() != 0) {
+    return absl::InternalError("The dot result must have row major layout.");
   }
 
-  if (dot_dims.rhs_contracting_dimensions().size() != 1 ||
-      dot_dims.rhs_contracting_dimensions()[0] != 0) {
-    return absl::InternalError("rhs contracting dimensions must be 0");
+  auto& dot_dims = dot->dot_dimension_numbers();
+
+  if (dot_dims.lhs_contracting_dimensions().size() != 1) {
+    return absl::InternalError("Lhs contracting dimensions must be of size 1.");
+  }
+
+  if (dot_dims.rhs_contracting_dimensions().size() != 1) {
+    return absl::InternalError("Rhs contracting dimensions must be of size 1.");
+  }
+
+  if (dot->operand(0)->shape().layout().minor_to_major(0) !=
+      dot_dims.lhs_contracting_dimensions()[0]) {
+    return absl::InternalError(
+        "Lhs contracting dimension should be along the minor axis (elements "
+        "that are stored contigous in memory).");
+  }
+
+  if (dot->operand(1)->shape().layout().minor_to_major(1) !=
+      dot_dims.rhs_contracting_dimensions()[0]) {
+    return absl::InternalError(
+        "Rhs contracting dimension should be along the major axis (elements "
+        "that are NOT stored contigous in memory).");
   }
 
   return absl::OkStatus();
 }
+}  // namespace
 
 // Return OK if dot instruction is a simple gemm with all operands and result
 // having the same data type.
@@ -265,7 +281,7 @@ bool IsSupportedKernel(PrimitiveType lhs, PrimitiveType rhs,
                        PrimitiveType dot) {
   // List of supported kernels using {lhs_type, rhs_type, dot_type}.
   constexpr std::array<std::array<PrimitiveType, 3>, 4> kSupportedKernels = {
-      {{BF16, BF16, F32}, {BF16, F32, F32}, {F32, BF16, F32}, {BF16, S8, F32}}};
+      {{BF16, BF16, F32}, {F32, BF16, F32}, {BF16, S8, F32}}};
   return absl::c_linear_search(kSupportedKernels,
                                std::array<PrimitiveType, 3>{lhs, rhs, dot});
 }
@@ -279,7 +295,11 @@ CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
 
   absl::StatusOr<GemmWithUpcast> matched = MatchGemmWithUpcast(dot);
 
-  if (!matched.ok()) return std::nullopt;
+  if (!matched.ok()) {
+    VLOG(3) << "No match due to unsupported gemm with upcast: "
+            << matched.status();
+    return std::nullopt;
+  }
 
   CustomFusionConfig config;
   config.set_name("cutlass_gemm_with_upcast");

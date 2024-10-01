@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -170,13 +172,13 @@ absl::Status RemapPlan::Validate() const {
   std::vector<std::vector<bool>> in_used_buffers_list(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     in_used_buffers_list[i].resize(
-        /*count=*/input_specs[i].sharding->devices().size(),
+        /*count=*/input_specs[i].sharding->devices()->size(),
         /*value=*/false);
   }
-  std::vector<DeviceList::Devices> out_assigned_devices_list(num_outputs);
+  std::vector<BasicDeviceList::Devices> out_assigned_devices_list(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_assigned_devices_list[i].resize(
-        /*n=*/output_specs[i].sharding->devices().size(),
+        /*n=*/output_specs[i].sharding->devices()->size(),
         /*v=*/nullptr);
   }
 
@@ -200,9 +202,9 @@ absl::Status RemapPlan::Validate() const {
     }
 
     std::vector<bool>& in_used_buffers = in_used_buffers_list[mapping.in_array];
-    const DeviceList& in_devices =
-        input_specs[mapping.in_array].sharding->devices();
-    DeviceList::Devices& out_assigned_devices =
+    absl::Span<Device* const> in_devices =
+        input_specs[mapping.in_array].sharding->devices()->devices();
+    BasicDeviceList::Devices& out_assigned_devices =
         out_assigned_devices_list[mapping.out_array];
     const int64_t in_shards_count = in_used_buffers.size();
     const int64_t out_shards_count = out_assigned_devices.size();
@@ -244,19 +246,19 @@ absl::Status RemapPlan::Validate() const {
 
   for (int i = 0; i < num_outputs; ++i) {
     for (int out_shard = 0;
-         out_shard < output_specs[i].sharding->devices().size(); ++out_shard) {
+         out_shard < output_specs[i].sharding->devices()->size(); ++out_shard) {
       if (out_assigned_devices_list[i][out_shard] == nullptr) {
         return InvalidArgument("Output array %d shard %d is unassigned", i,
                                out_shard);
       }
     }
     if (out_assigned_devices_list[i] !=
-        output_specs[i].sharding->devices().devices()) {
+        output_specs[i].sharding->devices()->devices()) {
       return InvalidArgument(
           "Output array %d devices and sharding devices do not match: "
-          "Expected %s, but got %s",
-          i, output_specs[i].sharding->devices().DebugString(),
-          DeviceList(std::move(out_assigned_devices_list[i])).DebugString());
+          "Expected %v, but got %v",
+          i, *output_specs[i].sharding->devices(),
+          *BasicDeviceList::Create(std::move(out_assigned_devices_list[i])));
     }
   }
   return absl::OkStatus();

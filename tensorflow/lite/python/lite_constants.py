@@ -14,7 +14,7 @@
 # ==============================================================================
 """Constants for TFLite."""
 
-from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.compiler.mlir.lite import converter_flags_pb2 as _converter_flags_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export as _tf_export
@@ -28,23 +28,23 @@ QUANTIZED_UINT8 = dtypes.uint8
 INT8 = dtypes.int8
 INT16 = dtypes.int16
 COMPLEX64 = dtypes.complex64
-TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
-TFLITE = _toco_flags_pb2.TFLITE
-GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
-UNSET = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
-    _toco_flags_pb2.TocoFlags.UNSET
+TENSORFLOW_GRAPHDEF = _converter_flags_pb2.TENSORFLOW_GRAPHDEF
+TFLITE = _converter_flags_pb2.TFLITE
+GRAPHVIZ_DOT = _converter_flags_pb2.GRAPHVIZ_DOT
+UNSET = _converter_flags_pb2.ConverterFlags.ModelOriginFramework.Name(
+    _converter_flags_pb2.ConverterFlags.UNSET
 )
-TENSORFLOW = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
-    _toco_flags_pb2.TocoFlags.TENSORFLOW
+TENSORFLOW = _converter_flags_pb2.ConverterFlags.ModelOriginFramework.Name(
+    _converter_flags_pb2.ConverterFlags.TENSORFLOW
 )
-KERAS = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
-    _toco_flags_pb2.TocoFlags.KERAS
+KERAS = _converter_flags_pb2.ConverterFlags.ModelOriginFramework.Name(
+    _converter_flags_pb2.ConverterFlags.KERAS
 )
-JAX = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
-    _toco_flags_pb2.TocoFlags.JAX
+JAX = _converter_flags_pb2.ConverterFlags.ModelOriginFramework.Name(
+    _converter_flags_pb2.ConverterFlags.JAX
 )
-PYTORCH = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
-    _toco_flags_pb2.TocoFlags.PYTORCH
+PYTORCH = _converter_flags_pb2.ConverterFlags.ModelOriginFramework.Name(
+    _converter_flags_pb2.ConverterFlags.PYTORCH
 )
 
 _tf_export(v1=["lite.constants.FLOAT"]).export_constant(__name__, "FLOAT")
@@ -59,12 +59,6 @@ _tf_export(v1=["lite.constants.INT16"]).export_constant(__name__, "INT16")
 _tf_export(v1=["lite.constants.TFLITE"]).export_constant(__name__, "TFLITE")
 _tf_export(v1=["lite.constants.GRAPHVIZ_DOT"]).export_constant(
     __name__, "GRAPHVIZ_DOT")
-
-# Currently the default mode of operation is to shell to another python process
-# to protect against crashes. However, it breaks some dependent targets because
-# it forces us to depend on an external py_binary. The experimental API doesn't
-# have that drawback.
-EXPERIMENTAL_USE_TOCO_API_DIRECTLY = False
 
 
 _allowed_symbols = [
@@ -85,6 +79,5 @@ _allowed_symbols = [
     "KERAS",
     "JAX",
     "PYTORCH",
-    "EXPERIMENTAL_USE_TOCO_API_DIRECTLY",
 ]
 remove_undocumented(__name__, _allowed_symbols)

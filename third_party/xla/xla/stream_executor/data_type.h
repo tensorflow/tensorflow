@@ -19,8 +19,8 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct bfloat16;

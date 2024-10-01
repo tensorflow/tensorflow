@@ -614,7 +614,7 @@ absl::StatusOr<bool> InstructionFusion::Run(
                   << use_regular_fusion.Explain();
         }
 
-        FusionDecision use_mof;
+        FusionDecision use_mof = FusionDecision::Allow();
         if (!use_regular_fusion) {
           use_mof = ShouldFuseIntoMultiOutput(instruction, i);
           if (use_mof) {
@@ -718,8 +718,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
       fusion_instruction->set_fusion_kind(kind);
     }
   } else {
-    fusion_instruction = computation->AddInstruction(
-        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    fusion_instruction =
+        computation->AddInstruction(HloInstruction::CreateFusion(
+            consumer->shape(), kind, consumer,
+            absl::StrCat(HloOpcodeString(producer->opcode()), "_",
+                         HloOpcodeString(consumer->opcode()), "_")));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(
@@ -911,8 +914,9 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
     for (int i = 0; i < consumer->operand_count(); ++i) {
       if (i != operand_number &&
           consumer->operand(operand_number) == consumer->operand(i)) {
-        return "The consumer is an in-place operation that has an additional "
-               "operand that has the same value as the in-place buffer";
+        return FusionDecision::Forbid(
+            "The consumer is an in-place operation that has an additional "
+            "operand that has the same value as the in-place buffer");
       }
     }
     if (consumer->operand(operand_number) == producer ||
@@ -949,12 +953,13 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
             return is_nonelementwise_op(inst);
           });
       if (producer_nonelementwise_ops.size() > 1) {
-        return "Producer fusion has multiple non-elementwise ops, bailing.";
+        return FusionDecision::Forbid(
+            "Producer fusion has multiple non-elementwise ops, bailing.");
       }
       // If the producer has only elementwise ops or bitcasts, we can fuse.
       if (producer_nonelementwise_ops.empty()) {
         if (consumer->opcode() != HloOpcode::kFusion) {
-          return {};
+          return FusionDecision::Allow();
         }
         // If the consumer fusion has both elementwise and non-elementwise ops,
         // and ops of the two groups access the same buffer of the producer, we
@@ -980,9 +985,10 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
                                                instr);
             });
         return inplace_conflict_after_fusion
-                   ? "Non-elementwise ops in consumer lead to inplace conflict "
-                     "after fusion."
-                   : FusionDecision();
+                   ? FusionDecision::Forbid(
+                         "Non-elementwise ops in consumer lead to inplace "
+                         "conflict after fusion.")
+                   : FusionDecision::Allow();
       }
       auto dus_ops =
           ExtractInstructions(consumer, HloOpcode::kDynamicUpdateSlice);
@@ -991,17 +997,18 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
       // TODO(akuegel): Are there other ops than dynamic update slice where we
       // have a special emitter if it can be done in-place?
       if (dus_ops.empty()) {
-        return {};
+        return FusionDecision::Allow();
       }
       if (dus_ops.size() > 1) {
-        return "multiple dus ops, bailing.";
+        return FusionDecision::Forbid("multiple dus ops, bailing.");
       }
       auto dus = dus_ops[0];
       auto producer_nonelementwise = producer_nonelementwise_ops[0];
       if (producer_nonelementwise->opcode() == HloOpcode::kSlice) {
         if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
-          return "Slice op has a different shape than the update shape of the "
-                 "dus op, bailing.";
+          return FusionDecision::Forbid(
+              "Slice op has a different shape than the update shape of the "
+              "dus op, bailing.");
         }
         for (int i = 0; i < dus->shape().rank(); ++i) {
           const HloInstruction* dus_operand =
@@ -1010,21 +1017,23 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
           if (!constant_operand ||
               *constant_operand != producer_nonelementwise->slice_starts(i) ||
               producer_nonelementwise->slice_strides(i) != 1) {
-            return "DUS and slice index mismatch";
+            return FusionDecision::Forbid("DUS and slice index mismatch");
           }
         }
         VLOG(4) << "DUS and slice index match";
         if (consumer->opcode() == HloOpcode::kFusion &&
             !IsSafeToFuseSliceIntoDusFusion(producer, consumer, dus)) {
-          return "Fusing slice into DUS will also fuse another non-elementwise "
-                 "op with shared operand as DUS.";
+          return FusionDecision::Forbid(
+              "Fusing slice into DUS will also fuse another non-elementwise "
+              "op with shared operand as DUS.");
         }
-        return {};
+        return FusionDecision::Allow();
       }
       if (producer_nonelementwise->opcode() == HloOpcode::kDynamicSlice) {
         if (producer_nonelementwise->shape() != dus->operand(1)->shape()) {
-          return "Dynamic slice op has a different shape than the update shape "
-                 "of the dus op, bailing.";
+          return FusionDecision::Forbid(
+              "Dynamic slice op has a different shape than the update shape "
+              "of the dus op, bailing.");
         }
         for (int i = 0; i < dus->shape().rank(); ++i) {
           const HloInstruction* ds_operand = get_real_operand(
@@ -1035,41 +1044,51 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
           auto constant_dus_operand = get_constant_operand(dus_operand);
           if (constant_ds_operand != constant_dus_operand ||
               (!constant_ds_operand && ds_operand != dus_operand)) {
-            return "DUS and DS index mismatch";
+            return FusionDecision::Forbid("DUS and DS index mismatch");
           }
         }
         VLOG(4) << "DUS and DS index match";
         if (consumer->opcode() == HloOpcode::kFusion &&
             !IsSafeToFuseSliceIntoDusFusion(producer, consumer, dus)) {
-          return "Fusing DS into DUS will also fuse another non-elementwise op "
-                 "with shared operand as DUS.";
+          return FusionDecision::Forbid(
+              "Fusing DS into DUS will also fuse another non-elementwise op "
+              "with shared operand as DUS.");
         }
-        return {};
+        return FusionDecision::Allow();
       }
-      return "unrecognized inplace update non-elementwise output pair";
+      return FusionDecision::Forbid(
+          "unrecognized inplace update non-elementwise output pair");
     }
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
+  return ShouldFuse(consumer, operand_index, ShouldFuseInPlaceOp);
+}
+
+FusionDecision InstructionFusion::ShouldFuse(
+    HloInstruction* consumer, int64_t operand_index,
+    std::function<FusionDecision(const HloInstruction*, const HloInstruction*)>
+        inplace_op_fusion_decider) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Don't fuse across a root instruction.
   if (producer == producer->parent()->root_instruction()) {
-    return "not fusing into the output of the root instruction";
+    return FusionDecision::Forbid(
+        "not fusing into the output of the root instruction");
   }
 
   // Cost condition: don't duplicate expensive instructions.
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return may_duplicate_ ? "expensive producer would be duplicated"
-                          : "fusion pass cannot duplicate";
+    return FusionDecision::Forbid(may_duplicate_
+                                      ? "expensive producer would be duplicated"
+                                      : "fusion pass cannot duplicate");
   }
-
-  return ShouldFuseInPlaceOp(producer, consumer);
+  return inplace_op_fusion_decider(producer, consumer);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

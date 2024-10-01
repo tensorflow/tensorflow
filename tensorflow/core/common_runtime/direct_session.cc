@@ -517,7 +517,7 @@ Status DirectSession::RunInternal(
   RunState run_state(step_id, &devices_);
   const size_t num_executors = executors_and_keys->items.size();
 
-  profiler::TraceMeProducer activity(
+  tsl::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
         if (options_.config.experimental().has_session_metadata()) {
@@ -525,17 +525,17 @@ Status DirectSession::RunInternal(
               options_.config.experimental().session_metadata();
           string model_id = strings::StrCat(model_metadata.name(), ":",
                                             model_metadata.version());
-          return profiler::TraceMeEncode("SessionRun",
-                                         {{"id", step_id},
-                                          {"_r", 1} /*root_event*/,
-                                          {"model_id", model_id}});
+          return tsl::profiler::TraceMeEncode("SessionRun",
+                                              {{"id", step_id},
+                                               {"_r", 1} /*root_event*/,
+                                               {"model_id", model_id}});
         } else {
-          return profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
-      profiler::ContextType::kTfExecutor, step_id,
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::ContextType::kTfExecutor, step_id,
+      tsl::profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
   if (!run_options.debug_options().debug_tensor_watch_opts().empty()) {
@@ -1488,9 +1488,9 @@ Status DirectSession::CreateExecutors(
 }
 
 Status DirectSession::GetOrCreateExecutors(
-    gtl::ArraySlice<string> inputs, gtl::ArraySlice<string> outputs,
-    gtl::ArraySlice<string> target_nodes, ExecutorsAndKeys** executors_and_keys,
-    RunStateArgs* run_state_args) {
+    absl::Span<const string> inputs, absl::Span<const string> outputs,
+    absl::Span<const string> target_nodes,
+    ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args) {
   int64_t handle_name_counter_value = -1;
   if (LogMemory::IsEnabled() || run_state_args->is_partial_run) {
     handle_name_counter_value = handle_name_counter_.fetch_add(1);

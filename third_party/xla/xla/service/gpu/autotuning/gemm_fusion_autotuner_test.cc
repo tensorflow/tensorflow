@@ -15,19 +15,17 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
@@ -47,11 +46,12 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
@@ -66,6 +66,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -103,7 +104,7 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module = nullptr;
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
@@ -143,7 +144,7 @@ ENTRY entry {
 
   // Destroy the original module to be sure that the extracted one has no
   // dependency on it.
-  module.release();
+  module = nullptr;
 
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
@@ -159,7 +160,12 @@ class StatelessAutotunerTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
-  int32_t GetToolkitVersion() const { return CUDA_VERSION; }
+  se::SemanticVersion GetToolkitVersion() const {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .runtime_version();
+  }
 
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
@@ -170,7 +176,81 @@ class StatelessAutotunerTest : public HloTestBase {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::TearDown();
   }
+
+  absl::StatusOr<std::vector<GemmFusionAutotunerImpl::BackendConfig>>
+  GetPossibleMatmulAutotuneConfigs(
+      const HloModule& module,
+      const se::CudaComputeCapability& compute_capability,
+      const se::SemanticVersion& toolkit_version,
+      const DebugOptions& debug_options) {
+    const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
+        module.entry_computation()->root_instruction());
+    se::GpuDeviceInfoProto deviceless_proto;
+    auto ccc = deviceless_proto.mutable_cuda_compute_capability();
+    ccc->set_major(compute_capability.major);
+    ccc->set_minor(compute_capability.minor);
+
+    DeviceConfig test_config{backend().default_stream_executor(),
+                             backend().memory_allocator()};
+    AutotuneConfig autotune_config{test_config, debug_options};
+    GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
+                                      debug_options, nullptr);
+    return autotuner.GenerateConfigs(fusion);
+  }
 };
+
+TEST_F(StatelessAutotunerTest, NoCublasFallbackForTf32Tf32F32X3Algorithm) {
+  // There is no cublas implementation for dot_tf32_tf32_f32_x3 at the moment.
+  // At the same time cublas f32 is faster than triton for this algorithm.
+  // But we don't want to fallback to cuBLAS in this case because we lose the
+  // precision guarantees.
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=dot_tf32_tf32_f32_x3,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )"));
+
+  const se::CudaComputeCapability ampere{se::CudaComputeCapability::AMPERE,
+                                         /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ampere_configs,
+      GetPossibleMatmulAutotuneConfigs(*module, ampere, GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_FALSE(std::any_of(
+      ampere_configs.begin(), ampere_configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
+            config);
+      }));
+
+  const se::CudaComputeCapability hopper{se::CudaComputeCapability::HOPPER,
+                                         /*minor=*/0};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto hopper_configs,
+      GetPossibleMatmulAutotuneConfigs(*module, hopper, GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_FALSE(std::any_of(
+      hopper_configs.begin(), hopper_configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<GemmFusionAutotunerImpl::CuBlasConfig>(
+            config);
+      }));
+}
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
@@ -242,10 +322,12 @@ class GemmFusionAutotunerTestWithMorePreciseReduction
   }
 };
 
-absl::StatusOr<std::vector<TritonGemmConfig>> GetPossibleMatmulAutotuneConfigs(
+absl::StatusOr<std::vector<TritonGemmConfig>>
+GetPossibleMatmulAutotuneTritonConfigs(
     const HloDotInstruction& dot,
     const se::CudaComputeCapability& compute_capability,
-    const int32_t toolkit_version, const DebugOptions& debug_options) {
+    const se::SemanticVersion& toolkit_version,
+    const DebugOptions& debug_options) {
   se::GpuDeviceInfoProto deviceless_proto;
   auto ccc = deviceless_proto.mutable_cuda_compute_capability();
   ccc->set_major(compute_capability.major);
@@ -270,7 +352,7 @@ ENTRY e {
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
@@ -292,7 +374,7 @@ ENTRY e {
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
@@ -314,7 +396,7 @@ ENTRY e {
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
@@ -445,7 +527,6 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// Modify block_k back to 16 once b/337839570 is fixed.
 // TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest, DoNotRunAutotuningKernelSpillingRegisters) {
   const std::string kHloText = R"(
@@ -464,7 +545,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -480,14 +561,14 @@ ENTRY %e {
                       "Compilation result discarded due to register spilling"),
                   // Hopper can't spill registers since wgmma instructions are
                   // asynchronous, instead it just runs out of them.
-                  tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                                         "Register allocation failed"),
                   tsl::testing::StatusIs(
-                      tsl::error::INTERNAL,
+                      tsl::error::RESOURCE_EXHAUSTED,
+                      ::testing::HasSubstr("Register allocation failed")),
+                  tsl::testing::StatusIs(
+                      tsl::error::RESOURCE_EXHAUSTED,
                       ::testing::HasSubstr("Insufficient registers"))));
 }
 
-// Modify block_k back to 16 once b/337839570 is fixed.
 // TODO(b/344770374): Make this test not fragile.
 TEST_F(GemmFusionAutotunerTest,
        DoNotFilterOutAutotuningKernelSpillingRegisters) {
@@ -510,7 +591,7 @@ ENTRY %e {
   %get-tuple-element.7020 = s8[12288,1536]{1,0} parameter(0)
   %convert = s8[4,12288]{1,0} parameter(1)
   ROOT %triton = s8[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %get-tuple-element.7020, s8[4,12288]{1,0} %convert), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"16","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -533,7 +614,6 @@ ENTRY %e {
   EXPECT_NE(executable, nullptr);
 }
 
-// Modify block_k back to 16 once b/337839570 is fixed.
 TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -549,7 +629,7 @@ ENTRY %e {
   %p0 = s8[12288,1536]{1,0} parameter(0)
   %p1 = f16[4,12288]{1,0} parameter(1)
   ROOT %triton_dot = f16[4,1536]{1,0} fusion(s8[12288,1536]{1,0} %p0, f16[4,12288]{1,0} %p1), kind=kCustom, calls=%triton_gemm_dot,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"32","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"}}}
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -868,7 +948,7 @@ ENTRY e {
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
@@ -900,7 +980,7 @@ ENTRY e {
       se::CudaComputeCapability::AMPERE, /*minor=*/0};
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), GetDebugOptionsForTest()));
@@ -931,7 +1011,7 @@ ENTRY wais {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const std::vector<TritonGemmConfig> configs,
-      GetPossibleMatmulAutotuneConfigs(
+      GetPossibleMatmulAutotuneTritonConfigs(
           *Cast<HloDotInstruction>(
               module->entry_computation()->root_instruction()),
           compute_capability, GetToolkitVersion(), debug_options));
@@ -979,19 +1059,201 @@ ENTRY entry {
   ROOT r = f8e5m2[256,128]{1,0} fusion(f8e5m2[256,256]{1,0} %p0, f8e4m3fn[128,256]{1,0} %p1), kind=kCustom, calls=%gemm_fusion_dot_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })")
                                                   .value();
-  GemmFusionAutotunerImpl::TilingConfigs configs;
-  configs.emplace_back(DynCast<HloFusionInstruction>(
-                           module->entry_computation()->root_instruction()),
-                       std::vector<GemmFusionAutotunerImpl::Config>{
-                           GemmFusionAutotunerImpl::Config(TritonGemmConfig(
-                               /*block_m=*/32,
-                               /*block_n=*/64,
-                               /*block_k=*/64,
-                               /*split_k=*/4,
-                               /*num_stages=*/1,
-                               /*num_warps=*/4,
-                               /*num_ctas=*/1))});
+  GemmFusionAutotunerImpl::BackendConfigs configs;
+  configs.emplace_back(
+      DynCast<HloFusionInstruction>(
+          module->entry_computation()->root_instruction()),
+      std::vector<GemmFusionAutotunerImpl::BackendConfig>{
+          GemmFusionAutotunerImpl::BackendConfig(TritonGemmConfig(
+              /*block_m=*/32,
+              /*block_n=*/64,
+              /*block_k=*/64,
+              /*split_k=*/4,
+              /*num_stages=*/1,
+              /*num_warps=*/4,
+              /*num_ctas=*/1))});
   CHECK_OK(autotuner.CompileAll(*compile_util, configs));
+}
+
+TEST_F(GemmFusionAutotunerTest, CreatesCustomKernelFusionConfigs) {
+  const std::string kHlo = R"(
+  HloModule module, entry_computation_layout={(bf16[1024,1024]{1,0}, bf16[1024,1024]{1,0})->f32[1024,1024]{1,0}}
+
+  %gemm_fusion_r_computation {
+    %parameter_0 = bf16[1024,1024]{1,0} parameter(0)
+    %convert.2 = f32[1024,1024]{1,0} convert(%parameter_0)
+    %parameter_1 = bf16[1024,1024]{1,0} parameter(1)
+    %convert.3 = f32[1024,1024]{1,0} convert(%parameter_1)
+    ROOT %r.1 = f32[1024,1024]{1,0} dot(%convert.2, %convert.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    %p0 = bf16[1024,1024]{1,0} parameter(0)
+    %p1 = bf16[1024,1024]{1,0} parameter(1)
+    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  })";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      ParseAndReturnVerifiedModule(kHlo).value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<
+            GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config);
+      }));
+}
+
+TEST_F(GemmFusionAutotunerTest, GeneratesConfigForUpcastGemmWithPrologue) {
+  const std::string kHlo = R"(
+  HloModule module
+
+  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,4096], parameter_1.1: bf16[1,4,4096,4096]) -> f32[256,4096] {
+    %parameter_0.1 = f32[1,256,4,4096]{3,2,1,0} parameter(0)
+    %bitcast.60 = f32[256,16384]{1,0} bitcast(f32[1,256,4,4096]{3,2,1,0} %parameter_0.1)
+    %parameter_1.1 = bf16[1,4,4096,4096]{3,2,1,0} parameter(1)
+    %bitcast.61 = bf16[16384,4096]{1,0} bitcast(bf16[1,4,4096,4096]{3,2,1,0} %parameter_1.1)
+    %convert.22 = f32[16384,4096]{1,0} convert(bf16[16384,4096]{1,0} %bitcast.61)
+    ROOT r = f32[256,4096]{1,0} dot(f32[256,16384]{1,0} %bitcast.60, f32[16384,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    %p0 = f32[1,256,4,4096] parameter(0)
+    %p1 = bf16[1,4,4096,4096] parameter(1)
+    ROOT %gemm_fusion_r = f32[256,4096] fusion(%p0, %p1), kind=kCustom,
+    calls=gemm_fusion_r_computation,
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  }
+)";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      ParseAndReturnVerifiedModule(kHlo).value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<
+            GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config);
+      }));
+}
+
+TEST_F(GemmFusionAutotunerTest,
+       GeneratesConfigForUpcastGemmWithPrologueAndEpilogue) {
+  const std::string kHlo = R"(
+  HloModule module
+
+  %gemm_fusion_r_computation (parameter_0.1: f32[1,256,4,4096], parameter_1.1: bf16[1,4,4096,4096]) -> bf16[1048576] {
+    %parameter_0.1 = f32[1,256,4,4096]{3,2,1,0} parameter(0)
+    %bitcast.60 = f32[256,16384]{1,0} bitcast(f32[1,256,4,4096]{3,2,1,0} %parameter_0.1)
+    %parameter_1.1 = bf16[1,4,4096,4096]{3,2,1,0} parameter(1)
+    %bitcast.61 = bf16[16384,4096]{1,0} bitcast(bf16[1,4,4096,4096]{3,2,1,0} %parameter_1.1)
+    %convert.22 = f32[16384,4096]{1,0} convert(bf16[16384,4096]{1,0} %bitcast.61)
+    %dot.5 = f32[256,4096]{1,0} dot(f32[256,16384]{1,0} %bitcast.60, f32[16384,4096]{1,0} %convert.22), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    %convert.23 = bf16[256,4096]{1,0} convert(f32[256,4096]{1,0} %dot.5)
+    %bitcast.62 = bf16[1,256,4096]{2,1,0} bitcast(bf16[256,4096]{1,0} %convert.23)
+    %transpose.18 = bf16[1,4096,256]{2,1,0} transpose(bf16[1,256,4096]{2,1,0} %bitcast.62), dimensions={0,2,1}
+    ROOT %bitcast.63 = bf16[1048576]{0} bitcast(bf16[1,4096,256]{2,1,0} %transpose.18)
+  }
+
+  ENTRY main {
+    %p0 = f32[1,256,4,4096] parameter(0)
+    %p1 = bf16[1,4,4096,4096] parameter(1)
+    ROOT %gemm_fusion_r = bf16[1048576] fusion(%p0, %p1), kind=kCustom,
+    calls=gemm_fusion_r_computation,
+    backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  }
+)";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      ParseAndReturnVerifiedModule(kHlo).value();
+  const se::CudaComputeCapability compute_capability{
+      se::CudaComputeCapability::AMPERE, /*minor=*/0};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<GemmFusionAutotunerImpl::BackendConfig> configs,
+      GetPossibleMatmulAutotuneConfigs(*module, compute_capability,
+                                       GetToolkitVersion(),
+                                       GetDebugOptionsForTest()));
+  EXPECT_TRUE(std::any_of(
+      configs.begin(), configs.end(),
+      [](const GemmFusionAutotunerImpl::BackendConfig& config) {
+        return std::holds_alternative<
+            GemmFusionAutotunerImpl::CustomKernelFusionConfig>(config);
+      }));
+}
+
+TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
+  const std::string kHlo = R"(
+  HloModule module, entry_computation_layout={(bf16[1024,1024]{1,0}, bf16[1024,1024]{1,0})->f32[1024,1024]{1,0}}
+
+  %gemm_fusion_r_computation {
+    %parameter_0 = bf16[1024,1024]{1,0} parameter(0)
+    %convert.2 = f32[1024,1024]{1,0} convert(%parameter_0)
+    %parameter_1 = bf16[1024,1024]{1,0} parameter(1)
+    %convert.3 = f32[1024,1024]{1,0} convert(%parameter_1)
+    ROOT %r.1 = f32[1024,1024]{1,0} dot(%convert.2, %convert.3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    %p0 = bf16[1024,1024]{1,0} parameter(0)
+    %p1 = bf16[1024,1024]{1,0} parameter(1)
+    ROOT %gemm_fusion_r = f32[1024,1024]{1,0} fusion(%p0, %p1), kind=kCustom, calls=gemm_fusion_r_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
+  }
+)";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      ParseAndReturnVerifiedModule(kHlo).value();
+
+  DebugOptions opts;
+  AutotuneConfig autotune_config{
+      DeviceConfig{backend().default_stream_executor(),
+                   backend().memory_allocator()},
+      opts};
+  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+                             *module->entry_computation()->root_instruction());
+  TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
+                          ParseTextProto<AutotuneResults>(R"pb(
+                            version: 3
+                            results {
+                              device: "..."
+                              hlo: "..."
+                              result {
+                                custom_kernel_fusion { kernel_index: 1 }
+                                run_time { nanos: 14 }
+                              }
+                            })pb"));
+  autotune_results_override.mutable_results(0)->set_device(
+      std::string(cache_key.GetModelStr()));
+  autotune_results_override.mutable_results(0)->set_hlo(
+      std::string(cache_key.GetHlo()));
+
+  GemmFusionAutotunerRewriterVisitor visitor(autotune_config);
+
+  CHECK_OK(AutotunerUtil::LoadAutotuneResults(autotune_results_override));
+  visitor.RunOnModule(module.get(), {}).value();
+  std::string pattern = R"(
+    CHECK: ROOT %cutlass_gemm_with_upcast
+    CHECK-SAME: fusion
+    CHECK-SAME: kind=kCustom
+    CHECK-SAME: "kernel_index":1
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool file_check_matches,
+                          RunFileCheck(module->ToString(), pattern));
+  EXPECT_TRUE(file_check_matches);
 }
 
 }  // namespace

@@ -52,12 +52,12 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-using ShapeVec = gtl::InlinedVector<int64_t, 8>;
-using Labels = gtl::InlinedVector<int, 8>;
-using OperandLabels = gtl::InlinedVector<Labels, 2>;
-using LabelCounts = gtl::InlinedVector<int, 8>;
-using OperandLabelCounts = gtl::InlinedVector<LabelCounts, 2>;
-using LabelToDimSizes = gtl::InlinedVector<int64_t, 8>;
+using ShapeVec = absl::InlinedVector<int64_t, 8UL>;
+using Labels = absl::InlinedVector<int, 8UL>;
+using OperandLabels = absl::InlinedVector<Labels, 2UL>;
+using LabelCounts = absl::InlinedVector<int, 8UL>;
+using OperandLabelCounts = absl::InlinedVector<LabelCounts, 2UL>;
+using LabelToDimSizes = absl::InlinedVector<int64_t, 8UL>;
 
 struct EinsumHelper {
   // Insert new (unnamed) broadcasting labels at the location of ellipsis.
@@ -97,7 +97,7 @@ struct EinsumHelper {
   // counts.
   static Status ProcessDimensions(
       const OpInputList& inputs,
-      const gtl::InlinedVector<bool, 2>& input_has_ellipsis,
+      const absl::InlinedVector<bool, 2UL>& input_has_ellipsis,
       const bool output_has_ellipsis, OperandLabels* input_labels,
       Labels* output_labels, std::vector<EinsumDimensionType>* label_types,
       OperandLabelCounts* input_label_counts, LabelCounts* output_label_counts,
@@ -321,7 +321,7 @@ struct EinsumHelper {
       const std::vector<EinsumDimensionType>& label_types) {
     // Check that ordering is according to dimension type, with the role of
     // free and contract dimensions swapped.
-    gtl::InlinedVector<int, 5> remap = {0, 1, 3, 2, 4};
+    absl::InlinedVector<int, 5UL> remap = {0, 1, 3, 2, 4};
     for (int i = 0; i + 1 < labels.size(); ++i) {
       const int dimtype_a = remap[label_types[labels[i]]];
       const int dimtype_b = remap[label_types[labels[i + 1]]];
@@ -372,7 +372,7 @@ struct EinsumHelper {
 
     // Reshape denotes the rank-5 shape [broadcast, batch, free, contract,
     // reduce] where we've compacted the dimensions of each EinsumDimensionType.
-    gtl::InlinedVector<int64_t, 5> reshape(5, 1);
+    absl::InlinedVector<int64_t, 5UL> reshape(5, 1);
     // The output shape is [batch shape] + [free size, contract size]
     // That is, the batch shape is preserved (for broadcasting while
     // contracting) while the free dims and contract dims are compressed to one
@@ -513,8 +513,8 @@ class EinsumOp : public OpKernel {
     // dimensions, respectively.
     const int num_inputs = inputs.size();
     OperandLabels free_labels(num_inputs);
-    gtl::InlinedVector<Tensor, 2> inputs_reduced(num_inputs);
-    gtl::InlinedVector<bool, 2> swap_free_and_contract(num_inputs);
+    absl::InlinedVector<Tensor, 2UL> inputs_reduced(num_inputs);
+    absl::InlinedVector<bool, 2UL> swap_free_and_contract(num_inputs);
     for (int i = 0; i < num_inputs; ++i) {
       OP_REQUIRES_OK(ctx,
                      EinsumHelper::ReduceOperand<Device, T>(
@@ -603,7 +603,7 @@ class EinsumOp : public OpKernel {
     Tensor output;
     OP_REQUIRES_OK(ctx, EinsumHelper::TransposeOperand<Device, T>(
                             ctx, output_inflated, output_permutation, &output));
-    ctx->set_output(0, output);
+    ctx->set_output(0, std::move(output));
   }
 
   string TraceString(const OpKernelContext& ctx, bool verbose) const override {
@@ -627,7 +627,7 @@ class EinsumOp : public OpKernel {
   std::vector<EinsumDimensionType> label_types_;
   OperandLabelCounts input_label_counts_;
   LabelCounts output_label_counts_;
-  gtl::InlinedVector<bool, 2> input_has_ellipsis_;
+  absl::InlinedVector<bool, 2UL> input_has_ellipsis_;
   bool output_has_ellipsis_ = false;
 };
 

@@ -1620,15 +1620,6 @@ func.func @op_subtract(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
-// CHECK-LABEL: "op_tan"
-func.func @op_tan(%arg0: tensor<f32>) -> tensor<f32> {
-  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]])  <{
-  // CHECK-SAME:   call_target_name = "mhlo.tan"}> {mhlo.attributes = {}, mhlo.version = 1 : i64}
-  // CHECK-SAME: (tensor<f32>) -> tensor<f32>
-  %0 = "mhlo.tan"(%arg0) : (tensor<f32>) -> tensor<f32>
-  func.return %0 : tensor<f32>
-}
-
 // CHECK-LABEL: "op_tanh"
 func.func @op_tanh(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK: "stablehlo.tanh"([[ARG0:%arg[0-9]+]]) : (tensor<f32>) -> tensor<f32>

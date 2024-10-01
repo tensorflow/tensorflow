@@ -7,6 +7,7 @@ compiler/xla/tsl/mkl/LICENSE:
 compiler/xla/tsl/mkl/MKL_LICENSE:
 compiler/xla/tsl/mkl/build_defs.bzl:
 compiler/xla/tsl/package_groups.bzl:
+compiler/xla/tsl/profiler/BUILD:
 third_party/BUILD:
 third_party/__init__:.py
 third_party/compute_library/BUILD:

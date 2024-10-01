@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform/initialize.h"
+#include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tsl/platform/errors.h"
 
@@ -29,8 +29,6 @@ namespace stream_executor {
 namespace gpu {
 
 ROCmPlatform::ROCmPlatform() : name_("ROCM") {}
-
-ROCmPlatform::~ROCmPlatform() {}
 
 Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
 
@@ -49,7 +47,7 @@ const std::string& ROCmPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
-  return GpuExecutor::CreateDeviceDescription(ordinal);
+  return RocmExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
@@ -63,7 +61,7 @@ absl::StatusOr<StreamExecutor*> ROCmPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(int ordinal) {
-  auto executor = std::make_unique<GpuExecutor>(this, ordinal);
+  auto executor = std::make_unique<RocmExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }

@@ -36,13 +36,13 @@ cc_library(
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
     deps = [
+        "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
-        "@local_tsl//tsl/protobuf:distributed_runtime_payloads_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -56,12 +56,12 @@ tsl_cc_test(
     deps = [
         ":grpc_util",
         ":test_request_proto_cc_impl",
+        "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -83,9 +83,10 @@ cc_library(
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
+        "//xla/tsl/lib/gtl:map_util",
+        "//xla/tsl/protobuf:rpc_options_proto_cc",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/gtl:map_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -96,7 +97,6 @@ cc_library(
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:rpc_options_proto_cc",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -109,12 +109,12 @@ tsl_cc_test(
     deps = [
         ":grpc_channel",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:rpc_options_proto_cc_impl",
     ],
 )
 

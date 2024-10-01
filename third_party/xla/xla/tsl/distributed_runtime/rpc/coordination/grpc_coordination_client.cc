@@ -34,10 +34,10 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_state.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tsl {
 namespace {

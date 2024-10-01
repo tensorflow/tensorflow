@@ -24,7 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/test.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/framework/allocator.h"
 
 namespace xla {
 namespace ifrt {
@@ -121,7 +121,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
               (absl::Span<tsl::RCReference<Array>> arrays,
-               std::optional<DeviceList> devices,
+               std::optional<tsl::RCReference<DeviceList>> devices,
                std::optional<MemoryKind> memory_kind,
                ArrayCopySemantics semantics),
               (final));
@@ -153,7 +153,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (int local_hardware_id), (const, final));
   MOCK_METHOD(Compiler*, GetDefaultCompiler, (), (final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<Topology>>, GetTopologyForDevices,
-              (const xla::ifrt::DeviceList& devices), (const, final));
+              (const tsl::RCReference<xla::ifrt::DeviceList>& devices),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>,
               GetDefaultLayoutForDevice,
               (xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
@@ -243,9 +244,9 @@ class MockExecutable : public llvm::RTTIExtends<MockExecutable, Executable> {
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));
@@ -272,9 +273,9 @@ class MockLoadedExecutable
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
               GetParameterLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Layout>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>,
               GetOutputLayouts, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));
@@ -285,7 +286,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<ExecuteResult>, Execute,
               (absl::Span<tsl::RCReference<Array>> args,
                const ExecuteOptions& options,
-               std::optional<DeviceList> devices),
+               std::optional<tsl::RCReference<DeviceList>> devices),
               (final));
   MOCK_METHOD(Future<>, Delete, (), (final));
   MOCK_METHOD(bool, IsDeleted, (), (const, final));
@@ -318,13 +319,34 @@ class MockLoadedHostCallback final
 
 class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
  public:
+  MockSharding()
+      : llvm::RTTIExtends<MockSharding, Sharding>(
+            BasicDeviceList::Create({}), MemoryKind(),
+            /*is_fully_replicated=*/false) {}
+
+  MockSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+               bool is_fully_replicated)
+      : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
+                                                  is_fully_replicated) {}
+
   MOCK_METHOD(
       (absl::StatusOr<
           std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
       Disassemble, (const Shape& shape), (const, final));
+  MOCK_METHOD((absl::StatusOr<std::vector<
+                   std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>),
+              Disassemble, (const DynamicShape& dynamic_shape), (const final));
   MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
               (const Shape& shape), (const, final));
   MOCK_METHOD(std::string, DebugString, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
+              (const, final));
+  MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
+              (const final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Sharding>>, WithDeviceAssignment,
+              (std::optional<tsl::RCReference<DeviceList>> devices,
+               std::optional<MemoryKind> memory_kind),
+              (const final));
 
   static char ID;  // NOLINT
 };

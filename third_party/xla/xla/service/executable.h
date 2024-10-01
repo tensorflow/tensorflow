@@ -18,11 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
@@ -86,7 +89,7 @@ class ExecutionInput {
 
   ~ExecutionInput();
 
-  ExecutionInput& operator=(ExecutionInput&&) = default;
+  ExecutionInput& operator=(ExecutionInput&&) noexcept = default;
 
   const Shape& shape() const {
     return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
@@ -165,8 +168,8 @@ class ExecutionOutput {
                   int device_ordinal, int physical_device_ordinal = -1)
       : result_(std::move(on_device_shape), allocator, device_ordinal,
                 physical_device_ordinal) {}
-  ExecutionOutput(ExecutionOutput&&) = default;
-  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+  ExecutionOutput(ExecutionOutput&&) noexcept = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) noexcept = default;
 
   ~ExecutionOutput() {
     // If the ExecutionOutput has not been committed, and if there are aliased
@@ -376,6 +379,12 @@ class Executable {
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    // Despite the mutex lock, this function is NOT thread-safe.
+    // The mutex is needed for the lazy HLO module loading in `hlo_proto()`.
+    // Since both `hlo_proto()` and `buffer_assignment_proto()` return a
+    // pointer to hlo_proto_, having the mutex is not enough to make this
+    // function thread-safe.
+    absl::MutexLock lock(&hlo_proto_mutex_);
     hlo_proto_ = std::move(hlo_proto);
   }
   bool dumping_snapshot() const {
@@ -385,6 +394,7 @@ class Executable {
   }
 
   HloProto const* hlo_proto() const {
+    absl::MutexLock lock(&hlo_proto_mutex_);
     if (hlo_proto_ != nullptr && !hlo_proto_->has_hlo_module()) {
       *hlo_proto_->mutable_hlo_module() = module().ToProto();
     }
@@ -392,6 +402,7 @@ class Executable {
   }
 
   const BufferAssignmentProto* buffer_assignment_proto() const {
+    absl::MutexLock lock(&hlo_proto_mutex_);
     return hlo_proto_ != nullptr && hlo_proto_->has_buffer_assignment()
                ? &hlo_proto_->buffer_assignment()
                : nullptr;
@@ -441,7 +452,8 @@ class Executable {
   // hlo_proto_->buffer_assignment is set and hlo_proto_->hlo_module isn't, the
   // hlo_module proto will be computed on the fly when requested with
   // hlo_proto(). This avoids wasting CPU and memory if the proto isn't needed.
-  std::unique_ptr<HloProto> hlo_proto_;
+  std::unique_ptr<HloProto> hlo_proto_ ABSL_GUARDED_BY(hlo_proto_mutex_);
+  mutable absl::Mutex hlo_proto_mutex_;
 };
 
 }  // namespace xla

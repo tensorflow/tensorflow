@@ -156,38 +156,52 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
-    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
-    int32_t device_ordinal, se::Stream* stream,
-    se::DeviceMemoryAllocator* allocator,
+    XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage, se::Stream* stream,
     const ffi::ExecutionContext* execution_context,
     const BufferAllocations* buffer_allocations) {
   if (handler == nullptr) {
     return absl::InternalError("FFI execute handler is not set");
+  }
+  if (stage != XLA_FFI_ExecutionStage_PREPARE &&
+      !(buffer_allocations && stream)) {
+    return absl::InternalError("buffer allocations and stream are required");
   }
 
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
   CallFrameBuilder builder(operands_.size(), results_.size());
+  auto device_address =
+      [buffer_allocations](
+          BufferAllocation::Slice slice) -> se::DeviceMemoryBase {
+    return buffer_allocations ? buffer_allocations->GetDeviceAddress(slice)
+                              : se::DeviceMemoryBase{};
+  };
 
   for (auto& operand : operands_) {
-    if (!operand.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!operand.has_value()) {
+      builder.AddTokenArg();
+      continue;
+    }
+
     if (!operand->slice.allocation())
       return Internal("custom call argument missing buffer allocation");
 
-    builder.AddBufferArg(buffer_allocations->GetDeviceAddress(operand->slice),
+    builder.AddBufferArg(device_address(operand->slice),
                          operand->shape.element_type(),
                          operand->shape.dimensions());
   }
 
   for (auto& result : results_) {
-    if (!result.has_value())
-      return Internal("FFI handlers do not support tokens (yet)!");
+    if (!result.has_value()) {
+      builder.AddTokenRet();
+      continue;
+    }
+
     if (!result->slice.allocation())
       return Internal("custom call result missing buffer allocation");
 
-    builder.AddBufferRet(buffer_allocations->GetDeviceAddress(result->slice),
+    builder.AddBufferRet(device_address(result->slice),
                          result->shape.element_type(),
                          result->shape.dimensions());
   }
@@ -198,6 +212,13 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   builder.AddAttributes(attrs.Build());
   CallFrame call_frame = builder.Build();
 
+  int32_t device_ordinal = -1;
+  se::DeviceMemoryAllocator* allocator = nullptr;
+  if (stage != XLA_FFI_ExecutionStage_PREPARE) {
+    device_ordinal = buffer_allocations->device_ordinal();
+    allocator = buffer_allocations->memory_allocator();
+  }
+
   CallOptions options = {
       device_ordinal, CallOptions::GpuOptions{stream, allocator},
       called_computation_, execution_context, execution_state_.get()};
@@ -206,10 +227,14 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
 
 absl::Status CustomCallThunk::Prepare(const PrepareParams& params,
                                       ResourceRequests& resource_requests) {
-  if (bundle_ && bundle_->prepare) {
-    return absl::InternalError("FFI prepare stage is not yet supported");
+  if (!bundle_ || !bundle_->prepare) {
+    return absl::OkStatus();
   }
-  return absl::OkStatus();
+
+  return ExecuteFfiHandler(bundle_->prepare, XLA_FFI_ExecutionStage_PREPARE,
+                           /*stream=*/nullptr,
+                           /*execution_context=*/nullptr,
+                           /*buffer_allocations=*/nullptr);
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
@@ -218,19 +243,15 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   }
 
   return ExecuteFfiHandler(
-      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE,
-      params.buffer_allocations->device_ordinal(), params.stream,
-      params.buffer_allocations->memory_allocator(),
+      bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE, params.stream,
       params.ffi_execution_context, params.buffer_allocations);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (bundle_.has_value()) {
-    return ExecuteFfiHandler(
-        bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
-        params.buffer_allocations->device_ordinal(), params.stream,
-        params.buffer_allocations->memory_allocator(),
-        params.ffi_execution_context, params.buffer_allocations);
+    return ExecuteFfiHandler(bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE,
+                             params.stream, params.ffi_execution_context,
+                             params.buffer_allocations);
   }
   return ExecuteCustomCall(params);
 }

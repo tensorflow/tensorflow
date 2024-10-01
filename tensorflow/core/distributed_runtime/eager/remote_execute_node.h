@@ -44,7 +44,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
                     CancellationManager* cancellation_manager,
                     const NodeDef& ndef,
                     const FunctionLibraryDefinition* lib_def,
-                    const gtl::InlinedVector<TensorHandle*, 4>& inputs,
+                    const absl::InlinedVector<TensorHandle*, 4UL>& inputs,
                     absl::Span<TensorHandle*> retvals)
       : AsyncRemoteExecuteNode(),
         eager_context_(eager_context),
@@ -133,8 +133,8 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
   CancellationManager* cancellation_manager_;
   const NodeDef ndef_;
   const FunctionLibraryDefinition* lib_def_;
-  gtl::InlinedVector<TensorHandle*, 4> inputs_;
-  gtl::InlinedVector<TensorHandle*, 2> retvals_;
+  absl::InlinedVector<TensorHandle*, 4UL> inputs_;
+  absl::InlinedVector<TensorHandle*, 2UL> retvals_;
 };
 
 }  // namespace eager

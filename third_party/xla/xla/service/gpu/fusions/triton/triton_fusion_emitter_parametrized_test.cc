@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
+#include "xla/service/gpu/fusions/triton/triton_test_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -52,6 +53,21 @@ struct MixTypeParams {
 class MixedTypeTest : public GpuCodegenTest,
                       public ::testing::WithParamInterface<MixTypeParams> {
  public:
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  void SetUp() override {
+    if (std::holds_alternative<se::RocmComputeCapability>(
+            GetGpuComputeCapability())) {
+      GTEST_SKIP()
+          << "Related fusions are not performed on ROCm without Triton.";
+    }
+  }
+
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
@@ -124,9 +140,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              //  TritonRewriteTest2Params{F32, F16},
                              //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
-                             // Modify the case below to use k = 32 instead of
-                             // 16 once b/337839570 is fixed.
-                             MixTypeParams{S8, F16, 80, 32, 32, 1e-3, 1e-6},
+                             MixTypeParams{S8, F16, 80, 16, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},
                              MixTypeParams{BF16, F32, 77, 500, 333, 3e-3, 3e-3},
@@ -731,11 +745,9 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    ConstantTestSuite, ConstantTest, ::testing::ValuesIn(kSupportedDataTypes),
-    [](const ::testing::TestParamInfo<PrimitiveType> type) {
-      return primitive_util::LowercasePrimitiveTypeName(type.param);
-    });
+INSTANTIATE_TEST_SUITE_P(ConstantTestSuite, ConstantTest,
+                         ::testing::ValuesIn(kSupportedDataTypes),
+                         TritonSupportTestTypeToString);
 
 class ConvertTest : public TritonTest,
                     public ::testing::WithParamInterface<
@@ -790,7 +802,8 @@ class TritonSoftmaxTest : public GpuCodegenTest,
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    debug_options
+        .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
     // TODO(b/38354253): Remove once HloTestBase does not remove constant
     // folding.
     debug_options.clear_xla_disable_hlo_passes();
@@ -1160,8 +1173,6 @@ ENTRY main {
       tolerance = 1e-6;
       break;
     case F16:
-      tolerance = 2e-4;
-      break;
     case BF16:
       tolerance = 2e-2;
       break;
@@ -1684,8 +1695,6 @@ ENTRY main {
       tolerance = 1e-6;
       break;
     case F16:
-      tolerance = 2e-4;
-      break;
     case BF16:
       tolerance = 2e-2;
       break;
@@ -2215,12 +2224,9 @@ ENTRY main {
 ; CHECK:      ENTRY
 ; CHECK-DAG:    %[[P0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[P1:.*]] = f32[10,125,127]{2,1,0} parameter(1)
-; CHECK:        %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
-; CHECK:        kind=kLoop
-; CHECK:      ROOT
-; CHECK-SAME:   f32[125,127]{1,0} fusion(%[[FUSION]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   triton_softmax
+; CHECK:        ROOT %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
+; CHECK-SAME:       kind=kCustom
+; CHECK-SAME:       __triton
 )";
   MatchOptimizedHlo(hlo_text, hlo_ref);
 
@@ -2228,6 +2234,47 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_text,
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
+
+class ReductionTypeTest : public TritonTest,
+                          public ::testing::WithParamInterface<PrimitiveType> {
+};
+
+TEST_P(ReductionTypeTest, DifferentReductionTypes) {
+  PrimitiveType data_type = GetParam();
+
+  const std::string kHloTestTemplate = R"(
+max {
+  p0 = $0[] parameter(0)
+  p1 = $0[] parameter(1)
+  ROOT max = $0[] maximum(p0, p1)
+}
+
+triton_computation {
+  p = $0[400,16] parameter(0)
+  zero = $0[] constant(0)
+  ROOT reduce = $0[400] reduce(p, zero), dimensions={1}, to_apply=max
+}
+
+ENTRY entry_computation {
+  p = $0[400,16] parameter(0)
+  ROOT fusion = $0[400] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={ "operation_queue_id":"0", "wait_on_operation_queues":[],
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["400"], "num_warps":"1"}},
+      "force_earliest_schedule":false}
+})";
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+constexpr std::array<PrimitiveType, 9> kReductionSupportedDataTypes{
+    PRED, S8, S16, S32, S64, F16, F32, F64, BF16};
+
+INSTANTIATE_TEST_SUITE_P(ReductionTypeTestSuite, ReductionTypeTest,
+                         ::testing::ValuesIn(kReductionSupportedDataTypes),
+                         TritonSupportTestTypeToString);
 
 }  // namespace
 }  // namespace gpu

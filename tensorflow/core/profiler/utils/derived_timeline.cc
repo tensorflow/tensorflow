@@ -25,6 +25,14 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/tf_op_utils.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/tpu_xplane_utils.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -38,15 +46,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/group_events.h"
-#include "tsl/profiler/utils/tf_op_utils.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/tpu_xplane_utils.h"
-#include "tsl/profiler/utils/trace_utils.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -140,6 +140,10 @@ DerivedXLineBuilder::DerivedXLineBuilder(
     int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
     : group_id_stat_metadata_(
           plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))),
+      correlation_id_metadata_(plane->GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kCorrelationId))),
+      cuda_graph_id_metadata_(plane->GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kCudaGraphId))),
       line_(plane->GetOrCreateLine(line_id)),
       dependent_lines_(std::move(dependent_lines)) {
   line_.SetName(name);
@@ -185,13 +189,31 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
   }
 }
 
+void DerivedXLineBuilder::AddStatToLevelEvent(int level,
+                                              const XStatMetadata& metadata,
+                                              int64_t value) {
+  if (auto it = last_event_by_level_.find(level);
+      it != last_event_by_level_.end() && it->second.has_value()) {
+    it->second->SetOrAddStatValue(metadata, value);
+  }
+}
+
+void DerivedXLineBuilder::AddStatToLevelEvent(int level,
+                                              const XStatMetadata& metadata,
+                                              uint64_t value) {
+  if (auto it = last_event_by_level_.find(level);
+      it != last_event_by_level_.end() && it->second.has_value()) {
+    it->second->SetOrAddStatValue(metadata, value);
+  }
+}
+
 // When deriving a bunch of events with the same timespan, there could be
 // indeterministic behavior of how trace viewer stacking these events.
 // This function will shrink the stack of events with the same timespan when
-// necessary. Event at top of stack might shrink more than event at the bottom.
-// Because the time unit in trace viewer is nanosecond, therefore the minimum
-// difference is 1ns. However to prevent shrink induced inconsitency, we can
-// not shrink more than the duration of event at the top of the stack.
+// necessary. Event at top of stack might shrink more than event at the
+// bottom. Because the time unit in trace viewer is nanosecond, therefore the
+// minimum difference is 1ns. However to prevent shrink induced inconsitency,
+// we can not shrink more than the duration of event at the top of the stack.
 void DerivedXLineBuilder::AdjustDurationForTraceViewer(int level) {
   if (level >= last_event_by_level_.size() || !last_event_by_level_[level])
     return;
@@ -286,8 +308,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
        GetSortedEvents<XEventVisitor>(plane_visitor)) {
     GpuEventStats stats(&event);
     // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
-    // allocation events).
-    if (!stats.IsKernel()) continue;
+    // allocation events). Also CudaGraph executions are also treated as
+    // kernel events.
+    if (!stats.IsKernel() && !stats.IsCudaGraphExecution()) continue;
     tsl::profiler::Timespan event_span = event.GetTimespan();
 
     if (!stats.hlo_module_name.empty()) {
@@ -299,9 +322,26 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     if (stats.IsXlaOp()) {
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
-      hlo_ops.ExpandOrAddEvents(
-          GetOrCreateHloOpEventsMetadata(plane_builder, stats, symbol),
-          event_span, stats.group_id);
+      auto hlo_events_metadata =
+          GetOrCreateHloOpEventsMetadata(plane_builder, stats, symbol);
+      hlo_ops.ExpandOrAddEvents(hlo_events_metadata, event_span,
+                                stats.group_id);
+      // If the kernel event is nodes of a CudaGraph or a whole cuda graph
+      // exec, try to mark extra stats to to corresponding XLA op event here.
+      if (stats.cuda_graph_id_for_inner_node.has_value() &&
+          *stats.cuda_graph_id_for_inner_node != 0) {
+        int level = static_cast<int>(hlo_events_metadata.size()) - 1;
+        if (level >= 0) {
+          hlo_ops.AddStatToLevelEvent(level, *hlo_ops.GetCudaGraphIdMetadata(),
+                                      *stats.cuda_graph_id_for_inner_node);
+          if (stats.correlation_id.has_value()) {
+            hlo_ops.AddStatToLevelEvent(level,
+                                        *hlo_ops.GetCorrelationIdMetadata(),
+                                        *stats.correlation_id);
+          }
+        }
+      }
+
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
                          event_span, stats.group_id, plane_builder,

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -361,34 +362,34 @@ class CStreamExecutor : public StreamExecutorCommon {
       const override {
     OwnedTFStatus c_status(TF_NewStatus());
 
-    internal::DeviceDescriptionBuilder builder;
+    DeviceDescription desc;
     if (device_.hardware_name != nullptr) {
-      builder.set_name(device_.hardware_name);
+      desc.set_name(device_.hardware_name);
     }
     if (device_.device_vendor != nullptr) {
-      builder.set_device_vendor(device_.device_vendor);
+      desc.set_device_vendor(device_.device_vendor);
     }
     if (device_.pci_bus_id != nullptr) {
-      builder.set_pci_bus_id(device_.pci_bus_id);
+      desc.set_pci_bus_id(device_.pci_bus_id);
     }
 
     if (device_fns_->get_numa_node != nullptr) {
       int32_t numa_node = device_fns_->get_numa_node(&device_);
       if (numa_node >= 0) {
-        builder.set_numa_node(numa_node);
+        desc.set_numa_node(numa_node);
       }
     }
 
     if (device_fns_->get_memory_bandwidth != nullptr) {
       int64_t memory_bandwidth = device_fns_->get_memory_bandwidth(&device_);
       if (memory_bandwidth >= 0) {
-        builder.set_memory_bandwidth(memory_bandwidth);
+        desc.set_memory_bandwidth(memory_bandwidth);
       }
     }
     // TODO(annarev): Add gflops field in DeviceDescription and set it here.
     // TODO(annarev): Perhaps add `supports_unified_memory` in
     // DeviceDescription.
-    return builder.Build();
+    return std::make_unique<DeviceDescription>(std::move(desc));
   }
 
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override {
@@ -444,9 +445,9 @@ CPlatform::DescriptionForDevice(int ordinal) const {
   // TODO(annarev): see if we can get StreamExecutor instance
   // and call GetDeviceDescription. executor_cache_.Get would need
   // to be made const for it to work.
-  internal::DeviceDescriptionBuilder builder;
-  builder.set_name(name_);
-  return builder.Build();
+  DeviceDescription desc;
+  desc.set_name(name_);
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
   return executor_cache_.Get(ordinal);

@@ -49,6 +49,11 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     auto& test_backend = backend();
     const auto& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
+    HloModuleConfig config(module->config());
+    DebugOptions dboptions(config.debug_options());
+    dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+    config.set_debug_options(dboptions);
+    module->set_config(config);
     TF_RETURN_IF_ERROR(
         ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
             .status());

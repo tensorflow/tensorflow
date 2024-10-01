@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/inference_profiler_stage.h"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <random>
@@ -101,12 +102,12 @@ TfLiteStatus InferenceProfilerStage::Init(
   for (int i = 0; i < model_info_->inputs.size(); ++i) {
     const TfLiteType model_input_type = model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8 || model_input_type == kTfLiteInt8 ||
-        model_input_type == kTfLiteInt64 ||
-        model_input_type == kTfLiteFloat32 ||
+        model_input_type == kTfLiteInt32 || model_input_type == kTfLiteInt64 ||
+        model_input_type == kTfLiteBool || model_input_type == kTfLiteFloat32 ||
         model_input_type == kTfLiteFloat16) {
     } else {
       LOG(ERROR) << "InferenceProfilerStage only supports "
-                    "float16/float32/int8/uint8/int64 "
+                    "float16/float32/int8/uint8/int32/int64/bool "
                     "input types";
       return kTfLiteError;
     }
@@ -121,14 +122,18 @@ TfLiteStatus InferenceProfilerStage::Init(
     int8_tensors_.emplace_back();
     float16_tensors_.emplace_back();
     int64_tensors_.emplace_back();
+    int32_tensors_.emplace_back();
+    bool_tensors_.emplace_back();
   }
   // Preprocess output metadata for calculating diffs later.
   for (int i = 0; i < model_info_->outputs.size(); ++i) {
     const TfLiteType model_output_type = model_info_->outputs[i]->type;
     if (model_output_type == kTfLiteUInt8 || model_output_type == kTfLiteInt8 ||
+        model_output_type == kTfLiteInt32 || model_output_type == kTfLiteBool ||
         model_output_type == kTfLiteFloat32) {
     } else {
-      LOG(ERROR) << "InferenceProfilerStage only supports float32/int8/uint8 "
+      LOG(ERROR) << "InferenceProfilerStage only supports "
+                    "float32/int8/uint8/int32/bool "
                     "output types";
       return kTfLiteError;
     }
@@ -160,11 +165,20 @@ TfLiteStatus InferenceProfilerStage::Run() {
           input_num_elements_[i], std::numeric_limits<int8_t>::min(),
           std::numeric_limits<int8_t>::max(), &int8_tensors_[i]);
       input_ptrs.push_back(int8_tensors_[i].data());
+    } else if (model_input_type == kTfLiteInt32) {
+      GenerateRandomGaussianData(
+          input_num_elements_[i], std::numeric_limits<int32_t>::min(),
+          std::numeric_limits<int32_t>::max(), &int32_tensors_[i]);
+      input_ptrs.push_back(int32_tensors_[i].data());
     } else if (model_input_type == kTfLiteInt64) {
       GenerateRandomGaussianData(
           input_num_elements_[i], std::numeric_limits<int64_t>::min(),
           std::numeric_limits<int64_t>::max(), &int64_tensors_[i]);
       input_ptrs.push_back(int64_tensors_[i].data());
+    } else if (model_input_type == kTfLiteBool) {
+      GenerateRandomGaussianData(input_num_elements_[i], 0, 1,
+                                 &bool_tensors_[i]);
+      input_ptrs.push_back(bool_tensors_[i].data());
     } else if (model_input_type == kTfLiteFloat32) {
       GenerateRandomGaussianData(input_num_elements_[i], -1, 1,
                                  &(float_tensors_[i]));
@@ -179,7 +193,7 @@ TfLiteStatus InferenceProfilerStage::Run() {
       input_ptrs.push_back(float16_tensors_[i].data());
     } else {
       LOG(ERROR) << "InferenceProfilerStage only supports "
-                    "float16/float32/int8/uint8/int64 "
+                    "float16/float32/int8/uint8/int32/int64/bool "
                     "input types";
       return kTfLiteError;
     }
@@ -202,6 +216,15 @@ TfLiteStatus InferenceProfilerStage::Run() {
                                           static_cast<uint8_t*>(test_ptr),
                                           output_num_elements_[i]);
     } else if (model_output_type == kTfLiteInt8) {
+      output_diff = CalculateAverageError(static_cast<int8_t*>(reference_ptr),
+                                          static_cast<int8_t*>(test_ptr),
+                                          output_num_elements_[i]);
+    } else if (model_output_type == kTfLiteInt32) {
+      output_diff = CalculateAverageError(static_cast<int32_t*>(reference_ptr),
+                                          static_cast<int32_t*>(test_ptr),
+                                          output_num_elements_[i]);
+    } else if (model_output_type == kTfLiteBool) {
+      // Use int8_t* for bool tensors to use void* casting.
       output_diff = CalculateAverageError(static_cast<int8_t*>(reference_ptr),
                                           static_cast<int8_t*>(test_ptr),
                                           output_num_elements_[i]);

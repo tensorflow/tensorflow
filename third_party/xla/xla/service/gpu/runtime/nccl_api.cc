@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -112,6 +112,8 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
     case S8:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return ncclInt8;
     case PRED:
     case U8:
@@ -330,10 +332,14 @@ class DefaultNcclApi final : public NcclApi {
   absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
                     size_t count, int32_t peer, NcclCommHandle comm,
                     se::Stream* stream) final;
+  absl::Status SendPtrToPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+                             se::Stream* stream) final;
 
   absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
                     size_t count, int32_t peer, NcclCommHandle comm,
                     se::Stream* stream) final;
+  absl::Status RecvPtrFromPeer(void* ptr, int32_t peer, NcclCommHandle comm,
+                               se::Stream* stream) final;
 
   absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
       NcclCommHandle comm, se::DeviceMemoryBase buffer) final;
@@ -346,6 +352,8 @@ NcclApi* NcclApi::Default() {
   static auto* nccl_api = new DefaultNcclApi();
   return nccl_api;
 }
+
+bool NcclApi::HasNcclSupport() { return true; }
 
 static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
               "size of nccl unique id must match the clique id size");
@@ -392,7 +400,7 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
             << " of " << nranks
             << "; fingerprint(id)=" << clique_id.fingerprint();
 
-    se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
+    se::gpu::ScopedActivateContext activate_context(ranks[i].device);
 
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
         &comm_handles[i], nranks, AsNcclUniqueId(clique_id), ranks[i].rank,
@@ -609,6 +617,17 @@ absl::Status DefaultNcclApi::Send(se::DeviceMemoryBase send_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
+absl::Status DefaultNcclApi::SendPtrToPeer(void* ptr, int32_t peer,
+                                           NcclCommHandle comm,
+                                           se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL RecvPtrFromPeer operation on device #%d;  "
+      "peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer, comm, stream);
+  return XLA_NCCL_STATUS(ncclSend(ptr, 1, ncclUint64, peer, Cast(comm),
+                                  se::gpu::AsGpuStreamValue(stream)));
+}
+
 absl::Status DefaultNcclApi::Recv(se::DeviceMemoryBase recv_buffer,
                                   PrimitiveType dtype, size_t count,
                                   int32_t peer, NcclCommHandle comm,
@@ -625,6 +644,18 @@ absl::Status DefaultNcclApi::Recv(se::DeviceMemoryBase recv_buffer,
   return XLA_NCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status DefaultNcclApi::RecvPtrFromPeer(void* ptr, int32_t peer,
+                                             NcclCommHandle comm,
+                                             se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL RecvPtrFromPeer operation on device #%d; "
+      "peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer, comm, stream);
+
+  return XLA_NCCL_STATUS(ncclRecv(ptr, 1, ncclUint64, peer, Cast(comm),
+                                  se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>

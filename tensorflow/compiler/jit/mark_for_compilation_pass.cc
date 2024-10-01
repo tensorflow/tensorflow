@@ -482,9 +482,9 @@ class MarkForCompilationPassImpl {
   bool clusters_created_ = false;
 
   std::vector<std::unique_ptr<Cluster>> cluster_storage_;
-  std::vector<UnionFind<Cluster*>> cluster_for_node_;
+  std::vector<xla::UnionFind<Cluster*>> cluster_for_node_;
   absl::flat_hash_set<const Node*> declustered_nodes_;
-  GraphCycles cycles_graph_;
+  xla::GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
   int64_t iteration_count_ = 0;

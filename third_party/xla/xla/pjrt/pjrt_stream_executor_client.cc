@@ -425,6 +425,27 @@ absl::Status AddDestinationBufferSynchronization(
   return absl::OkStatus();
 }
 
+// We wait for events that the compute stream didn't already wait for. Based on
+// our heuristics, for usage events, this rare case should only occur when a
+// buffer was copied to a device and then never used there. In that case we get
+// a new stream and use it to hold onto a reference to the buffer until the
+// events are complete.
+void MaybeWaitForEventOnStream(BufferSequencingEvent* event,
+                               LocalDeviceState* local_device_state,
+                               se::Stream*& stream) {
+  if (!event->IsPredeterminedErrorOrDefinedOn(
+          local_device_state->compute_stream()) &&
+      !event->IsComplete()) {
+    if (stream == nullptr) {
+      stream = local_device_state->GetFixedSizePoolUsageStream();
+    }
+    VLOG(2) << "Waiting for event: " << event
+            << "; is_predetermined_error: " << event->IsPredeterminedError()
+            << "; on stream: " << stream;
+    event->WaitForEventOnStream(stream);
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
@@ -1492,6 +1513,24 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
     if (local_device_state->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
       se::Stream* block_stream = nullptr;
+      // If an event is not defined yet, we wait for it to be defined in a new
+      // thread in the thread pool.
+      // This allows the host to schedule:
+      //   create buffer -> use -> delete -> fulfill
+      absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 5>
+          events_to_wait_for_in_a_different_thread;
+      auto maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait =
+          [&events_to_wait_for_in_a_different_thread, local_device_state,
+           &block_stream](const std::shared_ptr<BufferSequencingEvent>& event) {
+            if (local_device_state->allow_delete_before_fulfill() &&
+                !event->IsDefined()) {
+              // Wait for the event to be defined in a different thread.
+              events_to_wait_for_in_a_different_thread.push_back(event);
+            } else {
+              MaybeWaitForEventOnStream(event.get(), local_device_state,
+                                        block_stream);
+            }
+          };
       for (const auto& stream_and_event : events) {
         VLOG(2)
             << "Checking whether need to wait for stream_and_event: stream: "
@@ -1501,31 +1540,11 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
             << "; is_predetermined_error: "
             << stream_and_event.event->IsPredeterminedError();
         // We only need to do something for events that didn't already acquire a
-        // reference to the buffer, and also which the compute stream didn't
-        // already wait for. Based on our heuristics this rare case should only
-        // occur when a buffer was copied to a device and then never used there.
-        // In that case we get a new stream and use it to hold onto a reference
-        // to the buffer until the events are complete.
-        //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        if (!stream_and_event.event->IsPredeterminedError() &&
-            !stream_and_event.reference_held &&
-            !stream_and_event.event->DefinedOn(
-                local_device_state->compute_stream()) &&
-            !stream_and_event.event->IsComplete()) {
-          if (block_stream == nullptr) {
-            block_stream = local_device_state->GetFixedSizePoolUsageStream();
-          }
-          VLOG(2) << "Waiting for stream_and_event: stream: "
-                  << stream_and_event.stream
-                  << "; event: " << stream_and_event.event.get()
-                  << "; reference_held: " << stream_and_event.reference_held
-                  << "; is_predetermined_error: "
-                  << stream_and_event.event->IsPredeterminedError();
-          stream_and_event.event->WaitForEventOnStream(block_stream);
+        // reference to the buffer and for other situations described in the
+        // comment of MaybeWaitForEventOnStream()
+        if (!stream_and_event.reference_held) {
+          maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait(
+              stream_and_event.event);
         }
       }
       for (const auto& definition_event : device_buffer->definition_events()) {
@@ -1533,37 +1552,34 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
                 << definition_event.get() << "; is_predetermined_error: "
                 << definition_event->IsPredeterminedError();
         // Here we wait for the definition events to complete on block_stream as
-        // well, if they are not on the compute stream and not also recorded as
-        // usage events.
-        //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        //
-        // Since it's possible that definition_event.SetSequencingEvent()
-        // is called on a different host thread than this host thread, when in
-        // future more conditions are added to this check, we should be careful
-        // about whether we put them before the DefinedOn check or after it.
-        // For example, we shouldn't add an IsDefined() check before the
-        // DefinedOn() check here because that could potentially cause a
-        // shortcut where we don't wait for
-        // definition_event.SetSequencingEvent() on the other thread and
-        // eventually cause memory corruption.
-        if (!definition_event->IsPredeterminedError() &&
-            !definition_event->DefinedOn(
-                local_device_state->compute_stream()) &&
-            !definition_event->IsComplete()) {
-          if (block_stream == nullptr) {
-            block_stream = local_device_state->GetFixedSizePoolUsageStream();
-          }
-          VLOG(2) << "Waiting for definition_event: " << definition_event.get()
-                  << "; is_predetermined_error: "
-                  << definition_event->IsPredeterminedError();
-          definition_event->WaitForEventOnStream(block_stream);
-        }
+        // well, in case they are not also usage events.
+        maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait(
+            definition_event);
       }
-      if (block_stream != nullptr) {
+      if (!events_to_wait_for_in_a_different_thread.empty()) {
+        VLOG(1) << "Going to wait for "
+                << events_to_wait_for_in_a_different_thread.size()
+                << " events in a different thread.";
+        // We always use the cleanup_thread instead of using the
+        // client->thread_pool() here to avoid exhausting the client thread
+        // pool.
+        local_device_state->cleanup_thread()->Schedule(
+            [events_to_wait_for_in_a_different_thread =
+                 std::move(events_to_wait_for_in_a_different_thread),
+             local_device_state, device_buffer, block_stream]() mutable {
+              for (const auto& event :
+                   events_to_wait_for_in_a_different_thread) {
+                MaybeWaitForEventOnStream(event.get(), local_device_state,
+                                          block_stream);
+              }
+              if (block_stream != nullptr) {
+                TF_CHECK_OK(local_device_state->ThenExecuteCallback(
+                    block_stream, [device_buffer]() {
+                      // Drops device_buffer shared pointer.
+                    }));
+              }
+            });
+      } else if (block_stream != nullptr) {
         TF_RETURN_IF_ERROR(local_device_state->ThenExecuteCallback(
             block_stream, [device_buffer]() {
               // Drops device_buffer shared pointer.
@@ -2298,6 +2314,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
       device->default_memory_space().value_or(nullptr);
   if (shape.has_layout()) {
     switch (shape.layout().memory_space()) {
+      case Layout::kGenericFastMemorySpace:
       case Layout::kDefaultMemorySpace:
         // Nothing to do, we have already set the default memory space.
         break;
@@ -3334,6 +3351,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
   switch (shape.layout().memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
+    case Layout::kGenericFastMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;
     default:
@@ -3468,8 +3486,11 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
-                                  CompileOptions options) {
+PjRtStreamExecutorClient::CompileInternal(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    LayoutCanonicalizationCallback layout_canonicalization_callback,
+    CompileOptions options) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
   options.executable_build_options.set_process_index(process_index());
@@ -3488,16 +3509,13 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
-  std::vector<const Shape*> argument_layout_pointers;
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [local_client = client()](Shape shape) {
-        return local_client->backend()
-            .transfer_manager()
-            ->ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
+  // It is important to set the canonicalization callback after creating
+  // a copy of the options so that the executable's options remain without
+  // the callback - the callback would break the executable's serializability.
+  if (layout_canonicalization_callback) {
+    options.executable_build_options.set_layout_canonicalization_callback(
+        layout_canonicalization_callback);
+  }
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
@@ -3541,8 +3559,25 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
                       GetOutputMemoryKinds(module));
 
-  // This call will update result_layout in options.executable_build_options
-  // (in addition to returning the argument layouts).
+  // If auto-sharding modifies shapes of arguments and/or result,
+  // we get a callback to restore the layouts. Let us restore the layouts
+  // according to the attributes we parsed from MLIR.
+  auto layout_callback = [local_client = client(), &arg_layout_modes,
+                          &out_layout_modes, &arg_memory_spaces,
+                          &out_memory_spaces](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation xla_computation(XlaComputation(module.ToProto()));
+    return LayoutModesToXlaShapes(
+        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces,
+        [local_client](Shape shape) -> absl::StatusOr<Shape> {
+          return local_client->backend()
+              .transfer_manager()
+              ->ChooseCompactLayoutForShape(shape);
+        });
+  };
+
+  // This call will update result_layout in options.executable_build_options.
   TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
                       LayoutModesToXla(
                           xla_computation, arg_layout_modes, out_layout_modes,
@@ -3555,8 +3590,26 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                           },
                           options.executable_build_options));
 
-  options.argument_layouts = arg_layouts_and_pointers.first;
-  return Compile(xla_computation, options);
+  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
+                         layout_callback, options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+                                  CompileOptions options) {
+  std::vector<const Shape*> argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+  return CompileInternal(computation, argument_layout_pointers,
+                         /* layout_canonicalization_callback = */ nullptr,
+                         options);
 }
 
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(

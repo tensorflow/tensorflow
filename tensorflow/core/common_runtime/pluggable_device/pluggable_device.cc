@@ -27,38 +27,40 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
-#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/stream_executor_util.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -184,8 +186,9 @@ PluggableDevice::PluggableDevice(
       tf_device_id_(tf_device_id),
       platform_name_(platform_name),
       sync_every_op_(sync_every_op) {
-  if (options.config.has_gpu_options()) {
-    force_gpu_compatible_ = options.config.gpu_options().force_gpu_compatible();
+  if (options.config.has_pluggable_device_options()) {
+    force_gpu_compatible_ =
+        options.config.pluggable_device_options().force_gpu_compatible();
   }
   PluggableDeviceProcessState::singleton(device_type, platform_name)
       ->EnablePluggableDevice();
@@ -206,11 +209,12 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   }
   executor_ = executor_status.value();
 
-  em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
-                                                  options.config.gpu_options());
+  em_ = EventMgrFactory::Singleton()->GetEventMgr(
+      executor_, options.config.pluggable_device_options());
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
-      device_type(), tf_device_id_, 0, executor_, options.config.gpu_options());
+      device_type(), tf_device_id_, 0, executor_,
+      options.config.pluggable_device_options());
   device_context_ = new PluggableDeviceContext(
       0, stream_->compute, stream_->host_to_device, stream_->device_to_host,
       stream_->device_to_device);

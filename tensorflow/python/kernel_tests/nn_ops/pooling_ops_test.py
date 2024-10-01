@@ -808,7 +808,8 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
   def testMaxPoolWithArgmaxKsizeOverflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        "ksize must be a postive int32 value"):
+        "ksize must be a positive int32 value",
+    ):
       with self.cached_session():
         t = gen_nn_ops.max_pool_with_argmax(
             input=[[[[1, 1, 1]]]],

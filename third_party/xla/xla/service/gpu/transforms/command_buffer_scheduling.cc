@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -85,6 +86,81 @@ static bool IsNoOp(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
                           HloOpcode::kGetTupleElement>(hlo);
 };
+
+//===----------------------------------------------------------------------===//
+// Asynchronous HLO operations mapped to commands.
+//===----------------------------------------------------------------------===//
+
+// Asynchronous HLO operations can be wrapped into command buffers only when
+// both start and done operations can be put into the same command buffer.
+// Command buffer semantics implies that when command buffer execution
+// completes, all recorded commands are also completed, which means that if
+// done operation is not part of the same command buffer, we would change the
+// execution semantics and create additional synchronization point.
+
+static bool IsAsyncStartCommand(const HloInstruction* hlo,
+                                const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
+      hlo->opcode() == HloOpcode::kAllGatherStart) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter ||
+        hlo->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+    }
+  }
+
+  if (hlo->opcode() == HloOpcode::kReduceScatter ||
+      hlo->opcode() == HloOpcode::kAllToAll) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  return false;
+}
+
+static bool IsAsyncDoneCommand(const HloInstruction* hlo,
+                               const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
+      hlo->opcode() == HloOpcode::kAllGatherDone) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncDone) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter ||
+        hlo->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+    }
+  }
+
+  return false;
+}
+
+// Finds an async-done HLO operation corresponding on an async-start one.
+static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
+  if (start->opcode() == HloOpcode::kAllReduceStart ||
+      start->opcode() == HloOpcode::kAllGatherStart) {
+    CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
+    return start->users().front();
+  } else if (start->opcode() == HloOpcode::kAsyncStart) {
+    return start->async_chain_done();
+  }
+
+  return nullptr;
+}
 
 //===----------------------------------------------------------------------===//
 // Synchronous HLO operations mapped to commands.
@@ -172,12 +248,13 @@ static bool IsCommand(const HloInstruction* hlo,
       auto fusion_analysis =
           HloFusionAnalysis::Create(*hlo, config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
-      auto custom_call_adaptor = HloBfsFindIf(
-          adaptor.GetRoots(), adaptor,
-          [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-      const auto* custom_call = static_cast<const HloCustomCallInstruction*>(
-          &custom_call_adaptor->instruction());
-      return IsCommand(custom_call, config);
+      auto hero_adaptor =
+          HloBfsFindIf(adaptor.GetRoots(), adaptor, [](auto node) {
+            return node.opcode() == HloOpcode::kCustomCall ||
+                   node.opcode() == HloOpcode::kReduceScatter;
+          });
+      const HloInstruction* hero = &hero_adaptor->instruction();
+      return IsCommand(hero, config) || IsAsyncStartCommand(hero, config);
     }
     if (custom_config.name() == "dynamic_address_computation") {
       return false;
@@ -203,74 +280,6 @@ static bool IsCommand(const HloInstruction* hlo,
     return IsCommand<HloOpcode::kConditional>(hlo, config);
 
   return false;
-}
-
-//===----------------------------------------------------------------------===//
-// Asynchronous HLO operations mapped to commands.
-//===----------------------------------------------------------------------===//
-
-// Asynchronous HLO operations can be wrapped into command buffers only when
-// both start and done operations can be put into the same command buffer.
-// Command buffer semantics implies that when command buffer execution
-// completes, all recorded commands are also completed, which means that if
-// done operation is not part of the same command buffer, we would change the
-// execution semantics and create additional synchronization point.
-
-static bool IsAsyncStartCommand(const HloInstruction* hlo,
-                                const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
-      hlo->opcode() == HloOpcode::kAllGatherStart) {
-    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-  }
-
-  if (hlo->opcode() == HloOpcode::kAsyncStart) {
-    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
-      return config.enabled_commands.contains(DebugOptions::CUBLAS);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
-      return config.enabled_commands.contains(DebugOptions::FUSION);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-    }
-  }
-
-  return false;
-}
-
-static bool IsAsyncDoneCommand(const HloInstruction* hlo,
-                               const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
-      hlo->opcode() == HloOpcode::kAllGatherDone) {
-    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-  }
-
-  if (hlo->opcode() == HloOpcode::kAsyncDone) {
-    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
-      return config.enabled_commands.contains(DebugOptions::CUBLAS);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
-      return config.enabled_commands.contains(DebugOptions::FUSION);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-    }
-  }
-
-  return false;
-}
-
-// Finds an async-done HLO operation corresponding on an async-start one.
-static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart ||
-      start->opcode() == HloOpcode::kAllGatherStart) {
-    CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
-    return start->users().front();
-  } else if (start->opcode() == HloOpcode::kAsyncStart) {
-    return start->async_chain_done();
-  }
-
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
@@ -432,7 +441,9 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 // the beginning of the computation. This simplifies the construction of command
 // buffer computations because we don't need to deal with parameters and
 // constants that have users outside of a command buffer.
-absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
+// Returns true if there is a change in the order of instructions, false
+// otherwise.
+absl::StatusOr<bool> CommandBufferScheduling::MoveParametersAndConstantsToFront(
     HloComputation* computation) {
   HloInstructionSequence new_sequence;
   HloSchedule& schedule = computation->parent()->schedule();
@@ -462,7 +473,11 @@ absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
   }
 
   schedule.set_sequence(computation, new_sequence);
-  return absl::OkStatus();
+  for (auto [old_i, new_i] :
+       llvm::zip(sequence.instructions(), new_sequence.instructions())) {
+    if (old_i != new_i) return true;
+  }
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -699,11 +714,8 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 //===----------------------------------------------------------------------===//
 
 CommandBufferScheduling::CommandBufferScheduling(
-    const se::DeviceDescription& device_description,
-    int32_t gpu_toolkit_version, int32_t gpu_driver_version)
-    : device_description_(device_description),
-      gpu_toolkit_version_(gpu_toolkit_version),
-      gpu_driver_version_(gpu_driver_version) {}
+    const se::DeviceDescription& device_description)
+    : device_description_(device_description) {}
 
 absl::StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
@@ -744,8 +756,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
         VLOG(1) << "Removed command buffer support for "
                 << DebugOptions::CommandBufferCmdType_Name(cmd)
                 << " as it's not supported with gpu toolkit version "
-                << gpu_toolkit_version_ << " and driver version "
-                << gpu_driver_version_
+                << device_description_.runtime_version()
+                << " and driver version "
+                << device_description_.driver_version()
                 << ". This might negatively impact peformance. To enable "
                 << DebugOptions::CommandBufferCmdType_Name(cmd)
                 << " support in command buffers use cuda-compat package: "
@@ -760,8 +773,15 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
   // Check if CUDA/ROCM driver supports required features.
   auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-    if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
-      erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+    if (std::min(device_description_.runtime_version(),
+                 device_description_.driver_version()) <
+        se::SemanticVersion{12, 3, 0}) {
+      erase(kRequireTracing);  // cuStreamBeginCaptureToGraph
+    }
+    if (std::min(device_description_.runtime_version(),
+                 device_description_.driver_version()) <
+        se::SemanticVersion{12, 4, 0}) {
+      // Conditionals With Memsets require cuda 12.4.1.
       erase(kRequireConditionals);  // on-device control flow
     }
   };
@@ -776,6 +796,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   std::reverse(order.begin(), order.end());
   absl::flat_hash_set<HloComputation*> processed_command_buffers;
 
+  auto changed = false;
   for (HloComputation* comp : order) {
     // Skip special computations that do not have lowering to thunks.
     if (comp->IsFusionComputation() || comp->IsAsyncComputation() ||
@@ -785,7 +806,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     // Skip computations that already part of command buffers.
     if (processed_command_buffers.contains(comp)) continue;
 
-    TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(comp));
+    TF_ASSIGN_OR_RETURN(bool changed_, MoveParametersAndConstantsToFront(comp));
+    changed |= changed_;
 
     std::vector<HloInstructionSequence> sequences =
         CollectCommandBufferSequences(
@@ -798,6 +820,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
       TF_ASSIGN_OR_RETURN(
           HloComputation * command_buffer_computation,
           RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
+      changed = true;
 
       // All computations reachable from a command buffer computation are nested
       // command buffers (i.e. body computations attached to a while operation).
@@ -809,7 +832,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   }
   TF_RETURN_IF_ERROR(module->schedule().Update());
 
-  return true;
+  return changed;
 }
 
 }  // namespace xla::gpu

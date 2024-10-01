@@ -22,11 +22,14 @@ limitations under the License.
 #endif  // XLA_FFI_FFI_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -295,6 +298,146 @@ class ErrorOr : public Expected<T, Error> {
  public:
   using Expected<T, Error>::Expected;
 };
+
+//===----------------------------------------------------------------------===//
+// Future
+//===----------------------------------------------------------------------===//
+
+// A Promise and a Future are loosely based on `std::promise` and `std::future`,
+// with an API similar to `tsl::AsyncValue`. Implementation is based on a
+// simplified version of an AsyncValue with at most one waiter.
+
+// A promise to complete execution with a success or an error.
+class Promise;
+
+// A future that becomes available when a corresponding promise is completed.
+class Future {
+ public:
+  explicit Future(const Promise& promise);
+
+  Future(Future&&) = default;
+  Future& operator=(Future&&) = default;
+
+  template <typename F>
+  void OnReady(F&& f);
+
+ private:
+  friend class Promise;
+
+  using Waiter = std::function<void(const std::optional<Error>& error)>;
+
+  enum class State : uint8_t { kPending, kAvailable, kError };
+
+  struct WaiterAndState {
+    static_assert(alignof(std::max_align_t) >= 8 && sizeof(Waiter*) == 8);
+
+    static constexpr uint64_t kStateMask = (1ull << 2) - 1;
+    static constexpr uint64_t kPointerMask = ~kStateMask;
+
+    WaiterAndState(Waiter* ptr, State state) {
+      value = (reinterpret_cast<uintptr_t>(ptr) & kPointerMask) |
+              (static_cast<uintptr_t>(state) & kStateMask);
+    }
+
+    WaiterAndState() : WaiterAndState(nullptr, State::kPending) {}
+
+    State state() const { return static_cast<State>(value & kStateMask); }
+
+    Waiter* waiter() const {
+      return reinterpret_cast<Waiter*>(value & kPointerMask);
+    }
+
+    uintptr_t value;
+  };
+
+  static_assert(std::atomic<WaiterAndState>::is_always_lock_free,
+                "WaiterAndState atomic must be lock-free");
+
+  struct Data {
+    std::atomic<WaiterAndState> waiter_and_state = WaiterAndState();
+    std::optional<Error> error;
+  };
+
+  std::shared_ptr<Data> data_;
+};
+
+class Promise {
+ public:
+  Promise() : data_(std::make_shared<Future::Data>()) {}
+
+  Promise(Promise&&) = default;
+  Promise& operator=(Promise&&) = default;
+
+  void SetAvailable();
+  void SetError(Error error);
+
+ private:
+  friend class Future;
+
+  void SetCompleted(Future::State state);
+
+  std::shared_ptr<Future::Data> data_;
+};
+
+inline Future::Future(const Promise& promise) : data_(promise.data_) {
+  assert(data_.use_count() == 2 &&
+         "Promise can be used to create at most one Future");
+}
+
+template <typename F>
+void Future::OnReady(F&& f) {
+  static_assert(std::is_invocable_v<F, const std::optional<Error>&>,
+                "F must be compatible with Waiter signature");
+
+  WaiterAndState old_value =
+      data_->waiter_and_state.load(std::memory_order_acquire);
+
+  // If future is already completed, just run the waiter.
+  if (old_value.state() != State::kPending) {
+    f(data_->error);
+    return;
+  }
+
+  // Otherwise, add the waiter to the future.
+  auto* waiter = new Waiter(std::forward<F>(f));
+  auto new_value = WaiterAndState(waiter, State::kPending);
+
+  while (!data_->waiter_and_state.compare_exchange_weak(
+      old_value, new_value, std::memory_order_acq_rel,
+      std::memory_order_acquire)) {
+    // Another thread completed the future, just run the waiter.
+    if (old_value.state() != State::kPending) {
+      assert(old_value.waiter() == nullptr);
+      (*waiter)(data_->error);
+      delete waiter;
+      return;
+    }
+  }
+
+  // If CAS succeeded the future must be in the pending state.
+  assert(old_value.state() == State::kPending);
+}
+
+inline void Promise::SetAvailable() { SetCompleted(Future::State::kAvailable); }
+
+inline void Promise::SetError(Error error) {
+  assert(error.errc() != ErrorCode::kOk);
+  assert(data_->error == std::nullopt);
+  data_->error = std::move(error);
+
+  SetCompleted(Future::State::kError);
+}
+
+inline void Promise::SetCompleted(Future::State state) {
+  Future::WaiterAndState old_value = data_->waiter_and_state.exchange(
+      {nullptr, state}, std::memory_order_acq_rel);
+  assert(old_value.state() == Future::State::kPending);
+
+  if (Future::Waiter* waiter = old_value.waiter()) {
+    (*waiter)(data_->error);
+    delete waiter;
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -868,6 +1011,63 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
     }
 
     return internal::CreateError(api, state.error());
+  }
+};
+
+// Encodes `Future` as an asynchronous FFI result.
+template <ExecutionStage stage>
+struct ResultEncoding<stage, Future> {
+  static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
+    // Create XLA_FFI_Future object that will signal completion to the runtime.
+    XLA_FFI_Future_Create_Args args;
+    args.struct_size = XLA_FFI_Future_Create_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.future = nullptr;
+
+    if (auto* err = api->XLA_FFI_Future_Create(&args)) {
+      return err;
+    }
+
+    assert(args.future != nullptr && "XLA_FFI_Future_Create failed");
+
+    future.OnReady([api, f = args.future](const std::optional<Error>& error) {
+      // When the OnReady callback is invoked, we no longer have access to the
+      // diagnostics, and can't signal an error to the runtime. We chose to
+      // abort execution, because otherwise it will lead to a deadlock. However
+      // we should never get to this point, because execution must be aborted on
+      // a synchronous path when checking XLA FFI version compatibility.
+      auto abort_on_error = [api](XLA_FFI_Error* err) {
+        if (XLA_FFI_PREDICT_TRUE(err == nullptr)) {
+          return;
+        }
+
+        std::cerr << "Failed to signal XLA_FFI_Future completion: "
+                  << internal::GetErrorMessage(api, err) << std::endl;
+        internal::DestroyError(api, err);
+        std::abort();
+      };
+
+      if (XLA_FFI_PREDICT_FALSE(error.has_value())) {
+        XLA_FFI_Future_SetError_Args args;
+        args.struct_size = XLA_FFI_Future_SetError_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+        args.error = internal::CreateError(api, *error);
+
+        abort_on_error(api->XLA_FFI_Future_SetError(&args));
+
+      } else {
+        XLA_FFI_Future_SetAvailable_Args args;
+        args.struct_size = XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+
+        abort_on_error(api->XLA_FFI_Future_SetAvailable(&args));
+      }
+    });
+
+    return args.future;
   }
 };
 

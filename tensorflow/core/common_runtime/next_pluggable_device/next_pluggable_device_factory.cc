@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_factory.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -89,14 +91,15 @@ Status NextPluggableDeviceFactory::CreateDevices(
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       session_options.config.device_count().begin(),
       session_options.config.device_count().end());
-  const GPUOptions gpu_options = session_options.config.gpu_options();
-  TF_ASSIGN_OR_RETURN(
-      const size_t num_tf_devices,
-      tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
-          device_count_map, device_type_, gpu_options.visible_device_list(),
-          visible_device_count));
+  const GPUOptions pluggable_device_options =
+      session_options.config.pluggable_device_options();
+  TF_ASSIGN_OR_RETURN(const size_t num_tf_devices,
+                      tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
+                          device_count_map, device_type_,
+                          pluggable_device_options.visible_device_list(),
+                          visible_device_count));
 
-  if (!gpu_options.experimental().virtual_devices().empty()) {
+  if (!pluggable_device_options.experimental().virtual_devices().empty()) {
     VLOG(2) << "NextPluggableDevice does not support virtual device setting.";
   }
 

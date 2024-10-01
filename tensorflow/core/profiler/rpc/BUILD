@@ -53,9 +53,9 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/rpc:profiler_service_impl",
-        "@local_tsl//tsl/profiler/utils:file_system_utils",
-        "@local_tsl//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_service_impl",
+        "@local_xla//xla/tsl/profiler/utils:file_system_utils",
+        "@local_xla//xla/tsl/profiler/utils:time_utils",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -74,15 +74,15 @@ cc_library(
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-        "@local_tsl//tsl/profiler/rpc/client:__pkg__",
         "@local_xla//xla:__subpackages__",
+        "@local_xla//xla/tsl/profiler/rpc/client:__pkg__",
     ],
     deps = [
         ":profiler_service_impl",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

@@ -20,11 +20,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/custom_call_program.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -50,7 +52,7 @@ class CustomCallProgramSerDesTest : public test_util::DeviceTest {};
 TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
   Shape shard_shape0({5, 20});
-  DeviceList devices = GetDevices({0, 1});
+  tsl::RCReference<DeviceList> devices = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding0 =
       ConcreteEvenSharding::Create(devices, MemoryKind(),
                                    /*shape=*/shape0,
@@ -66,7 +68,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   CustomCallProgram orig(
       /*type=*/"test type",
       /*name=*/"test name",
-      /*serialized_program_text=*/"test\0program\0text\0",
+      /*serialized_program_text=*/absl::Cord("test\0program\0text\0"),
       /*devices=*/std::move(devices),
       /*input_specs=*/
       {
@@ -89,9 +91,9 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_program->type, "test type");
   EXPECT_EQ(deserialized_program->name, "test name");
   EXPECT_EQ(deserialized_program->serialized_program_text,
-            "test\0program\0text\0");
+            absl::Cord("test\0program\0text\0").Flatten());
 
-  EXPECT_EQ(deserialized_program->devices, orig.devices);
+  EXPECT_EQ(*deserialized_program->devices, *orig.devices);
 
   ASSERT_THAT(deserialized_program->input_specs, SizeIs(1));
   EXPECT_EQ(deserialized_program->input_specs.front().dtype,
@@ -100,7 +102,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   const auto* deserialized_sharding0 = llvm::dyn_cast<ConcreteEvenSharding>(
       deserialized_program->input_specs.front().sharding.get());
   ASSERT_NE(deserialized_sharding0, nullptr);
-  EXPECT_EQ(deserialized_sharding0->devices(), sharding0->devices());
+  EXPECT_EQ(*deserialized_sharding0->devices(), *sharding0->devices());
   EXPECT_EQ(deserialized_sharding0->shape(), shape0);
   EXPECT_EQ(deserialized_sharding0->shard_shape(), shard_shape0);
 
@@ -111,7 +113,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   const auto* deserialized_sharding1 = llvm::dyn_cast<ConcreteEvenSharding>(
       deserialized_program->output_specs.front().sharding.get());
   ASSERT_NE(deserialized_sharding1, nullptr);
-  EXPECT_EQ(deserialized_sharding1->devices(), sharding1->devices());
+  EXPECT_EQ(*deserialized_sharding1->devices(), *sharding1->devices());
   EXPECT_EQ(deserialized_sharding1->shape(), shape1);
   EXPECT_EQ(deserialized_sharding1->shard_shape(), shard_shape1);
 }

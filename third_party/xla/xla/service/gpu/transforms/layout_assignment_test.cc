@@ -360,6 +360,50 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
                                  m::Op().WithShape(F32, {3, 2}, {1, 0}))));
 }
 
+TEST_F(LayoutAssignmentTest, TopKLayout) {
+  const char* hlo_text = R"(
+  HloModule topk
+
+  compare-greater-than {
+    p.1.lhs.3 = s32[] parameter(2)
+    p.1.rhs.4 = s32[] parameter(3)
+    p.0.lhs.1 = f32[] parameter(0)
+    bitcast-convert = s32[] bitcast-convert(p.0.lhs.1)
+    constant = s32[] constant(0)
+    compare = pred[] compare(bitcast-convert, constant), direction=LT
+    constant.2 = s32[] constant(2147483647)
+    xor = s32[] xor(constant.2, bitcast-convert)
+    select = s32[] select(compare, xor, bitcast-convert)
+    p.0.rhs.2 = f32[] parameter(1)
+    bitcast-convert.1 = s32[] bitcast-convert(p.0.rhs.2)
+    compare.1 = pred[] compare(bitcast-convert.1, constant), direction=LT
+    xor.1 = s32[] xor(constant.2, bitcast-convert.1)
+    select.1 = s32[] select(compare.1, xor.1, bitcast-convert.1)
+    ROOT compare.5 = pred[] compare(select, select.1), direction=GT
+  }
+
+  ENTRY main {
+    Arg_0.1 = f32[2048,6]{1,0} parameter(0)
+    t = f32[6,2048]{0,1} transpose(Arg_0.1), dimensions={1,0}
+    ROOT custom-call.1 = (f32[6,8]{1,0}, s32[6,8]{1,0}) custom-call(t), custom_call_target="__gpu$TopK", api_version=API_VERSION_TYPED_FFI, called_computations={compare-greater-than}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+
+  EXPECT_THAT(layout_assignment.Run(module.get()), IsOkAndHolds(true));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall(
+                  m::Transpose(m::Copy().WithShape(F32, {2048, 6}, {0, 1}))
+                      .WithShape(F32, {6, 2048}, {1, 0}))));
+}
+
 TEST_F(LayoutAssignmentTest, FftLayout) {
   const char* hlo_text = R"(
   HloModule Fft_module
@@ -609,6 +653,35 @@ ENTRY main {
   auto reduce = m->entry_computation()->root_instruction();
   EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
+}
+
+TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
+  const char* hlo = R"(
+
+  HloModule jit_dot_general_f8e4m3fn
+
+  ENTRY main {
+    p0 = f8e4m3fn[128,5120] parameter(0)
+    p1 = f8e4m3fn[5120,10240] parameter(1)
+    ROOT dot = f32[128,10240] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Dot(m::Parameter(0).WithShape(F8E4M3FN, {128, 5120}, {1, 0}),
+                 m::Parameter(1).WithShape(F8E4M3FN, {5120, 10240}, {0, 1}))
+              .WithShape(F32, {128, 10240}, {1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {

@@ -379,13 +379,15 @@ TEST_F(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
   }
 }
 
-TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
+TEST_F(ClientServerTest,
+       ClientsTerminateShutdownIfAnyClientGoesAway_WithoutErrorPolling) {
   int num_nodes = 3;
   StartService(num_nodes);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
+    client_options.poll_for_error_from_service_at_startup = false;
     client_options.missed_heartbeat_callback =
         [&](absl::Status status, bool coordinator_initiated) {};
     auto client = GetClient(node_id, client_options);
@@ -424,8 +426,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   }
 }
 
-TEST_F(ClientServerTest,
-       ClientsTerminateShutdownIfAnyClientGoesAway_WithErrorPolling) {
+TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -434,7 +435,6 @@ TEST_F(ClientServerTest,
     client_options.shutdown_on_destruction = node_id != 0;
     client_options.missed_heartbeat_callback =
         [&](absl::Status status, bool coordinator_initiated) {};
-    client_options.poll_for_error_from_service_at_startup = true;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -465,7 +465,7 @@ TEST_F(ClientServerTest,
   }
 }
 
-TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
+TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -474,7 +474,6 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
     client_options.shutdown_on_destruction = true;
     client_options.missed_heartbeat_callback =
         [&](absl::Status status, bool coordinator_initiated) {};
-    client_options.poll_for_error_from_service_at_startup = true;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -496,8 +495,7 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
   }
 }
 
-TEST_F(ClientServerTest,
-       MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway_WithErrorPolling) {
+TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -509,7 +507,6 @@ TEST_F(ClientServerTest,
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
-    client_options.poll_for_error_from_service_at_startup = true;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -534,7 +531,8 @@ TEST_F(ClientServerTest,
   }
 }
 
-TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
+TEST_F(ClientServerTest,
+       ClientsReceiveMissedHeartbeatIfAnyClientGoesAway_WithoutErrorPolling) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -546,6 +544,7 @@ TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
                                                    bool coordinator_initiated) {
       shutdown.Notify();
     };
+    client_options.poll_for_error_from_service_at_startup = false;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());

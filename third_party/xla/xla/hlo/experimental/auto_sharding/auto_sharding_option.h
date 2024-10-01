@@ -84,11 +84,6 @@ struct AutoShardingOption {
   bool force_override_reduce_scatter_cost = false;
   double reduce_scatter_cost = 0;
 
-  // Forcibly split the batch dimension and map it to a mesh dimension.
-  // This can force the auto-sharding pass to generate the data parallel
-  // strategy.
-  int force_batch_dim_to_mesh_dim = -1;
-
   // If true, allow replicated parameters.
   bool allow_replicated_parameters = true;
 
@@ -124,10 +119,6 @@ struct AutoShardingOption {
   // false, solve N-D sharding directly, i.e., generating all possible sharding
   // strategies for N-D mesh shape.
   bool solve_nd_sharding_iteratively = true;
-
-  // If it is not empty, forcibly use simple heuristic strategies
-  // instead of the ILP solver. This is used for ablation study.
-  std::string force_simple_heuristic;
 
   // If true, forcibly set the strategy of some instructions.
   bool force_strategy = false;
@@ -204,8 +195,12 @@ struct AutoShardingOption {
   // Split constant expressions as well when invoking HloConstantSplitter.
   bool enable_expression_constant_splitter = false;
 
-  // Whether to post-process the solution by reshaping / resharding tensors.
-  bool insert_resharding_reshapes = false;
+  // Whether to post-process the solution by reshaping/resharding tensors for
+  // non-dot/conv ops. We insert the reshapes for dots/convs as this empirically
+  // gives better auto-sharding outcomes.
+  // TODO(b/365834709) Investigate the need for resharding reshapes across all
+  // ops in a principled manner.
+  bool insert_resharding_reshapes_for_non_dot_ops = false;
 
   // Prints a debug string.
   std::string ToString() const;

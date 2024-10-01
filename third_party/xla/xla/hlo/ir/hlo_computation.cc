@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -50,9 +51,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -1155,7 +1156,8 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* root = builder.AddInstruction(
         instruction->CloneWithNewOperands(instruction->shape(), parameters));
     if (override_names) {
-      root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
+      parent()->SetAndUniquifyInstrName(
+          root, absl::StrCat(instruction->name(), ".cloned"));
     }
     HloComputation* async_computation =
         parent_->AddEmbeddedComputation(builder.Build(root));
@@ -1170,9 +1172,10 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     async_done = AddInstruction(
         HloInstruction::CreateAsyncDone(root->shape(), async_start));
     if (override_names) {
-      async_start->SetAndSanitizeName(
-          absl::StrCat(root->name(), ".call-start"));
-      async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+      parent()->SetAndUniquifyInstrName(
+          async_start, absl::StrCat(root->name(), ".call-start"));
+      parent()->SetAndUniquifyInstrName(
+          async_done, absl::StrCat(root->name(), ".call-done"));
     }
   }
   async_start->set_metadata(instruction->metadata());
@@ -1373,8 +1376,11 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     bool remove_unused_operands) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
-      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
-      << ShapeUtil::HumanString(new_instruction->shape());
+      << absl::StreamFormat(
+             "\"%s\" (%s) vs \"%s\" (%s)", old_instruction->name(),
+             old_instruction->shape().ToString(/*print_layout=*/true),
+             new_instruction->name(),
+             new_instruction->shape().ToString(/*print_layout=*/true));
   return ReplaceInstructionWithDifferentShape(
       old_instruction, new_instruction, preserve_sharding,
       relay_control_dependency, remove_unused_operands);

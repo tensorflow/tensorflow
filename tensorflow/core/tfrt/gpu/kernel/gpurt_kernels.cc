@@ -18,13 +18,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/tensor_util.h"
 #include "tensorflow/core/tfrt/gpu/kernel/gpu_runner.h"
@@ -58,41 +57,49 @@ struct Devices {
   absl::flat_hash_map<int, Device*> gpu_devices;
 };
 
-// Gets CPU and GPU devices from the fallback state. Currently, we only consider
-// a single GPU device.
-Status GetDevices(const tfrt::ExecutionContext& exec_ctx, Devices* devices) {
-  tfrt::RequestContext* req_ctx = exec_ctx.request_ctx();
-  const auto* fallback_request_state =
-      req_ctx->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
-  if (!fallback_request_state) {
-    return absl::InternalError("Fallback request state is not found.");
-  }
+// Gets CPU and GPU devices from the fallback state. Here we assume the devices
+// saved in the fallback state remain the same for all requests.
+const absl::StatusOr<Devices>& GetDevices(
+    const tfrt::ExecutionContext& exec_ctx) {
+  static const auto* const result = [&]() -> absl::StatusOr<Devices>* {
+    Devices devices;
+    tfrt::RequestContext* req_ctx = exec_ctx.request_ctx();
+    const auto* fallback_request_state =
+        req_ctx->GetDataIfExists<tfd::KernelFallbackCompatRequestState>();
+    if (!fallback_request_state) {
+      return new absl::StatusOr<Devices>(
+          absl::InternalError("Fallback request state is not found."));
+    }
 
-  devices->cpu_device = fallback_request_state->device_manager().HostCPU();
-  if (!devices->cpu_device) {
-    return absl::InternalError(
-        "Fallback request state must have a valid host cpu device.");
-  }
-  for (Device* device :
-       fallback_request_state->device_manager().ListDevices()) {
-    if (device->device_type() == DEVICE_GPU) {
-      if (!devices->gpu_devices.try_emplace(device->parsed_name().id, device)
-               .second) {
-        return absl::InternalError(absl::StrCat(
-            "A device with the same device ID already exists when adding ",
-            device->name()));
+    devices.cpu_device = fallback_request_state->device_manager().HostCPU();
+    if (!devices.cpu_device) {
+      return new absl::StatusOr<Devices>(absl::InternalError(
+          "Fallback request state must have a valid host cpu device."));
+    }
+    for (Device* device :
+         fallback_request_state->device_manager().ListDevices()) {
+      if (device->device_type() == DEVICE_GPU) {
+        if (!devices.gpu_devices.try_emplace(device->parsed_name().id, device)
+                 .second) {
+          return new absl::StatusOr<Devices>(absl::InternalError(absl::StrCat(
+              "A device with the same device ID already exists when adding ",
+              device->name())));
+        }
       }
     }
-  }
-  if (devices->gpu_devices.empty()) {
-    return absl::InternalError("No GPU device is found.");
-  }
-  for (const auto& [id, device] : devices->gpu_devices) {
-    if (id >= devices->gpu_devices.size()) {
-      return absl::InternalError("Device IDs are not consecutive.");
+    if (devices.gpu_devices.empty()) {
+      return new absl::StatusOr<Devices>(
+          absl::InternalError("No GPU device is found."));
     }
-  }
-  return absl::OkStatus();
+    for (const auto& [id, device] : devices.gpu_devices) {
+      if (id >= devices.gpu_devices.size()) {
+        return new absl::StatusOr<Devices>(
+            absl::InternalError("Device IDs are not consecutive."));
+      }
+    }
+    return new absl::StatusOr<Devices>(std::move(devices));
+  }();
+  return *result;
 }
 
 // Kernel for transferring `tensor` from host to device.
@@ -100,13 +107,13 @@ Status GetDevices(const tfrt::ExecutionContext& exec_ctx, Devices* devices) {
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferToDevice(
     const tfrt_stub::FallbackTensor& tensor,
     const tfrt::ExecutionContext& exec_ctx) {
-  Devices devices;
-  Status status = GetDevices(exec_ctx, &devices);
-  if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
+  const absl::StatusOr<Devices>& devices = GetDevices(exec_ctx);
+  if (!devices.ok()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        absl::InternalError(devices.status().message()));
   }
-  return TransferTensor(exec_ctx, tensor, devices.cpu_device,
-                        devices.gpu_devices.at(0));
+  return TransferTensor(exec_ctx, tensor, devices->cpu_device,
+                        devices->gpu_devices.at(0));
 }
 
 // Kernel for transferring `tensor` from device to host.
@@ -114,13 +121,13 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferToDevice(
 tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> TransferFromDevice(
     const tfrt_stub::FallbackTensor& tensor,
     const tfrt::ExecutionContext& exec_ctx) {
-  Devices devices;
-  Status status = GetDevices(exec_ctx, &devices);
-  if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
+  const absl::StatusOr<Devices>& devices = GetDevices(exec_ctx);
+  if (!devices.ok()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        absl::InternalError(devices.status().message()));
   }
-  return TransferTensor(exec_ctx, tensor, devices.gpu_devices.at(0),
-                        devices.cpu_device);
+  return TransferTensor(exec_ctx, tensor, devices->gpu_devices.at(0),
+                        devices->cpu_device);
 }
 
 // Kernel for transferring `variable` from host to device. If it has been
@@ -142,13 +149,13 @@ tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> MaybeTransferVariable(
 
   // The variable has not been transferred, so we transfer the variable and save
   // the device copy in the variable table.
-  Devices devices;
-  Status status = GetDevices(exec_ctx, &devices);
-  if (!status.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(absl::InternalError(status.message()));
+  const absl::StatusOr<Devices>& devices = GetDevices(exec_ctx);
+  if (!devices.ok()) {
+    return tfrt::MakeErrorAsyncValueRef(
+        absl::InternalError(devices.status().message()));
   }
-  auto device_variable = TransferTensor(exec_ctx, variable, devices.cpu_device,
-                                        devices.gpu_devices.at(0));
+  auto device_variable = TransferTensor(exec_ctx, variable, devices->cpu_device,
+                                        devices->gpu_devices.at(0));
   if (device_variable.IsError()) return device_variable;
 
   vars_table->AddOrUpdateDeviceVariable(variable, kCopyIndex,
@@ -180,14 +187,13 @@ void CompileAndExecute(tfrt::RemainingArguments args,
                                     used_output_indices.data().end()};
   run_inputs.func_name = func_name.str();
 
-  Devices devices;
-  Status device_status = GetDevices(exec_ctx, &devices);
-  if (!device_status.ok()) {
-    error_handler.ReportError(device_status.message());
+  const absl::StatusOr<Devices>& devices = GetDevices(exec_ctx);
+  if (!devices.ok()) {
+    error_handler.ReportError(devices.status().message());
     return;
   }
-  run_inputs.cpu_device = devices.cpu_device;
-  run_inputs.gpu_devices = std::move(devices.gpu_devices);
+  run_inputs.cpu_device = devices->cpu_device;
+  run_inputs.gpu_devices = devices->gpu_devices;
 
   tfrt::RequestContext* req_ctx = exec_ctx.request_ctx();
   const auto* fallback_request_state =

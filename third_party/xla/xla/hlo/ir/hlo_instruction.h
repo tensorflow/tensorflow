@@ -64,8 +64,8 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
@@ -1347,7 +1347,8 @@ class HloInstruction {
   // "fused_root". Additional instructions can be added to the fusion
   // instruction with the method FuseInstruction.
   static std::unique_ptr<HloInstruction> CreateFusion(
-      const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root);
+      const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root,
+      absl::string_view prefix = "");
 
   static std::unique_ptr<HloInstruction> CreateFusion(
       const Shape& shape, FusionKind fusion_kind,
@@ -1493,9 +1494,13 @@ class HloInstruction {
   // within the operand vector.
   InstructionVector unique_operands() const;
 
-  // Returns the index of 'target' in the operands sequence.
+  // Returns the first index of 'target' that occurs in the operands sequence.
   // Precondition: target must be an operand (or a fatal error will occur).
   int64_t operand_index(const HloInstruction* target) const;
+
+  // Returns all indices of 'target' that occur in the operands sequence.
+  // Precondition: target must be an operand (or a fatal error will occur).
+  std::vector<int64_t> operand_indices(const HloInstruction* target) const;
 
   // Returns the number of users of this instruction.
   int64_t user_count() const { return users_.size(); }
@@ -1681,6 +1686,13 @@ class HloInstruction {
   // Decomposes fusion back to individual parts.
   absl::Status Defuse();
 
+  // Unfuses the given instruction from its fusion computation. If the given
+  // instruction is not fused, this is a no-op and returns nullptr. Returns a
+  // pointer to the newly unfused instruction if successful. Currently, fused
+  // instructions with parameter or constant operands are supported.
+  absl::StatusOr<HloInstruction*> UnfuseInstruction(
+      HloInstruction* instruction);
+
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
   // of this instruction to avoid introducing cycles into the graph.
@@ -1808,8 +1820,9 @@ class HloInstruction {
   //
   // Precondition: The instruction is a Conditional instruction.
   const PtrVec<HloComputation*>& branch_computations() const;
-  int branch_count() const;
-  HloComputation* branch_computation(int b) const;
+  int32_t branch_count() const;
+  HloComputation* branch_computation(int32_t b) const;
+  int32_t branch_index(HloComputation* computation) const;
   // Sets a branch HloComputation for Conditional.
   // The setter should only be called by HloModule or HloComputation methods.
   //

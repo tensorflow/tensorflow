@@ -303,7 +303,8 @@ CopyAllocation::CopyAllocation(
     std::optional<HeapSimulator::Chunk> chunk,
     int64_t copy_start_schedule_after_time,
     int64_t copy_done_schedule_before_time, int64_t end_time,
-    std::optional<int64_t> cross_program_prefetch_index)
+    std::optional<int64_t> cross_program_prefetch_index,
+    HloInstruction* sync_instruction)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space, chunk,
           // Allocation uses an inclusive start time
@@ -312,7 +313,8 @@ CopyAllocation::CopyAllocation(
           /*is_scoped_allocation=*/false, cross_program_prefetch_index),
       prev_allocation_(prev_allocation),
       copy_start_schedule_after_(copy_start_schedule_after_time),
-      copy_done_schedule_before_(copy_done_schedule_before_time) {}
+      copy_done_schedule_before_(copy_done_schedule_before_time),
+      sync_instruction_(sync_instruction) {}
 
 int64_t CopyAllocation::earliest_available_time() const {
   return copy_done_schedule_before_;
@@ -323,11 +325,23 @@ absl::Status CopyAllocation::Process() {
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
-      producing_instruction, cross_program_prefetch_index()));
-  copy_done_ = computation->AddInstruction(
-      HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  if (sync_instruction_ != nullptr &&
+      sync_instruction_->opcode() != HloOpcode::kCopy) {
+    TF_ASSIGN_OR_RETURN(copy_done_,
+                        computation->CreateAsyncInstructions(
+                            sync_instruction_, {ShapeUtil::MakeShape(S32, {})},
+                            HloInstruction::kMainExecutionThread, false));
+    copy_start_ = copy_done_->mutable_operand(0);
+    TF_RETURN_IF_ERROR(
+        copy_start_->ReplaceOperandWith(0, producing_instruction));
+  } else {
+    copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
+        ShapeUtil::MakeTupleShape(
+            {shape, shape, ShapeUtil::MakeShape(U32, {})}),
+        producing_instruction, cross_program_prefetch_index()));
+    copy_done_ = computation->AddInstruction(
+        HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
+  }
   VLOG(4) << "Created " << copy_start_->name()
           << " for copy allocation: " << ToString();
 
@@ -359,8 +373,9 @@ std::string CopyAllocation::ToString() const {
                       ", start_time:", start_time(), ", end_time:", end_time(),
                       ", copy_start_after_time: ", copy_start_schedule_after(),
                       ", copy_done_before_time: ", copy_done_schedule_before(),
-                      ", uses: ", UsesToString(uses()), ", from ",
-                      prev_allocation_.ToString());
+                      ", uses: ", UsesToString(uses()), ", sync_instruction: ",
+                      sync_instruction_ ? sync_instruction_->name() : "none",
+                      ", from ", prev_allocation_.ToString());
 }
 
 HloPosition CopyAllocation::defining_position() const {
@@ -894,14 +909,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
   layout.set_memory_space(options_.alternate_memory_space);
   *shape.mutable_layout() = layout;
 
-  // Insert a new parameter in the fused computation.
-  HloComputation* fused_computation =
-      use_instruction->fused_instructions_computation();
-  const int64_t num_parameters = fused_computation->num_parameters();
-  std::string name = absl::StrCat("window-buffer.", num_parameters);
-  HloInstruction* param = fused_computation->AddParameter(
-      HloInstruction::CreateParameter(num_parameters, shape, name));
-
   // Insert async WindowPrefetch instructions as operands to the fusion.
   HloInstruction* prefetch =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -910,24 +917,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
                       computation->CreateAsyncInstructions(prefetch, {}));
   use_instruction->AppendOperand(prefetch_instruction_);
 
-  // Insert instruction to consume the added operands and forwards the original
-  // fusion output.
-  auto get_or_create_consumer =
-      [](HloComputation* computation) -> HloInstruction* {
-    HloInstruction* root = computation->root_instruction();
-    // If the root is already a WindowPrefetchBuffer, we don't need to create
-    // a new one.
-    if (root->IsCustomCall("WindowPrefetchBuffer")) {
-      return root;
-    }
-    HloInstruction* new_root =
-        computation->AddInstruction(HloInstruction::CreateCustomCall(
-            root->shape(), {root}, "WindowPrefetchBuffer"));
-    computation->set_root_instruction(new_root);
-    return new_root;
-  };
-  HloInstruction* consumer = get_or_create_consumer(fused_computation);
-  consumer->AppendOperand(param);
   return absl::OkStatus();
 }
 

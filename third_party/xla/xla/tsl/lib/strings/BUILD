@@ -13,9 +13,9 @@ cc_library(
     hdrs = ["proto_serialization.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/tsl/lib/gtl:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/gtl:inlined_vector",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",

@@ -26,7 +26,7 @@ class GpuContext;
 // This class implements Event::PollForStatus for CUDA devices.
 class CudaEvent : public GpuEvent {
  public:
-  explicit CudaEvent(GpuContext *context) : GpuEvent(context) {}
+  explicit CudaEvent(Context *context) : GpuEvent(context) {}
 
   Event::Status PollForStatus() override;
 };
