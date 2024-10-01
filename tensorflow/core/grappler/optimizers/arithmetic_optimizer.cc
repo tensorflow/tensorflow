@@ -2015,7 +2015,7 @@ class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
     // chain of unary elementwise ops that are not outputs.
     if (IsReshape(*node)) {
       bool skip = false;
-      gtl::InlinedVector<const NodeDef*, 4> nodes_in_chain;
+      absl::InlinedVector<const NodeDef*, 4UL> nodes_in_chain;
       const auto predicate_fn = [this, node, &skip,
                                  &nodes_in_chain](const NodeDef& input) {
         nodes_in_chain.push_back(&input);
@@ -3838,7 +3838,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     }
 
     auto copy_tensor_values_to_vector =
-        [node](const Tensor& t, gtl::InlinedVector<int64, 4>* vec) {
+        [node](const Tensor& t, absl::InlinedVector<int64, 4UL>* vec) {
           if (t.dtype() == DT_INT32) {
             auto t_flat = t.flat<int32>();
             vec->assign(&t_flat(0), &t_flat(t.NumElements()));
@@ -3853,8 +3853,8 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
           return absl::OkStatus();
         };
 
-    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
-    gtl::InlinedVector<int64_t, 4> slice_size_vec;
+    absl::InlinedVector<int64_t, 4UL> slice_begin_vec;
+    absl::InlinedVector<int64_t, 4UL> slice_size_vec;
     TF_RETURN_IF_ERROR(
         copy_tensor_values_to_vector(slice_begin_t, &slice_begin_vec));
     TF_RETURN_IF_ERROR(
@@ -3958,9 +3958,9 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     bool is_identity;
     bool is_simple_slice;
     bool slice_dim0;
-    gtl::InlinedVector<int64_t, 4> slice_begin_vec;
-    gtl::InlinedVector<int64_t, 4> slice_end_vec;
-    gtl::InlinedVector<int64_t, 4> slice_strides_vec;
+    absl::InlinedVector<int64_t, 4UL> slice_begin_vec;
+    absl::InlinedVector<int64_t, 4UL> slice_end_vec;
+    absl::InlinedVector<int64_t, 4UL> slice_strides_vec;
     TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
         &slice_begin_t, &slice_end_t, slice_strides_t, pack_output_shape,
         begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
