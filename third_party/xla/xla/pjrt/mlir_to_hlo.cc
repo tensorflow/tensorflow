@@ -42,6 +42,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Visitors.h"
@@ -136,27 +138,18 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       mlir::parseSourceString<mlir::ModuleOp>(
           llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
-          // IR may be invalid because some fields may be using DenseElements
-          // instead of DenseArray. We rectify that below and verify after.
-          mlir::ParserConfig{&context, /*verifyAfterParse=*/false});
+          mlir::ParserConfig{&context});
   if (!module) {
+    mlir::emitError(mlir::UnknownLoc::get(&context))
+        << "Failed to parse using StableHLO v"
+        << mlir::vhlo::Version::getCurrentVersion() << ", "
+        << "this could indicate forward incompatibility, >12w old "
+           "unsupported plugin, or a portable artifact that needs to be "
+           "further downgraded.";
     return diagnostic_handler.ConsumeStatus();
   }
 
-  // In
-  // https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-  // fields on some ops were changed to use Dense{Bool,I64}ArrayAttr instead of
-  // I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
-  // dense elements, not dense arrays, so when serializing we always convert the
-  // arrays to elements. The elements need to be converted back to arrays when
-  // deserializing.
-  // TODO: b/320507168 - Remove the conversion code, and verifyAfterParse.
   TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(*module));
-  if (failed(module->verifyInvariants())) {
-    VLOG(1) << "MLIR verification failed.";
-    module->dump();
-    return diagnostic_handler.ConsumeStatus();
-  }
   return std::move(module);
 }
 
