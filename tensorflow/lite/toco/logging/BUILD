@@ -107,7 +107,6 @@ py_strict_test(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "toco_conversion_log_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_conversion_log_proto"],
 # )

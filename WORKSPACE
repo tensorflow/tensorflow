@@ -32,6 +32,12 @@ load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_rep
 
 python_init_repositories(
     default_python_version = "system",
+    local_wheel_dist_folder = "dist",
+    local_wheel_inclusion_list = [
+        "tensorflow*",
+        "tf_nightly*",
+    ],
+    local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
         "3.9": "//:requirements_lock_3_9.txt",
         "3.10": "//:requirements_lock_3_10.txt",

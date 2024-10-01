@@ -164,10 +164,7 @@ cc_library(
         "signature_runner.h",
     ],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//research/drishti/benchmarking/async:__subpackages__",
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         ":model_builder",
         ":signature_runner",
@@ -306,7 +303,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__pkg__",
-        "//tensorflow/lite/c:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
     ],
     deps = [

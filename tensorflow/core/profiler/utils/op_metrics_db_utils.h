@@ -24,16 +24,18 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // The name of OpMetrics to represent the idle time.
 TF_CONST_INIT extern const absl::string_view kIdle;
+// The core index to add to sparse core index in op metrics.
+TF_CONST_INIT extern const uint32_t kSparseCoreIndexStart;
 
 // Helps build an op metrics database (borrowed).
 // Enables fast lookup of existing ops and prevents the creation of duplicate

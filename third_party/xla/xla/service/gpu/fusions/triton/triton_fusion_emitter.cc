@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -136,7 +137,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
-#include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -928,6 +928,56 @@ Value EmitTiledBroadcast(
                    padded_output_tile_shape);
 }
 
+absl::StatusOr<Value> EmitTiledIota(ImplicitLocOpBuilder& b,
+                                    ValueRange tile_multi_index,
+                                    const TiledHloInstruction& tiled_iota) {
+  const HloIotaInstruction* hlo_iota =
+      ::xla::Cast<HloIotaInstruction>(tiled_iota.hlo());
+  int64_t iota_dim = hlo_iota->iota_dimension();
+
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_iota.tile_sizes());
+
+  // We can treat iota more or less as a parameter load, except that we need to
+  // generate the right values in the right place as opposed to loading them.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_iota.tile_offsets_indexing());
+
+  auto iota_dim_offset = b.create<ma::IndexCastUIOp>(
+      b.getI32Type(), mlir_converter::ApplyIndexing(
+                          tile_offsets_indexing, /*dims=*/tile_multi_index,
+                          /*symbols=*/{}, b)[iota_dim]);
+
+  // First, stride as needed between the iota components.
+  Value range = b.create<ma::MulIOp>(
+      Range(b, padded_tile_sizes[iota_dim]),
+      Splat(b,
+            CreateConst(b, b.getI32Type(), tiled_iota.tile_strides()[iota_dim]),
+            padded_tile_sizes[iota_dim]));
+
+  // Then, add the base offset to the iota components.
+  range = b.create<ma::AddIOp>(
+      range, Splat(b, iota_dim_offset, padded_tile_sizes[iota_dim]));
+
+  // Cast the result to the targeted type.
+  TF_ASSIGN_OR_RETURN(Type iota_element_type,
+                      TritonType(b, hlo_iota->shape().element_type()));
+
+  range = Cast(b, range, iota_element_type);
+
+  // And finally, produce a broadcast along the non-iota dimensions in order to
+  // produce the whole iota tile.
+  for (int i = 0; i < padded_tile_sizes.size() - 1; i++) {
+    if (i < iota_dim) {
+      range = b.create<mt::ExpandDimsOp>(range, /*axis=*/0);
+    } else {
+      range = b.create<mt::ExpandDimsOp>(range, /*axis=*/i + 1);
+    }
+  }
+
+  return Broadcast(b, mlir::cast<TensorValue>(range), padded_tile_sizes);
+}
+
 Value EmitTiledReshape(ImplicitLocOpBuilder& b, ArrayRef<int64_t> tile_sizes,
                        Value input) {
   SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
@@ -1057,6 +1107,10 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
         absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
   }
 
+  if (hlo->opcode() == HloOpcode::kIota) {
+    return EmitTiledIota(b, tile_multi_index, tiled_hlo);
+  }
+
   if (hlo->opcode() == HloOpcode::kBroadcast) {
     return EmitTiledBroadcast(b, tiled_hlo, values);
   }
@@ -1162,14 +1216,6 @@ absl::StatusOr<Value> EmitScope(
     Value result;
     if (hlo->opcode() == HloOpcode::kConvert &&
         hlo->operand(0)->shape().element_type() == S4) {
-      if (!hlo->GetModule()
-               ->config()
-               .debug_options()
-               .xla_gpu_enable_triton_gemm_int4()) {
-        return absl::UnimplementedError(
-            "Int4 support is not enabled in the debug options.");
-      }
-
       TF_ASSIGN_OR_RETURN(
           auto unpacked, EmitUnpackInt4(b, hlo, side, values[hlo->operand(0)]));
       std::vector<Value> operands({unpacked});
@@ -2162,6 +2208,27 @@ bool IsTf32Allowed(const HloDotInstruction* dot_instr) {
   return algorithm_util::HasTf32InputType(algorithm);
 }
 
+mt::InputPrecision InferDotPrecision(const HloDotInstruction* dot_instr) {
+  auto algorithm = dot_instr->precision_config().algorithm();
+  if (algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
+    return mt::InputPrecision::TF32x3;
+  }
+  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
+  bool is_unsupported_bitwidth =
+      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
+        if (node->opcode() != HloOpcode::kConvert) {
+          return false;
+        }
+        int in_width =
+            primitive_util::BitWidth(node->operand(0)->shape().element_type());
+        return in_width <= 8 && node->shape().element_type() == F32;
+      });
+
+  return IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
+             ? mt::InputPrecision::TF32
+             : mt::InputPrecision::IEEE;
+}
+
 bool Is6xBfloat16MatMul(const HloDotInstruction* dot_instr,
                         mlir::OpBuilder& builder, Value dot_input_lhs,
                         Value dot_input_rhs,
@@ -2491,17 +2558,6 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   const HloInstruction* root = dot_instr->parent()->root_instruction();
   TF_RET_CHECK(!root->shape().IsTuple());
 
-  // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
-  bool is_unsupported_bitwidth =
-      HloBfsAnyOf({dot_instr}, [&](const HloInstruction* node) {
-        if (node->opcode() != HloOpcode::kConvert) {
-          return false;
-        }
-        int in_width =
-            primitive_util::BitWidth(node->operand(0)->shape().element_type());
-        return in_width <= 8 && node->shape().element_type() == F32;
-      });
-
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
@@ -2654,10 +2710,19 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
       // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
       // lower precision than the output type. The change was introduced here:
       // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
-      auto input_precision =
-          IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
-              ? mt::InputPrecision::TF32
-              : mt::InputPrecision::IEEE;
+      auto dot_precision = InferDotPrecision(dot_instr);
+
+      // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
+      if (dot_instr->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+        if (dot_instr->operand(0)->shape().element_type() == F32) {
+          dot_input_lhs = Cast(b, dot_input_lhs, b.getBF16Type());
+        }
+        if (dot_instr->operand(1)->shape().element_type() == F32) {
+          dot_input_rhs = Cast(b, dot_input_rhs, b.getBF16Type());
+        }
+      }
+
       // For fp8 matmuls, disable accumulator promotion, as it's what cublas
       // does. It may make sense to enable frequent accumulator promotion at
       // higher matmul precisions set in the config.
@@ -2665,7 +2730,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
           IsFp8Matmul(dot_instr) ? std::numeric_limits<int>::max() : 0;
       accumulator_next =
           b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs, iter_args.back(),
-                              /*inputPrecision=*/input_precision,
+                              /*inputPrecision=*/dot_precision,
                               /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
     }
     iter_args_next.push_back(accumulator_next);
@@ -2992,15 +3057,6 @@ absl::Status CreateInternalError(std::string_view message,
   return absl::InternalError(err);
 }
 
-absl::Status DoSupportType(const DebugOptions& debug_options,
-                           PrimitiveType type) {
-  if (type == S4 && !debug_options.xla_gpu_enable_triton_gemm_int4()) {
-    return absl::FailedPreconditionError(
-        "Int4 support is not enabled in the debug options.");
-  }
-  return absl::OkStatus();
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
@@ -3022,7 +3078,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   SmallVector<Type> fn_arg_types;
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
     PrimitiveType type = p->shape().element_type();
-    TF_RETURN_IF_ERROR(DoSupportType(debug_options, type));
     Type ir_type;
     if (type == U16) {
       ir_type = b.getI16Type();

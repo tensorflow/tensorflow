@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
-#include "tsl/protobuf/dnn.pb.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 #if CUDNN_VERSION >= 8100
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"

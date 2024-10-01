@@ -180,6 +180,7 @@ cc_library(
     hdrs = ["attribute_map.h"],
     deps = [
         ":call_frame",
+        "//xla:util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -187,6 +188,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -228,11 +230,11 @@ cc_library(
     hdrs = ["type_id_registry.h"],
     deps = [
         "//xla:util",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/gtl:int_type",
     ],
 )
 

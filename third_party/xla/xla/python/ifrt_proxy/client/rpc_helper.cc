@@ -14,10 +14,16 @@
 
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -25,51 +31,281 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/random.h"
 #include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
-#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
 
+namespace {
+
 using ::tsl::profiler::XFlow;
+
+constexpr absl::Duration kPeriodicFlushInterval = absl::Microseconds(50);
+
+// XFlowHelper makes it easier to create trace spans with a flow between them.
+// Typical usage:
+//
+// XFlowHelper flow("my_request");
+// ...
+//
+// auto response_handler = [flow](ResponseMsg msg) {
+//   flow.InstantActivity<kRecv>();
+//   LOG(INFO) << "Received response: " << msg;
+// }
+//
+// {
+//   auto request_span = flow.Span<kSend>();
+//   auto request_protobuf = CreateRequestProtobuf();
+//   transport.Send(request_protobuf, response_handler);
+// }
+//
+//
+class XFlowHelper {
+ public:
+  explicit XFlowHelper(absl::string_view name)
+      : xflow_id_(tsl::random::New64() >> 8 /*XFlow IDs are 56 bits*/),
+        name_(name) {}
+
+  typedef enum { kSend, kRecv, kRecvSend } Direction;
+
+  template <Direction D>
+  tsl::profiler::TraceMe Span() const {
+    return tsl::profiler::TraceMe([xflow_id = xflow_id_, name = name_] {
+      return Encode<D>(xflow_id, name);
+    });
+  }
+
+  template <Direction D>
+  void InstantActivity() const {
+    return tsl::profiler::TraceMe::InstantActivity(
+        [xflow_id = xflow_id_, name = name_] {
+          return Encode<D>(xflow_id, name);
+        });
+  }
+
+ private:
+  template <Direction D>
+  static std::string Encode(uint64_t xflow_id, absl::string_view name) {
+    static constexpr absl::string_view flow_dir_str =
+        D == kSend ? "send" : (D == kRecv ? "recv" : "recv_send");
+    const XFlow flow(xflow_id, D == kRecvSend ? XFlow::kFlowInOut
+                                              : (D == kRecv ? XFlow::kFlowIn
+                                                            : XFlow::kFlowOut));
+    return tsl::profiler::TraceMeEncode(
+        name, {{"dir", flow_dir_str}, {"flow", flow.ToStatValue()}});
+  };
+
+  const uint64_t xflow_id_;
+  const absl::string_view name_;
+};
+
+// Thread-safe data structure for holding batched operations.
+class BatchedOps {
+ public:
+  using BatchOperation = RpcHelper::BatchOperation;
+
+  void Add(BatchOperation op, ArrayHandle handle) {
+    absl::MutexLock l(&mu_);
+    batched_[op].push_back(handle);
+  }
+
+  struct IfrtRequests {
+    std::unique_ptr<IfrtRequest> delete_req;
+    std::unique_ptr<IfrtRequest> destruct_req;
+  };
+
+  IfrtRequests Consume() {
+    IfrtRequests result;
+    absl::MutexLock l(&mu_);
+    if (!batched_[BatchOperation::kDeleteArray].empty()) {
+      result.delete_req = std::make_unique<IfrtRequest>();
+      for (const auto& arr_handle : batched_[BatchOperation::kDeleteArray]) {
+        result.delete_req->mutable_delete_array_request()->add_array_handle(
+            arr_handle.handle);
+      }
+      batched_[BatchOperation::kDeleteArray].clear();
+    }
+    if (!batched_[BatchOperation::kDestructArray].empty()) {
+      result.destruct_req = std::make_unique<IfrtRequest>();
+      for (const auto& arr_handle : batched_[BatchOperation::kDestructArray]) {
+        result.destruct_req->mutable_destruct_array_request()->add_array_handle(
+            arr_handle.handle);
+      }
+      batched_[BatchOperation::kDestructArray].clear();
+    }
+    return result;
+  }
+
+ private:
+  absl::Mutex mu_;
+  std::array<std::vector<ArrayHandle>, BatchOperation::kSentinelDoNotUse>
+      batched_ ABSL_GUARDED_BY(mu_);
+};
+
+}  // namespace
+
+// Batches any requested operations and flushes them periodically in the
+// background, and allows sending other requested operations immediately.
+// Immediate operations are guaranteed to be sent after all previously enqueued
+// batched operations.
+class RpcHelper::Batcher {
+ public:
+  explicit Batcher(std::shared_ptr<ClientSession> session)
+      : session_(std::move(session)) {
+    thread_pool_.emplace(tsl::Env::Default(), "IfrtProxyRpcHelperBatcher",
+                         /*num_threads=*/1);
+    thread_pool_->Schedule(absl::bind_front(&Batcher::PeriodicFlusher, this));
+  }
+
+  // Sends the given request immediately after sending any batched operations
+  // that have been previously enqueued.
+  Future<ClientSession::Response> Immediate(
+      std::unique_ptr<IfrtRequest> request) {
+    absl::MutexLock l(&mu_);
+    if (finished_) {
+      LOG(WARNING) << "After RpcHelper::Finish(): " << request->DebugString();
+      return Future<ClientSession::Response>(
+          absl::FailedPreconditionError("RpcHelper::Finish() already called."));
+    }
+    Flush();
+    return session_->Enqueue(std::move(request));
+  }
+
+  // Enqueues an operation to be sent later. Guaranteed to not be blocked by the
+  // underlying transport.
+  void Batch(BatchOperation op, ArrayHandle handle) {
+    batched_.Add(op, handle);
+  }
+
+  // Asks the underlying transport to terminate.
+  void Finish(absl::Status s) {
+    {
+      absl::MutexLock l(&mu_);
+      finished_ = true;
+      auto remaining = batched_.Consume();
+      if (remaining.delete_req != nullptr) {
+        LOG(WARNING) << "RpcHelper::Batch: Finish() called while there are "
+                        "still batched delete operations";
+      }
+      if (remaining.destruct_req != nullptr) {
+        LOG(WARNING) << "RpcHelper::Batch: Finish() called while there are "
+                        "still batched destruct operations";
+      }
+    }
+    thread_pool_.reset();
+    session_->Finish(s);
+  }
+
+ private:
+  void PeriodicFlusher() {
+    while (true) {
+      absl::SleepFor(kPeriodicFlushInterval);
+      absl::MutexLock l(&mu_);
+      if (finished_) {
+        return;
+      }
+      {
+        bool periodic_flush_paused = false;
+        TestHookCall(TestHookName::kRpcBatcherPausePeriodicFlush,
+                     &periodic_flush_paused);
+        if (periodic_flush_paused) {
+          continue;
+        }
+      }
+      tsl::profiler::TraceMe traceme("proxy_periodic_flush");
+      Flush();
+    }
+  }
+
+  // Sends all enqueued batched operations.
+  void Flush() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    auto reqs = batched_.Consume();
+    if (reqs.delete_req != nullptr) {
+      XFlowHelper x_flow_helper("batch_delete");
+      auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
+      session_->Enqueue(std::move(reqs.delete_req))
+          .OnReady(
+              absl::bind_front(HandleBatchResponse, session_, x_flow_helper));
+    }
+    if (reqs.destruct_req != nullptr) {
+      XFlowHelper x_flow_helper("batch_destruct");
+      auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
+      session_->Enqueue(std::move(reqs.destruct_req))
+          .OnReady(
+              absl::bind_front(HandleBatchResponse, session_, x_flow_helper));
+    }
+  }
+
+  // Handles a response from the server of a previous batched operation;
+  // bad responses are logged but otherwise ignored. The method is static since
+  // it can be called in the background after RpcHelper::Batcher is destroyed.
+  static void HandleBatchResponse(
+      std::shared_ptr<ClientSession> session, XFlowHelper x_flow_helper,
+      absl::StatusOr<std::shared_ptr<IfrtResponse>> r) {
+    if (!r.ok()) {
+      x_flow_helper.InstantActivity<XFlowHelper::kRecv>();
+      LOG(WARNING) << "Batched response from ifrt proxy server: " << r.status();
+      return;
+    }
+    if (r.value()->has_delete_array_response()) {
+      auto traceme = x_flow_helper.Span<XFlowHelper::kRecvSend>();
+      auto ifrt_req = std::make_unique<IfrtRequest>();
+      ifrt_req->mutable_check_future_request()->set_future_handle(
+          r.value()->delete_array_response().deletion_future_handle());
+      session->Enqueue(std::move(ifrt_req))
+          .OnReady(
+              absl::bind_front(HandleBatchResponse, session, x_flow_helper));
+    } else if (r.value()->has_destruct_array_response() ||
+               r.value()->has_check_future_response()) {
+      x_flow_helper.InstantActivity<XFlowHelper::kRecv>();
+    } else {
+      LOG(ERROR) << "Unrecognized response from server for batched request: "
+                 << (*r)->DebugString();
+    }
+  }
+
+  const std::shared_ptr<ClientSession> session_;
+
+  BatchedOps batched_;
+
+  absl::Mutex mu_;
+  bool finished_ ABSL_GUARDED_BY(mu_) = false;
+  std::optional<tsl::thread::ThreadPool> thread_pool_;
+};
 
 // DoRpc is a templated function that implements the logic of all RPC-wrapping
 // functions of `RpcHelper`, such as `RpcHelper::MakeArrayFromHostBuffer()`.
 template <typename Req, typename Resp>
-Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
-                                    RequestMetadata metadata,
+Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
                                     void (IfrtRequest::*set_req)(Req*),
                                     Resp* (IfrtResponse::*get_resp)(),
                                     bool (IfrtResponse::*has_resp)() const,
                                     std::unique_ptr<Req> req,
-                                    absl::string_view profiling_send_name,
-                                    absl::string_view profiling_recv_name) {
+                                    absl::string_view profiling_name) {
   auto ifrt_req = std::make_unique<IfrtRequest>();
-  *ifrt_req->mutable_request_metadata() = metadata;
   (ifrt_req.get()->*set_req)(req.release());
 
-  const uint64_t xflow_id = tsl::random::New64() >> 8;  // XFlow IDs are 56 bits
-  tsl::profiler::TraceMe traceme([xflow_id, profiling_send_name]() {
-    const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowOut);
-    return tsl::profiler::TraceMeEncode(profiling_send_name,
-                                        {{"flow", flow.ToStatValue()}});
-  });
+  XFlowHelper x_flow_helper(profiling_name);
+  auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
   auto promise = Future<std::shared_ptr<Resp>>::CreatePromise();
-  auto on_ready = [promise, has_resp, get_resp, xflow_id, profiling_recv_name](
+  auto on_ready = [promise, has_resp, get_resp, x_flow_helper](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
-    tsl::profiler::TraceMe traceme([xflow_id, profiling_recv_name]() {
-      const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowIn);
-      return tsl::profiler::TraceMeEncode(profiling_recv_name,
-                                          {{"flow", flow.ToStatValue()}});
-    });
+    auto traceme = x_flow_helper.Span<XFlowHelper::kRecv>();
     if (!r.ok()) {
       LOG_EVERY_N_SEC(ERROR, 10)
           << "Connection to IFRT proxy server was terminated: " << r.status();
@@ -118,41 +354,18 @@ Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
           std::make_shared<Resp>(*std::move((response.get()->*get_resp)())));
     }
   };
-  session->Enqueue(std::move(ifrt_req)).OnReady(on_ready);
+  batcher->Immediate(std::move(ifrt_req)).OnReady(on_ready);
 
   return Future<std::shared_ptr<Resp>>(promise);
 }
 
-RequestMetadata RpcHelper::ManufactureRequestMetadata() {
-  RequestMetadata result;
-  {
-    absl::MutexLock l(&mu_);
-    result.set_op_id(next_op_id_++);
-  }
-  int prev_op_id = result.op_id() - 1;
-  if (prev_op_id != 0) {
-    // TODO(b/266635130): Depend only on necessary prior operations.
-    result.add_dependencies(prev_op_id);
-  }
-  // TODO(b/282757875): Add a ClearOps RPC for old dependencies.
-  return result;
-}
-
-void RpcHelper::Disconnect() {
-  session_->Finish(absl::CancelledError("Disconnected by client"));
-}
-
-// TODO(b/266635130): Remove this preprocessor macro. Preprocessor macros
-// go against the style guide, but are convenient as we are introducing more
-// RPCs and are making changes to the exact signature of the DoRpc function.
-#define RPC(METHOD, PROPERTY)                                              \
-  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(           \
-      std::unique_ptr<METHOD##Request> req) {                              \
-    return DoRpc(session_.get(), ManufactureRequestMetadata(),             \
-                 &IfrtRequest::set_allocated_##PROPERTY##_request,         \
-                 &IfrtResponse::mutable_##PROPERTY##_response,             \
-                 &IfrtResponse::has_##PROPERTY##_response, std::move(req), \
-                 "" #PROPERTY "_send", "" #PROPERTY "_recv");              \
+#define RPC(METHOD, PROPERTY)                                                 \
+  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(              \
+      std::unique_ptr<METHOD##Request> req) {                                 \
+    return DoRpc(                                                             \
+        batcher_.get(), &IfrtRequest::set_allocated_##PROPERTY##_request,     \
+        &IfrtResponse::mutable_##PROPERTY##_response,                         \
+        &IfrtResponse::has_##PROPERTY##_response, std::move(req), #PROPERTY); \
   }
 
 RPC(Init, init);
@@ -191,6 +404,21 @@ Future<> RpcHelper::CheckFuture(uint64_t handle) {
                         response) mutable { promise.Set(response.status()); });
 
   return Future<>(std::move(promise));
+}
+
+RpcHelper::RpcHelper(IfrtProxyVersion version,
+                     std::shared_ptr<ClientSession> session)
+    : batcher_(std::make_unique<Batcher>(std::move(session))),
+      version_(std::move(version)) {}
+
+RpcHelper::~RpcHelper() { Disconnect(); }
+
+void RpcHelper::Batch(BatchOperation op, ArrayHandle handle) {
+  return batcher_->Batch(op, handle);
+}
+
+void RpcHelper::Disconnect() {
+  batcher_->Finish(absl::CancelledError("Disconnected by client"));
 }
 
 }  // namespace proxy

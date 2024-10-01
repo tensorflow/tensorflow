@@ -144,7 +144,6 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/algorithm_checker.h"
-#include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 #include "xla/service/gpu/transforms/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
 #include "xla/service/gpu/transforms/all_reduce_splitter.h"
@@ -225,6 +224,7 @@ limitations under the License.
 #include "xla/service/slice_sinker.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
+#include "xla/service/spmd/shardy/shardy_call_inliner.h"
 #include "xla/service/stable_sort_expander.h"
 #include "xla/service/stochastic_convert_decomposer.h"
 #include "xla/service/sub_byte_normalization.h"
@@ -474,8 +474,10 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
-void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
-                    bool debug_only = false) {
+void AddHloVerifier(HloPassPipeline* pipeline,
+                    bool verify_unique_channel_ids = false,
+                    HloVerifierOpts&& opts = {}, bool debug_only = false) {
+  opts.verify_unique_channel_ids = verify_unique_channel_ids;
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   if (debug_only) {
@@ -550,7 +552,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
-  pre_spmd_pipeline.AddPass<CallInliner>();
+  pre_spmd_pipeline.AddPass<ShardyCallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
   pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
@@ -648,7 +650,8 @@ absl::Status RunOptimizationPasses(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("optimization");
-  AddHloVerifier(&pipeline);
+  AddHloVerifier(&pipeline,
+                 !debug_options.xla_experimental_ignore_channel_id());
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
   }
@@ -706,7 +709,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DynamicIndexSplitter>();
 
   // TODO(b/64094172): make Call work on GPU instead of inlining.
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<ShardyCallInliner>();
 
   pipeline.AddPass<StochasticConvertDecomposer>();
 
@@ -768,7 +771,9 @@ absl::Status RunOptimizationPasses(
   // point.
   [&, &pipeline =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    AddHloVerifier(&pipeline, HloVerifierOpts{}, /*debug_only=*/true);
+    AddHloVerifier(&pipeline,
+                   !debug_options.xla_experimental_ignore_channel_id(),
+                   HloVerifierOpts{}, /*debug_only=*/true);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -786,9 +791,12 @@ absl::Status RunOptimizationPasses(
     // AlgebraicSimplifier may add contracting dimensions to a dot.
     pipeline.AddPass<DotDimensionSorter>();
     pipeline.AddPass<DotDecomposer>();
-    // Only merge "smallish" dots.  This threshold was not set carefully, but
-    // so far we know that 1mb is too small.
-    pipeline.AddPass<DotMerger>(/*max_size_to_merge=*/int64_t{32} << 20);
+    // Only merge "smallish" dots.  This threshold defaults to 32MB today, with
+    // a flag to override.
+    pipeline.AddPass<DotMerger>(
+        /*max_size_to_merge=*/int64_t{
+            debug_options.xla_gpu_dot_merger_threshold_mb()}
+        << 20);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();
@@ -904,7 +912,6 @@ absl::Status RunCollectiveOptimizationPasses(
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
   collectives_pipeline.AddPass<AllReduceSplitter>();
-  collectives_pipeline.AddPass<AllGatherDynamicSliceSimplifier>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
       debug_options.xla_gpu_enable_reassociation_for_converted_ar());
@@ -993,6 +1000,12 @@ absl::Status RunLayoutAssignmentPasses(HloModule* hlo_module,
   pipeline.AddPass<SubByteNormalization>(
       SubByteNormalization::SET_ELEMENT_SIZE);
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
+  // Run HostOffloadLegalize before LayoutNormalization to prevent
+  // the creation of invalid transpose/bitcast operations within
+  // host memory offloading segments.
+  pipeline.AddPass<HostOffloadLegalize>(
+      static_cast<int64_t>(stream_executor::MemoryType::kHost),
+      /* after_layout= */ true);
   return pipeline.Run(hlo_module).status();
 }
 
@@ -1033,6 +1046,43 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
   return absl::OkStatus();
 }
 
+// Adds unrolling while loop optimization. Mostly to get rid of extra D2D
+// copies, but also there are some performance benefits (better comm-compute
+// overlap) when collectives are present within a while loop.
+void AddDoubleBufferingPasses(const DebugOptions& opts,
+                              HloPassPipeline& pipeline) {
+  std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
+      std::nullopt;
+  // Support old flag.
+  if (opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
+  }
+  // Support new flag setting style, override the old one.
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
+  }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
+    LOG_IF(WARNING, unroll_strategy != std::nullopt)
+        << "Overriding double buffering set via "
+           "`xla_gpu_enable_while_loop_double_buffering` flag.";
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
+  }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+          DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
+      opts.xla_gpu_enable_heuristic_pass_configuration() &&
+      !opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
+  }
+  if (unroll_strategy != std::nullopt) {
+    pipeline.AddPass<WhileLoopSimplifier>();
+    pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
+    pipeline.AddPass<TupleSimplifier>();
+    pipeline.AddPass<HloDCE>();
+  }
+}
+
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module,
     std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
@@ -1065,29 +1115,7 @@ absl::Status RunPostFusionPasses(
     pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
   }
 
-  std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
-      std::nullopt;
-  // Support old flag.
-  if (opts.xla_gpu_enable_while_loop_double_buffering()) {
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
-  }
-  // Support new flag setting style, override the old one.
-  if (opts.xla_gpu_enable_while_loop_unrolling() ==
-      DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
-  }
-  if (opts.xla_gpu_enable_while_loop_unrolling() ==
-      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
-    LOG_IF(WARNING, unroll_strategy != std::nullopt)
-        << "Overriding double buffering set via "
-           "`xla_gpu_enable_while_loop_double_buffering` flag.";
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
-  }
-  if (unroll_strategy != std::nullopt) {
-    pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
-    pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
-  }
+  AddDoubleBufferingPasses(opts, pipeline);
 
   return pipeline.Run(hlo_module).status();
 }
@@ -1472,9 +1500,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     const auto* rocm_cc = std::get_if<se::RocmComputeCapability>(&gpu_version);
 
     if (debug_options.xla_gpu_enable_triton_gemm() &&
-        ((cuda_cc != nullptr &&
-          cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
-         rocm_cc != nullptr)) {
+        (cuda_cc != nullptr &&
+         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE))) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
     } else if (cuda_cc != nullptr &&
@@ -1537,11 +1564,15 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
         !debug_options.xla_gpu_enable_priority_fusion();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
     pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
+    // Normalization passes might have introduced s4 tensors without bit width
+    // annotations, this pass will add the annotations.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   HloPassPipeline pipeline("post-layout_assignment");
-  AddHloVerifier(&pipeline,
+  AddHloVerifier(&pipeline, !debug_options.xla_experimental_ignore_channel_id(),
                  HloVerifierOpts{}
                      .MakeLayoutSensitive()
                      .WithInstructionCanChangeLayout(
@@ -1559,7 +1590,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       options.key_value_store,
       gpu_target_config.device_description.runtime_version()));
   // Inline back the calls which have better performance with cuBLAS.
-  pipeline.AddPass<CallInliner>();
+  pipeline.AddPass<ShardyCallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
@@ -1568,9 +1599,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
-  pipeline.AddPass<HostOffloadLegalize>(
-      static_cast<int64_t>(stream_executor::MemoryType::kHost),
-      /* after_layout= */ true);
   pipeline.AddPass<HostOffloader>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
 
@@ -1606,14 +1634,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 #ifdef NDEBUG
   // Verify the module in non-debug builds. For debug builds, the verifier
   // already runs after every pass.
+  HloVerifierOpts opts = HloVerifierOpts{}
+                             .MakeLayoutSensitive()
+                             .WithInstructionCanChangeLayout(
+                                 LayoutAssignment::InstructionCanChangeLayout)
+                             .VerifyBroadcastDimensionsOrder()
+                             .VerifyReshapeIsBitcast();
+  opts.verify_unique_channel_ids =
+      !debug_options.xla_experimental_ignore_channel_id();
   pipeline.AddPass<HloVerifier>(
-      std::make_unique<DefaultVerifierMetadata>(
-          HloVerifierOpts{}
-              .MakeLayoutSensitive()
-              .WithInstructionCanChangeLayout(
-                  LayoutAssignment::InstructionCanChangeLayout)
-              .VerifyBroadcastDimensionsOrder()
-              .VerifyReshapeIsBitcast()),
+      std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
       "end-of-post-layout_assignment");
 #endif  // NDEBUG
 
@@ -2577,8 +2607,10 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   }
 
   if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
-    AddHloVerifier(&main_pipeline,
-                   HloVerifierOpts{}.VerifyInstructionNameUnchanged());
+    AddHloVerifier(
+        &main_pipeline,
+        module->config().debug_options().xla_experimental_ignore_channel_id(),
+        HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   }
   return main_pipeline.Run(module).status();
 }

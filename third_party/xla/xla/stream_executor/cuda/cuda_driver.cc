@@ -1079,10 +1079,10 @@ absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
 absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                                                 CUdeviceptr location,
                                                 uint8_t value,
-                                                size_t uint32_count,
+                                                size_t uint8_count,
                                                 CUstream stream) {
   ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD8Async(location, value, uint32_count, stream),
+  return cuda::ToStatus(cuMemsetD8Async(location, value, uint8_count, stream),
                         "Failed to enqueue async memset operation");
 }
 
@@ -1262,6 +1262,30 @@ void GpuDriver::HostDeallocate(Context* context, void* location) {
     LOG(ERROR) << "error deallocating host memory at " << location << ": "
                << status;
   }
+}
+
+bool GpuDriver::HostRegister(Context* context, void* location, uint64_t bytes) {
+  ScopedActivateContext activation(context);
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status = cuda::ToStatus(
+      cuMemHostRegister(location, bytes, CU_MEMHOSTREGISTER_PORTABLE));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
+bool GpuDriver::HostUnregister(Context* context, void* location) {
+  ScopedActivateContext activation(context);
+  auto status = cuda::ToStatus(cuMemHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
 }
 
 int GpuDriver::GetGpuStreamPriority(

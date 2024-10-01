@@ -265,6 +265,38 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
               GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
+TEST_F(HorizontalInputFusionTest, DoesNotFuseCustomFusions) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+max {
+  p0 = f16[] parameter(0)
+  p1 = f16[] parameter(1)
+  ROOT max = f16[] maximum(p0, p1)
+}
+
+triton_a {
+   p = f16[128,256] parameter(0)
+   c = f16[] constant(0)
+   ROOT n = f16[128] reduce(p, c), dimensions={1}, to_apply=max
+}
+
+triton_b {
+   p = f16[128,256] parameter(0)
+   c = f16[] constant(0)
+   ROOT n = f16[128] reduce(p, c), dimensions={1}, to_apply=max
+}
+
+ ENTRY entry_computation {
+   p = f16[128,256] parameter(0)
+   fa = f16[128] fusion(p), kind=kCustom, calls=triton_a
+   fb = f16[128] fusion(p), kind=kCustom, calls=triton_b
+   ROOT tuple = (f16[128], f16[128]) tuple(fa, fb)
+ }
+)")
+                    .value();
+
+  EXPECT_FALSE(horizontal_input_fusion_.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

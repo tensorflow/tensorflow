@@ -42,12 +42,6 @@ double ClusterEnvironment::AllGatherCost(double num_bytes, int mesh_dim) const {
                                               num_bytes / 4, "float32");
   }
 
-  if (auto_sharding_option_.force_batch_dim_to_mesh_dim == mesh_dim) {
-    // if data-parallel is forced on this dim, we only allow all-reduce
-    // in this dimension.
-    return kInfinityCost;
-  }
-
   int64_t num_devices = device_mesh_.dim(mesh_dim);
   return (round(mesh_alpha_[mesh_dim] + mesh_beta_[mesh_dim] *
                                             (num_devices - 1) / num_devices *
@@ -121,12 +115,6 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
   if (prof_result_.Enabled()) {
     return prof_result_.EstimateAllToAllCost(cached_replica_groups_[mesh_dim],
                                              num_bytes / 4, "float32");
-  }
-
-  if (auto_sharding_option_.force_batch_dim_to_mesh_dim == mesh_dim) {
-    // if data-parallel is forced on this dim, we only allow all-reduce
-    // in this dimension.
-    return kInfinityCost;
   }
 
   int64_t num_devices = device_mesh_.dim(mesh_dim);

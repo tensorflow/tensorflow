@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -45,6 +47,18 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// Uses profile results to rewrite a gemm fusion to use the best backend.
+class GemmFusionAutotunerRewriterVisitor : public DfsHloRewriteVisitor {
+ public:
+  explicit GemmFusionAutotunerRewriterVisitor(const AutotuneConfig& config)
+      : config_(config) {}
+
+  absl::Status HandleFusion(HloInstruction* fusion_instr) override;
+
+ private:
+  AutotuneConfig config_;
+};
 
 // Takes a gemm fusion and chooses between cuBLAS, cuDNN, and Triton backends.
 // In the case of Triton, it also chooses the best tiling configuration.
@@ -99,8 +113,13 @@ class GemmFusionAutotunerImpl {
     int64_t plan_id;
     bool operator<(const CuDnnConfig& other) const;
   };
+  struct CustomKernelFusionConfig {
+    int64_t kernel_index;
+    bool operator<(const CustomKernelFusionConfig& other) const;
+  };
   using BackendConfig =
-      std::variant<CuBlasConfig, CuDnnConfig, TritonGemmConfig>;
+      std::variant<CuBlasConfig, CuDnnConfig, CustomKernelFusionConfig,
+                   TritonGemmConfig>;
   using BackendConfigs = std::vector<
       std::pair<const HloFusionInstruction*, std::vector<BackendConfig>>>;
 

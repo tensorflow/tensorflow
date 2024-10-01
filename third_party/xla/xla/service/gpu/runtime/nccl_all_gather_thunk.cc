@@ -66,7 +66,8 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloAllGatherInstruction* inst, std::vector<Buffer> buffers)
+    const HloAllGatherInstruction* inst, std::vector<Buffer> buffers,
+    bool p2p_memcpy_enabled)
     : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info, nccl_api,
                           IsSyncCollective(inst)),
       config_(impl::GetNcclAllGatherConfig(inst)),

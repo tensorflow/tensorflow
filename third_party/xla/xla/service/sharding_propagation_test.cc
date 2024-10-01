@@ -3324,7 +3324,7 @@ ENTRY %conv {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2,2]0,1,2,3,4,5,6,7}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(instruction->sharding(),
-                ShardingMetadata({CreateMetadata("a"), CreateMetadata("b")}));
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
@@ -3396,7 +3396,7 @@ ENTRY %conv {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,4]0,2,3,1,4,6,7,5}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(instruction->sharding(),
-                ShardingMetadata({CreateMetadata("a"), CreateMetadata("b")}));
+                ShardingMetadata({CreateMetadata("b"), CreateMetadata("a")}));
   } else {
     EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
   }
@@ -6485,6 +6485,157 @@ ENTRY %module {
   auto* copy_p = FindInstruction(module.get(), "copy.p");
   ASSERT_NE(copy_p, nullptr);
   EXPECT_THAT(copy_p, op::Sharding("{replicated}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherExplicitBatchDimsFromOperandToResult) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[10,3,14,4] parameter(0), sharding={devices=[2,2,2,2]<=[16]}
+  %indices = s32[14,10,6,2] parameter(1)
+  ROOT %gather = f32[14,10,6,4] gather(%input, %indices), offset_dims={3},
+    collapsed_slice_dims={1}, operand_batching_dims={0,2},
+    start_indices_batching_dims={1,0}, start_index_map={1,3},
+    index_vector_dim=3, slice_sizes={1,1,1,4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,2,1,2,2]<=[2,2,2,2]T(2,0,"
+                           "3,1) last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherExplicitBatchDimsFromIndicesToResult) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[10,3,14,4] parameter(0)
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,2,2,2]<=[16]}
+  ROOT %gather = f32[14,10,6,4] gather(%input, %indices), offset_dims={3},
+    collapsed_slice_dims={1}, operand_batching_dims={0,2},
+    start_indices_batching_dims={1,0}, start_index_map={1,3},
+    index_vector_dim=3, slice_sizes={1,1,1,4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Sharding("{devices=[2,2,2,1,2]<=[16] last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, ScatterExplicitBatchDimsFromOperandToResult) {
+  const char* const hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0), sharding={devices=[2,2,2,2]<=[16]}
+  %indices = s32[14,10,6,2] parameter(1)
+  %updates = f32[14,10,6,2] parameter(2)
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,2,2,2]<=[16]}"));
+}
+
+TEST_F(ShardingPropagationTest, ScatterExplicitBatchDimsFromIndicesToResult) {
+  const char* const hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0)
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,2,2,2]<=[16]}
+  %updates = f32[14,10,6,2] parameter(2)
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Sharding(
+          "{devices=[2,1,2,1,4]<=[2,2,4]T(1,0,2) last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, ScatterExplicitBatchDimsFromUpdatesToResult) {
+  const char* const hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0)
+  %indices = s32[14,10,6,2] parameter(1)
+  %updates = f32[14,10,6,4] parameter(2), sharding={devices=[2,2,2,2]<=[16]}
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[2,1,2,2,2]<=[2,2,2,2]T(1,0,3,2) "
+                           "last_tile_dim_replicate}"));
 }
 
 TEST_P(ParameterizedMetadataTest, ParallelGatherFromOperandForwardPass) {
@@ -11863,7 +12014,7 @@ ENTRY main.9 {
               op::Sharding("{{devices=[4]<=[4]}, {devices=[4]<=[4]}}"));
 }
 
-TEST_F(ShardingPropagationTest, InferDotShardingFromOperands1) {
+TEST_F(ShardingPropagationTest, LookaheadUsersOfDot) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -11880,106 +12031,22 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
   EXPECT_TRUE(changed);
 
   XLA_VLOG_LINES(1, module->ToString());
+  // Check dangling sharding custom-call can be removed by DCE after
+  // propagation.
   auto* instruction = FindInstruction(module.get(), "dot.1");
+  // Check sharding is correctly propagated.
   EXPECT_THAT(instruction,
               op::Sharding(
                   "{devices=[4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}"));
-}
-
-TEST_F(ShardingPropagationTest, InferDotShardingFromOperands2) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  p0 = bf16[16,32] parameter(0), sharding={devices=[16,1]<=[16]}
-  p1 = bf16[32,64] parameter(1), sharding={devices=[1,16]<=[16]}
-  dot = bf16[16,64] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT copy = bf16[16,64] copy(dot), sharding={replicated}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* instruction = FindInstruction(module.get(), "dot");
-  EXPECT_THAT(instruction, op::Sharding("{devices=[1,16]<=[16]}"));
-}
-
-TEST_F(ShardingPropagationTest, InferDotShardingFromOperands3) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  p0 = bf16[4,16,32] parameter(0), sharding={devices=[2,4,2]<=[16]}
-  p1 = bf16[4,32,64] parameter(1), sharding={devices=[2,8,1]<=[16]}
-  dot = bf16[4,16,64] dot(p0, p1), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-  ROOT copy = bf16[4,16,64] copy(dot)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* instruction = FindInstruction(module.get(), "dot");
-  EXPECT_THAT(
-      instruction,
-      op::Sharding("{devices=[2,4,1,2]<=[16] last_tile_dim_replicate}"));
-}
-
-TEST_F(ShardingPropagationTest, InferDotShardingFromOperands4) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  p0 = bf16[4,16,32] parameter(0), sharding={devices=[2,1,8]<=[16]}
-  p1 = bf16[4,32,64] parameter(1), sharding={devices=[4,1,4]<=[16]}
-  dot = bf16[4,16,64] dot(p0, p1), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={1}
-  ROOT copy = bf16[4,16,64] copy(dot)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  XLA_VLOG_LINES(1, module->ToString());
-  auto* instruction = FindInstruction(module.get(), "dot");
-  EXPECT_THAT(instruction, op::Sharding("{devices=[4,1,4]<=[16]}"));
-}
-
-TEST_F(ShardingPropagationTest, InferDotShardingFromOperands5) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY %entry {
-  p0 = bf16[16,16] parameter(0), sharding={devices=[4,4]<=[4,4]T(1,0)}
-  p1 = bf16[16,16] parameter(1), sharding={devices=[4,4]<=[4,4]T(1,0)}
-  dot.0 = bf16[16,16] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  p2 = bf16[16,16] parameter(2), sharding={devices=[4,4]<=[16]}
-  p3 = bf16[16,16] parameter(3), sharding={devices=[4,4]<=[16]}
-  dot.1 = bf16[16,16] dot(p2, p3), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  add = bf16[16,16] add(dot.0, dot.1)
-  ROOT copy = bf16[16,16] copy(add)
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
-  EXPECT_TRUE(changed);
-
-  XLA_VLOG_LINES(1, module->ToString());
-  for (absl::string_view name : {"dot.0", "dot.1", "add"}) {
-    auto* instruction = FindInstruction(module.get(), name);
-    EXPECT_THAT(instruction, op::Sharding("{devices=[4,4]<=[16]}"));
-  }
 }
 
 TEST_F(ShardingPropagationTest, AsyncInstructionManualShardingArray) {
@@ -12277,6 +12344,39 @@ ENTRY main {
   EXPECT_THAT(custom_call_4, op::Shape("bf16[4096,4096]"));
   EXPECT_THAT(custom_call_4,
               op::Sharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, ReplicateRngBitGeneratorSeed) {
+  const char* const hlo_string = R"(
+HloModule module
+apply_or {
+  x = u64[] parameter(0)
+  y = u64[] parameter(1)
+  ROOT x_or_y = or(x, y)
+}
+ENTRY main {
+  p = s32[2,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  up = u64[2,2] convert(p)
+  i = u64[] constant(0)
+  seed = u64[2] reduce(up, i), dimensions={1}, to_apply=apply_or
+  rbg = u32[2048,4096] rng-bit-generator(seed), algorithm=rng_default
+  ROOT s = u32[2048,4096]{1,0} custom-call(rbg), custom_call_target="Sharding", sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* instruction = FindInstruction(module.get(), "seed");
+  // Check sharding is correctly propagated.
+  EXPECT_TRUE(instruction->sharding().IsReplicated());
 }
 
 }  // namespace

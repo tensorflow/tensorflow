@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -38,13 +40,10 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -235,10 +234,10 @@ TEST_F(ElementalHloToMlirTest, ReduceWindow) {
     // CHECK:      %[[INIT:.*]] = tensor.extract %[[ARG1]][]
     // CHECK:      %[[RET:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C7]]
     // CHECK-SAME:   step %[[C1]] iter_args(%[[ACC:.*]] = %[[INIT]])
-    // CHECK:      %[[J0:.*]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0) -> (d0 * 4), domain: d0 in [0, 2], is_simplified: true>(%[[Y]])
+    // CHECK:      %[[J0:.*]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0) -> (d0 * 4), domain: d0 in [0, 2]">(%[[Y]])
     // CHECK:      %[[J1:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1 - 3),
-    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6], is_simplified: true>(%[[Z]], %[[I]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1 - 3),
+    // CHECK-SAME:              d0 in [0, 7], d1 in [0, 6]">(%[[Z]], %[[I]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]]
     // CHECK-SAME:        [%[[X]], %[[J0]], %[[J1]]]
     // CHECK:          %[[UPD:.*]] = func.call @add_sum(%[[ACC]],
@@ -285,8 +284,8 @@ TEST_F(ElementalHloToMlirTest, ReduceWindowWithRescaling) {
     // If symbol rescaling wasn't working we would have a
     // `d1 floordiv <base_dilation>` in the map:
     // CHECK:      %[[K:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:   #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1),
-    // CHECK-SAME:   d0 in [0, 18], d1 in [0, 3], is_simplified: true>(%[[X]], %[[I]])
+    // CHECK-SAME:   #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 2 + d1),
+    // CHECK-SAME:   d0 in [0, 18], d1 in [0, 3]">(%[[X]], %[[I]])
 
     // CHECK:      tensor.extract %[[ARG0]][%[[K]], %[[Y]], %[[Z]]]
   )"));
@@ -506,7 +505,7 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     <(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7], is_simplified: true>(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -518,9 +517,9 @@ TEST_F(ElementalHloToMlirTest, Pad) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7], is_simplified: true>(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0) -> (d0 - 4), domain: d0 in [4, 7], is_simplified: true>(%[[Y]])
+    // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
     // CHECK:          scf.yield %[[VAL]]
     // CHECK:        } else {
@@ -548,7 +547,7 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK-DAG:    %[[C4:.*]] = arith.constant 4
     // CHECK-DAG:    %[[C7:.*]] = arith.constant 7
     // CHECK:        %[[CONSTRAINT_VAL:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     <(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7], is_simplified: true>(%[[X]])
+    // CHECK-SAME:     <"(d0) -> ((d0 - 1) mod 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:        %[[CONSTRAINT:.*]] = arith.cmpi eq, %[[CONSTRAINT_VAL]], %[[C0]]
     // CHECK-DAG:        %[[X_L:.*]] = arith.cmpi sge, %[[X]], %[[C1]]
     // CHECK-DAG:        %[[X_H:.*]] = arith.cmpi sle, %[[X]], %[[C7]]
@@ -560,9 +559,9 @@ TEST_F(ElementalHloToMlirTest, PadUnsigned) {
     // CHECK:        %[[FROM_INPUT:.*]] = arith.andi %[[X_AND_CONSTRAINT]], %[[Y_BOUNDS]]
     // CHECK:        %[[RET:.*]] = scf.if %[[FROM_INPUT]]
     // CHECK:          %[[IN0:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7], is_simplified: true>(%[[X]])
+    // CHECK-SAME:         <"(d0) -> ((d0 - 1) floordiv 2), domain: d0 in [1, 7]">(%[[X]])
     // CHECK:          %[[IN1:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:         <(d0) -> (d0 - 4), domain: d0 in [4, 7], is_simplified: true>(%[[Y]])
+    // CHECK-SAME:         <"(d0) -> (d0 - 4), domain: d0 in [4, 7]">(%[[Y]])
     // CHECK:          %[[VAL:.*]] = tensor.extract %[[ARG0]][%[[IN0]], %[[IN1]]]
     // CHECK:          scf.yield %[[VAL]]
     // CHECK:        } else {
@@ -879,11 +878,11 @@ TEST_F(ElementalHloToMlirTest, ConvolutionSimple) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:      %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:   #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:   d0 in [0, 5], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:   #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:   d0 in [0, 5], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:      %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:   #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:   d0 in [0, 7], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:   #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:   d0 in [0, 7], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -925,11 +924,11 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithWindowStrides) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1),
-    // CHECK-SAME:     d0 in [0, 2], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 2 + d1),
+    // CHECK-SAME:     d0 in [0, 2], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1),
-    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 2 + d1),
+    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -972,21 +971,21 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithPadding) {
     // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
-    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1), domain: d0 in [0, 7], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK-DAG:  %[[TXGE:.+]] = arith.cmpi sge, %[[TESTX]], %[[C1]] : index
     // CHECK-DAG:  %[[TXLE:.+]] = arith.cmpi sle, %[[TESTX]], %[[C8]] : index
     // CHECK-DAG:  %[[TX:.+]] = arith.andi %[[TXGE]], %[[TXLE]] : i1
-    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1), domain: d0 in [0, 11], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1), domain: d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:  %[[TYGE:.+]] = arith.cmpi sge, %[[TESTY]], %[[C2]] : index
     // CHECK-DAG:  %[[TYLE:.+]] = arith.cmpi sle, %[[TESTY]], %[[C13]] : index
     // CHECK-DAG:  %[[TY:.+]] = arith.andi %[[TYGE]], %[[TYLE]] : i1
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1 - 1),
-    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1 - 1),
+    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1 - 2),
-    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1 - 2),
+    // CHECK-SAME:     d0 in [0, 11], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1026,17 +1025,17 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithLhsDilation) {
     // CHECK:      %[[R0:.+]] = scf.for %[[X:.+]] = %[[C0]] to %[[C3]] step %[[C1]] iter_args(%[[A0:.+]] = %[[INIT]]) -> (f32) {
     // CHECK-NEXT: %[[R1:.+]] = scf.for %[[Y:.+]] = %[[C0]] to %[[C5]] step %[[C1]] iter_args(%[[A1:.+]] = %[[A0]]) -> (f32) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
-    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0, d1) -> ((d0 + d1) mod 2), domain: d0 in [0, 12], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-DAG:  %[[TESTX:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0, d1) -> ((d0 + d1) mod 2), domain: d0 in [0, 12], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK-DAG:  %[[TX:.+]] = arith.cmpi eq, %[[TESTX]], %[[C0]] : index
-    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0, d1) -> ((d0 + d1) mod 2), domain: d0 in [0, 18], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-DAG:  %[[TESTY:.+]] = xla_gpu.apply_indexing #xla_gpu.indexing_map<"(d0, d1) -> ((d0 + d1) mod 2), domain: d0 in [0, 18], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:  %[[TY:.+]] = arith.cmpi eq, %[[TESTY]], %[[C0]] : index
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> ((d0 + d1) floordiv 2),
-    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> ((d0 + d1) floordiv 2),
+    // CHECK-SAME:     d0 in [0, 12], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> ((d0 + d1) floordiv 2),
-    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> ((d0 + d1) floordiv 2),
+    // CHECK-SAME:     d0 in [0, 18], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1078,11 +1077,11 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithRhsDilation) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0),
-    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d1 * 2 + d0),
+    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0),
-    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d1 * 2 + d0),
+    // CHECK-SAME:     d0 in [0, 3], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1124,14 +1123,14 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithFeatureGroupCount) {
     // CHECK-NEXT: %[[R2:.+]] = scf.for %[[I:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A1]]) -> (f32) {
     // CHECK:      %[[R3:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:     d0 in [0, 5], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:     d0 in [0, 5], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK:        %[[XX2:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> ((d0 floordiv 8) * 2 + d1),
-    // CHECK-SAME:     d0 in [0, 15], d1 in [0, 1], is_simplified: true>(%[[O]], %[[I]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> ((d0 floordiv 8) * 2 + d1),
+    // CHECK-SAME:     d0 in [0, 15], d1 in [0, 1]">(%[[O]], %[[I]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[B]], %[[XX0]], %[[XX1]], %[[XX2]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<2x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1175,11 +1174,11 @@ TEST_F(ElementalHloToMlirTest, ConvolutionWithBatchGroupCount) {
     // CHECK-NEXT: %[[R3:.+]] = scf.for %[[G:.+]] = %[[C0]] to %[[C2]] step %[[C1]] iter_args(%[[ACC:.+]] = %[[A2]]) -> (f32) {
     // CHECK:      %[[R4:.+]] = scf.if {{.+}} -> (f32) {
     // CHECK:        %[[XX0:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:     d0 in [0, 5], d1 in [0, 2], is_simplified: true>(%[[W]], %[[X]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:     d0 in [0, 5], d1 in [0, 2]">(%[[W]], %[[X]])
     // CHECK:        %[[XX1:.+]] = xla_gpu.apply_indexing
-    // CHECK-SAME:     #xla_gpu.indexing_map<(d0, d1) -> (d0 + d1),
-    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 4], is_simplified: true>(%[[H]], %[[Y]])
+    // CHECK-SAME:     #xla_gpu.indexing_map<"(d0, d1) -> (d0 + d1),
+    // CHECK-SAME:     d0 in [0, 7], d1 in [0, 4]">(%[[H]], %[[Y]])
     // CHECK-DAG:    %[[VL:.+]] = tensor.extract %[[LHS]][%[[G]], %[[XX0]], %[[XX1]], %[[I]]] : tensor<2x8x12x4xf32>
     // CHECK-DAG:    %[[VR:.+]] = tensor.extract %[[RHS]][%[[I]], %[[X]], %[[Y]], %[[O]]] : tensor<4x3x5x16xf32>
     // CHECK:        %[[MUL:.+]] = arith.mulf %[[VL]], %[[VR]] : f32
@@ -1645,8 +1644,8 @@ TEST_F(ElementalHloToMlirTest, MixedIndexingTuple) {
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
     // CHECK:        %[[A:.*]] = tensor.extract %[[P0]][%[[X]], %[[Y]]]
     // CHECK:        %[[IDX:.*]] = xla_gpu.apply_indexing
-    // CHECK-SAME:       #xla_gpu.indexing_map<(d0, d1) -> (d0 * 10 + d1),
-    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9], is_simplified: true>(%[[X]], %[[Y]])
+    // CHECK-SAME:       #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 10 + d1),
+    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
     // CHECK:        %[[B:.*]] = tensor.extract %[[P1]][%[[IDX]]]
     // CHECK:        return %[[A]], %[[B]]
   )"));
@@ -1669,8 +1668,8 @@ TEST_F(ElementalHloToMlirTest, NestedTuple) {
     // CHECK-SAME:     %[[X:.*]]: index {{{.*}}}, %[[Y:.*]]: index {{{.*}}}
     // CHECK:          %[[P0_V:.*]] = xla_gpu.pure_call @main_p0
     // CHECK:          %[[IDX:.*]] =
-    // CHECK-SAME:       #xla_gpu.indexing_map<(d0, d1) -> (d0 * 10 + d1),
-    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9], is_simplified: true>(%[[X]], %[[Y]])
+    // CHECK-SAME:       #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 10 + d1),
+    // CHECK-SAME:       d0 in [0, 9], d1 in [0, 9]">(%[[X]], %[[Y]])
     // CHECK:          %[[P1_V:.*]] = xla_gpu.pure_call @main_p1
     // CHECK-SAME:       (%[[P0]], %[[P1]], %[[IDX]])
     // CHECK:          return %[[P0_V]], %[[P1_V]], %[[P1_V]], %[[P1_V]], %[[P0_V]]

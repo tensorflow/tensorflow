@@ -102,7 +102,7 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
     TF_CHECK_OK(
         ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "",
                              &optimization_level));
-    optimization_level = str_util::Uppercase(optimization_level);
+    optimization_level = absl::AsciiStrToUpper(optimization_level);
     return optimization_level == "TENSOR_CORES_ONLY";
   }
 

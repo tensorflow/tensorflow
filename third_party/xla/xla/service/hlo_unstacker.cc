@@ -530,19 +530,30 @@ bool CanUnstackWhileOperand(const HloInstruction* while_instr,
     return false;
   }
 
-  const HloInstruction* root_operand =
-      while_instr->while_body()->root_instruction()->operand(index);
+  HloInstruction* root_operand =
+      while_instr->while_body()->root_instruction()->mutable_operand(index);
   if (root_operand == nullptr) {
     return false;
   }
-  if (Match(root_operand, match::GetTupleElement(match::While()))) {
-    VLOG(3) << "Faced a gte originating from loop: "
-            << root_operand->ToString();
-    bool loop_feeding_root_changes_collected = CanUnstackWhileOperand(
-        root_operand->operand(0), unstacker, root_operand->tuple_index());
-    if (!loop_feeding_root_changes_collected) {
-      VLOG(3) << "Failed: loop " << root_operand->operand(0)->name()
-              << " output at " << index << " is not unstackable";
+
+  HloInstruction* gte_operand = nullptr;
+  // Currently, we only support unstacking of while operands that either:
+  // 1. Are parameters of the while_body.
+  // 2. Are get-tuple-elements of another while instruction.
+  if (Match(root_operand, match::GetTupleElement(match::Op(&gte_operand)))) {
+    if (Match(gte_operand, match::While())) {
+      VLOG(3) << "Faced a gte originating from loop: "
+              << root_operand->ToString();
+      bool loop_feeding_root_changes_collected = CanUnstackWhileOperand(
+          root_operand->operand(0), unstacker, root_operand->tuple_index());
+      if (!loop_feeding_root_changes_collected) {
+        VLOG(3) << "Failed: loop " << root_operand->operand(0)->name()
+                << " output at " << index << " is not unstackable";
+        return false;
+      }
+    } else if (!Match(gte_operand, match::Parameter().WithParameterNum(0))) {
+      VLOG(3) << "Failed: root operand of while_body at " << index
+              << " is not a parameter";
       return false;
     }
   }

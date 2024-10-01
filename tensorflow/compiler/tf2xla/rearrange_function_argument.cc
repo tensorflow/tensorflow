@@ -159,9 +159,8 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
 
 // Given mapping between original input index and rearranged input index, change
 // "index" attribute for _Arg nodes.
-void RearrangeArgNodes(
-    const gtl::InlinedVector<Node*, 4>* arg_nodes,  // non-absl ok
-    const std::vector<int>& index_mapping) {
+void RearrangeArgNodes(const absl::InlinedVector<Node*, 4UL>* arg_nodes,
+                       const std::vector<int>& index_mapping) {
   for (int i = 0; i < arg_nodes->size(); i++) {
     Node* n = (*arg_nodes)[i];
     int new_index = index_mapping.at(i);
@@ -177,7 +176,7 @@ void RearrangeArgNodes(
 // hold mapping from DT_RESOURCE _Retval index to its input _Arg index. Here we
 // assume that all DT_RESOURCE _Retval nodes come from _Arg nodes directly.
 Status CalculateRetvalRearrange(
-    const gtl::InlinedVector<Node*, 4>& ret_nodes,  // non-absl ok
+    const absl::InlinedVector<Node*, 4UL>& ret_nodes,
     std::map<int, int>* retval_index_mapping,
     std::map<int, int>* resource_retval_to_arg) {
   for (int i = 0, end = ret_nodes.size(); i < end; i++) {
@@ -258,9 +257,9 @@ Status RearrangeOutputEdges(Node* n, Graph* g,
 // Given mapping between original output index and rearranged output index,
 // change "index" attribute for _Retval nodes. Notice that DT_RESOURCE _Retval
 // nodes will be removed.
-void RearrangeRetvalNodes(
-    const gtl::InlinedVector<Node*, 4>& ret_nodes,  // non-absl ok
-    Graph* g, const std::map<int, int>& retval_index_mapping) {
+void RearrangeRetvalNodes(const absl::InlinedVector<Node*, 4UL>& ret_nodes,
+                          Graph* g,
+                          const std::map<int, int>& retval_index_mapping) {
   for (int i = 0, end = ret_nodes.size(); i < end; i++) {
     Node* n = ret_nodes[i];
     auto iter = retval_index_mapping.find(i);

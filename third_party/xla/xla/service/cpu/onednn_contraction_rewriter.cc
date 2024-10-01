@@ -111,6 +111,16 @@ inline auto OneDnnMatmulInstr(HloInstruction** instr) {
   return m::CustomCall(instr, {"__onednn$matmul"});
 }
 
+inline auto OneDnnConvolutionInstr(HloInstruction** instr) {
+  return m::CustomCall(instr, {"__onednn$convolution"});
+}
+
+inline auto OneDnnFusibleInstr(HloInstruction** instr) {
+  return m::AnyOf<HloInstruction>(
+      m::CustomCall(instr, {"__onednn$matmul"}),
+      m::CustomCall(instr, {"__onednn$convolution"}));
+}
+
 inline auto ConvertBF16ToF32(HloInstruction** instr) {
   return m::Convert(m::Op(instr).WithElementType(PrimitiveType::BF16))
       .WithElementType(PrimitiveType::F32);
@@ -275,11 +285,12 @@ auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
   return OneDnnFusionConfig::UNDEFINED;
 }
 
-// OneDNN matmul can fuse add operation with automatic broadcasting along the
-// addend's dimensions that are 1s. When compatible, Broadcast can be replaced
-// by Bitcast, which is much cheaper. Compute new shape for the Bitcast.
+// OneDNN matmul / convolution can fuse add operation with automatic
+// broadcasting along the addend's dimensions that are 1s. When compatible,
+// Broadcast can be replaced by Bitcast, which is much cheaper. Compute new
+// shape for the Bitcast.
 absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
-                                      const Shape& dot_shape) {
+                                      const Shape& instr_shape) {
   if (broadcast_instr->opcode() != HloOpcode::kBroadcast) {
     return absl::InvalidArgumentError(
         "Hlo instruction is not a Broadcast insruction.");
@@ -303,9 +314,9 @@ absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
     }
   }
 
-  // If rank(new_shape) > rank(dot), extra dimensions with value = 1 can be
+  // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
-  int64_t rank_difference = new_shape.rank() - dot_shape.rank();
+  int64_t rank_difference = new_shape.rank() - instr_shape.rank();
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -316,8 +327,8 @@ absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
   new_shape = ShapeUtil::DeleteDimensions(dims_to_delete, new_shape);
 
   // New shape for bias should satisfy the condition:
-  //   rank(new_shape) <= rank(dot).
-  if (new_shape.rank() > dot_shape.rank()) {
+  //   rank(new_shape) <= rank(instr).
+  if (new_shape.rank() > instr_shape.rank()) {
     return absl::CancelledError(
         "Bias shape could not be adjusted for a fusion.");
   }
@@ -325,20 +336,20 @@ absl::StatusOr<Shape> AdjustBiasShape(const HloInstruction* broadcast_instr,
   return new_shape;
 };
 
-inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* dot) {
-  // Check if the operand's shape is compatible with matmul for fusion.
+inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
+  // Check if the operand's shape is compatible for fusion.
   // An operand is fusable if
-  //    1. rank(operand) <= rank(dot) and
+  //    1. rank(operand) <= rank(instr) and
   //    2. Starting from the last dim in backward direction, the dimension
   //       size of operand is either 1 or same to dot.
   auto operand_dims = operand->shape().dimensions();
-  auto dot_dims = dot->shape().dimensions();
-  if (operand_dims.size() > dot_dims.size()) return false;
+  auto instr_dims = instr->shape().dimensions();
+  if (operand_dims.size() > instr_dims.size()) return false;
   int operand_idx = operand_dims.size() - 1;
-  int dot_idx = dot_dims.size() - 1;
-  for (; operand_idx >= 0; --operand_idx, --dot_idx) {
+  int instr_idx = instr_dims.size() - 1;
+  for (; operand_idx >= 0; --operand_idx, --instr_idx) {
     if (operand_dims[operand_idx] != 1 &&
-        operand_dims[operand_idx] != dot_dims[dot_idx])
+        operand_dims[operand_idx] != instr_dims[instr_idx])
       return false;
   }
   return true;
@@ -367,6 +378,7 @@ inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
 
 bool OneDnnContractionRewriter::ShouldRewriteDot(
     const HloInstruction* dot_instr, bool before_layout_assignment) {
+  if (dot_instr->opcode() != HloOpcode::kDot) return false;
   // Currently, blocking control dependencies
   if (dot_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(dot_instr->shape().element_type())) return false;
@@ -429,6 +441,7 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
 
 bool OneDnnContractionRewriter::ShouldRewriteConv(
     const HloInstruction* conv_instr) {
+  if (conv_instr->opcode() != HloOpcode::kConvolution) return false;
   if (conv_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(conv_instr->shape().element_type())) return false;
   if (conv_instr->batch_group_count() != 1) return false;
@@ -566,14 +579,14 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleAdd(HloInstruction* instr) override {
-    // Try to do a fusion for Dot(onednn-matmul) + Add. However,
+    // Try to fuse Add to the instr. However,
     // HLO Add instruction might receive the addends after additional
     // processing like Broadcast, Bitcast, Convert, etc. is applied to the raw
     // addends. Here, the following possible pattern is matched.
     //
     // clang-format off
     //
-    //            Dot                               addend
+    //         Dot / Conv                           addend
     //             |                                  |
     //             v                                  v
     //     optional instructions            optional instructions
@@ -586,148 +599,154 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     //
     // clang-format on
 
-    HloInstruction *addend_intermediate, *dot;
-    HloInstruction* optional_dot_bitcast = nullptr;
-    HloInstruction* optional_dot_convert = nullptr;
+    HloInstruction *addend_intermediate, *contraction;
+    HloInstruction* optional_contraction_bitcast = nullptr;
+    HloInstruction* optional_contraction_convert = nullptr;
 
     auto pattern = m::AddAnyOrder(
         &instr,
-        OptionalConvertAndBitcast(&optional_dot_convert, &optional_dot_bitcast,
-                                  OneDnnMatmulInstr(&dot))
+        OptionalConvertAndBitcast(&optional_contraction_convert,
+                                  &optional_contraction_bitcast,
+                                  OneDnnFusibleInstr(&contraction))
             .WithOneUser(),
         m::Op(&addend_intermediate));
 
     if (Match(instr, pattern)) {
-      if (!IsSupportedType(dot->shape().element_type()))
-        return absl::OkStatus();
-      // TODO(intel-tf): Remove the condition below when the fusion Dot +
-      // Add(bias) + Add(e.g., residual) is enabled.
-      if (!dot->backend_config<BackendConfig>()
-               ->mutable_onednn_matmul_config()
-               ->mutable_fusions()
-               ->ops()
-               .empty() &&
-          dot->backend_config<BackendConfig>()
-                  ->mutable_onednn_matmul_config()
-                  ->mutable_fusions()
-                  ->ops(0) == OneDnnFusionConfig::BIAS) {
-        return absl::OkStatus();
-      }
-      std::vector<HloInstruction*> new_operands;
-      for (auto operand : dot->operands()) {
-        new_operands.push_back(operand);
-      }
-
-      // At this point, the addend could have one of the following
-      // possiblities that the current fusion can handle:
-      //
-      //   - addend -> Convert -> Broadcast -> Add
-      //   - addend -> Broadcast -> Convert -> Add
-      //   - addend -> Convert
-      //   - addend -> Broadcast
-      //   - addend
-      //
-      // Hunt for addend through possible sequences above and check the addend
-      // is compatible to onednn-matmul fusion.
-      HloInstruction* addend = nullptr;
-      HloInstruction* optional_addend_broadcast = nullptr;
-      auto addend_pattern = m::AnyOf<HloInstruction>(
-          m::Broadcast(&optional_addend_broadcast,
-                       m::Convert(&addend, m::Op())),
-          m::Convert(m::Broadcast(&optional_addend_broadcast, m::Op(&addend))),
-          m::Convert(&addend, m::Op()),
-          m::Broadcast(&optional_addend_broadcast, m::Op(&addend)),
-          m::Op(&addend));
-      if (!Match(addend_intermediate, addend_pattern)) return absl::OkStatus();
-
-      if (optional_addend_broadcast && addend->shape().rank() != 1) {
-        auto new_shape =
-            AdjustBiasShape(optional_addend_broadcast, dot->shape());
-        if (new_shape.ok()) {
-          addend = addend->AddInstruction(
-              HloInstruction::CreateBitcast(new_shape.value(), addend));
-        } else {
-          VLOG(2) << new_shape.status();
-          return absl::OkStatus();
-        }
-      }
-
-      // Validate addend for fusion.
-      if (IsSupportedType(addend->shape().element_type()) &&
-          IsOperandFusible(addend, dot)) {
-        new_operands.push_back(addend);
-      } else {
-        return absl::OkStatus();
-      }
-
-      // TODO(intel-tf): Remove this restriction once oneDNN has an optimized
-      // implementation for broadcasted add across all dimensions.
-      OneDnnFusionConfig_FusionKind kind = OneDnnFusionConfig::UNDEFINED;
-      kind = (addend->shape().rank() == 1)
-                 ? (dot->backend_config<BackendConfig>()
-                            ->mutable_onednn_matmul_config()
-                            ->fusions()
-                            .ops()
-                            .empty()
-                        ? OneDnnFusionConfig::BIAS
-                        : OneDnnFusionConfig::UNDEFINED)
-                 : OneDnnFusionConfig::BINARY_ADD;
-      if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
-
-      auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
-          dot->CloneWithNewOperands(dot->shape(), new_operands)));
-
-      auto backend_config = matmul_call->backend_config<BackendConfig>();
-      backend_config->mutable_onednn_matmul_config()
-          ->mutable_fusions()
-          ->add_ops(kind);
-
-      if (optional_addend_broadcast) {
-        backend_config->mutable_onednn_matmul_config()
-            ->mutable_optimization_config()
-            ->set_bias_broadcast(true);
-      }
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
-
-      HloInstruction* new_instr;
-      // If matched pattern has custom-call -> bitcast -> add, then we need to
-      // insert bitcast after the new fusion to maintain the correct shape
-      // (new-custom-call -> bitcast). Also, this will optionally be followed
-      // by -> convert for bf16 case to avoid datatype mismatch.
-      if (optional_dot_bitcast != nullptr &&
-          optional_dot_bitcast->opcode() == HloOpcode::kBitcast) {
-        if (optional_dot_convert != nullptr &&
-            optional_dot_convert->opcode() == HloOpcode::kConvert) {
-          auto bitcast_call =
-              matmul_call->AddInstruction(HloInstruction::CreateBitcast(
-                  ShapeUtil::ChangeElementType(
-                      instr->shape(), matmul_call->shape().element_type()),
-                  matmul_call));
-          new_instr =
-              bitcast_call->AddInstruction(HloInstruction::CreateConvert(
-                  ShapeUtil::ChangeElementType(
-                      bitcast_call->shape(),
-                      optional_dot_convert->shape().element_type()),
-                  bitcast_call));
-        } else {
-          new_instr = matmul_call->AddInstruction(
-              HloInstruction::CreateBitcast(instr->shape(), matmul_call));
-        }
-      } else {
-        if (optional_dot_convert != nullptr &&
-            optional_dot_convert->opcode() == HloOpcode::kConvert) {
-          new_instr = matmul_call->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::ChangeElementType(
-                  matmul_call->shape(),
-                  optional_dot_convert->shape().element_type()),
-              matmul_call));
-        } else {
-          new_instr = matmul_call;
-        }
-      }
-      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
+      HANDLE_OP_INTERNAL(HandleAddInternal, contraction, instr,
+                         addend_intermediate, optional_contraction_convert,
+                         optional_contraction_bitcast);
     }
 
+    return absl::OkStatus();
+  }
+
+  template <typename BackendConfig::BackendConfigOneofCase config>
+  absl::Status HandleAddInternal(HloInstruction* contraction,
+                                 HloInstruction* instr,
+                                 HloInstruction* addend_intermediate,
+                                 HloInstruction* optional_contraction_convert,
+                                 HloInstruction* optional_contraction_bitcast) {
+    if (!IsSupportedType(contraction->shape().element_type()))
+      return absl::OkStatus();
+    // TODO(intel-tf): Remove the condition below when the fusion Contraction +
+    // Add(bias) + Add(e.g., residual) is enabled.
+    auto contraction_config = contraction->backend_config<BackendConfig>();
+    if (!GetKernelConfig<config>(&contraction_config)
+             ->mutable_fusions()
+             ->ops()
+             .empty() &&
+        GetKernelConfig<config>(&contraction_config)
+                ->mutable_fusions()
+                ->ops(0) == OneDnnFusionConfig::BIAS) {
+      return absl::OkStatus();
+    }
+    std::vector<HloInstruction*> new_operands;
+    for (auto operand : contraction->operands()) {
+      new_operands.push_back(operand);
+    }
+
+    // At this point, the addend could have one of the following
+    // possiblities that the current fusion can handle:
+    //
+    //   - addend -> Convert -> Broadcast -> Add
+    //   - addend -> Broadcast -> Convert -> Add
+    //   - addend -> Convert
+    //   - addend -> Broadcast
+    //   - addend
+    //
+    // Hunt for addend through possible sequences above and check the addend
+    // is compatible for onednn fusion.
+    HloInstruction* addend = nullptr;
+    HloInstruction* optional_addend_broadcast = nullptr;
+    auto addend_pattern = m::AnyOf<HloInstruction>(
+        m::Broadcast(&optional_addend_broadcast, m::Convert(&addend, m::Op())),
+        m::Convert(m::Broadcast(&optional_addend_broadcast, m::Op(&addend))),
+        m::Convert(&addend, m::Op()),
+        m::Broadcast(&optional_addend_broadcast, m::Op(&addend)),
+        m::Op(&addend));
+    if (!Match(addend_intermediate, addend_pattern)) return absl::OkStatus();
+
+    if (optional_addend_broadcast && addend->shape().rank() != 1) {
+      auto new_shape =
+          AdjustBiasShape(optional_addend_broadcast, contraction->shape());
+      if (new_shape.ok()) {
+        addend = addend->AddInstruction(
+            HloInstruction::CreateBitcast(new_shape.value(), addend));
+      } else {
+        VLOG(2) << new_shape.status();
+        return absl::OkStatus();
+      }
+    }
+
+    // Validate addend for fusion.
+    if (IsSupportedType(addend->shape().element_type()) &&
+        IsOperandFusible(addend, contraction)) {
+      new_operands.push_back(addend);
+    } else {
+      return absl::OkStatus();
+    }
+
+    auto custom_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
+        contraction->CloneWithNewOperands(contraction->shape(), new_operands)));
+
+    auto backend_config = custom_call->backend_config<BackendConfig>();
+
+    // TODO(intel-tf): Remove this restriction once oneDNN has an optimized
+    // implementation for broadcasted add across all dimensions.
+    OneDnnFusionConfig_FusionKind kind = OneDnnFusionConfig::UNDEFINED;
+    kind =
+        (addend->shape().rank() == 1)
+            ? (GetKernelConfig<config>(&backend_config)->fusions().ops().empty()
+                   ? OneDnnFusionConfig::BIAS
+                   : OneDnnFusionConfig::UNDEFINED)
+            : OneDnnFusionConfig::BINARY_ADD;
+    if (kind == OneDnnFusionConfig::UNDEFINED) return absl::OkStatus();
+
+    GetKernelConfig<config>(&backend_config)->mutable_fusions()->add_ops(kind);
+
+    if (optional_addend_broadcast) {
+      GetKernelConfig<config>(&backend_config)
+          ->mutable_optimization_config()
+          ->set_bias_broadcast(true);
+    }
+    TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+
+    HloInstruction* new_instr;
+    // If matched pattern has custom-call -> bitcast -> add, then we need to
+    // insert bitcast after the new fusion to maintain the correct shape
+    // (new-custom-call -> bitcast). Also, this will optionally be followed
+    // by -> convert for bf16 case to avoid datatype mismatch.
+    if (optional_contraction_bitcast != nullptr &&
+        optional_contraction_bitcast->opcode() == HloOpcode::kBitcast) {
+      if (optional_contraction_convert != nullptr &&
+          optional_contraction_convert->opcode() == HloOpcode::kConvert) {
+        auto bitcast_call =
+            custom_call->AddInstruction(HloInstruction::CreateBitcast(
+                ShapeUtil::ChangeElementType(
+                    instr->shape(), custom_call->shape().element_type()),
+                custom_call));
+        new_instr = bitcast_call->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(
+                bitcast_call->shape(),
+                optional_contraction_convert->shape().element_type()),
+            bitcast_call));
+      } else {
+        new_instr = custom_call->AddInstruction(
+            HloInstruction::CreateBitcast(instr->shape(), custom_call));
+      }
+    } else {
+      if (optional_contraction_convert != nullptr &&
+          optional_contraction_convert->opcode() == HloOpcode::kConvert) {
+        new_instr = custom_call->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(
+                custom_call->shape(),
+                optional_contraction_convert->shape().element_type()),
+            custom_call));
+      } else {
+        new_instr = custom_call;
+      }
+    }
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_instr));
     return absl::OkStatus();
   }
 

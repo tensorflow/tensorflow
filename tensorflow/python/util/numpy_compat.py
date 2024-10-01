@@ -80,3 +80,64 @@ def np_asarray(values, dtype=None, order=None, copy=None):
       return np.asarray(values, dtype=dtype, order=order, copy=copy)
   else:
     return np.asarray(values, dtype=dtype, order=order)
+
+
+def np_where(condition, x=None, y=None):
+  """Return elements chosen from x or y depending on condition.
+
+  When only condition is provided, np.where(condition) is a shorthand for
+  np.asarray(condition).nonzero(). See
+  https://numpy.org/doc/stable/reference/generated/numpy.where.html. NumPy
+  2.1.0rc0 disallows 0D input arrays in nonzero, so np.atleast_1d is used here
+  to remain compatible with NumPy 1.x. See
+  https://github.com/numpy/numpy/pull/26268.
+
+  Args:
+    condition: Array_like, bool. Where True, yield x, otherwise yield y.
+    x: Array_like. Values from which to choose. x, y and condition need to be
+    broadcastable to some shape.
+    y: Array_like. Values from which to choose. x, y and condition need to be
+    broadcastable to some shape.
+
+  Returns:
+    An array with elements from x where condition is True, and elements from y
+    elsewhere. Or the indices of the elements that are non-zero.
+  """
+  if x is None and y is None:
+    if np.lib.NumpyVersion(np.__version__) >= '2.1.0.rc0':
+      return np.atleast_1d(np.asarray(condition)).nonzero()
+    return np.where(condition)
+  return np.where(condition, x, y)
+
+
+def np_reshape(a, /, shape=None, *, newshape=None, order='C', copy=None):
+  """Reshapes an array without changing its data.
+
+  NumPy 2.1.0rc1 added shape and copy arguments to numpy.reshape. See
+  https://github.com/numpy/numpy/pull/26292. Both newshape and shape keywords
+  are supported, but newshape is going to be deprecated. Use `shape` instead.
+
+  Besides, shape cannot be None now. See
+  https://github.com/numpy/numpy/blob/v2.1.0rc1/numpy/_core/fromnumeric.py#L309.
+  Previously, np.reshape with newshape=None returned a copy. To maintain this
+  behavior, we now use asarray to create an ndarray.
+
+  Args:
+    a: Array_like. Array to be reshaped.
+    shape: The new shape of the array.
+    newshape: The new shape of the array (deprecated).
+    order: {‘C’, ‘F’, ‘K’}.
+    copy: bool. If True, then the array data is copied. If None, a copy will
+    only be made if it’s required by order. For False it raises a ValueError if
+    a copy cannot be avoided.
+
+  Returns:
+    This will be a new view object if possible; otherwise, it will be a copy.
+  """
+  if shape is None:
+    shape = newshape
+  if np.lib.NumpyVersion(np.__version__) >= '2.1.0.rc0':
+    if shape is None and newshape is None:
+      return np.asarray(a, order=order, copy=copy)
+    return np.reshape(a, shape, order=order, copy=copy)
+  return np.reshape(a, shape, order=order)

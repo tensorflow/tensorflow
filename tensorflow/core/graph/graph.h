@@ -1027,7 +1027,7 @@ inline bool NodeIter::operator!=(const NodeIter& rhs) const {
 }
 
 inline void NodeIter::operator++() {
-  while (1) {
+  while (true) {
     DCHECK_LE(id_, graph_->num_node_ids());
     ++id_;
     if (id_ >= graph_->num_node_ids() || graph_->FindNodeId(id_) != nullptr) {

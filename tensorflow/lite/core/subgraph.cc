@@ -1506,7 +1506,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
                               node_index);
 #endif  // TF_LITE_TENSORFLOW_PROFILER
     const TfLiteStatus op_prepare_status = OpPrepare(registration, &node);
-    if (op_prepare_status != kTfLiteOk) {
+    if (op_prepare_status != kTfLiteOk &&
+        op_prepare_status != kTfLiteOutputShapeNotKnown) {
       ReportOpError(&context_, node, registration, node_index,
                     "failed to prepare");
       return op_prepare_status;
@@ -1517,7 +1518,8 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     // Discontinue if the node has dynamic outputs. Note that we don't
     // stop for dynamic temporary tensors since they won't affect the
     // sizes of other tensors in the graph.
-    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_)) {
+    if (HasDynamicTensor(context_, node.outputs, &dynamic_tensor_index_) ||
+        op_prepare_status == kTfLiteOutputShapeNotKnown) {
       has_dynamic_tensors_ = true;
       return kTfLiteOk;
     }

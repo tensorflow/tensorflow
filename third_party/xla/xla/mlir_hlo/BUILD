@@ -1130,6 +1130,7 @@ cc_library(
     srcs = [
         "stablehlo_ext/transforms/chlo_recompose_ops.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
+        "stablehlo_ext/transforms/stablehlo_create_compatibility_expander.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",
     ],
     hdrs = [

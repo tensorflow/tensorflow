@@ -128,7 +128,7 @@ size_t ShardingHash(nb::handle sharding) {
     return absl::Hash<void*>()(single_device_sharding->device().ptr());
   }
 
-  return xla::nb_hash(sharding);
+  return nb::hash(sharding);
 }
 
 bool ShardingEqual(nb::handle a, nb::handle b) {

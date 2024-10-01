@@ -15,6 +15,7 @@
 
 import threading
 import time
+import weakref
 
 from absl.testing import absltest
 
@@ -110,6 +111,19 @@ class WeakrefLRUCacheTest(absltest.TestCase):
     cache(wrkey, "arg1")
     cache(wrkey, "arg2")
     self.assertLen(cache.cache_keys(), 2)
+
+  def testNonWeakreferenceableKey(self):
+    class NonWRKey:
+      __slots__ = ()
+
+    non_wr_key = NonWRKey()
+    with self.assertRaises(TypeError):
+      weakref.ref(non_wr_key)
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x: 2048)
+    for _ in range(100):
+      with self.assertRaises(TypeError):
+        cache(non_wr_key)
 
   def testCrashingKey(self):
     class WRKey:

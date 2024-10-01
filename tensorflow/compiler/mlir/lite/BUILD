@@ -27,6 +27,7 @@ package_group(
         "//third_party/iree/...",
         "//third_party/odml/infra/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/lite/experimental/lrt/...",
         "//tensorflow/lite/python/...",
         "//waymo/accelerator/alpine/tools/...",
         "//waymo/ml/compiler/mlir/...",
@@ -1127,19 +1128,19 @@ cc_library(
 cc_library(
     name = "tensorflow_lite_d2s",
     srcs = [
-        "transforms/dense_to_sparse.cc",
+        "transforms/dense_to_sparse_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/dense_to_sparse_pass.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/kernels/internal/utils:sparsity_format_converter",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -1567,8 +1568,8 @@ tf_cc_binary(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/translate/hlo_to_mhlo:translate",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -1593,6 +1594,7 @@ cc_library(
         ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/lite/stablehlo:build_stablehlo_composite",
@@ -1881,21 +1883,18 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "types_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":types_proto"],
 # )
 #
 # py_proto_library(
 #     name = "model_flags_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":model_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "converter_flags_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":converter_flags_proto"],
 # )

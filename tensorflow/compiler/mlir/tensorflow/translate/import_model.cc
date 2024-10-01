@@ -2564,6 +2564,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,
                                                     control_ret_nodes, attrs));
+  // TODO(b/370078030): add tests once migration and code decoupling is
+  // complete.
+  if (specs.convert_all_functions_to_mlir) {
+    auto fn_names = graph.flib_def().ListFunctionNames();
+    for (const auto& fn_name : fn_names) {
+      TF_RETURN_IF_ERROR(importer.ConvertLibFunction(fn_name));
+    }
+  }
   TF_RETURN_IF_ERROR(importer.ImporterBase::ConvertDeferredFunctions());
 
   // Mark main function public, others private.
@@ -2801,26 +2809,6 @@ Status GraphDefImporter::GetControlRetsFromGraph(
 
   return absl::OkStatus();
 }
-
-// Stateful helper class to import a TensorFlow model expressed in SavedModel
-// into an MLIR Module.
-class SavedModelObjectGraphImporter : public ImporterBase {
- public:
-  // Main entry point: converts all functions in the given meta graph to an MLIR
-  // Module.
-  static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Convert(
-      SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
-      mlir::MLIRContext* context, MLIRImportOptions options);
-
- private:
-  explicit SavedModelObjectGraphImporter(
-      const FunctionLibraryDefinition& flib, const GraphDebugInfo& debug_info,
-      const GraphImportConfig& specs, mlir::ModuleOp module,
-      std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      NameUniquifier* function_name_uniquifier)
-      : ImporterBase(flib, debug_info, specs, module, tf_name_to_mlir_name,
-                     function_name_uniquifier) {}
-};
 
 // Determines the names used to reference objects in the SavedObjectGraph.
 class ObjectNames {
@@ -3577,11 +3565,9 @@ Status CreateSavedModelIR(
   return absl::OkStatus();
 }
 
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
-                                       absl::Span<std::string> exported_names,
-                                       mlir::MLIRContext* context,
-                                       MLIRImportOptions import_options) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelObjectGraph(
+    SavedModelV2Bundle* saved_model, absl::Span<std::string> exported_names,
+    mlir::MLIRContext* context, MLIRImportOptions import_options) {
   LoadImporterDialects(*context);
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
@@ -3612,17 +3598,15 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
       options, std::move(preprocessed_graphdef), &graph));
 
   NameUniquifier function_name_uniquifier(graph.flib_def());
-  SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
-                                         module.get(), &tf_name_to_mlir_name,
-                                         &function_name_uniquifier);
-
-  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
-
-  auto fn_names = graph.flib_def().ListFunctionNames();
-  for (const auto& fn_name : fn_names) {
-    TF_RETURN_IF_ERROR(importer.ConvertLibFunction(fn_name));
+  for (const auto& fn_name : graph.flib_def().ListFunctionNames()) {
+    std::string mlir_func_name(function_name_uniquifier.GetUniqueName(fn_name));
+    (tf_name_to_mlir_name)[std::string(fn_name)] = mlir_func_name;
   }
-  TF_RETURN_IF_ERROR(importer.ConvertDeferredFunctions());
+
+  specs.convert_all_functions_to_mlir = true;
+  TF_ASSIGN_OR_RETURN(
+      module, ConvertGraphToMlir(graph, debug_info, graph.flib_def(), specs,
+                                 module->getContext()));
 
   if (!saved_model->meta_graph_def().has_object_graph_def()) {
     return errors::InvalidArgument(
@@ -3639,7 +3623,8 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
        llvm::make_early_inc_range(module->getOps<mlir::func::FuncOp>())) {
     if (func.getName().starts_with("__inference__traced_save_") ||
         func.getName().starts_with("__inference__traced_restore_") ||
-        func.getName().starts_with("__inference_signature_wrapper_")) {
+        func.getName().starts_with("__inference_signature_wrapper_") ||
+        func.getName().starts_with("main")) {
       func.erase();
     }
   }
@@ -4368,8 +4353,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
     SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, MLIRImportOptions options) {
-  return SavedModelObjectGraphImporter::Convert(saved_model, exported_names,
-                                                context, options);
+  return ConvertSavedModelObjectGraph(saved_model, exported_names, context,
+                                      options);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelV1ToMlir(

@@ -164,7 +164,7 @@ class PjitFunctionCache {
     h = H::combine(std::move(h), key.function.ptr());
     Py_hash_t hash;
     try {
-      hash = xla::nb_hash(key.global_cache_key);
+      hash = nb::hash(key.global_cache_key);
     } catch (const nanobind::python_error& e) {
       if (!e.matches(PyExc_TypeError)) throw;
       throw std::invalid_argument(absl::StrCat(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -45,6 +46,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/map_util.h"
@@ -62,8 +65,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -308,11 +309,22 @@ absl::StatusOr<bool> ShardyXLA::Run(
                           /*flatten_computation_args_result=*/true));
 
   std::string shardyDir = hloModule->config().debug_options().xla_dump_to();
+
+  if (shardyDir == "sponge") {
+    shardyDir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    if (shardyDir.empty()) {
+      LOG(WARNING) << "\"sponge\" specified as dump directory but "
+                      "TEST_UNDECLARED_OUTPUTS_DIR is not set!";
+    }
+  }
+
   if (!shardyDir.empty()) {
     shardyDir =
         tsl::io::JoinPath(shardyDir, "shardy",
                           std::string_view(mlirModule->getName().value_or("")));
+    LOG(INFO) << "Using Shardy output directory: " << shardyDir;
   }
+
   // MLIR pipeline: (1) import, (2) Shardy, and (3) export.
 
   bool enableVerifier = false;

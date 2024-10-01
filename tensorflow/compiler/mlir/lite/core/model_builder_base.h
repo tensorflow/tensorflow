@@ -386,9 +386,15 @@ class FlatBufferModelBase {
       size_t allocation_size =
           std::min(allocation->bytes(),
                    static_cast<size_t>(FLATBUFFERS_MAX_BUFFER_SIZE - 1));
+      flatbuffers::Verifier::Options options;
+      // TODO(b/366118885): Remove after the root cause of the crash on Windows
+      // is found.
+#if defined(_WIN32)
+      options.assert = true;
+#endif
       flatbuffers::Verifier base_verifier(
-          reinterpret_cast<const uint8_t*>(allocation->base()),
-          allocation_size);
+          reinterpret_cast<const uint8_t*>(allocation->base()), allocation_size,
+          options);
       if (!VerifyModelBuffer(base_verifier)) {
         TF_LITE_REPORT_ERROR(error_reporter,
                              "The model is not a valid Flatbuffer buffer");

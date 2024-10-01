@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_IO_INPUTSTREAM_INTERFACE_H_
 #define TENSORFLOW_CORE_LIB_IO_INPUTSTREAM_INTERFACE_H_
 
+#include "xla/tsl/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/io/inputstream_interface.h"
 
 namespace tensorflow {
 namespace io {

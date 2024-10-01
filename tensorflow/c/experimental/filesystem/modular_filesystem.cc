@@ -18,11 +18,23 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
+#include "tensorflow/c/tf_file_statistics.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/file_system.h"
 
 // TODO(b/139060984): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private

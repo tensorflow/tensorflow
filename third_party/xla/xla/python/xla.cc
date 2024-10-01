@@ -182,6 +182,10 @@ NB_MODULE(xla_extension, m_nb) {
   // Exceptions
   nb::exception<XlaRuntimeError> xla_runtime_error(m_nb, "XlaRuntimeError",
                                                    PyExc_RuntimeError);
+  xla_runtime_error.attr("__doc__") = nb::str(
+      "Runtime errors thrown by the JAX runtime. While the JAX runtime may "
+      "raise other exceptions as well, most exceptions thrown by the runtime "
+      "are instances of this class.");
 
   // Types
   nb::enum_<PrimitiveType>(m_nb, "PrimitiveType", nb::is_arithmetic())

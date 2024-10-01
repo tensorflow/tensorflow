@@ -488,23 +488,14 @@ TEST_F(GpuFusibleTest,
 TEST_F(GpuFusibleTest, CustomFusionIsNotFusibleAsConsumer) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-HloModule m
-
 triton_fusion {
-  p0 = f16[20,3]{1,0} parameter(0)
-  p1 = f16[3,40]{1,0} parameter(1)
-  dot = f16[20,40]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT c = f16[20,40]{0,1} copy(dot)
+  p = s32[20,3] parameter(0)
+  ROOT neg = s32[20,3] negate(p)
 }
 
 ENTRY e {
-  p0 = f16[20,3]{1,0} parameter(0)
-  n = f16[20,3]{1,0} negate(p0)
-  p1 = f16[3,40]{1,0} parameter(1)
-  ROOT r = f16[20,40]{0,1} fusion(n, p1),
-    kind=kCustom,
-    calls=triton_fusion
+  p = s32[20,3] parameter(0)
+  ROOT r = s32[20,3] fusion(p), kind=kCustom, calls=triton_fusion
 })"));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsFusibleAsMultiOutputFusionRoot(*root));

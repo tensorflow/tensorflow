@@ -48,9 +48,9 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -787,17 +787,23 @@ class HloComputation {
   }
 
   // Returns if this computation is a body computation of a while.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   bool IsWhileBodyComputation() const {
     return instruction_type() == InstructionType::kWhile;
   }
 
   // Returns the owning while call instruction, or nullptr if this is not a
   // while call body computation.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   HloInstruction* WhileCallInstruction() const {
     return instruction_type() == InstructionType::kWhile ? instruction()
                                                          : nullptr;
   }
 
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
     CHECK(while_call_instruction != nullptr);
     CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
@@ -805,17 +811,23 @@ class HloComputation {
   }
 
   // Returns if this computation is a branch computation of a conditional.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   bool IsConditionalBranchComputation() const {
     return instruction_type() == InstructionType::kConditional;
   }
 
   // Returns the owning conditional call instruction, or nullptr if this is not
   // a conditional branch computation.
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   HloInstruction* ConditionalCallInstruction() const {
     return instruction_type() == InstructionType::kConditional ? instruction()
                                                                : nullptr;
   }
 
+  [[deprecated(
+      "This is broken. Use CallGraph::GetComputationCallers() instead")]]
   void SetConditionalCallInstruction(
       HloInstruction* conditional_call_instruction) {
     CHECK(conditional_call_instruction != nullptr);

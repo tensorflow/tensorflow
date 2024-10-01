@@ -74,10 +74,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -249,10 +249,8 @@ class HloParserImpl : public HloParser {
   using BoolList = absl::InlinedVector<bool, 1>;
 
   explicit HloParserImpl(absl::string_view str,
-                         bool set_to_default_entry_computation_layout = true)
-      : lexer_(str),
-        set_to_default_entry_computation_layout_(
-            set_to_default_entry_computation_layout) {}
+                         const HloParserOptions& options = HloParserOptions())
+      : lexer_(str), options_(options) {}
 
   // Runs the parser and constructs the resulting HLO in the given (empty)
   // HloModule. Returns the error status in case an error occurred.
@@ -549,7 +547,7 @@ class HloParserImpl : public HloParser {
   bool ParseJsonDict(std::string* result);
   bool ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
-  bool ParseShape(Shape* result, bool set_to_default_layout = true);
+  bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseLayoutIntAttribute(int64_t* attr_value,
                                absl::string_view attr_description);
@@ -673,7 +671,7 @@ class HloParserImpl : public HloParser {
   // Used to generate names for anonymous instructions.
   NameUniquer name_uniquer_{/*separator=*/"."};
 
-  const bool set_to_default_entry_computation_layout_;
+  const HloParserOptions options_;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -917,7 +915,7 @@ bool HloParserImpl::ParseComputationLayout(
   }
   while (lexer_.GetKind() != TokKind::kRparen) {
     Shape param;
-    if (!ParseShape(&param, set_to_default_entry_computation_layout_)) {
+    if (!ParseShape(&param)) {
       return false;
     }
     computation_layout->add_parameter_layout(ShapeLayout(param));
@@ -937,7 +935,7 @@ bool HloParserImpl::ParseComputationLayout(
     return false;
   }
   Shape result;
-  if (!ParseShape(&result, set_to_default_entry_computation_layout_)) {
+  if (!ParseShape(&result)) {
     return false;
   }
   *computation_layout->mutable_result_layout() = ShapeLayout(result);
@@ -1392,8 +1390,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &predecessors};
 
   optional<std::shared_ptr<OriginalValue>> original_value;
-  attrs["original_value"] = {/*required=*/false, AttrTy::kOriginalValue,
-                             &original_value};
+  attrs["origin"] = {/*required=*/false, AttrTy::kOriginalValue,
+                     &original_value};
 
   optional<OpMetadata> metadata;
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};
@@ -6099,7 +6097,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 // tuple_elements
 //   ::= /*empty*/
 //   ::= shape (',' shape)*
-bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
+bool HloParserImpl::ParseShape(Shape* result) {
   if (EatIfPresent(TokKind::kLparen)) {  // Tuple
     std::vector<Shape> shapes;
     if (lexer_.GetKind() == TokKind::kRparen) {
@@ -6108,7 +6106,7 @@ bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
       // shape (',' shape)*
       do {
         shapes.emplace_back();
-        if (!ParseShape(&shapes.back(), set_to_default_layout)) {
+        if (!ParseShape(&shapes.back())) {
           return false;
         }
       } while (EatIfPresent(TokKind::kComma));
@@ -6134,7 +6132,7 @@ bool HloParserImpl::ParseShape(Shape* result, bool set_to_default_layout) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }
-  if (set_to_default_layout || ShapeUtil::IsScalar(*result)) {
+  if (options_.fill_missing_layouts() || ShapeUtil::IsScalar(*result)) {
     LayoutUtil::SetToDefaultLayout(result);
   }
   // We need to lookahead to see if a following open brace is the start of a
@@ -6990,17 +6988,11 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
 
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config,
-    bool set_to_default_entry_computation_layout) {
+    const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
-  HloParserImpl parser(str, set_to_default_entry_computation_layout);
+  HloParserImpl parser(str, options);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str, bool set_to_default_entry_computation_layout) {
-  return ParseAndReturnUnverifiedModule(
-      str, HloModuleConfig(), set_to_default_entry_computation_layout);
 }
 
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {

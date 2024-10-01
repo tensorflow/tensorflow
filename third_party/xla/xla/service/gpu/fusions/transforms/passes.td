@@ -273,6 +273,38 @@ def VectorizeLoadsAndStoresPass :
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
 }
 
+def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
+  let summary = "Fuse xla_gpu.loop.";
+  let description = [{
+    This pass fuses similar xla_gpu.loops into one if the second one is
+    extracting the same value from a vector in which the first one inserts to.
+
+    Before fuse-loops:
+      %loop0 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc)[%i, %j]
+        in #indexing_map iter_args(%iter = %cst) -> (vector<8x1xf32>) {
+          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
+          %1 = vector.insert %extracted, %iter [%i, %j]
+          xla_gpu.yield %1
+      }
+      %loop1 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb)[%i, %j]
+        in #indexing_map1 iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
+          %2 = vector.extract %loop0  [%i, %j]
+          %inserted = tensor.insert %iter[%ra, %rb]
+          xla_gpu.yield %extracted
+      }
+
+    After fuse-loops:
+      %loop = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc, %rd, %re)[%i, %j] 
+        in #indexing_map iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
+          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
+          %inserted = tensor.insert %extracted into %iter[%rd, %re]
+          xla_gpu.yield %inserted
+      }
+  }];
+  let dependentDialects = ["xla::gpu::XlaGpuDialect"];
+  let constructor = "CreateFuseLoopsPass()";
+}
+
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
   let summary = "Peels xla_gpu.loop.";
   let description = [{

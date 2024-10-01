@@ -61,7 +61,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     BufferAssignmentProto* buffer_assignment_proto = nullptr,
-    bool set_to_default_entry_computation_layout = true);
+    bool fill_missing_layouts = true);
 
 // Loads an HLO module from file.
 // The file can be one of the followings:
@@ -84,7 +84,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
         hlo_module_loader_details::Config(),
     const std::function<void(HloModuleConfig*)>& config_modifier_hook = {},
     BufferAssignmentProto* buffer_assignment_proto = nullptr,
-    bool set_to_default_entry_computation_layout = true);
+    bool fill_missing_layouts = true);
 
 // Loads an HLO snapshot from a string, only for its inputs
 // The data format must be one of the following:

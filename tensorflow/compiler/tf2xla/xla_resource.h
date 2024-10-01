@@ -19,11 +19,14 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {

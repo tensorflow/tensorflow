@@ -155,6 +155,8 @@ build:android_x86_64 --fat_apk_cpu=x86_64
 # Build everything statically for Android since all static libs are later
 # bundled together into a single .so for deployment.
 build:android --dynamic_mode=off
+# TODO(belitskiy): Remove once on Clang 20.
+build:android --define=xnn_enable_avxvnniint8=false
 
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
@@ -245,6 +247,8 @@ build:cuda_clang --copt=-Qunused-arguments
 # major release. Example: sm_80 kernels can run on sm_89 GPUs but
 # not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
 build:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+# Permit newer CUDA versions than Clang is aware of
+build:cuda_clang --copt="-Wno-unknown-cuda-version"
 # Set lld as the linker.
 build:cuda_clang --host_linkopt="-fuse-ld=lld"
 build:cuda_clang --host_linkopt="-lm"
@@ -354,12 +358,16 @@ build:linux --copt="-Werror=unused-result"
 # Add switch as an error on Linux.
 build:linux --copt="-Wswitch"
 build:linux --copt="-Werror=switch"
+<<<<<<< HEAD
 # Required for building with clang
 build:linux --copt="-Wno-error=unused-but-set-variable"
 # We have some invalid linker scripts in the build,
 # so we need to disable this check
 build:linux --linkopt=-Wl,--undefined-version
 build:linux --host_linkopt=-Wl,--undefined-version
+=======
+
+>>>>>>> upstream/master
 # Linux ARM64 specific options
 build:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 

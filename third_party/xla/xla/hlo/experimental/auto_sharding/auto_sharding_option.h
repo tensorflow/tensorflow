@@ -84,11 +84,6 @@ struct AutoShardingOption {
   bool force_override_reduce_scatter_cost = false;
   double reduce_scatter_cost = 0;
 
-  // Forcibly split the batch dimension and map it to a mesh dimension.
-  // This can force the auto-sharding pass to generate the data parallel
-  // strategy.
-  int force_batch_dim_to_mesh_dim = -1;
-
   // If true, allow replicated parameters.
   bool allow_replicated_parameters = true;
 

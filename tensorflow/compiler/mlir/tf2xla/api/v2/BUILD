@@ -272,3 +272,34 @@ cc_library(
         "@local_xla//xla:status_macros",
     ],
 )
+
+tf_cc_test(
+    name = "tf_executor_to_graph_test",
+    srcs = ["tf_executor_to_graph_test.cc"],
+    data = [
+        "testdata/valid_executor.mlir",
+        "testdata/valid_graph.txt",
+    ],
+    deps = [
+        ":tf_executor_to_graph",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:read_all",
+    ],
+)

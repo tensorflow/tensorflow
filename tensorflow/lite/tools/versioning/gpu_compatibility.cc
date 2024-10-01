@@ -1152,6 +1152,18 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
             "Require size(indices) = rank(operand)");
       }
       return absl::OkStatus();
+    case kTfLiteBuiltinStablehloCbrt:
+      if (op_sig.inputs[0].type != kTfLiteFloat16 &&
+          op_sig.inputs[0].type != kTfLiteFloat32 &&
+          op_sig.inputs[0].type != kTfLiteBFloat16) {
+        return absl::InvalidArgumentError("Only support float inputs");
+      }
+      if (op_sig.inputs[0].type != op_sig.outputs[0].type) {
+        return absl::InvalidArgumentError("Input and output types must match");
+      }
+      return CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                      /*required_const_inputs=*/0,
+                                      /*required_outputs=*/1);
     case kTfLiteBuiltinStablehloClamp:
       if ((op_sig.inputs.at(0).type != op_sig.inputs.at(1).type) ||
           (op_sig.inputs.at(1).type != op_sig.inputs.at(2).type)) {

@@ -54,6 +54,7 @@ namespace spmd {
 
 // Enum representing the partitioning methods for gather and scatter.
 enum class PartitioningMethod {
+  kExplicitBatch,
   kIndexParallel,
   kOperandPassthrough,
   kTrivialSlicedOperand,

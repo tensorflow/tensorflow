@@ -104,7 +104,7 @@ int64_t PyDeviceList::Hash() {
         hash_ = absl::HashOf(std::get<0>(device_list_));
         break;
       case 1:
-        hash_ = xla::nb_hash(std::get<1>(device_list_));
+        hash_ = nb::hash(std::get<1>(device_list_));
         break;
       default:
         throw nb::value_error("Unrecognized DeviceList type");

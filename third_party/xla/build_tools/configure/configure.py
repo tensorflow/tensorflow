@@ -299,6 +299,9 @@ class XLAConfigOptions:
       build_and_test_tag_filters.append("-gpu")
 
     elif self.backend == Backend.CUDA:
+      build_and_test_tag_filters.append("-rocm-only")
+      build_and_test_tag_filters.append("-sycl-only")
+
       compiler_pair = self.cuda_compiler, self.host_compiler
 
       if compiler_pair == (CudaCompiler.CLANG, HostCompiler.CLANG):
@@ -347,8 +350,12 @@ class XLAConfigOptions:
       if not self.using_nccl:
         rc.append("build --config nonccl")
     elif self.backend == Backend.ROCM:
-      pass
+      build_and_test_tag_filters.append("-cuda-only")
+      build_and_test_tag_filters.append("-sycl-only")
     elif self.backend == Backend.SYCL:
+      build_and_test_tag_filters.append("-cuda-only")
+      build_and_test_tag_filters.append("-rocm-only")
+
       rc.append("build --config sycl")
 
     # Lines that are added for every backend

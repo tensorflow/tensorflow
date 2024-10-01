@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
+#include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
@@ -193,6 +194,13 @@ void AddPreQuantizationStableHloToTfPasses(
   // jax_to_tfl_flatbuffer.cc which can likely be updated to emit StableHLO
   // to be consistent with other entrypoints.
   pass_manager.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+
+  // Expand backward compatibility with the given StableHLO version by
+  // decomposing newer StableHLO operations into equivalent operations supported
+  // by that older version.
+  pass_manager.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo_ext::createStablehloCreateCompatibilityExpanderPass(
+          tflite_supported_stablehlo_version));
 
   // Decompose CHLO into StableHLO ops
   pass_manager.addNestedPass<mlir::func::FuncOp>(

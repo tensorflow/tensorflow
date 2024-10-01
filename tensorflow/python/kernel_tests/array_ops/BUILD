@@ -430,6 +430,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
     ],
 )

@@ -66,8 +66,6 @@ std::string AutoShardingOption::ToString() const {
     lines.push_back(absl::StrCat("reduce_scatter_cost: ", reduce_scatter_cost));
   }
 
-  lines.push_back(absl::StrCat("force_batch_dim_to_mesh_dim: ",
-                               force_batch_dim_to_mesh_dim));
   lines.push_back(absl::StrCat("allow_replicated_parameters: ",
                                allow_replicated_parameters));
   lines.push_back(

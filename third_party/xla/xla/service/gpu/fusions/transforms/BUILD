@@ -38,6 +38,7 @@ cc_library(
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
         "flatten_tensors.cc",
+        "fuse_loops.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
         "lower_xla_gpu_to_scf.cc",

@@ -399,7 +399,7 @@ void AddMemoryTerms(
 //    can be a few (usually < 10) edges in the problem with negative costs. This
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
-AutoShardingSolverResult CallORToolsSolver(
+AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
@@ -420,13 +420,16 @@ AutoShardingSolverResult CallORToolsSolver(
     // Set random_seed, interleave_search and share_binary_clauses for
     // determinism, mip_max_bound (to handle large costs), and num_workers for
     // parallelism.
-    solver_parameter_str =
-        request.deterministic_mode()
-            ? absl::StrCat(
-                  "share_binary_clauses:false,random_seed:1,interleave_"
-                  "search:true,num_workers:",
-                  num_workers)
-            : absl::StrCat("num_workers:", num_workers);
+    solver_parameter_str = absl::StrCat("num_workers:", num_workers);
+    if (request.deterministic_mode()) {
+      absl::StrAppend(
+          &solver_parameter_str,
+          ",share_binary_clauses:false,random_seed:1,interleave_search:true");
+    }
+    if (request.has_solver_timeout()) {
+      absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
+                      request.solver_timeout().solver_timeout_in_seconds());
+    }
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
   // Create variables
@@ -755,10 +758,6 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 #endif
-  if (request.has_solver_timeout()) {
-    solver->SetTimeLimit(
-        absl::Seconds(request.solver_timeout().solver_timeout_in_seconds()));
-  }
   if (request.enable_output()) {
     solver->EnableOutput();
   }
@@ -876,11 +875,14 @@ AutoShardingSolverResult SolveAndExtractSolution(
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
     LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
                   "likely a bug and should be reported.";
-    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+    return AutoShardingSolverResult(absl::InternalError("Invalid MIP."),
                                     /*skip_auto_sharding=*/false);
-  } else if (status != operations_research::MPSolver::OPTIMAL) {
+  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
+    LOG(WARNING) << "Solver timeout; no solution was produced";
     return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
                                     /*skip_auto_sharding=*/true);
+  } else if (status != operations_research::MPSolver::OPTIMAL) {
+    LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
   }
 
   // Fingerprint the model & solution (useful when checking for determinism).

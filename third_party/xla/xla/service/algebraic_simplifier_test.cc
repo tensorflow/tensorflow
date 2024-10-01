@@ -8985,6 +8985,21 @@ TEST_F(AlgebraicSimplifierTest, CompareIota) {
               GmockMatch(m::Broadcast(m::ConstantScalar(false))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CompareAbsLtZeroBecomesFalse) {
+  // |x| < 0  ->  false
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+m {
+  p = s32[5] parameter(0)
+  a = s32[5] abs(p)
+  z = s32[] constant(0)
+  b = s32[5] broadcast(z)
+  ROOT r = pred[5] compare(a, b), direction=LT
+})"));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(false))));
+}
+
 TEST_F(AlgebraicSimplifierTest, CompareLtZero) {
   const char* kModuleStr = R"(
     HloModule m
@@ -10559,6 +10574,18 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationSelMaxBcast) {
                   m::Parameter(1), m::Broadcast(m::ConstantScalar()),
                   m::MaximumAnyOrder(m::Parameter(0),
                                      m::Broadcast(m::ConstantScalar())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationIota) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    e {
+      i = s32[3,2] iota(), iota_dimension=0
+      ROOT a = s32[3,2] abs(i)
+    }
+  )"));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Iota()));
 }
 
 TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {

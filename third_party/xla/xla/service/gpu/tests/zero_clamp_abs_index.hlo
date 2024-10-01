@@ -1,0 +1,13 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+e {
+  p0 = s32[8,9] parameter(0)
+  p1 = s32[5] parameter(1)
+  a = s32[5] abs(p1)
+  ROOT r = s32[5,2,3] gather(p0, a),
+    offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0},
+    index_vector_dim=1, slice_sizes={2,3}
+}
+
+// CHECK: llvm.smin.i32
+// CHECK-NOT: llvm.smax.i32

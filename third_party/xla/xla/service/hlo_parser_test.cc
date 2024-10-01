@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1530,11 +1531,11 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
 
 ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3]) {
-  %v1 = f32[] parameter(0), original_value={{"v1"}}
-  %v2 = f32[3]{0} parameter(1), original_value={{"v2"}}
-  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), original_value={({"v1"}, {"v2"})}
-  %v3 = f32[2,3]{1,0} parameter(2), original_value={{"v3"}}
-  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), original_value={(({"v1"}, {"v2"}), {"v3"})}
+  %v1 = f32[] parameter(0), origin={{"v1"}}
+  %v2 = f32[3]{0} parameter(1), origin={{"v2"}}
+  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), origin={({"v1"}, {"v2"})}
+  %v3 = f32[2,3]{1,0} parameter(2), origin={{"v3"}}
+  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), origin={(({"v1"}, {"v2"}), {"v3"})}
 }
 
 )"
@@ -3434,10 +3435,133 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
-          original, /*set_to_default_entry_computation_layout=*/false);
+          original, {}, HloParserOptions().set_fill_missing_layouts(false));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
+}
+
+TEST_F(HloParserTest, DoNotSetEntryComputationLayoutIfSet) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]{1,2,0}) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation_layout()
+                  .parameter_layout(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 2, 0));
+}
+
+TEST_F(HloParserTest, SetEntryComputationLayoutIfNotSet) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation_layout()
+                  .parameter_layout(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(2, 1, 0));
+}
+
+TEST_F(HloParserTest, DoNotFallBackToDefaultLayoutIfDisabled) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80] dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(false));
+  TF_ASSERT_OK(module.status());
+  EXPECT_FALSE(module.value()
+                   ->entry_computation()
+                   ->root_instruction()
+                   ->shape()
+                   .has_layout());
+}
+
+TEST_F(HloParserTest, FallBackToDefaultLayoutIfEnabled) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80] dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(3, 2, 1, 0));
+}
+
+TEST_F(HloParserTest, FallBackToDefaultLayoutIfAlreadySet) {
+  const std::string original = R"(
+HloModule t
+
+ENTRY main {
+ p0 = f16[16,32,48,64]{3,2,1,0} parameter(0)
+ p1 = f16[80,64,48,32]{3,2,1,0} parameter(1)
+ ROOT dot = f16[64,32,16,80]{1,2,0,3} dot(p0, p1), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={3,1}, rhs_batch_dims={1,3}
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {}, HloParserOptions().set_fill_missing_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation()
+                  ->root_instruction()
+                  ->shape()
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 2, 0, 3));
 }
 
 TEST_F(HloParserTest, NoEntry) {
@@ -5537,8 +5661,8 @@ TEST_F(HloParserTest, OriginalValueWithoutShape) {
   const std::string hlo_string = R"(HloModule test
 
 ENTRY %test {
-  %a = f32[2,10]{1,0} parameter(0), original_value={{"a"}}
-  ROOT %v = abs(%a), original_value={{"v"}}
+  %a = f32[2,10]{1,0} parameter(0), origin={{"a"}}
+  ROOT %v = abs(%a), origin={{"v"}}
 }
 
 

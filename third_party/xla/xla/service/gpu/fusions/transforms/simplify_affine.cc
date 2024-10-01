@@ -357,6 +357,17 @@ std::optional<Interval> GetIVRange(mlir::Value iv) {
       return {{lb.getSExtValue(), ub.getSExtValue() - 1}};
     }
   }
+  if (auto loop_op = mlir::dyn_cast<xla::gpu::LoopOp>(parent)) {
+    const auto& indexing_map = loop_op.getIndexingMap();
+    if (bbarg.getArgNumber() >= loop_op.getNumInductionVars() &&
+        bbarg.getArgNumber() <
+            loop_op.getNumInductionVars() + indexing_map.GetNumResults()) {
+      RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
+      return range_evaluator.ComputeExpressionRange(
+          indexing_map.GetAffineMap().getResult(bbarg.getArgNumber() -
+                                                loop_op.getNumInductionVars()));
+    }
+  }
   return std::nullopt;
 }
 

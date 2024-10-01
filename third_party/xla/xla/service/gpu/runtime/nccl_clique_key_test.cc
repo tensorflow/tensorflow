@@ -89,6 +89,27 @@ TEST(NcclCliqueKeyTest, CompareWithParticipantGroups) {
   EXPECT_EQ(key0_nogroups, key1_nogroups);
 }
 
+TEST(NcclCliqueKeyTest, CompareWithPermutedParticipantGroups) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  // The keys are equal because the replica groups are same up to permutation.
+  NcclCliqueKey key0(
+      {id0, id1}, NcclStreamId(0), AsyncStreamKind::kCollective,
+      std::vector<std::vector<GlobalDeviceId>>{{id3, id2}, {id0, id1}});
+  NcclCliqueKey key1(
+      {id0, id1}, NcclStreamId(0), AsyncStreamKind::kCollective,
+      std::vector<std::vector<GlobalDeviceId>>{{id0, id1}, {id2, id3}});
+  EXPECT_EQ(key0, key1);
+
+  NcclCliqueKey key_other(
+      {id0, id1}, NcclStreamId(0), AsyncStreamKind::kCollective,
+      std::vector<std::vector<GlobalDeviceId>>{{id0, id2}, {id1, id3}});
+  EXPECT_FALSE(key0 == key_other);
+}
+
 TEST(NcclCliqueKeyTest, BtreeIterationOrder) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);

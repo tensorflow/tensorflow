@@ -31,7 +31,7 @@ default_visibility = [
     "//tensorflow/core:__subpackages__",
     "//tensorflow/security/fuzzing:__subpackages__",
     # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-    "@local_tsl//tsl/lib:__subpackages__",
+    "@local_xla//xla/tsl/lib:__subpackages__",
     # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
     # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
@@ -722,6 +722,7 @@ cc_library(
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
+        "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
@@ -1410,7 +1411,7 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/utils:xplane_utils",
+        "@local_xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -1807,7 +1808,6 @@ tf_proto_library(
 # py_proto_library(
 #     name = "function_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [
 #         ":function_proto",
 #     ],
@@ -1823,9 +1823,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
-        "@local_tsl//tsl/protobuf:histogram_proto",
+        "@local_xla//xla/tsl/protobuf:histogram_proto",
     ],
-    exports = ["@local_tsl//tsl/protobuf:histogram_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(

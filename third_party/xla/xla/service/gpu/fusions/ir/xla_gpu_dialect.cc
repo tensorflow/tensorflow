@@ -18,6 +18,9 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Transforms/InliningUtils.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
+
+// The order of these includes is important.
+#include "xla/service/gpu/fusions/ir/xla_gpu_enums.cc.inc"
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_attrs.cc.inc"
 #define GET_TYPEDEF_CLASSES
@@ -110,6 +113,10 @@ struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {
                        mlir::raw_ostream& os) const final {
     if (llvm::isa<IndexingMapAttr>(attr)) {
       os << "indexing_map";
+      return AliasResult::FinalAlias;
+    }
+    if (llvm::isa<LayoutAttr>(attr)) {
+      os << "layout";
       return AliasResult::FinalAlias;
     }
     return AliasResult::NoAlias;

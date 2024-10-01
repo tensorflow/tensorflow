@@ -41,11 +41,13 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_F16_F16_F16:
       return se::blas::ComputationType::kF16;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return se::blas::ComputationType::kBF16AsF32;
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return se::blas::ComputationType::kTF32AsF32;
@@ -174,13 +176,20 @@ bool IsSupportedDotAlgorithmOnGpu(
       return input_storage_type == F16 &&
              (output_storage_type == F16 || output_storage_type == F32);
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
-             input_storage_type == BF16 &&
-             (output_storage_type == BF16 || output_storage_type == F32);
+      if (!is_cuda_ge_ampere && !is_rocm_mi100_and_above) return false;
+      switch (input_storage_type) {
+        case BF16:
+          return output_storage_type == BF16 || output_storage_type == F32;
+        case F32:
+          return output_storage_type == F32;
+        default:
+          return false;
+      }
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;

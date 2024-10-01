@@ -674,6 +674,52 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
   EXPECT_THAT(lit->data<float>(), ElementsAreArray(data));
 }
 
+TEST(StreamExecutorGpuClientTest, DeleteBufferThenFulfillBufferNoDeadLock) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_THAT(client->addressable_devices(), SizeIs(Gt(0)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      PjRtMemorySpace * memspace,
+      client->addressable_devices()[0]->memory_space_by_kind(
+          PinnedHostMemorySpace::kKind));
+  std::vector<float> data{1, 3, 5, 7, 11, 13, 17, 19};
+  Shape shape = ShapeUtil::MakeShape(F32, {static_cast<int64_t>(data.size())});
+  std::vector<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+      txms;
+  for (int i = 0; i < 10000; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
+        client->CreateBuffersForAsyncHostToDevice({shape}, memspace));
+    std::unique_ptr<PjRtBuffer> buf = txm->RetrieveBuffer(0);
+    ASSERT_THAT(buf->GetReadyFuture().IsReady(), Eq(false));
+    txms.push_back(std::move(txm));
+    // Delete the buffer
+  }
+
+  // At this point, we have 10000 buffers pending deallocation.
+
+  absl::string_view raw_view(reinterpret_cast<char*>(data.data()),
+                             data.size() * sizeof(data[0]));
+  for (auto& txm : txms) {
+    int offset = 0;
+    while (true) {
+      int end = offset + 3;  // unaligned chunk size
+      if (end > raw_view.size()) {
+        end = raw_view.size();
+      }
+      int sz = end - offset;
+      bool reaches_end = end == raw_view.size();
+      TF_ASSERT_OK(txm->TransferRawDataToSubBuffer(
+          /*buffer_index=*/0, raw_view.data() + offset, offset, sz, reaches_end,
+          /*on_done=*/[]() {}));
+      if (reaches_end) {
+        break;
+      }
+      offset = end;
+    }
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -1541,6 +1587,16 @@ TEST(StreamExecutorGpuClientTest,
                 .value()
                 .executable_build_options.layout_canonicalization_callback(),
             nullptr);
+}
+
+TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto shape = ShapeUtil::MakeShape(S4, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto layout,
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  EXPECT_EQ(layout.element_size_in_bits(), 4);
 }
 
 }  // namespace

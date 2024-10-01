@@ -24,10 +24,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/utils/group_events.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/group_events.h"
-#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -44,6 +45,11 @@ class DerivedXEventBuilder {
   tsl::profiler::Timespan GetTimespan() const { return event_.GetTimespan(); }
   void SetTimespan(tsl::profiler::Timespan event_span) {
     event_.SetTimespan(event_span);
+  }
+
+  template <typename ValueT>
+  void SetOrAddStatValue(const XStatMetadata& metadata, ValueT&& value) {
+    event_.SetOrAddStatValue(metadata, std::forward<ValueT>(value));
   }
 
  private:
@@ -79,6 +85,22 @@ class DerivedXLineBuilder {
   // Reset the last events lower than or equal to the given level.
   void ResetLastEvents(int level = 0);
 
+  // To avoid using templates while need hide its implementation in .cc file,
+  // use two functions to set stat value for int64_t and uint64_t here.
+  void AddStatToLevelEvent(int level, const XStatMetadata& metadata,
+                           int64_t value);
+
+  void AddStatToLevelEvent(int level, const XStatMetadata& metadata,
+                           uint64_t value);
+
+  const XStatMetadata* GetCorrelationIdMetadata() const {
+    return correlation_id_metadata_;
+  }
+
+  const XStatMetadata* GetCudaGraphIdMetadata() const {
+    return cuda_graph_id_metadata_;
+  }
+
  private:
   // If the last event of the given level has the same metadata, expands it to
   // include the time until the given event's end time.
@@ -92,6 +114,9 @@ class DerivedXLineBuilder {
   void AdjustDurationForTraceViewer(int level);
 
   const XStatMetadata* group_id_stat_metadata_ = nullptr;
+  const XStatMetadata* correlation_id_metadata_ = nullptr;
+  const XStatMetadata* cuda_graph_id_metadata_ = nullptr;
+
   XLineBuilder line_;
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;

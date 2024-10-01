@@ -28,7 +28,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "tf_rpc_service_py_pb2",
-#     api_version = 2,
 #     deps = [":tf_rpc_service_proto"],
 # )
 # copybara:uncomment_end

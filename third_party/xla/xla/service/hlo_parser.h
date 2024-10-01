@@ -24,25 +24,32 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_lexer.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class HloParserOptions {
+ public:
+  // When a shape layout is not set (e.g. in the entry computation layout or
+  // instruction layout), set the layout to be the default (e.g. {3,2,1,0}).
+  HloParserOptions& set_fill_missing_layouts(bool value) {
+    fill_missing_layouts_ = value;
+    return *this;
+  }
+
+  bool fill_missing_layouts() const { return fill_missing_layouts_; }
+
+ private:
+  bool fill_missing_layouts_ = true;
+};
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
 // Note: Tests derived from HloTestBase should use
 // ParseAndReturnVerifiedModule() instead!
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str, const HloModuleConfig& config,
-    bool set_to_default_entry_computation_layout = true);
-
-// Given a string in the HloModule::ToString() format, parses the string and
-// creates a HloModule with default config.
-// Note: Tests derived from HloTestBase should use
-// ParseAndReturnVerifiedModule() instead!
-absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str, bool set_to_default_entry_computation_layout = true);
+    absl::string_view str, const HloModuleConfig& config = HloModuleConfig(),
+    const HloParserOptions& options = HloParserOptions());
 
 // Parses sharding from str. str is supposed to contain the body of the
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string, e.g.,

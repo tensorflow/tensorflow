@@ -35,6 +35,7 @@ limitations under the License.
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
@@ -43,6 +44,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/py_client.h"
 #include "xla/python/types.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -126,6 +129,18 @@ class OutfeedReceiverForPython {
                                                   arrays, device_idx);
   }
 
+  absl::Status RegisterOutfeed(uint32_t consumer_id,
+                               const std::vector<Shape>& shapes) {
+    Shape shape = ShapeUtil::MakeTupleShape(shapes);
+    ShapeUtil::ForEachMutableSubshape(
+        &shape, [](Shape* subshape, const ShapeIndex&) {
+          if (!subshape->has_layout()) {
+            LayoutUtil::SetToDefaultLayout(subshape);
+          }
+        });
+    return outfeed_receiver_->RegisterOutfeed(consumer_id, shape);
+  }
+
   void Callback(ifrt::Device* device, uint32_t consumer_id,
                 std::shared_ptr<Literal> literal) {
     {
@@ -207,6 +222,15 @@ void BuildOutfeedReceiverSubmodule(nb::module_& m) {
       R"(Adds an outfeed into the given computation builder.
 
       Has the side-effect of registering the sent shape along with the consumer
+      ID. Returns error if the outfeed shape is not compatible with previously
+      used shape for the same consumer ID.)",
+      nb::call_guard<nb::gil_scoped_release>());
+
+  outfeed_receiver_class.def(
+      "register_outfeed",
+      xla::ThrowIfErrorWrapper(&OutfeedReceiverForPython::RegisterOutfeed),
+      nb::arg("consumer_id"), nb::arg("shapes"),
+      R"(Registers the sent shape along with the consumer
       ID. Returns error if the outfeed shape is not compatible with previously
       used shape for the same consumer ID.)",
       nb::call_guard<nb::gil_scoped_release>());

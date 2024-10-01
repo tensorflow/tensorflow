@@ -530,7 +530,8 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return hlo->operand(0) == hlo->operand(1);
     }
     case HloOpcode::kAbs:
-    case HloOpcode::kExp: {
+    case HloOpcode::kExp:
+    case HloOpcode::kIota: {
       return true;
     }
     case HloOpcode::kBroadcast: {
@@ -5095,16 +5096,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleCompare(
   }
 
   if (compare->comparison_direction() == ComparisonDirection::kLt &&
-      lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+      IsNonNegative(lhs, options_) && IsAll(rhs, 0)) {
     return ReplaceInstruction(compare, MakeScalarLike(compare, false));
   } else if (compare->comparison_direction() == ComparisonDirection::kGt &&
-             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+             IsAll(lhs, 0) && IsNonNegative(rhs, options_)) {
     return ReplaceInstruction(compare, MakeScalarLike(compare, false));
   } else if (compare->comparison_direction() == ComparisonDirection::kGe &&
-             lhs->opcode() == HloOpcode::kIota && IsAll(rhs, 0)) {
+             IsNonNegative(lhs, options_) && IsAll(rhs, 0)) {
     return ReplaceInstruction(compare, MakeScalarLike(compare, true));
   } else if (compare->comparison_direction() == ComparisonDirection::kLe &&
-             IsAll(lhs, 0) && rhs->opcode() == HloOpcode::kIota) {
+             IsAll(lhs, 0) && IsNonNegative(rhs, options_)) {
     return ReplaceInstruction(compare, MakeScalarLike(compare, true));
   }
   if (lhs == rhs &&

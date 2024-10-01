@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
@@ -1223,14 +1224,9 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  std::vector<DimVar> dimension_ranges{
-      {{0, tiling_.GetNumThreadsPerBlock() - 1}},
-      {},
-      {},
-      {{0, tiling_.GetNumBlocks() - 1}},
-      {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
-      {},
-  };
+  std::vector<DimVar> dimension_ranges = DimVarsFromGPUGrid(
+      {tiling_.GetNumThreadsPerBlock(), 1, 1, tiling_.GetNumBlocks(),
+       static_cast<int64_t>(groups_.grouped_roots.size()), 1});
 
   constexpr int kRowKept = ReductionDimensions::kRowKeptDimension;
   constexpr int kRowMinorReduced =

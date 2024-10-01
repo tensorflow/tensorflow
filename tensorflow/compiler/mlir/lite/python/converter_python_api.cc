@@ -17,7 +17,6 @@ limitations under the License.
 #include <Python.h>
 
 #include <cstdint>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -61,7 +60,7 @@ namespace tflite {
 PyObject* Convert(PyObject* model_flags_proto_txt_raw,
                   PyObject* converter_flags_proto_txt_raw,
                   PyObject* input_contents_txt_raw, bool extended_return,
-                  PyObject* debug_info_txt_raw, bool enable_mlir_converter,
+                  PyObject* debug_info_txt_raw,
                   const tensorflow::quantization::PyFunctionLibrary*
                       quantization_py_function_library) {
   // Use Python C API to validate and convert arguments. In py3 (bytes),

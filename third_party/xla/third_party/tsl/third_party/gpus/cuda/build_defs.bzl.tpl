@@ -149,11 +149,14 @@ def cuda_header_library(
         **kwargs
     )
 
-def cuda_library(copts = [], tags = [],**kwargs):
+def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(
         copts = cuda_default_copts() + copts,
         tags = tags + ["gpu"],
+        deps = deps + if_cuda_is_configured([
+            "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
+        ]),
         **kwargs
     )
 

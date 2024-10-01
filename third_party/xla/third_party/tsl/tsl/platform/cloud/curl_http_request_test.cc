@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -495,9 +497,11 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
   const auto& status = http_request.Send();
   EXPECT_EQ(error::FAILED_PRECONDITION, status.code());
   EXPECT_EQ(
-      "Error executing an HTTP request: libcurl code 6 meaning "
-      "'Couldn't resolve host name', error details: Could not resolve host "
-      "'metadata'",
+      absl::StrCat(
+          "Error executing an HTTP request: libcurl code 6 meaning ",
+          (kIsOpenSource ? "'Couldn't resolve host name', error details: "
+                         : "'Could not resolve hostname', error details: "),
+          "Could not resolve host ", "'metadata'"),
       status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/python/ifrt/ir/ifrt_dialect.h"
 
 namespace xla {
 namespace ifrt {
@@ -25,6 +26,9 @@ namespace ifrt {
 // Retrieves the function named "main" from the given module, if it exists, and
 // fails otherwise.
 mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
+
+// Returns true if transferring between from and to array requires a reshard.
+bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to);
 
 }  // namespace ifrt
 }  // namespace xla

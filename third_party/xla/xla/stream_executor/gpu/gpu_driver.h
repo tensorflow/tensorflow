@@ -131,6 +131,22 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void HostDeallocate(Context* context, void* location);
 
+  // Registers a memory region at location of size bytes via
+  // cuMemHostRegister/hipHostRegister.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
+  static bool HostRegister(Context* context, void* location, uint64_t bytes);
+
+  // Unregisters a memory region that was previously registered at location via
+  // cuMemHostUnregister/hipHostUnregister.
+  //
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g63f450c8125359be87b7623b1c0b2a14
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
+  //
+  // TODO(leary) verify an error will be returned if the location wasn't
+  // previously registered.
+  static bool HostUnregister(Context* context, void* location);
+
   // Queries the priority range and returns the corresponding integer value via
   // cuCtxGetStreamPriorityRange/hipDeviceGetStreamPriorityRange
   //
@@ -482,8 +498,7 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gaef08a7ccd61112f94e82f2b30d43627
   static absl::Status AsynchronousMemsetUint8(Context* context,
                                               GpuDevicePtr location,
-                                              uint8_t value,
-                                              size_t uint32_count,
+                                              uint8_t value, size_t uint8_count,
                                               GpuStreamHandle stream);
 
   // Performs an asynchronous memset of the device memory segment via

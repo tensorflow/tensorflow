@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -133,7 +133,7 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     }
   };
   struct DtypeHash {
-    ssize_t operator()(const nb_dtype& key) const { return nb_hash(key); }
+    ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
   static auto* custom_dtype_map = []() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();

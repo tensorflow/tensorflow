@@ -463,9 +463,9 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
         "@stablehlo//:chlo_ops",
     ],
     # Alwayslink is required for registering the MLIR passes.
@@ -555,7 +555,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "quantization_options_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":quantization_options_proto"],
 # )
@@ -582,7 +581,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "exported_model_py_pb2",
-#     api_version = 2,
 #     deps = [":exported_model_proto"],
 # )
 # copybara:uncomment_end

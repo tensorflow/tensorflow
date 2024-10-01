@@ -47,7 +47,7 @@ class NcclCollectiveBroadcastStartThunk : public NcclCollectiveThunk {
   NcclCollectiveBroadcastStartThunk(
       ThunkInfo thunk_info, NcclApi* nccl_api,
       const HloCollectiveBroadcastInstruction* instr,
-      std::vector<Buffer> buffers);
+      std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,

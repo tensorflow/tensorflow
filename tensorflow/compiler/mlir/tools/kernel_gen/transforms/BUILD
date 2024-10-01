@@ -167,7 +167,7 @@ cc_library(
         "@local_xla//xla/service/gpu:target_constants",
         "@local_xla//xla/service/gpu/llvm_gpu_backend",
     ] + if_cuda_is_configured([
-        "@local_tsl//tsl/platform:cuda_libdevice_path",
+        "@local_tsl//tsl/platform:cuda_root_path",
         "@local_xla//xla/stream_executor/cuda:cuda_asm_compiler",
     ]) + if_rocm_is_configured([
         "@local_xla//xla/stream_executor/gpu:asm_compiler",

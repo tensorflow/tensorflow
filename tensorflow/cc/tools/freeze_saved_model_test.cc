@@ -81,7 +81,7 @@ class FreezeTest : public ::testing::Test {
       return saved_model_bundle->session->Run(
           /* inputs */ {}, /* output_tensors */ {}, {init_node}, &outputs);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with

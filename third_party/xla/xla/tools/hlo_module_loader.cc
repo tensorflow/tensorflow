@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "re2/re2.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -70,8 +72,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     const std::string& data, std::string_view format,
     const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto,
-    bool set_to_default_entry_computation_layout) {
+    BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
   if (format == "hlo" || format == "txt") {
@@ -82,9 +83,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     if (config_modifier_hook) {
       config_modifier_hook(&config);
     }
-    TF_ASSIGN_OR_RETURN(module, ParseAndReturnUnverifiedModule(
-                                    hlo_string, config,
-                                    set_to_default_entry_computation_layout));
+    HloParserOptions options;
+    options.set_fill_missing_layouts(fill_missing_layouts);
+    TF_ASSIGN_OR_RETURN(
+        module, ParseAndReturnUnverifiedModule(hlo_string, config, options));
   } else {
     HloSnapshot proto;
     if (format == "pb") {
@@ -132,16 +134,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::string& path, std::string format,
     const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
-    BufferAssignmentProto* buffer_assignment_proto,
-    bool set_to_default_entry_computation_layout) {
+    BufferAssignmentProto* buffer_assignment_proto, bool fill_missing_layouts) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
   }
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook,
-                            buffer_assignment_proto,
-                            set_to_default_entry_computation_layout);
+                            buffer_assignment_proto, fill_missing_layouts);
 }
 
 absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>

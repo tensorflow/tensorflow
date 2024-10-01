@@ -93,13 +93,11 @@ PyLoadedExecutable::PyLoadedExecutable(
   if (next_) {
     next_->prev_ = this;
   }
-  options_.untuple_result = true;
   if (fingerprint_) {
     options_.launch_id = tsl::Fingerprint32(*fingerprint_);
     VLOG(1) << "Fingerprint for executable " << ifrt_loaded_executable_->name()
             << ": " << *fingerprint_;
   }
-  options_.use_major_to_minor_data_layout_for_callbacks = true;
 }
 
 PyLoadedExecutable::~PyLoadedExecutable() {
@@ -203,7 +201,7 @@ void PopulateExecuteShardedResults(
 
 template <typename ArgT, typename ArgAdapter = ShardedBufferAdapter<ArgT>>
 absl::StatusOr<PyExecuteResults> ExecuteShardedOnLocalDevicesInternal(
-    const ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
+    const ifrt::ExecuteOptions& options, const nb_class_ptr<PyClient>& client,
     ifrt::LoadedExecutable* ifrt_loaded_executable, absl::Span<const ArgT> args,
     std::optional<std::vector<PjRtFuture<>>>& returned_futures,
     bool attach_status_to_results) {

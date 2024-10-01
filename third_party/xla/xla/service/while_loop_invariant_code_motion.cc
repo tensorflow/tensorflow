@@ -232,6 +232,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     }
 
     if (instruction->HasSideEffect() ||
+        instruction->opcode() == HloOpcode::kAfterAll ||
         instruction->opcode() == HloOpcode::kParameter ||
         !instruction->control_predecessors().empty() ||
         !instruction->control_successors().empty()) {

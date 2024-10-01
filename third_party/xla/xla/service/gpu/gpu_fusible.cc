@@ -266,15 +266,15 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !AreReductionsMultiOutputFusionCompatible(hero2, hero1)) {
-    return "tiled reductions with different shapes";
+    return FusionDecision::Forbid("tiled reductions with different shapes");
   } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
              // After normalization to rank 3, the transposes should have the
              // same shape and permute the same dimensions.
              !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
-    return "tiled transposes with different shapes";
+    return FusionDecision::Forbid("tiled transposes with different shapes");
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
-    return "MOF-fusion of a transpose and a reduction";
+    return FusionDecision::Forbid("MOF-fusion of a transpose and a reduction");
   }
   // If we are dealing with unnested transpose, make sure that we can still
   // treat them as unnested transpose after the sibling fusion.
@@ -303,18 +303,18 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
         int64_t operand_idx = fusion2->operand_index(fusion1);
         auto hlo = fusion2->fused_parameter(operand_idx);
         if (!check_path_of_intermediate_ops(hlo)) {
-          return "tiled transpose would become untiled";
+          return FusionDecision::Forbid("tiled transpose would become untiled");
         }
       } else if (hero2_is_unnested_transpose && fusion1->IsUserOf(fusion2)) {
         int64_t operand_idx = fusion1->operand_index(fusion2);
         auto hlo = fusion1->fused_parameter(operand_idx);
         if (!check_path_of_intermediate_ops(hlo)) {
-          return "tiled transpose would become untiled";
+          return FusionDecision::Forbid("tiled transpose would become untiled");
         }
       }
     }
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 FusionDecision ShapesCompatibleForMultiOutputFusion(
@@ -356,9 +356,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
       (!accept_unequal_shape ||
        !ShapeUtil::IsReshapeOrTransposeBitcast(l1, l2,
                                                /*ignore_element_type=*/true))) {
-    return "different loop shapes";
+    return FusionDecision::Forbid("different loop shapes");
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 bool IsInputFusibleScatter(const HloInstruction& instr) {
@@ -469,10 +469,10 @@ static bool AllSatisfy(const HloInstruction& instr,
 FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
                                         const HloInstruction& consumer) {
   if (IsInputFusibleScatter(producer)) {
-    return "do not fuse into the output of scatter";
+    return FusionDecision::Forbid("do not fuse into the output of scatter");
   }
   if (!IsInputFusibleScatter(consumer)) {
-    return {};
+    return FusionDecision::Allow();
   }
 
   const HloInstruction* inplace_operand;
@@ -485,19 +485,21 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
     inplace_operand = consumer.operand(0);
   }
   if (inplace_operand == &producer) {
-    return "do not fuse into the in-place operand of scatter";
+    return FusionDecision::Forbid(
+        "do not fuse into the in-place operand of scatter");
   }
   if (absl::c_linear_search(producer.operands(), inplace_operand)) {
-    return "Producer uses the in-place operand of a scatter";
+    return FusionDecision::Forbid(
+        "Producer uses the in-place operand of a scatter");
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
                                          const HloInstruction& consumer) {
   if (!IsLoopFusibleAsProducer(producer) &&
       !IsInputFusibleTranspose(producer)) {
-    return "the producer is not loop-fusible";
+    return FusionDecision::Forbid("the producer is not loop-fusible");
   }
 
   if (IsInputFusibleReduction(producer)) {
@@ -505,7 +507,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              ->config()
              .debug_options()
              .xla_gpu_enable_reduction_epilogue_fusion()) {
-      return "Reduction epilogue fusion is not enabled.";
+      return FusionDecision::Forbid(
+          "Reduction epilogue fusion is not enabled.");
     }
     const HloInstruction& reduce_hero =
         producer.opcode() == HloOpcode::kFusion
@@ -514,16 +517,19 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     if (!ReductionIsRaceFree(
             reduce_hero.GetModule()->config(),
             GetReductionKindAndContiguousComponents(reduce_hero))) {
-      return "Reduction output fusion only works for race free reductions";
+      return FusionDecision::Forbid(
+          "Reduction output fusion only works for race free reductions");
     }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
         })) {
-      return "Reductions from/to continuous dims epilogue not fusible";
+      return FusionDecision::Forbid(
+          "Reductions from/to continuous dims epilogue not fusible");
     }
 
     if (producer.user_count() > 1) {
-      return "reduction output fusion only works for single user";
+      return FusionDecision::Forbid(
+          "reduction output fusion only works for single user");
     }
   }
 
@@ -532,12 +538,14 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   }
 
   if (!IsInputFusible(consumer) && !IsLoopFusibleAsConsumer(consumer)) {
-    return "the consumer is not input-fusible and not loop-fusible";
+    return FusionDecision::Forbid(
+        "the consumer is not input-fusible and not loop-fusible");
   }
 
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    return "the producer is not fusible as it is a multi-output fusion";
+    return FusionDecision::Forbid(
+        "the producer is not fusible as it is a multi-output fusion");
   }
 
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
@@ -551,7 +559,7 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   if (producer.opcode() == HloOpcode::kConstant &&
       (!ShapeUtil::IsEffectiveScalar(producer.shape()) ||
        consumer.opcode() != HloOpcode::kFusion)) {
-    return "not fusing constant";
+    return FusionDecision::Forbid("not fusing constant");
   }
 
   // Make sure the new fusion obeys the in-place semantics.
@@ -561,7 +569,7 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
 FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    return "Producer is a multi-output fusion";
+    return FusionDecision::Forbid("Producer is a multi-output fusion");
   }
 
   // Allowing multi-output fusions that contain in-place operations makes code
@@ -589,18 +597,18 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer) {
   // contract that describes what multi-output fusion scenarios are supported by
   // codegen and then changing this check to allow exactly those fusions).
   if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
-    return "In-place operations are present";
+    return FusionDecision::Forbid("In-place operations are present");
   }
 
   if (!IsLoopFusibleAsProducer(producer)) {
-    return "producer is not loop-fusible";
+    return FusionDecision::Forbid("producer is not loop-fusible");
   }
 
   if (IsPhysicallyTransposing(producer)) {
-    return "producer is physically transposing";
+    return FusionDecision::Forbid("producer is physically transposing");
   }
 
-  return {};
+  return FusionDecision::Allow();
 }
 
 // Returns an estimate of the shared memory usage for a given instruction in
@@ -751,16 +759,17 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   FusionInfoCache* cache /*=nullptr*/) {
   if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
       device_info.shared_memory_per_block()) {
-    return FusionDecision{}
-           << "shared memory usage would be over the budget of "
+    return FusionDecision::Forbid(
+               "shared memory usage would be over the budget of ")
            << device_info.shared_memory_per_block() << "B";
   }
 
   if (NumUnnestedReductions(instr1, cache) +
           NumUnnestedReductions(instr2, cache) >
       kMaxUnnestedReductionOutputsPerFusion) {
-    return FusionDecision{} << "over " << kMaxUnnestedReductionOutputsPerFusion
-                            << " unnested reductions in fusion";
+    return FusionDecision::Forbid("over ")
+           << kMaxUnnestedReductionOutputsPerFusion
+           << " unnested reductions in fusion";
   }
 
   // Compute the number of outputs of the (possibly multi-output) fusion node
@@ -791,7 +800,7 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
   if (instr1.operand_count() + instr2.operand_count() - 1 +
           num_output_buffers <=
       MaxOperandsAndOutputsPerFusion()) {
-    return {};
+    return FusionDecision::Allow();
   } else {
     VLOG(5) << "Operand count of " << "(" << instr1.ToString()
             << " ) = " << instr1.operand_count() << " and ( "
@@ -816,15 +825,16 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
   // consumer numbers of output. So no need to check it.
   if (is_consumer_producer_fusion &&
       operands.size() <= instr1.operands().size()) {
-    return {};
+    return FusionDecision::Allow();
   }
 
   // Does the new fusion have more operands and outputs than the max?
   if (operands.size() + num_output_buffers > MaxOperandsAndOutputsPerFusion()) {
-    return "Number of operands and output buffers is larger than allowed "
-           "budget per fusion";
+    return FusionDecision::Forbid(
+        "Number of operands and output buffers is larger than allowed budget "
+        "per fusion");
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 bool CreatesHeavyComputation(const HloInstruction& producer,
@@ -896,8 +906,10 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
   // with any other instruction.
   // Note that scatter cannot be the root of a multi-output fusion because
   // its emitter doesn't support it.
+  //
+  // Custom fusions cannot be fused with anything.
 
-  return instr.IsFusible() &&
+  return instr.IsFusible() && !instr.IsCustomFusion() &&
          (IsInputFusibleReduction(instr) || IsInputFusibleTranspose(instr) ||
           instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
           instr.IsElementwise());

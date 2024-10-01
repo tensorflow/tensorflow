@@ -624,12 +624,12 @@ TEST_F(GraphTest, EdgeDebugString) {
   EXPECT_EQ(s1, "[id=0 <NULL>:0 -> <NULL>:0]");
 
   // Print edge with null src node
-  auto e2 = BuildEdge(2, 0, b, 1, 1);
+  auto e2 = BuildEdge(2, nullptr, b, 1, 1);
   auto s2 = e2->DebugString();
   EXPECT_EQ(s2, "[id=2 <NULL>:1 -> B:1]");
 
   // Print edge with null dst node
-  auto e3 = BuildEdge(3, a, 0, 2, 1);
+  auto e3 = BuildEdge(3, a, nullptr, 2, 1);
   auto s3 = e3->DebugString();
   EXPECT_EQ(s3, "[id=3 A:2 -> <NULL>:1]");
 }

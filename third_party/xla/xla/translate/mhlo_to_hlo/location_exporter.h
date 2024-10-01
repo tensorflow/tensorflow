@@ -16,29 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_
 #define XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_
 
-#include <string>
-
-#include "mlir/IR/Location.h"
-#include "mlir/IR/Operation.h"
-#include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
-#include "xla/xla_data.pb.h"
-
-namespace mlir {
-namespace mhlo {
-
-// Returns a OpMetadata proto based on the location of the op. If the location
-// is unknown, an empty proto is returned. `op_name` are populated with the op
-// location (converted). FileLineColLoc locations are populated by taking the
-// file name and line number, and populating `source_file` and `source_line`
-// respectively.
-xla::OpMetadata CreateOpMetadataFromLocation(
-    Operation* op, StackFrameIndexBuilder* frame_index_builder);
-
-// Returns a name that can be used for debugging purposes, e.g., naming
-// variable names in generated IR or producing logging output.
-std::string GetDebugNameFromLocation(Location location);
-
-}  // namespace mhlo
-}  // namespace mlir
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 
 #endif  // XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_

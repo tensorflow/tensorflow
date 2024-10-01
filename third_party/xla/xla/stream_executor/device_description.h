@@ -123,6 +123,18 @@ struct CudaComputeCapability {
     return !(*this == other);
   }
 
+  bool operator>(const CudaComputeCapability &other) const {
+    return ToPair() > other.ToPair();
+  }
+
+  bool operator>=(const CudaComputeCapability &other) const {
+    return ToPair() >= other.ToPair();
+  }
+
+  bool operator<=(const CudaComputeCapability &other) const {
+    return ToPair() <= other.ToPair();
+  }
+
   std::string ToString() const { return absl::StrCat(major, ".", minor); }
 
   std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }

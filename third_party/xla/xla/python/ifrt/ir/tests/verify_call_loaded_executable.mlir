@@ -145,7 +145,7 @@ func.func @io_aliases_should_only_alias_input_once(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias input #0 more than once}}
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias or donate input #0 more than once}}
   %0, %1, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0)
     {io_aliases=[array<i32: 0, 0>, array<i32: 0, 1>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
@@ -230,3 +230,47 @@ ifrt.LoadedExecutable @callee on devices [0,1]
                    [0,1]>)
     -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
                    [0,1]>
+
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @donate_one_arg_and_alias_another_arg(%arg0: !array, %arg1: !array)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0, %arg1)
+    {donated_input_indices=array<i32: 0>, io_aliases=[array<i32: 1, 0>]}
+    : (!array, !array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array, !array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @should_only_donate_once(%arg0: !array, %arg1: !array)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't donate input #0 more than once}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0, %arg1)
+    {donated_input_indices=array<i32: 0, 0>} : (!array, !array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array, !array) -> !array
+
+// -----
+
+!array = !ifrt.array<tensor<2x2xi32>,
+                     #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @should_not_both_donate_and_alias_the_same_arg(
+    %arg0: !array, %arg1: !array) attributes {ifrt.function} {
+  // expected-error@+1 {{'ifrt.CallLoadedExecutable' op can't alias or donate input #0 more than once}}
+  %0, %ctrl_0 = ifrt.CallLoadedExecutable @callee(%arg0, %arg1)
+    {donated_input_indices=array<i32: 0>, io_aliases=[array<i32: 0, 0>]}
+    : (!array, !array) -> !array
+  return
+}
+
+ifrt.LoadedExecutable @callee on devices [0,1] : (!array, !array) -> !array

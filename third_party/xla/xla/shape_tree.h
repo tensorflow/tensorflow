@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"

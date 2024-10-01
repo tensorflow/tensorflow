@@ -58,7 +58,8 @@ bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
   return match;
 }
 
-StatusOr<HloInstruction*> AllGatherDynamicSliceSimplifier::ExpandInstruction(
+absl::StatusOr<HloInstruction*>
+AllGatherDynamicSliceSimplifier::ExpandInstruction(
     HloInstruction* instruction) {
   HloDynamicSliceInstruction* dynamic_slice =
       Cast<HloDynamicSliceInstruction>(instruction);

@@ -25,8 +25,7 @@ limitations under the License.
 #include <limits>
 
 #include "xla/service/gpu/kernels/topk_kernel_common.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/lib/math/math_util.h"
+#include "xla/tsl/lib/math/math_util.h"
 
 #if GOOGLE_CUDA
 

@@ -205,8 +205,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
       UpdateStatus(RealRun(sess, close_op_name_, false));
     }
   } else if (!status.ok()) {
-    LOG(ERROR) << "Queue runner thread got a failure status: "
-               << status.ToString();
+    LOG(ERROR) << "Queue runner thread got a failure status: " << status;
     UpdateStatus(status);
     if (coord_) {
       coord_->RequestStop().IgnoreError();

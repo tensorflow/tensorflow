@@ -56,9 +56,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_libdevice_path",
-    srcs = ["cuda_libdevice_path.cc"],
-    hdrs = ["//tsl/platform:cuda_libdevice_path.h"],
+    name = "cuda_root_path",
+    srcs = ["cuda_root_path.cc"],
+    hdrs = ["//tsl/platform:cuda_root_path.h"],
     compatible_with = [],
     data = if_cuda_tools([
         "@cuda_nvcc//:nvvm",

@@ -44,12 +44,6 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Converts IFRT `DType` into `xla::PrimitiveType`.
-absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype);
-
-// Converts `xla::PrimitiveType` into IFRT `DType`.
-absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type);
-
 // Creates IFRT `MemoryKind` from an XLA `PjRtBuffer`.
 MemoryKind MakeMemoryKindFromPjRtBuffer(PjRtBuffer* pjrt_buffer);
 

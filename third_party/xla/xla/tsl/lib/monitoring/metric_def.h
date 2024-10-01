@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tsl/lib/monitoring/types.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

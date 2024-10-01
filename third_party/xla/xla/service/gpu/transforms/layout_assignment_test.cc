@@ -655,6 +655,35 @@ ENTRY main {
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
 }
 
+TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
+  const char* hlo = R"(
+
+  HloModule jit_dot_general_f8e4m3fn
+
+  ENTRY main {
+    p0 = f8e4m3fn[128,5120] parameter(0)
+    p1 = f8e4m3fn[5120,10240] parameter(1)
+    ROOT dot = f32[128,10240] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Dot(m::Parameter(0).WithShape(F8E4M3FN, {128, 5120}, {1, 0}),
+                 m::Parameter(1).WithShape(F8E4M3FN, {5120, 10240}, {0, 1}))
+              .WithShape(F32, {128, 10240}, {1, 0})));
+}
+
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {
   const char* module_str = R"(
 HloModule variadic_reduce
