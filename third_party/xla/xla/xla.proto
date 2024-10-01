@@ -107,6 +107,11 @@ message DebugOptions {
   // value is `256` (AVX2 on x86 platforms).
   int32 xla_cpu_prefer_vector_width = 308;
 
+  // When set, XLA:CPU will only generate code up to the specified ISA.
+  // (It will not use newer ISAs.) Using the string format allows us to extend
+  // the flag for more flexible control if necessary.
+  string xla_cpu_max_isa = 333;
+
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -986,7 +991,7 @@ message DebugOptions {
   // loop by a factor of two if a collective op is present.
   bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
-  // Next id: 333
+  // Next id: 334
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -1174,11 +1174,17 @@ xla_cc_test(
         "debug_options_parsers.h",
         "debug_options_parsers_test.cc",
     ],
+    # TODO(https://github.com/openxla/xla/issues/17808)
+    tags = ["noasan"],
     deps =
         [
+            ":debug_options_flags",
+            ":parse_flags_from_env",
             ":xla_proto_cc",
+            "//xla/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
+            "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:test",
         ],
 )
