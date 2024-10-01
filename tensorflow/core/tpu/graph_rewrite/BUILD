@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla:status_macros",
     ],
@@ -163,6 +164,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
