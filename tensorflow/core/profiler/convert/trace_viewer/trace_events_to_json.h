@@ -194,7 +194,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"flow_out":true)");
@@ -223,7 +223,7 @@ class JsonEventWriter {
         }
         switch (event.flow_entry_type()) {
           case TraceEvent::FLOW_NONE:
-            // The caller prevents this case from happenning.
+            // The caller prevents this case from happening.
             break;
           case TraceEvent::FLOW_START:
             output_->Append(R"(,"ph":"b")");
