@@ -72,3 +72,43 @@
            ->getResult(0);
    return asmResult;
  }
+
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/SchedInstructions.cpp
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/SchedInstructions.cpp
+@@ -48,9 +48,10 @@ void createSchedGroupBarrier(PatternRewr
+                                           static_cast<int32_t>(groupIdValue));
+ 
+   LLVM::FastmathFlagsAttr defaultFlags{};
+-  rewriter.create<LLVM::CallIntrinsicOp>(loc, TypeRange{}, intrinsicName,
+-                                         ValueRange{mask, size, groupId},
+-                                         defaultFlags);
++  rewriter.create<LLVM::CallIntrinsicOp>(
++      loc, TypeRange{}, intrinsicName, ValueRange{mask, size, groupId},
++      defaultFlags,
++      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+ }
+ 
+ // Insert intrinsic that controls the types of instructions that may be
+@@ -63,8 +64,9 @@ Operation *createSchedBarrier(PatternRew
+ 
+   Value mask =
+       LLVM::createConstantI32(loc, rewriter, static_cast<int32_t>(maskValue));
+-  return rewriter.create<LLVM::CallIntrinsicOp>(loc, TypeRange{}, intrinsicName,
+-                                                ValueRange{mask}, defaultFlags);
++  return rewriter.create<LLVM::CallIntrinsicOp>(
++      loc, TypeRange{}, intrinsicName, ValueRange{mask}, defaultFlags,
++      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+ }
+ 
+ // Insert an experimental intrinsic for instruction group level parallelism.
+@@ -76,7 +78,8 @@ Operation *createIglpOpt(PatternRewriter
+   Value iglpValue =
+       LLVM::createConstantI32(loc, rewriter, static_cast<int32_t>(value));
+   return rewriter.create<LLVM::CallIntrinsicOp>(
+-      loc, TypeRange{}, intrinsicName, ValueRange{iglpValue}, defaultFlags);
++      loc, TypeRange{}, intrinsicName, ValueRange{iglpValue}, defaultFlags,
++      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+ }
+ 
+ struct InstructionSchedHintsRewriter

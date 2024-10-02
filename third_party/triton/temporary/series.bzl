@@ -15,5 +15,6 @@ those to this list.
 
 temporary_patch_list = [
     "//third_party/triton:temporary/fix_left_shift_overflow.patch",
+    "//third_party/triton:temporary/prefetch.patch",
     # Add new patches just above this line
 ]
