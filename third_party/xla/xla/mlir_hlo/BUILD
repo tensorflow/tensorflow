@@ -497,6 +497,23 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":mlir_hlo",
+        ":transformation_helpers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ComplexDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "transformation_helpers",
+    hdrs = ["mhlo/transforms/transformation_helpers.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ComplexDialect",

@@ -106,6 +106,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
@@ -585,6 +586,9 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
           Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
                   mlir::mhlo::ComparisonDirection::NE),
           inputs[1], inputs[2]);
+    case HloOpcode::kReducePrecision:
+      return mlir::mhlo::reducePrecision<mt::BitcastOp>(
+          b.getLoc(), inputs[0], hlo.exponent_bits(), hlo.mantissa_bits(), &b);
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported elementwise operation ", hlo.ToString()));

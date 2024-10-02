@@ -1265,6 +1265,30 @@ INSTANTIATE_TEST_SUITE_P(IotaEmitterParametrizedTestSuite,
                          ::testing::ValuesIn({S8, S16, S32, S64, BF16, F16, F32,
                                               F64}));
 
+TEST_F(TritonEmitterTest, ReducePrecisionIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = f32[5,7] parameter(0)
+  ROOT rp = f32[5,7] reduce-precision(p), exponent_bits=2, mantissa_bits=2
+}
+
+ENTRY entry_computation {
+  p = f32[5,7] parameter(0)
+  ROOT fusion = f32[5,7] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["4","4"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

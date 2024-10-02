@@ -51,6 +51,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
+        "//xla/mlir_hlo:transformation_helpers",
         "//xla/service:algorithm_util",
         "//xla/service:dump",
         "//xla/service:hlo_module_config",
