@@ -280,6 +280,7 @@ HloComputation* FindComputation(HloModule* module, absl::string_view name) {
   return *it;
 }
 
+// TODO: Make this return only the instruction.
 std::pair<HloInstruction*, int> FindFirstInstruction(
     const HloComputation* computation, absl::string_view name) {
   int current_index = 0;
@@ -293,6 +294,7 @@ std::pair<HloInstruction*, int> FindFirstInstruction(
   return {nullptr, -1};
 }
 
+// TODO: Make this return only the instruction.
 std::pair<HloInstruction*, int> FindFirstInstruction(
     const HloComputation* computation, HloOpcode opcode) {
   int current_index = 0;
@@ -306,6 +308,7 @@ std::pair<HloInstruction*, int> FindFirstInstruction(
   return {nullptr, -1};
 }
 
+// TODO: Remove this. It could be misleading as there is no linear order.
 bool IsBeforeInComputation(const HloComputation* computation,
                            absl::string_view inst1, absl::string_view inst2) {
   return FindFirstInstruction(computation, inst1).second <

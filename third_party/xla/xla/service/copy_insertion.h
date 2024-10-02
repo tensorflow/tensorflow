@@ -107,6 +107,10 @@ class CopyInsertion : public HloModulePass {
   virtual absl::Status AddCopiesForConditional(
       const HloAliasAnalysis& alias_analysis, HloInstruction* conditional);
 
+  // Add copies for async send/recv instructions.
+  absl::Status AddCopiesForAsyncSendRecv(const HloAliasAnalysis& alias_analysis,
+                                         HloInstruction* async);
+
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
