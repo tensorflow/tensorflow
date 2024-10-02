@@ -121,7 +121,7 @@ HloSharding TransposeSharding(const HloSharding& sharding,
 // maximal sharding returns the original sharding.
 std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
-                                           const HloSharding& sharding);
+                                           const HloSharding& source_sharding);
 
 // Propagates sharding through reshape. It tries to find partial matches on
 // subsets of dimensions that could satisfy ReshapeSharding() constraints, then

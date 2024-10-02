@@ -704,9 +704,9 @@ HloSharding TransposeSharding(const HloSharding& sharding,
 
 std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
-                                           const HloSharding& sharding) {
-  if (sharding.IsTileMaximal() || sharding.IsManual()) {
-    return sharding;
+                                           const HloSharding& source_sharding) {
+  if (source_sharding.IsTileMaximal() || source_sharding.IsManual()) {
+    return source_sharding;
   }
 
   // In case of a tiled sharding, the reshaped sharding will be valid if the
@@ -732,10 +732,24 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   DimensionVector target_dims_stack(target_shape.dimensions().rbegin(),
                                     target_shape.dimensions().rend());
   DimensionVector sharding_tile_dims_stack(
-      sharding.tile_assignment().dimensions().begin(),
-      sharding.tile_assignment().dimensions().begin() + source_shape.rank());
+      source_sharding.tile_assignment().dimensions().begin(),
+      source_sharding.tile_assignment().dimensions().begin() +
+          source_shape.rank());
   std::reverse(sharding_tile_dims_stack.begin(),
                sharding_tile_dims_stack.end());
+  int64_t source_dims_index = -1;
+  std::vector<int64_t> dims_to_replicate;
+
+  auto source_dims_push = [&](int64_t shape_size, int64_t partitions) {
+    source_dims_stack.push_back(shape_size);
+    sharding_tile_dims_stack.push_back(partitions);
+    source_dims_index--;
+  };
+  auto source_dims_pop = [&]() {
+    source_dims_stack.pop_back();
+    sharding_tile_dims_stack.pop_back();
+    source_dims_index++;
+  };
 
   bool inplace_add_sharding_dim = false;
   auto append_sharding_dim = [&](int64_t size) {
@@ -753,22 +767,20 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       break;
     }
 
-    int64_t source_dim_product = 1;
+    int64_t source_dims_product = 1;
     while (!sharding_tile_dims_stack.empty() &&
            sharding_tile_dims_stack.back() == 1) {
-      sharding_tile_dims_stack.pop_back();
-      source_dim_product *= source_dims_stack.back();
-      source_dims_stack.pop_back();
+      source_dims_product *= source_dims_stack.back();
+      source_dims_pop();
     }
     while (!target_dims_stack.empty() && target_dims_stack.back() > 1 &&
-           source_dim_product % target_dims_stack.back() == 0) {
-      source_dim_product /= target_dims_stack.back();
+           source_dims_product % target_dims_stack.back() == 0) {
+      source_dims_product /= target_dims_stack.back();
       target_dims_stack.pop_back();
       append_sharding_dim(1);
     }
-    if (source_dim_product != 1) {
-      source_dims_stack.push_back(source_dim_product);
-      sharding_tile_dims_stack.push_back(1);
+    if (source_dims_product != 1) {
+      source_dims_push(source_dims_product, 1);
     }
 
     if (target_dims_stack.empty()) {
@@ -781,9 +793,8 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     int64_t s_partitions = 1;
     if (!source_dims_stack.empty()) {
       s_size = source_dims_stack.back();
-      source_dims_stack.pop_back();
       s_partitions = sharding_tile_dims_stack.back();
-      sharding_tile_dims_stack.pop_back();
+      source_dims_pop();
     }
 
     if (s_size == t_size) {
@@ -793,19 +804,20 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                t_size % s_partitions == 0) {
       // If s_partitions evenly divides both s_size and t_size, we can add this
       // sharding dim and work on shard sized shapes in the next iteration.
-      source_dims_stack.push_back(s_size / s_partitions);
+      source_dims_push(s_size / s_partitions, 1);
       target_dims_stack.push_back(t_size / s_partitions);
-      sharding_tile_dims_stack.push_back(1);
       append_sharding_dim(s_partitions);
       inplace_add_sharding_dim = true;
     } else if (t_size == 1) {
       // Trivial dimension added.
       append_sharding_dim(1);
-      source_dims_stack.push_back(s_size);
-      sharding_tile_dims_stack.push_back(s_partitions);
+      source_dims_push(s_size, s_partitions);
     } else if (s_size == 1) {
       // Trivial dimension removed.
       target_dims_stack.push_back(t_size);
+      if (s_partitions > 1) {
+        dims_to_replicate.push_back(source_dims_index);
+      }
     } else if (s_size > t_size) {
       // Dimension split.
       if (s_size % s_partitions != 0) {
@@ -819,13 +831,11 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
       if (t_size % s_partitions == 0) {
         append_sharding_dim(s_partitions);
         // We have part of the s_size unprocessed, so put it back to stack.
-        source_dims_stack.push_back(s_size / t_size);
-        sharding_tile_dims_stack.push_back(1);
+        source_dims_push(s_size / t_size, 1);
       } else if (s_partitions % t_size == 0) {
         append_sharding_dim(t_size);
         // We have part of the s_size unprocessed, so put it back to stack.
-        source_dims_stack.push_back(s_size / t_size);
-        sharding_tile_dims_stack.push_back(s_partitions / t_size);
+        source_dims_push(s_size / t_size, s_partitions / t_size);
       } else {
         append_sharding_dim(std::gcd(t_size, s_partitions));
         break;
@@ -860,6 +870,16 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   while (target_tile_assignment_dimensions.size() < target_shape.rank()) {
     target_tile_assignment_dimensions.push_back(1);
   }
+
+  // If there is a source dimension satisfying (1) size is 1, (2) partition > 1,
+  // and (3) there is no corresponding target dimension, we replicate the source
+  // sharding along this dimension since the source sharding cannot be
+  // propagated along this dimension.
+  const HloSharding sharding = !dims_to_replicate.empty()
+                                   ? PartiallyReplicateTiledShardingOnDims(
+                                         source_sharding, dims_to_replicate)
+                                   : source_sharding;
+
   for (int64_t i = sharding.TiledDataRank();
        i < sharding.tile_assignment().num_dimensions(); ++i) {
     target_tile_assignment_dimensions.push_back(
