@@ -51,7 +51,7 @@ TEST(MlirToHloTest, StablehloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // StableHLO uses VHLO for PJRT serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -69,7 +69,7 @@ TEST(MlirToHloTest, ChloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // CHLO decomposes to StableHLO, so uses VHLO serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -86,7 +86,7 @@ TEST(MlirToHloTest, ChloTanOpTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // CHLO decomposes to StableHLO, so uses VHLO serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -104,7 +104,7 @@ TEST(MlirToHloTest, MhloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // MHLO and other dialects use native MLIR bytecode, not VHLO.
   EXPECT_THAT(blob, Not(IsVhloArtifact("1.0.0")));

@@ -244,7 +244,14 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   return absl::OkStatus();
 }
 
-std::string GetDefaultStablehloVersion() {
+std::string GetDefaultStablehloVersion(std::optional<int64_t> plugin_version) {
+  // TODO: (b/370803410) Use WEEK_12 in PJRT, some plugins were not up to date,
+  // so temporarily using 1.0.0 to allow them time for a new release.
+  // PJRT v54 released Jun 10, so most plugins should use WEEK_12 by default.
+  if (plugin_version.has_value() && plugin_version.value() < 54) {
+    return "0.19.0";
+  }
+
   // This version must be >=12w old.
   return mlir::vhlo::Version::fromCompatibilityRequirement(
              mlir::vhlo::Version::CompatibilityRequirement::WEEK_12)
@@ -252,7 +259,6 @@ std::string GetDefaultStablehloVersion() {
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
-                                      std::optional<int64_t> /*plugin_version*/,
                                       absl::string_view target, bool inplace) {
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
