@@ -1037,7 +1037,7 @@ struct AnyContext {
 // defined below.
 class IteratorBase : public Checkpointable {
  public:
-  virtual ~IteratorBase() {
+  ~IteratorBase() override {
     for (auto rit = cleanup_fns_.rbegin(); rit != cleanup_fns_.rend(); ++rit) {
       (*rit)();
     }
