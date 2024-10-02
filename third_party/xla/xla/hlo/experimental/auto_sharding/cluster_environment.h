@@ -145,9 +145,9 @@ class ClusterEnvironment {
 
   double AllToAllCost(double num_bytes, int mesh_dim) const;
 
-  double ReshardingCostMixedMeshShape(
-      const Shape& shape, absl::Span<const int64_t> src_tensor_dim_to_mesh_dim,
-      absl::Span<const int64_t> dst_tensor_dim_to_mesh_dim) const;
+  double ReshardingCostMixedMeshShape(const Shape& shape,
+                                      const HloSharding& src_sharding,
+                                      const HloSharding& dst_sharding) const;
 
   double CollectivePermuteCost(
       double num_bytes,

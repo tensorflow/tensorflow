@@ -272,6 +272,7 @@ TEST_F(AutoShardingTest, MatmulMeshShape2DAllOptions) {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
+  option.allow_mixed_mesh_shape = false;
   RunMatMulAutoShardingWithOptions(option, 4, 2);
 
   option.enable = true;
@@ -288,6 +289,7 @@ TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBeta) {
   option.enable = true;
   option.device_mesh_shape = {2, 2};
   option.device_mesh_ids = {0, 1, 2, 3};
+  option.allow_mixed_mesh_shape = false;
   RunMatMulAutoShardingWithOptions(option, 4, 2);
 
   option.enable = true;
@@ -304,6 +306,7 @@ TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBetaMeshIds) {
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2};
+  option.allow_mixed_mesh_shape = false;
   RunMatMulAutoShardingWithOptions(option, 4, 2);
 
   option.enable = true;
@@ -322,6 +325,7 @@ TEST_F(AutoShardingTest, MatmulMeshShape2DNoMeshIds) {
   option.device_mesh_shape = {2, 2};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
+  option.allow_mixed_mesh_shape = false;
   RunMatMulAutoShardingWithOptions(option, 4, 2);
 
   option.enable = true;
@@ -349,6 +353,7 @@ TEST_F(AutoShardingTest, MatmulMeshShape3DAllOptions) {
 TEST_F(AutoShardingTest, Matmul3DMeshShape2DSharding) {
   AutoShardingOption option;
   option.enable = true;
+  option.allow_mixed_mesh_shape = false;
   option.device_mesh_shape = {1, 2, 2};
   RunMatMulAutoShardingWithOptions(option, 4, 2);
 
@@ -458,7 +463,7 @@ TEST_F(AutoShardingTest, LargeSize) {
   option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
   option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
   option.memory_budget_per_device = (8192 + 8192 * 2 + 8192 * 4 / 8);
-  RunMatMulAutoShardingWithOptions(option, 7, 1);
+  RunMatMulAutoShardingWithOptions(option, 56, 1);
 }
 
 TEST_F(AutoShardingTest, InvalidOptions) {
@@ -716,6 +721,7 @@ ENTRY %elementwise {
               .enable = true,
               .preserve_shardings =
                   AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .allow_mixed_mesh_shape = false,
               .only_allow_divisible_input_output = false,
               .device_mesh_shape = {16, 16},
               .device_mesh_alpha = {1.0, 1.0},
