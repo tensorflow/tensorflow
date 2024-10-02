@@ -22,6 +22,12 @@ else
   PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
 fi
 
+# TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped
+# Move hermetic requirement lock files for NumPy 1 to the root
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 1 ]]; then
+  cp ./ci/official/requirements_updater/numpy1_requirements/*.txt .
+fi
+
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
    tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
