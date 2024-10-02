@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_rematerialization.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -39,6 +40,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -48,16 +51,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/numbers.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -66,8 +74,7 @@ namespace {
 using ::tsl::strings::HumanReadableNumBytes;
 
 // Potential optimizations:
-// . TODO(b/35244891): Avoid N^2 behavior by keeping a priority queue
-//   of candidates.
+// . Avoid N^2 behavior by keeping a priority queue of candidates.
 // . Cache IsRematerializable in Item?  Only correct if control
 //   predecessors and successors don't change.
 
@@ -660,7 +667,7 @@ class MemoryUsageTracker {
 
   const HloRematerialization::Options& options() const { return options_; }
 
-  // Check invariants of the data structure. This is expensive to call.
+  // Checks invariants of the data structure. This is expensive to call.
   bool Check() const;
 
   std::string ToString() const;
@@ -710,19 +717,19 @@ class MemoryUsageTracker {
     }
   };
 
-  // Adjust our tracked memory usage as a result of this new item coming into
+  // Adjusts our tracked memory usage as a result of this new item coming into
   // scope.
   void CountAllocatedMemory(Item* item);
 
-  // Adjust our tracked memory usage as a result of this item going out of
+  // Adjusts our tracked memory usage as a result of this item going out of
   // scope.
   absl::Status CountFreedMemory(Item* item);
 
-  // Buffers have users and users have buffers used, this function resolves
+  // Buffers have users and users have buffers used. This function resolves
   // outstanding issues in that bidirectional dependency.
   void ReplaceUsesInUsersOfBuffer(Buffer& buffer, BufferId old_id) const;
 
-  // Get the compact shape of given hlo instruction. An internal cache is used
+  // Gets the compact shape of given hlo instruction. An internal cache is used
   // to avoid computing the shape multiple times.
   absl::StatusOr<const Shape*> GetCompactShape(const HloInstruction* hlo);
 
@@ -739,7 +746,7 @@ class MemoryUsageTracker {
                      std::move(users), live_out, has_indirect_uses);
   }
 
-  // Create a new buffer representing a rematerialization of given buffer for
+  // Creates a new buffer representing a rematerialization of given buffer for
   // the given uses.
   Buffer& RematerializeBuffer(const Buffer& original_buffer, Item* remat_item,
                               UsesList&& rematerialized_uses) {
@@ -755,10 +762,10 @@ class MemoryUsageTracker {
                      /*has_indirect_uses=*/false);
   }
 
-  // Return number of bytes allocated for the buffer with the given id. Buffers
-  // allocated by the calling computation (eg, parameter and output buffers) are
-  // considered to have zero bytes because the memory is accounted for in a
-  // different computation.
+  // Returns the number of bytes allocated for the buffer with the given id.
+  // Buffers allocated by the calling computation (eg, parameter and output
+  // buffers) are considered to have zero bytes because the memory is accounted
+  // for in a different computation.
   int64_t AllocatedSize(BufferId buffer_id) const {
     const Buffer& buffer = buffers_.at(buffer_id);
     HloInstruction* inst = buffer.defining_instruction->instruction;
@@ -776,8 +783,8 @@ class MemoryUsageTracker {
     }
   }
 
-  // Returns true if BeginInstruction and EndInstruction has been called for the
-  // given instruction.
+  // Returns whether BeginInstruction and EndInstruction have been called for
+  // the given instruction.
   bool IsFinished(Item* item) const {
     return item->placed && item != in_progress_item_;
   }
@@ -815,7 +822,7 @@ class MemoryUsageTracker {
     return false;
   }
 
-  // Create a new buffer, add it to buffers_, and return a reference.
+  // Creates a new buffer, adds it to buffers_, and returns a reference.
   Buffer& NewBuffer(Item* defining_instruction, const Shape& shape,
                     const ShapeIndex& index, UsesList&& uses, bool live_out,
                     bool has_indirect_uses) {
@@ -1893,7 +1900,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
       continue;
     }
 
-    // First, calculate the cost of compression rematerialziation for this
+    // First, calculate the cost of compression rematerialization for this
     // instruction.
     if (options_.remat_mode_config.compress && block.size() == 1) {
       auto cost =
@@ -1989,6 +1996,8 @@ UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
   return combined_users;
 }
 
+// Performs the rematerialization of all items in `best_items` and returns the
+// number of net instructions added.
 absl::StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
@@ -2174,6 +2183,8 @@ absl::StatusOr<int64_t> RematerializeInstructions(
   return net_instructions_added;
 }
 
+// Performs rematerialization of `best_item` via the compression strategy.
+// Returns the net number of instructions added.
 absl::StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
                                             Item* best_item,
                                             const Shape& compact_shape,
@@ -2224,9 +2235,12 @@ absl::StatusOr<int64_t> CompressInstruction(MemoryUsageTracker* memory_tracker,
   instruction_list->InsertBeforeInstructions(uncompressed_item, place_before);
   instruction_list->InsertAfterInstructions(compressed_item, {best_item});
 
+  // Net two instructions added.
   return 2;
 }
 
+// Performs rematerialization of `best_item` via the host offload strategy.
+// Returns the net number of instructions added.
 absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
                                            Item* best_item,
                                            InstructionList* instruction_list) {
@@ -2486,6 +2500,7 @@ absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
       best_item, copy_start_to_host_item, copy_done_to_host_item,
       copy_start_to_device_item, copy_done_to_device_item));
 
+  // Net four instructions added.
   return 4;
 }
 

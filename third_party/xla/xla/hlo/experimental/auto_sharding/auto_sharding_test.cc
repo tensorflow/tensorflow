@@ -2839,7 +2839,8 @@ ENTRY matmul {
   // TODO(b/369616683) Fix the error message output in this case.
   EXPECT_DEATH(
       absl::StatusOr<bool> status = AutoSharding(option).Run(module.get()),
-      "The auto-sharding solver has timed out without a solution.");
+      "The auto-sharding pass could not find shardings that works for this "
+      "input.");
 }
 
 TEST_F(AutoShardingTest, IgnoreShardAsShardLike) {
