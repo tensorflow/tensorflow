@@ -2509,8 +2509,8 @@ Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
   return if_op.getResult(0);
 }
 
-}  // namespace
-
+// Use tiling and execution parameters from 'config'. BlockLevelParameters are
+// ignored.
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 absl::Status EmitMatMul(mlir::OpBuilder builder,
                         absl::string_view libdevice_path,
@@ -2841,6 +2841,8 @@ absl::StatusOr<Value> ComputeBasePtrOffset(
                                                     /*symbols=*/{}, b)[0]);
 }
 
+}  // namespace
+
 namespace ir_emitter_triton_internal {
 
 SmallVector<Value, 3> ComputeDelinearizedTileIndex(
@@ -2951,6 +2953,8 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
 
 }  // namespace ir_emitter_triton_internal
 
+namespace {
+// Generate Triton IR inside 'fn', using the given block_level_parameters.
 absl::Status EmitGeneric(mlir::OpBuilder builder,
                          absl::string_view libdevice_path,
                          const se::DeviceDescription& device_info,
@@ -3011,6 +3015,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 
   return absl::OkStatus();
 }
+
+}  // namespace
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir_context
