@@ -25,9 +25,9 @@ namespace stablehlo_ext {
 
 // TODO(b/369406385): remove this method (and file) once issue is resolved.
 
-std::unique_ptr<::mlir::Pass> createStablehloCreateCompatibilityExpanderPass(
+std::unique_ptr<::mlir::Pass> createStablehloCompatibilityExpanderPass(
     std::string targetVersionOption) {
-  return mlir::stablehlo::createStablehloCreateCompatibilityExpanderPass(
+  return mlir::stablehlo::createStablehloCompatibilityExpanderPass(
       {std::move(targetVersionOption)});
 }
 
