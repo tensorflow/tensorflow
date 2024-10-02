@@ -5032,6 +5032,58 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
       )");
 }
 
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDColMajorLhsF8) {
+  const char* hlo_text = R"(
+HloModule test
+    ENTRY test {
+      x = <<F8E4M3>>[2,64,32]{1,2,0} parameter(0)
+      y = <<F8E4M3>>[2,32,16]{2,1,0} parameter(1)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      dq_scale = f32[] multiply(x_scale, y_scale)
+      dq_scale_bcast = f32[2,64,16] broadcast(dq_scale), dimensions={}
+      out.0 = f32[2,64,16] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+      ROOT out = f32[2,64,16] multiply(out.0, dq_scale_bcast)
+          }
+)";
+
+  CheckFp8IfSupported(hlo_text);
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(CudaHopperOrRocmMI300(), GetToolkitVersion(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
+      R"(
+; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[2,64,32], {{.*}}: <<F8E4M3>>[2,32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[2,64,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<F8E4M3>>[2,64,32]{1,2,0} parameter(0)
+; CHECK-NEXT:    [[P0_BT:%[^ ]+]] = <<F8E4M3>>[2,32,64]{2,1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P0_TR:%[^ ]+]] = <<F8E4M3>>[2,64,32]{2,1,0} transpose([[P0_BT]]), dimensions={0,2,1}
+; CHECK-NEXT:    [[P0_BT1:%[^ ]+]] = <<F8E4M3>>[2,32,64]{1,2,0} bitcast([[P0_TR]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[2,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[2,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[DQ:%[^ ]+]] = f32[] multiply([[P2]], [[P3]])
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f32[2,64,16]{2,1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0_BT1]], [[P1_TRANSPOSE]], [[DQ]], [[C1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )");
+}
+
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
   const char* hlo_text = R"(
     HloModule test

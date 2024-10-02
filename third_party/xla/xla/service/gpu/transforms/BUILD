@@ -1727,6 +1727,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
