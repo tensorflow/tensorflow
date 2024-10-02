@@ -175,12 +175,19 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
   }
 
   assert(ty.getIntOrFloatBitWidth() == 8);
-  if (!ty.isFloat8E5M2()) {
-    // F8E5M2 is the only 8 bit float with infinities.
+  // F8E5M2, F8E4M3, F8E3M4 are the only 8 bit float with infinities.
+  if (ty.isFloat8E5M2()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x7C;
+  } else if (ty.isFloat8E4M3()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x78;
+  } else if (ty.isFloat8E3M4()) {
+    Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
+    return (bits & 0x7F) == 0x70;
+  } else {
     return b.create<ma::ConstantIntOp>(false, b.getI1Type());
   }
-  Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
-  return (bits & 0x7F) == 0x7C;
 }
 
 Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
@@ -193,8 +200,12 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
   Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
   if (ty.isFloat8E5M2()) {
     return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1100);
+  } else if (ty.isFloat8E4M3()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1000);
   } else if (ty.isFloat8E4M3FN()) {
     return (bits & 0b0111'1111) == 0b0111'1111;
+  } else if (ty.isFloat8E3M4()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'0000);
   }
   return bits == 0x80;
 }
@@ -544,7 +555,8 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
       int64_t constant = rhs_cst.bitcastToAPInt().getZExtValue();
       // If we're comparing to +-0, compare the absolute values.
       if (rhs_cst.isZero() &&
-          (lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
+          (lhs.getType().isFloat8E3M4() || lhs.getType().isFloat8E4M3() ||
+           lhs.getType().isFloat8E4M3FN() || lhs.getType().isFloat8E5M2())) {
         int_value = int_value & 0x7f;
         constant &= 0x7f;
       }

@@ -195,6 +195,8 @@ typedef enum {
   XLA_FFI_DataType_C128 = 18,
   XLA_FFI_DataType_TOKEN = 17,
   XLA_FFI_DataType_F8E5M2 = 19,
+  XLA_FFI_DataType_F8E3M4 = 29,
+  XLA_FFI_DataType_F8E4M3 = 28,
   XLA_FFI_DataType_F8E4M3FN = 20,
   XLA_FFI_DataType_F8E4M3B11FNUZ = 23,
   XLA_FFI_DataType_F8E5M2FNUZ = 24,

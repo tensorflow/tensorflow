@@ -295,6 +295,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F64;
     case xla::PrimitiveType::F8E5M2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
+    case xla::PrimitiveType::F8E4M3:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3;
     case xla::PrimitiveType::F8E4M3FN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
     case xla::PrimitiveType::F8E4M3B11FNUZ:
@@ -303,6 +305,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2FNUZ;
     case xla::PrimitiveType::F8E4M3FNUZ:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ;
+    case xla::PrimitiveType::F8E3M4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -358,6 +362,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::C128;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2:
       return xla::PrimitiveType::F8E5M2;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3:
+      return xla::PrimitiveType::F8E4M3;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN:
       return xla::PrimitiveType::F8E4M3FN;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ:
@@ -366,6 +372,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E5M2FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FNUZ:
       return xla::PrimitiveType::F8E4M3FNUZ;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E3M4:
+      return xla::PrimitiveType::F8E3M4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }

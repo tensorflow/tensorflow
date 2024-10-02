@@ -144,7 +144,7 @@ class FloatNormalizationF8Test
       public ::testing::WithParamInterface<PrimitiveType> {};
 
 INSTANTIATE_TEST_SUITE_P(FloatNormalizationF8Suite, FloatNormalizationF8Test,
-                         ::testing::Values(F8E5M2));
+                         ::testing::Values(F8E3M4, F8E4M3, F8E5M2));
 
 TEST_F(FloatNormalizationTest, NoopIfSupported) {
   auto builder = HloComputation::Builder(TestName());

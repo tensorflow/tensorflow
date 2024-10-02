@@ -1441,19 +1441,23 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
+  const GpuFloatSupport f8e4m3_support(gpu_version, F8E4M3, F16);
   const GpuFloatSupport f8e4m3fn_support(gpu_version, F8E4M3FN, F16);
   const FloatSupport f8e4m3b11fnuz_support(F8E4M3B11FNUZ, F16);
   const GpuFloatSupport f8e5m2fnuz_support(gpu_version, F8E5M2FNUZ, F16);
   const GpuFloatSupport f8e4m3fnuz_support(gpu_version, F8E4M3FNUZ, F16);
+  const GpuFloatSupport f8e3m4_support(gpu_version, F8E3M4, F16);
   auto add_float_normalization = [&](HloPassPipeline& pipeline) {
     auto& sub_pipeline =
         pipeline.AddPass<HloPassPipeline>("float_normalization");
     sub_pipeline.AddPass<FloatNormalization>(&bf16_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e4m3_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fn_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3b11fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e5m2fnuz_support);
     sub_pipeline.AddPass<FloatNormalization>(&f8e4m3fnuz_support);
+    sub_pipeline.AddPass<FloatNormalization>(&f8e3m4_support);
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
     if (debug_options.xla_allow_excess_precision()) {
       sub_pipeline.AddPass<SimplifyFPConversions>();

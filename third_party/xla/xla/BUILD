@@ -316,6 +316,7 @@ xla_cc_test(
         ":util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/numeric:bits",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -376,6 +377,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:test_main",
+        "@ml_dtypes//:float8",
     ],
 )
 

@@ -101,7 +101,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
   bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
+      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
+       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F8E4M3FNUZ ||
        output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
        output_primitive_type == BF16 || output_primitive_type == F32 ||

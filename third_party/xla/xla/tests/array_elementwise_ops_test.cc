@@ -1423,7 +1423,8 @@ class TotalOrderTest : public ClientLibraryTestBase {
   }
 };
 
-using Types = ::testing::Types<tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
+using Types = ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3,
+                               tsl::float8_e4m3fnuz, tsl::float8_e4m3b11fnuz,
                                tsl::float8_e5m2, tsl::float8_e5m2fnuz,
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
                                Eigen::half,
