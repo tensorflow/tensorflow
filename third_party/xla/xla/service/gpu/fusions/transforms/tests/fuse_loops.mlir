@@ -9,14 +9,14 @@
 "   d0 in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
 "   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
-#indexing_map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
+#indexing_map1 = #xla_gpu.indexing_map<"(th_x, d1)[s0, s1] ->"
 "   (0,"
-"   d0 mod 32,"
-"   d0 floordiv 32 + s0 * 4),"
+"   th_x mod 32,"
+"   th_x floordiv 32 + s0 * 4),"
 " domain:"
-"   d0 in [0, 127], d1 in [0, 599],"
+"   th_x in [0, 127], d1 in [0, 599],"
 "   s0 in [0, 7], s1 in [0, 0],"
-"   (d1 mod 6) * 32 + d0 mod 32 in [0, 169]">
+"   (d1 mod 6) * 32 + th_x mod 32 in [0, 169]">
 func.func @fuse_loops(%arg0: tensor<20x160x170xf32>) -> tensor<1x32x33xf32> {
   %cst = arith.constant dense<0.000000e+00> : vector<8x1xf32>
   %c0 = arith.constant 0 : index

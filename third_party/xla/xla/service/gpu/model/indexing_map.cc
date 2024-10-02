@@ -970,11 +970,11 @@ Interval Interval::FloorDiv(int64_t rhs) const {
 }
 
 bool operator==(const DimVar& lhs, const DimVar& rhs) {
-  return lhs.bounds == rhs.bounds && lhs.name == rhs.name;
+  return lhs.bounds == rhs.bounds;
 }
 
 bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range && lhs.name == rhs.name;
+  return lhs.range == rhs.range;
 }
 
 bool operator==(const RTVar& lhs, const RTVar& rhs) {
