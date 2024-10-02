@@ -1,0 +1,10 @@
+version: '3.4'
+
+services:
+  tensorflow:
+    image: tensorflow
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 5002:5002

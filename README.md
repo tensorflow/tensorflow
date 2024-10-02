@@ -54,7 +54,7 @@ To install the current release, which includes support for
 Windows)*:
 
 ```
-$ pip install tensorflow
+pip install tensorflow
 ```
 
 Other devices (DirectX and MacOS-metal) are supported using
@@ -63,7 +63,7 @@ Other devices (DirectX and MacOS-metal) are supported using
 A smaller CPU-only package is also available:
 
 ```
-$ pip install tensorflow-cpu
+pip install tensorflow-cpu
 ```
 
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
@@ -76,7 +76,7 @@ commands.
 #### *Try your first TensorFlow program*
 
 ```shell
-$ python
+python
 ```
 
 ```python
@@ -112,12 +112,12 @@ open-source software development.
 Follow these steps to patch a specific version of TensorFlow, for example, to
 apply fixes to bugs or security vulnerabilities:
 
-*   Clone the TensorFlow repo and switch to the corresponding branch for your
+* Clone the TensorFlow repo and switch to the corresponding branch for your
     desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry-pick) the desired changes and resolve any code
+* Apply (that is, cherry-pick) the desired changes and resolve any code
     conflicts.
-*   Run TensorFlow tests and ensure they pass.
-*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
+* Run TensorFlow tests and ensure they pass.
+* [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
     package from source.
 
 ## Continuous build status
@@ -146,19 +146,19 @@ Build Type                    | Status                                          
 
 ## Resources
 
-*   [TensorFlow.org](https://www.tensorflow.org)
-*   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
-*   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
-*   [TensorFlow Examples](https://github.com/tensorflow/examples)
-*   [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
-*   [TensorFlow Blog](https://blog.tensorflow.org)
-*   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
-*   [TensorFlow Twitter](https://twitter.com/tensorflow)
-*   [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
-*   [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
-*   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
-*   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
-*   [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
+* [TensorFlow.org](https://www.tensorflow.org)
+* [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
+* [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
+* [TensorFlow Examples](https://github.com/tensorflow/examples)
+* [TensorFlow Codelabs](https://codelabs.developers.google.com/?cat=TensorFlow)
+* [TensorFlow Blog](https://blog.tensorflow.org)
+* [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
+* [TensorFlow Twitter](https://twitter.com/tensorflow)
+* [TensorFlow YouTube](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
+* [TensorFlow model optimization roadmap](https://www.tensorflow.org/model_optimization/guide/roadmap)
+* [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+* [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
+* [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
 
 Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to

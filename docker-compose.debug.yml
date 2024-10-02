@@ -1,0 +1,14 @@
+version: '3.4'
+
+services:
+  tensorflow:
+    image: tensorflow
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 -m flask run --no-debugger --no-reload --host 0.0.0.0 --port 5002"]
+    ports:
+      - 5002:5002
+      - 5678:5678
+    environment:
+      - FLASK_APP=configure.py
