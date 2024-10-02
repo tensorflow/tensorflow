@@ -926,6 +926,71 @@ index 7cd8589..9fd7e88 100644
 +  sdy.sharding_group %2 group_id = 1000 : tensor<8x8xf32>
 +  func.return
 +}
+diff --git a/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.cc b/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.cc
+index 8950400..bd2bab3 100644
+--- a/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.cc
++++ b/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.cc
+@@ -18,10 +18,11 @@ limitations under the License.
+ #include <cassert>
+ #include <optional>
+ 
++#include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/ManagedStatic.h"
+ #include "llvm/Support/Mutex.h"
++#include "mlir/IR/DialectRegistry.h"
+ #include "mlir/Pass/PassOptions.h"
+-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+ 
+ namespace mlir {
+ namespace sdy {
+@@ -41,23 +42,29 @@ void AutoPartitionerRegistry::setCallback(
+     AutoPartitionerCallback callback,
+     RegisterDependantDialectsCallback dialectsDependenciesCallback) {
+   llvm::sys::ScopedLock scopedLock(*mutex);
+-
+   // TODO(tomnatan): find a better way to fail in this case, and consider
+   // allowing registring multiple callbacks with different keys (that are passed
+   // by the user to sdy).
+-  assert(!isRegistered() && "auto-partitioner callback already registered");
++
++  if (isRegistered()) {
++    llvm::report_fatal_error("auto-partitioner callback already registered");
++  }
+   *registeredCallback = callback;
+   *registeredDependenciesCallback = dialectsDependenciesCallback;
+ }
+ 
+ void AutoPartitionerRegistry::addPasses(OpPassManager& pm) {
+   // TODO(tomnatan): find a better way to fail in this case.
+-  assert(isRegistered() && "auto-partitioner callback wasn't registered");
++  if (!isRegistered()) {
++    llvm::report_fatal_error("auto-partitioner callback wasn't registered");
++  }
+   registeredCallback->value()(pm);
+ }
+ 
+ void AutoPartitionerRegistry::getDependentDialects(DialectRegistry& registry) {
+-  assert(isRegistered() && "auto-partitioner callback wasn't registered");
++  if (!isRegistered()) {
++    llvm::report_fatal_error("auto-partitioner callback wasn't registered");
++  }
+   registeredDependenciesCallback->value()(registry);
+ }
+ 
+diff --git a/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h b/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h
+index fbb5e44..84abc31 100644
+--- a/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h
++++ b/shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h
+@@ -18,8 +18,8 @@ limitations under the License.
+ 
+ #include <functional>
+ 
++#include "mlir/IR/DialectRegistry.h"
+ #include "mlir/Pass/PassOptions.h"
+-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+ 
+ namespace mlir {
+ namespace sdy {
 diff --git a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc b/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
 index 40ef9ee..b073e19 100644
 --- a/shardy/dialect/sdy/transforms/propagation/op_sharding_rule_registry.cc
@@ -1055,11 +1120,33 @@ index 34ac5fc..b6841d3 100644
    %0:2 = "stablehlo.scatter"(%arg0, %arg1, %arg2, %arg3, %arg4) ({
      ^bb0(%arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>, %arg8: tensor<f32>):
        %1 = stablehlo.add %arg5, %arg7 : tensor<i32>
+diff --git a/shardy/tools/sdy_opt_main.cc b/shardy/tools/sdy_opt_main.cc
+index a9705ce..1e2ad3d 100644
+--- a/shardy/tools/sdy_opt_main.cc
++++ b/shardy/tools/sdy_opt_main.cc
+@@ -20,7 +20,7 @@ limitations under the License.
+ 
+ #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+-#include "mlir/Dialect/Quant/QuantOps.h"
++#include "mlir/Dialect/Quant/IR/Quant.h"
+ #include "mlir/IR/DialectRegistry.h"
+ #include "mlir/InitAllPasses.h"
+ #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
+   mlir::registerAllPasses();
+ 
+   mlir::DialectRegistry dialects;
+-  dialects.insert<mlir::func::FuncDialect, mlir::quant::QuantizationDialect,
++  dialects.insert<mlir::func::FuncDialect, mlir::quant::QuantDialect,
+                   mlir::sdy::SdyDialect, mlir::stablehlo::StablehloDialect>();
+   mlir::func::registerAllExtensions(dialects);
+ 
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index de92cb4..26a6e36 100644
+index de92cb4..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,4095 +1,408 @@
+@@ -1,4095 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
 -diff -ruN --strip-trailing-cr a/llvm/docs/NVPTXUsage.rst b/llvm/docs/NVPTXUsage.rst
 ---- a/llvm/docs/NVPTXUsage.rst
@@ -1276,20 +1363,7 @@ index de92cb4..26a6e36 100644
 -         Expand = false;
 - 
 -@@ -2271,117 +2258,6 @@
-+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclID.h b/clang/include/clang/AST/DeclID.h
-+--- a/clang/include/clang/AST/DeclID.h
-++++ b/clang/include/clang/AST/DeclID.h
-+@@ -189,6 +189,7 @@
-+   // Every Decl ID is a local decl ID to the module being writing in ASTWriter.
-+   friend class ASTWriter;
-+   friend class GlobalDeclID;
-++  friend struct llvm::DenseMapInfo<clang::LocalDeclID>;
-+ 
-+ public:
-+   LocalDeclID() : Base() {}
-+@@ -266,6 +267,27 @@
-+     return L == R;
-    }
+-   }
 - }
 - 
 --static Value *upgradeNVVMIntrinsicCall(StringRef Name, CallBase *CI,
@@ -2055,80 +2129,12 @@ index de92cb4..26a6e36 100644
 -+                                : NVPTX::cvta_local_64)
 -+                         : NVPTX::cvta_local;
 -       break;
-+ };
-++
-++template <> struct DenseMapInfo<clang::LocalDeclID> {
-++  using LocalDeclID = clang::LocalDeclID;
-++  using DeclID = LocalDeclID::DeclID;
-++
-++  static LocalDeclID getEmptyKey() {
-++    return LocalDeclID(DenseMapInfo<DeclID>::getEmptyKey());
-++  }
-++
-++  static LocalDeclID getTombstoneKey() {
-++    return LocalDeclID(DenseMapInfo<DeclID>::getTombstoneKey());
-++  }
-++
-++  static unsigned getHashValue(const LocalDeclID &Key) {
-++    return DenseMapInfo<DeclID>::getHashValue(Key.getRawValue());
-++  }
-++
-++  static bool isEqual(const LocalDeclID &L, const LocalDeclID &R) {
-++    return L == R;
-++  }
-++};
-+ 
-+ } // namespace llvm
-+ 
-+diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTWriter.h b/clang/include/clang/Serialization/ASTWriter.h
-+--- a/clang/include/clang/Serialization/ASTWriter.h
-++++ b/clang/include/clang/Serialization/ASTWriter.h
-+@@ -233,13 +233,13 @@
-+   /// instead of comparing the result of `getDeclID()` or `GetDeclRef()`.
-+   llvm::SmallPtrSet<const Decl *, 32> PredefinedDecls;
-+ 
-+-  /// Mapping from FunctionDecl to the list of lambda IDs inside the function.
-++  /// Mapping from FunctionDecl ID to the list of lambda IDs inside the
-++  /// function.
-+   ///
-+   /// These lambdas have to be loaded right after the function they belong to.
-+   /// In order to have canonical declaration for lambda class from the same
-+   /// module as enclosing function during deserialization.
-+-  llvm::DenseMap<const Decl *, SmallVector<LocalDeclID, 4>>
-+-      FunctionToLambdasMap;
-++  llvm::DenseMap<LocalDeclID, SmallVector<LocalDeclID, 4>> FunctionToLambdasMap;
-+ 
-+   /// Offset of each declaration in the bitstream, indexed by
-+   /// the declaration's ID.
-+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
-+--- a/clang/lib/Serialization/ASTWriter.cpp
-++++ b/clang/lib/Serialization/ASTWriter.cpp
-+@@ -5713,8 +5713,7 @@
-+     // efficent becuase it allows lazy deserialization.
-+     RecordData FunctionToLambdasMapRecord;
-+     for (const auto &Pair : FunctionToLambdasMap) {
-+-      FunctionToLambdasMapRecord.push_back(
-+-          GetDeclRef(Pair.first).getRawValue());
-++      FunctionToLambdasMapRecord.push_back(Pair.first.getRawValue());
-+       FunctionToLambdasMapRecord.push_back(Pair.second.size());
-+       for (const auto &Lambda : Pair.second)
-+         FunctionToLambdasMapRecord.push_back(Lambda.getRawValue());
-+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
-+--- a/clang/lib/Serialization/ASTWriterDecl.cpp
-++++ b/clang/lib/Serialization/ASTWriterDecl.cpp
-+@@ -1524,7 +1524,8 @@
-+     // For lambdas inside canonical FunctionDecl remember the mapping.
-+     if (auto FD = llvm::dyn_cast_or_null<FunctionDecl>(D->getDeclContext());
-+         FD && FD->isCanonicalDecl()) {
-+-      Writer.FunctionToLambdasMap[FD].push_back(Writer.GetDeclRef(D));
-++      Writer.FunctionToLambdasMap[Writer.GetDeclRef(FD)].push_back(
-++          Writer.GetDeclRef(D));
-      }
+-     }
 --    ReplaceNode(N, CurDAG->getMachineNode(Opc, DL, N->getValueType(0), Src));
 -+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
 -+                                          Src));
 -     return;
-    } else {
+-   } else {
 -     // Generic to specific
 -@@ -1153,28 +1153,30 @@
 -       Opc = TM.is64Bit() ? NVPTX::cvta_to_global_64 : NVPTX::cvta_to_global;
@@ -2173,31 +2179,7 @@ index de92cb4..26a6e36 100644
 -+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
 -+                                          Src));
 -     return;
-+     Record.push_back(CXXRecNotTemplate);
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -4454,7 +4454,9 @@
-+   auto *VecTy = getWidenedType(ScalarTy, NumScalars);
-+   int NumParts = TTI->getNumberOfParts(VecTy);
-+   if (NumParts == 0 || NumParts >= NumScalars ||
-+-      VecTy->getNumElements() % NumParts != 0)
-++      VecTy->getNumElements() % NumParts != 0 ||
-++      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
-++                                VecTy->getNumElements() / NumParts))
-+     NumParts = 1;
-+   SmallVector<int> ExtractMask;
-+   SmallVector<int> Mask;
-+@@ -6462,7 +6464,9 @@
-+     auto *VecTy = getWidenedType(ScalarTy, NumScalars);
-+     NumParts = TTI.getNumberOfParts(VecTy);
-+     if (NumParts == 0 || NumParts >= NumScalars ||
-+-        VecTy->getNumElements() % NumParts != 0)
-++        VecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, VecTy->getElementType(),
-++                                  VecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-    }
+-   }
 - }
 -diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 ---- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
@@ -2205,232 +2187,7 @@ index de92cb4..26a6e36 100644
 -@@ -594,13 +594,20 @@
 -   setOperationAction(ISD::BITREVERSE, MVT::i32, Legal);
 -   setOperationAction(ISD::BITREVERSE, MVT::i64, Legal);
-+   unsigned VF = PowerOf2Ceil(NumScalars / NumParts);
-+@@ -9961,7 +9965,9 @@
-+     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
-+     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
-+     if (NumParts == 0 || NumParts >= Mask.size() ||
-+-        MaskVecTy->getNumElements() % NumParts != 0)
-++        MaskVecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
-++                                  MaskVecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-+     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
-+     const auto *It =
-+@@ -9979,7 +9985,9 @@
-+     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
-+     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
-+     if (NumParts == 0 || NumParts >= Mask.size() ||
-+-        MaskVecTy->getNumElements() % NumParts != 0)
-++        MaskVecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
-++                                  MaskVecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-+     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
-+     const auto *It =
-+@@ -13630,7 +13638,9 @@
-+   auto *VecTy = getWidenedType(ScalarTy, GatheredScalars.size());
-+   unsigned NumParts = TTI->getNumberOfParts(VecTy);
-+   if (NumParts == 0 || NumParts >= GatheredScalars.size() ||
-+-      VecTy->getNumElements() % NumParts != 0)
-++      VecTy->getNumElements() % NumParts != 0 ||
-++      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
-++                                VecTy->getNumElements() / NumParts))
-+     NumParts = 1;
-+   if (!all_of(GatheredScalars, IsaPred<UndefValue>)) {
-+     // Check for gathered extracts.
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll b/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-+@@ -0,0 +1,183 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64--linux-gnu < %s -mcpu=sapphirerapids | FileCheck %s
-++
-++define void @test(ptr %src, ptr %dst, ptr %c, i64 %arrayidx14.15p) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: ptr [[SRC:%.*]], ptr [[DST:%.*]], ptr [[C:%.*]], i64 [[ARRAYIDX14_15P:%.*]]) #[[ATTR0:[0-9]+]] {
-++; CHECK-NEXT:  [[ENTRY:.*]]:
-++; CHECK-NEXT:    [[ARRAYIDX12_5:%.*]] = getelementptr i8, ptr [[C]], i64 192
-++; CHECK-NEXT:    [[ARRAYIDX14_5:%.*]] = getelementptr i8, ptr [[C]], i64 320
-++; CHECK-NEXT:    [[ARRAYIDX_6:%.*]] = getelementptr i8, ptr [[C]], i64 72
-++; CHECK-NEXT:    [[ARRAYIDX12_6:%.*]] = getelementptr i8, ptr [[C]], i64 200
-++; CHECK-NEXT:    [[ARRAYIDX14_6:%.*]] = getelementptr i8, ptr [[C]], i64 328
-++; CHECK-NEXT:    [[ARRAYIDX_7:%.*]] = getelementptr i8, ptr [[C]], i64 80
-++; CHECK-NEXT:    [[ARRAYIDX12_7:%.*]] = getelementptr i8, ptr [[C]], i64 208
-++; CHECK-NEXT:    [[ARRAYIDX14_7:%.*]] = getelementptr i8, ptr [[C]], i64 336
-++; CHECK-NEXT:    [[ARRAYIDX12_8:%.*]] = getelementptr i8, ptr [[C]], i64 216
-++; CHECK-NEXT:    [[ARRAYIDX14_8:%.*]] = getelementptr i8, ptr [[C]], i64 344
-++; CHECK-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr i8, ptr [[C]], i64 96
-++; CHECK-NEXT:    [[ARRAYIDX12_9:%.*]] = getelementptr i8, ptr [[C]], i64 224
-++; CHECK-NEXT:    [[ARRAYIDX14_9:%.*]] = getelementptr i8, ptr [[C]], i64 352
-++; CHECK-NEXT:    [[ARRAYIDX_10:%.*]] = getelementptr i8, ptr [[C]], i64 104
-++; CHECK-NEXT:    [[ARRAYIDX12_10:%.*]] = getelementptr i8, ptr [[C]], i64 232
-++; CHECK-NEXT:    [[ARRAYIDX14_10:%.*]] = getelementptr i8, ptr [[C]], i64 360
-++; CHECK-NEXT:    [[ARRAYIDX_11:%.*]] = getelementptr i8, ptr [[C]], i64 112
-++; CHECK-NEXT:    [[ARRAYIDX12_11:%.*]] = getelementptr i8, ptr [[C]], i64 240
-++; CHECK-NEXT:    [[ARRAYIDX14_11:%.*]] = getelementptr i8, ptr [[C]], i64 368
-++; CHECK-NEXT:    [[ARRAYIDX_12:%.*]] = getelementptr i8, ptr [[C]], i64 120
-++; CHECK-NEXT:    [[ARRAYIDX12_12:%.*]] = getelementptr i8, ptr [[C]], i64 248
-++; CHECK-NEXT:    [[ARRAYIDX14_12:%.*]] = getelementptr i8, ptr [[C]], i64 376
-++; CHECK-NEXT:    [[ARRAYIDX14_13:%.*]] = getelementptr i8, ptr [[C]], i64 384
-++; CHECK-NEXT:    [[ARRAYIDX12_5P:%.*]] = load i64, ptr [[ARRAYIDX12_5]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_5P:%.*]] = load i64, ptr [[ARRAYIDX14_5]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_6P:%.*]] = load i64, ptr [[ARRAYIDX_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_6P:%.*]] = load i64, ptr [[ARRAYIDX12_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_6P:%.*]] = load i64, ptr [[ARRAYIDX14_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_7P:%.*]] = load i64, ptr [[ARRAYIDX_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_7P:%.*]] = load i64, ptr [[ARRAYIDX12_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_7P:%.*]] = load i64, ptr [[ARRAYIDX14_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_8P:%.*]] = load i64, ptr [[C]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_8P:%.*]] = load i64, ptr [[ARRAYIDX12_8]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_8P:%.*]] = load i64, ptr [[ARRAYIDX14_8]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_9P:%.*]] = load i64, ptr [[ARRAYIDX_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_9P:%.*]] = load i64, ptr [[ARRAYIDX12_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_9P:%.*]] = load i64, ptr [[ARRAYIDX14_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_10P:%.*]] = load i64, ptr [[ARRAYIDX_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_10P:%.*]] = load i64, ptr [[ARRAYIDX12_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_10P:%.*]] = load i64, ptr [[ARRAYIDX14_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_11P:%.*]] = load i64, ptr [[ARRAYIDX_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_11P:%.*]] = load i64, ptr [[ARRAYIDX12_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_11P:%.*]] = load i64, ptr [[ARRAYIDX14_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_12P:%.*]] = load i64, ptr [[ARRAYIDX_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_12P:%.*]] = load i64, ptr [[ARRAYIDX12_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_12P:%.*]] = load i64, ptr [[ARRAYIDX14_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_13P:%.*]] = load i64, ptr [[SRC]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_13P:%.*]] = load i64, ptr [[ARRAYIDX14_13]], align 8
-++; CHECK-NEXT:    br label %[[LAND_LHS_TRUE137:.*]]
-++; CHECK:       [[LAND_LHS_TRUE137]]:
-++; CHECK-NEXT:    [[TMP0:%.*]] = phi i64 [ 0, %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_15P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP1:%.*]] = phi i64 [ 0, %[[LAND_LHS_TRUE137]] ], [ 1, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP2:%.*]] = phi i64 [ 1, %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP3:%.*]] = phi i64 [ [[TMP0]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP4:%.*]] = phi i64 [ [[TMP1]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP5:%.*]] = phi i64 [ [[TMP2]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP6:%.*]] = phi i64 [ [[TMP3]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP7:%.*]] = phi i64 [ [[TMP4]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP8:%.*]] = phi i64 [ [[TMP5]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP9:%.*]] = phi i64 [ [[TMP6]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP10:%.*]] = phi i64 [ [[TMP7]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP11:%.*]] = phi i64 [ [[TMP8]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP12:%.*]] = phi i64 [ [[TMP9]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP13:%.*]] = phi i64 [ [[TMP10]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP14:%.*]] = phi i64 [ [[TMP11]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP15:%.*]] = phi i64 [ [[TMP12]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP16:%.*]] = phi i64 [ [[TMP13]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP17:%.*]] = phi i64 [ [[TMP14]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP18:%.*]] = phi i64 [ [[TMP15]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP19:%.*]] = phi i64 [ [[TMP16]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP20:%.*]] = phi i64 [ [[TMP17]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP21:%.*]] = phi i64 [ [[TMP18]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP22:%.*]] = phi i64 [ [[TMP19]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP23:%.*]] = phi i64 [ [[TMP20]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP24:%.*]] = phi i64 [ [[TMP21]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP25:%.*]] = phi i64 [ [[TMP22]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP26:%.*]] = phi i64 [ [[TMP23]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP27:%.*]] = phi i64 [ [[TMP24]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP28:%.*]] = phi i64 [ [[TMP25]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP29:%.*]] = phi i64 [ [[TMP26]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP30:%.*]] = phi i64 [ [[TMP27]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_5P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP31:%.*]] = phi i64 [ [[TMP28]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_5P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    store i64 [[TMP31]], ptr [[DST]], align 8
-++; CHECK-NEXT:    store i64 [[TMP30]], ptr [[SRC]], align 8
-++; CHECK-NEXT:    store i64 [[TMP29]], ptr [[DST]], align 8
-++; CHECK-NEXT:    br label %[[LAND_LHS_TRUE137]]
-++;
-++entry:
-++  %arrayidx12.5 = getelementptr i8, ptr %c, i64 192
-++  %arrayidx14.5 = getelementptr i8, ptr %c, i64 320
-++  %arrayidx.6 = getelementptr i8, ptr %c, i64 72
-++  %arrayidx12.6 = getelementptr i8, ptr %c, i64 200
-++  %arrayidx14.6 = getelementptr i8, ptr %c, i64 328
-++  %arrayidx.7 = getelementptr i8, ptr %c, i64 80
-++  %arrayidx12.7 = getelementptr i8, ptr %c, i64 208
-++  %arrayidx14.7 = getelementptr i8, ptr %c, i64 336
-++  %arrayidx12.8 = getelementptr i8, ptr %c, i64 216
-++  %arrayidx14.8 = getelementptr i8, ptr %c, i64 344
-++  %arrayidx.9 = getelementptr i8, ptr %c, i64 96
-++  %arrayidx12.9 = getelementptr i8, ptr %c, i64 224
-++  %arrayidx14.9 = getelementptr i8, ptr %c, i64 352
-++  %arrayidx.10 = getelementptr i8, ptr %c, i64 104
-++  %arrayidx12.10 = getelementptr i8, ptr %c, i64 232
-++  %arrayidx14.10 = getelementptr i8, ptr %c, i64 360
-++  %arrayidx.11 = getelementptr i8, ptr %c, i64 112
-++  %arrayidx12.11 = getelementptr i8, ptr %c, i64 240
-++  %arrayidx14.11 = getelementptr i8, ptr %c, i64 368
-++  %arrayidx.12 = getelementptr i8, ptr %c, i64 120
-++  %arrayidx12.12 = getelementptr i8, ptr %c, i64 248
-++  %arrayidx14.12 = getelementptr i8, ptr %c, i64 376
-++  %arrayidx14.13 = getelementptr i8, ptr %c, i64 384
-++  %arrayidx12.5p = load i64, ptr %arrayidx12.5, align 8
-++  %arrayidx14.5p = load i64, ptr %arrayidx14.5, align 8
-++  %arrayidx.6p = load i64, ptr %arrayidx.6, align 8
-++  %arrayidx12.6p = load i64, ptr %arrayidx12.6, align 8
-++  %arrayidx14.6p = load i64, ptr %arrayidx14.6, align 8
-++  %arrayidx.7p = load i64, ptr %arrayidx.7, align 8
-++  %arrayidx12.7p = load i64, ptr %arrayidx12.7, align 8
-++  %arrayidx14.7p = load i64, ptr %arrayidx14.7, align 8
-++  %arrayidx.8p = load i64, ptr %c, align 8
-++  %arrayidx12.8p = load i64, ptr %arrayidx12.8, align 8
-++  %arrayidx14.8p = load i64, ptr %arrayidx14.8, align 8
-++  %arrayidx.9p = load i64, ptr %arrayidx.9, align 8
-++  %arrayidx12.9p = load i64, ptr %arrayidx12.9, align 8
-++  %arrayidx14.9p = load i64, ptr %arrayidx14.9, align 8
-++  %arrayidx.10p = load i64, ptr %arrayidx.10, align 8
-++  %arrayidx12.10p = load i64, ptr %arrayidx12.10, align 8
-++  %arrayidx14.10p = load i64, ptr %arrayidx14.10, align 8
-++  %arrayidx.11p = load i64, ptr %arrayidx.11, align 8
-++  %arrayidx12.11p = load i64, ptr %arrayidx12.11, align 8
-++  %arrayidx14.11p = load i64, ptr %arrayidx14.11, align 8
-++  %arrayidx.12p = load i64, ptr %arrayidx.12, align 8
-++  %arrayidx12.12p = load i64, ptr %arrayidx12.12, align 8
-++  %arrayidx14.12p = load i64, ptr %arrayidx14.12, align 8
-++  %arrayidx.13p = load i64, ptr %src, align 8
-++  %arrayidx14.13p = load i64, ptr %arrayidx14.13, align 8
-++  br label %land.lhs.true137
-++
-++land.lhs.true137:
-++  %0 = phi i64 [ 0, %land.lhs.true137 ], [ %arrayidx14.15p, %entry ]
-++  %1 = phi i64 [ 0, %land.lhs.true137 ], [ 1, %entry ]
-++  %2 = phi i64 [ 1, %land.lhs.true137 ], [ 0, %entry ]
-++  %3 = phi i64 [ %0, %land.lhs.true137 ], [ 0, %entry ]
-++  %4 = phi i64 [ %1, %land.lhs.true137 ], [ 0, %entry ]
-++  %5 = phi i64 [ %2, %land.lhs.true137 ], [ 0, %entry ]
-++  %6 = phi i64 [ %3, %land.lhs.true137 ], [ %arrayidx14.13p, %entry ]
-++  %7 = phi i64 [ %4, %land.lhs.true137 ], [ %arrayidx.13p, %entry ]
-++  %8 = phi i64 [ %5, %land.lhs.true137 ], [ %arrayidx.13p, %entry ]
-++  %9 = phi i64 [ %6, %land.lhs.true137 ], [ %arrayidx14.12p, %entry ]
-++  %10 = phi i64 [ %7, %land.lhs.true137 ], [ %arrayidx12.12p, %entry ]
-++  %11 = phi i64 [ %8, %land.lhs.true137 ], [ %arrayidx.12p, %entry ]
-++  %12 = phi i64 [ %9, %land.lhs.true137 ], [ %arrayidx14.11p, %entry ]
-++  %13 = phi i64 [ %10, %land.lhs.true137 ], [ %arrayidx12.11p, %entry ]
-++  %14 = phi i64 [ %11, %land.lhs.true137 ], [ %arrayidx.11p, %entry ]
-++  %15 = phi i64 [ %12, %land.lhs.true137 ], [ %arrayidx14.10p, %entry ]
-++  %16 = phi i64 [ %13, %land.lhs.true137 ], [ %arrayidx12.10p, %entry ]
-++  %17 = phi i64 [ %14, %land.lhs.true137 ], [ %arrayidx.10p, %entry ]
-++  %18 = phi i64 [ %15, %land.lhs.true137 ], [ %arrayidx14.9p, %entry ]
-++  %19 = phi i64 [ %16, %land.lhs.true137 ], [ %arrayidx12.9p, %entry ]
-++  %20 = phi i64 [ %17, %land.lhs.true137 ], [ %arrayidx.9p, %entry ]
-++  %21 = phi i64 [ %18, %land.lhs.true137 ], [ %arrayidx14.8p, %entry ]
-++  %22 = phi i64 [ %19, %land.lhs.true137 ], [ %arrayidx12.8p, %entry ]
-++  %23 = phi i64 [ %20, %land.lhs.true137 ], [ %arrayidx.8p, %entry ]
-++  %24 = phi i64 [ %21, %land.lhs.true137 ], [ %arrayidx14.7p, %entry ]
-++  %25 = phi i64 [ %22, %land.lhs.true137 ], [ %arrayidx12.7p, %entry ]
-++  %26 = phi i64 [ %23, %land.lhs.true137 ], [ %arrayidx.7p, %entry ]
-++  %27 = phi i64 [ %24, %land.lhs.true137 ], [ %arrayidx14.6p, %entry ]
-++  %28 = phi i64 [ %25, %land.lhs.true137 ], [ %arrayidx12.6p, %entry ]
-++  %29 = phi i64 [ %26, %land.lhs.true137 ], [ %arrayidx.6p, %entry ]
-++  %30 = phi i64 [ %27, %land.lhs.true137 ], [ %arrayidx14.5p, %entry ]
-++  %31 = phi i64 [ %28, %land.lhs.true137 ], [ %arrayidx12.5p, %entry ]
-++  store i64 %31, ptr %dst, align 8
-++  store i64 %30, ptr %src, align 8
-++  store i64 %29, ptr %dst, align 8
-++  br label %land.lhs.true137
-++}
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch1/include/toy/Lexer.h b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch1/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 --  setOperationAction({ISD::ROTL, ISD::ROTR},
 --                     {MVT::i8, MVT::i16, MVT::v2i16, MVT::i32, MVT::i64},
 --                     Expand);
@@ -2444,8 +2201,7 @@ index de92cb4..26a6e36 100644
 -+  setOperationAction(ISD::ROTR, MVT::i64, Legal);
 -+  setOperationAction(ISD::ROTL, MVT::i32, Legal);
 -+  setOperationAction(ISD::ROTR, MVT::i32, Legal);
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -+  setOperationAction(ISD::ROTL, MVT::i16, Expand);
 -+  setOperationAction(ISD::ROTL, MVT::v2i16, Expand);
 -+  setOperationAction(ISD::ROTR, MVT::i16, Expand);
@@ -2453,10 +2209,7 @@ index de92cb4..26a6e36 100644
 -+  setOperationAction(ISD::ROTL, MVT::i8, Expand);
 -+  setOperationAction(ISD::ROTR, MVT::i8, Expand);
 -   setOperationAction(ISD::BSWAP, MVT::i16, Expand);
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -   setOperationAction(ISD::BR_JT, MVT::Other, Custom);
 -diff -ruN --strip-trailing-cr a/llvm/test/Assembler/auto_upgrade_nvvm_intrinsics.ll b/llvm/test/Assembler/auto_upgrade_nvvm_intrinsics.ll
 ---- a/llvm/test/Assembler/auto_upgrade_nvvm_intrinsics.ll
@@ -2464,11 +2217,7 @@ index de92cb4..26a6e36 100644
 -@@ -31,19 +31,6 @@
 - declare i64 @llvm.nvvm.bitcast.d2ll(double)
 - declare double @llvm.nvvm.bitcast.ll2d(i64)
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch2/include/toy/Lexer.h b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch2/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 --declare i32 @llvm.nvvm.rotate.b32(i32, i32)
 --declare i64 @llvm.nvvm.rotate.right.b64(i64, i32)
 --declare i64 @llvm.nvvm.rotate.b64(i64, i32)
@@ -2487,8 +2236,7 @@ index de92cb4..26a6e36 100644
 - ; CHECK: call i32 @llvm.bitreverse.i32(i32 %a)
 -@@ -152,42 +139,4 @@
 -   %r4 = call double @llvm.nvvm.bitcast.ll2d(i64 %b)
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -   ret void
 --}
 --
@@ -4430,10 +4178,7 @@ index de92cb4..26a6e36 100644
 ---- a/llvm/test/CodeGen/AMDGPU/GlobalISel/legalize-freeze.mir
 -+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/legalize-freeze.mir
 -@@ -171,8 +171,12 @@
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -     ; CHECK-LABEL: name: test_freeze_s448
 -     ; CHECK: [[COPY:%[0-9]+]]:_(s512) = COPY $vgpr0_vgpr1_vgpr2_vgpr3_vgpr4_vgpr5_vgpr6_vgpr7_vgpr8_vgpr9_vgpr10_vgpr11_vgpr12_vgpr13_vgpr14_vgpr15
 --    ; CHECK-NEXT: [[FREEZE:%[0-9]+]]:_(s512) = G_FREEZE [[COPY]]
@@ -4449,11 +4194,7 @@ index de92cb4..26a6e36 100644
 -     %2:_(s448) = G_FREEZE %1
 -@@ -395,12 +399,14 @@
 -   bb.0:
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch3/include/toy/Lexer.h b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch3/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -     ; CHECK-LABEL: name: test_freeze_v33s32
 --    ; CHECK: [[DEF:%[0-9]+]]:_(<32 x s32>) = G_IMPLICIT_DEF
 -+    ; CHECK: [[DEF:%[0-9]+]]:_(<16 x s32>) = G_IMPLICIT_DEF
@@ -4473,8 +4214,7 @@ index de92cb4..26a6e36 100644
 -     %1:_(<33 x s32>) = G_FREEZE %0
 -@@ -413,10 +419,12 @@
 -   bb.0:
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -     ; CHECK-LABEL: name: test_freeze_v64s32
 --    ; CHECK: [[DEF:%[0-9]+]]:_(<32 x s32>) = G_IMPLICIT_DEF
 --    ; CHECK-NEXT: [[FREEZE:%[0-9]+]]:_(<32 x s32>) = G_FREEZE [[DEF]]
@@ -4494,10 +4234,7 @@ index de92cb4..26a6e36 100644
 -+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/legalize-implicit-def.mir
 -@@ -135,9 +135,8 @@
 -   bb.0:
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -     ; CHECK-LABEL: name: test_implicit_def_s448
 --    ; CHECK: [[DEF:%[0-9]+]]:_(s512) = G_IMPLICIT_DEF
 --    ; CHECK-NEXT: [[TRUNC:%[0-9]+]]:_(s448) = G_TRUNC [[DEF]](s512)
@@ -4509,11 +4246,7 @@ index de92cb4..26a6e36 100644
 -     %1:_(s32) = G_EXTRACT %0, 0
 -@@ -297,6 +296,18 @@
 - ...
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch4/include/toy/Lexer.h b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch4/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 - ---
 -+name: test_implicit_def_v17s32
 -+body: |
@@ -4544,8 +4277,7 @@ index de92cb4..26a6e36 100644
 -     ; CHECK-NEXT: G_STORE [[DEF1]](s32), [[COPY]](p1) :: (volatile store (s32), addrspace 1)
 -@@ -337,9 +348,10 @@
 -   bb.0:
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -     ; CHECK-LABEL: name: test_implicit_def_v64s32
 --    ; CHECK: [[DEF:%[0-9]+]]:_(<32 x s32>) = G_IMPLICIT_DEF
 --    ; CHECK-NEXT: [[CONCAT_VECTORS:%[0-9]+]]:_(<64 x s32>) = G_CONCAT_VECTORS [[DEF]](<32 x s32>), [[DEF]](<32 x s32>)
@@ -4774,10 +4506,7 @@ index de92cb4..26a6e36 100644
 -@@ -42,6 +42,8 @@
 -     ret void
 -   }
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -+  define void @non_power_of_2() { ret void }
 -+
 -   define amdgpu_kernel void @load_constant_v4i16_from_8_align8(ptr addrspace(4) %ptr0) {
@@ -4785,11 +4514,7 @@ index de92cb4..26a6e36 100644
 -   }
 -@@ -185,6 +187,23 @@
 - ...
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch5/include/toy/Lexer.h b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch5/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 - ---
 -+name: non_power_of_2
 -+legalized: true
@@ -4810,8 +4535,7 @@ index de92cb4..26a6e36 100644
 -+---
 - name: load_constant_v4i16_from_8_align8
 - legalized: true
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 ---- a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 -+++ b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
@@ -4844,17 +4568,10 @@ index de92cb4..26a6e36 100644
 --; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
 - ; RUN: llc < %s -march=nvptx64 | FileCheck %s
 - ; RUN: %if ptxas %{ llc < %s -march=nvptx64 | %ptxas-verify %}
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 - declare i64 @llvm.nvvm.rotate.b64(i64, i32)
 - declare i64 @llvm.nvvm.rotate.right.b64(i64, i32)
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch6/include/toy/Lexer.h b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch6/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -+; CHECK: rotate64
 - define i64 @rotate64(i64 %a, i32 %b) {
 --; CHECK-LABEL: rotate64(
@@ -4875,8 +4592,7 @@ index de92cb4..26a6e36 100644
 -   %val = tail call i64 @llvm.nvvm.rotate.b64(i64 %a, i32 3)
 -   ret i64 %val
 - }
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -+; CHECK: rotateright64
 - define i64 @rotateright64(i64 %a, i32 %b) {
 --; CHECK-LABEL: rotateright64(
@@ -4903,10 +4619,7 @@ index de92cb4..26a6e36 100644
 -@@ -9,29 +9,26 @@
 - declare i64 @llvm.nvvm.rotate.b64(i64, i32)
 - declare i64 @llvm.nvvm.rotate.right.b64(i64, i32)
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 --declare i64 @llvm.fshl.i64(i64, i64, i64)
 --declare i64 @llvm.fshr.i64(i64, i64, i64)
 --declare i32 @llvm.fshl.i32(i32, i32, i32)
@@ -5101,17 +4814,7 @@ index de92cb4..26a6e36 100644
 -@@ -158,40 +177,51 @@
 -   ret i32 %t2
 - }
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch7/include/toy/Lexer.h b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch7/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -+declare i64 @llvm.fshl.i64(i64, i64, i64)
 -+declare i64 @llvm.fshr.i64(i64, i64, i64)
 -+
@@ -5540,7 +5243,7 @@ index de92cb4..26a6e36 100644
 - ; CHECK-NEXT:.b8 6                                   // DW_AT_call_line
 - ; CHECK-NEXT:.b8 37                                  // DW_AT_call_column
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index af35fe7..e47ffae 100644
+index af35fe7..dea900a 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -5549,8 +5252,8 @@ index af35fe7..e47ffae 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "9830156f623c56062bf6df1b4c4b4bd8ab5bd57c"
 -    LLVM_SHA256 = "85bb9a61cfdaf0d3386890dc7b4bbaa17eecf4b70b60c314307f2ca3919b9035"
-+    LLVM_COMMIT = "ac2a2816e3fe934998e5f950c9426fca0796929d"
-+    LLVM_SHA256 = "bfcec3c9a582ab71c1e4a212e5a7cfe2c9a8164331a0b728da5c8a99d81c46de"
++    LLVM_COMMIT = "a5cd5d351ddb164d7bb5e6c5e20b2b6519d793f1"
++    LLVM_SHA256 = "7ce17d5ad20a891218f05286b4cec99995d0b9469392f68b7d18bb5399db9164"
  
      tf_http_archive(
          name = name,
