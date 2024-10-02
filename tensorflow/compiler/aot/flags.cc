@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/flags.h"
 
+#include "tensorflow/core/util/command_line_flags.h"
+
 namespace tensorflow {
 namespace tfcompile {
 
