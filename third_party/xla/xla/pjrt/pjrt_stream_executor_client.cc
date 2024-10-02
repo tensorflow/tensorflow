@@ -2465,13 +2465,15 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
       client_->client()->backend().transfer_manager();
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  std::optional<TupleHandle> tuple_handle;
+  absl::StatusOr<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
-    TF_ASSIGN_OR_RETURN(
-        tuple_handle,
+    tuple_handle =
         MakeTupleHelper(client_, device_state, options.strict_shape_checking,
                         executable_parameter_shapes[0], argument_handles,
-                        device_buffers, device_ordinal));
+                        device_buffers, device_ordinal);
+    if (!tuple_handle.ok()) {
+      return tuple_handle.status();
+    }
     events.insert(tuple_handle->event.get());
     execution_inputs.emplace_back(std::move(tuple_handle->execution_input));
   } else {
