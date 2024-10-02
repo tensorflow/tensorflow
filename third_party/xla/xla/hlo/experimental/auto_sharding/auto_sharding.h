@@ -207,6 +207,7 @@ bool HasReduceScatterOpportunity(const HloInstruction* inst,
                                  const ConstInstructionSet& modified);
 
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
+                                   const InputShardings& input_shardings,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
 

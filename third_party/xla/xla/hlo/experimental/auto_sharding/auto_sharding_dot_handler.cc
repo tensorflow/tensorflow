@@ -335,12 +335,12 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
   }
 
   strategy_group_->AddStrategy(
-      ShardingStrategy({name, output_spec, compute_cost, communication_cost,
+      ShardingStrategy({output_spec, compute_cost, communication_cost,
                         static_cast<double>(ByteSizeOfShapeWithSharding(
                             ins_->shape(), output_spec)),
                         communication_resharding_costs,
                         memory_resharding_costs}),
-      {input_specs.begin(), input_specs.end()});
+      {name, {input_specs.begin(), input_specs.end()}});
 }
 
 // Given lhs and rhs dim maps, infers a sharding for the output by relying
@@ -467,7 +467,7 @@ void HandlerBase::SortStrategies() {
       [](const std::pair<ShardingStrategy, InputShardings>& s1,
          const std::pair<ShardingStrategy, InputShardings>& s2) {
         if (s1.first.memory_cost == s2.first.memory_cost) {
-          return s1.first.name < s2.first.name;
+          return s1.second.name < s2.second.name;
         } else {
           return s1.first.memory_cost < s2.first.memory_cost;
         }

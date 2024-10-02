@@ -851,8 +851,8 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
       continue;
     }
     std::string key = strategy.output_sharding.ToString();
-    if (!input_shardings.empty()) {
-      for (const auto& sharding : input_shardings) {
+    if (!input_shardings.shardings.empty()) {
+      for (const auto& sharding : input_shardings.shardings) {
         key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
       }
     }
