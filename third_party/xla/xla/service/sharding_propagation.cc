@@ -480,8 +480,7 @@ bool InferGatherParallelShardingFromOperands(
     changed |= MaybeImproveInstructionSharding(
         hlo_sharding_util::
             InferGatherScatterParallelShardingFromOperandSharding(
-                instruction->operand(0)->sharding(),
-                instruction->operand(0)->shape(), instruction->shape(),
+                instruction->operand(0)->sharding(), instruction->shape(),
                 absl::MakeConstSpan(parallel_dims.operand_parallel_dims),
                 absl::MakeConstSpan(output_parallel_dims)),
         instruction, may_combine_partial_sharding);
@@ -491,8 +490,7 @@ bool InferGatherParallelShardingFromOperands(
     changed |= MaybeImproveInstructionSharding(
         hlo_sharding_util::
             InferGatherScatterParallelShardingFromOperandSharding(
-                instruction->operand(1)->sharding(),
-                instruction->operand(1)->shape(), instruction->shape(),
+                instruction->operand(1)->sharding(), instruction->shape(),
                 absl::MakeConstSpan(parallel_dims.indices_parallel_dims),
                 absl::MakeConstSpan(output_parallel_dims)),
         instruction, may_combine_partial_sharding);
@@ -524,8 +522,7 @@ bool InferScatterParallelShardingFromOperands(
       changed |= MaybeImproveInstructionSubSharding(
           hlo_sharding_util::
               InferGatherScatterParallelShardingFromOperandSharding(
-                  scatter_operands[i]->sharding(), scatter_operands[i]->shape(),
-                  shape,
+                  scatter_operands[i]->sharding(), shape,
                   absl::MakeConstSpan(parallel_dims.operand_parallel_dims),
                   absl::MakeConstSpan(parallel_dims.operand_parallel_dims)),
           instruction, {i}, may_combine_partial_sharding);
@@ -535,7 +532,7 @@ bool InferScatterParallelShardingFromOperands(
   if (hlo_sharding_util::IsSpatiallyPartitioned(scatter_indices)) {
     auto parallel_sharding_from_indices = hlo_sharding_util::
         InferGatherScatterParallelShardingFromOperandSharding(
-            scatter_indices->sharding(), scatter_indices->shape(), shape,
+            scatter_indices->sharding(), shape,
             absl::MakeConstSpan(parallel_dims.indices_parallel_dims),
             absl::MakeConstSpan(parallel_dims.operand_parallel_dims));
     for (int64_t i = 0; i != operand_count; ++i) {
@@ -550,8 +547,8 @@ bool InferScatterParallelShardingFromOperands(
       changed |= MaybeImproveInstructionSubSharding(
           hlo_sharding_util::
               InferGatherScatterParallelShardingFromOperandSharding(
-                  scatter_updates[i]->sharding(), scatter_updates[i]->shape(),
-                  shape, absl::MakeConstSpan(update_parallel_dims),
+                  scatter_updates[i]->sharding(), shape,
+                  absl::MakeConstSpan(update_parallel_dims),
                   absl::MakeConstSpan(parallel_dims.operand_parallel_dims)),
           instruction, {i}, may_combine_partial_sharding);
     }

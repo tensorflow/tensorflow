@@ -2499,8 +2499,7 @@ GetGatherScatterIndexPassthroughOutputOrUpdateDims(
 }
 
 HloSharding InferGatherScatterParallelShardingFromOperandSharding(
-    const HloSharding& operand_sharding, const Shape& operand_shape,
-    const Shape& shape,
+    const HloSharding& operand_sharding, const Shape& shape,
     absl::Span<const int64_t> output_aligned_operand_parallel_dims,
     absl::Span<const int64_t> output_parallel_dims) {
   return PropagateShardingAlongDimsAndReplicateOthers(
