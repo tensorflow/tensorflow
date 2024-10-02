@@ -1,89 +1,130 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclID.h b/clang/include/clang/AST/DeclID.h
---- a/clang/include/clang/AST/DeclID.h
-+++ b/clang/include/clang/AST/DeclID.h
-@@ -189,6 +189,7 @@
-   // Every Decl ID is a local decl ID to the module being writing in ASTWriter.
-   friend class ASTWriter;
-   friend class GlobalDeclID;
-+  friend struct llvm::DenseMapInfo<clang::LocalDeclID>;
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Passes/StandardInstrumentations.h b/llvm/include/llvm/Passes/StandardInstrumentations.h
+--- a/llvm/include/llvm/Passes/StandardInstrumentations.h
++++ b/llvm/include/llvm/Passes/StandardInstrumentations.h
+@@ -171,7 +171,7 @@
+                     FunctionAnalysisManager::Invalidator &);
+   };
  
- public:
-   LocalDeclID() : Base() {}
-@@ -266,6 +267,27 @@
-     return L == R;
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   SmallVector<StringRef, 8> PassStack;
+ #endif
+ 
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/GenericDomTreeConstruction.h b/llvm/include/llvm/Support/GenericDomTreeConstruction.h
+--- a/llvm/include/llvm/Support/GenericDomTreeConstruction.h
++++ b/llvm/include/llvm/Support/GenericDomTreeConstruction.h
+@@ -640,7 +640,7 @@
+         Bucket;
+     SmallDenseSet<TreeNodePtr, 8> Visited;
+     SmallVector<TreeNodePtr, 8> Affected;
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     SmallVector<TreeNodePtr, 8> VisitedUnaffected;
+ #endif
+   };
+@@ -915,7 +915,7 @@
+     LLVM_DEBUG(dbgs() << "Deleting edge " << BlockNamePrinter(From) << " -> "
+                       << BlockNamePrinter(To) << "\n");
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     // Ensure that the edge was in fact deleted from the CFG before informing
+     // the DomTree about it.
+     // The check is O(N), so run it only in debug configuration.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h b/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
+--- a/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
++++ b/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
+@@ -256,7 +256,7 @@
    }
- };
-+
-+template <> struct DenseMapInfo<clang::LocalDeclID> {
-+  using LocalDeclID = clang::LocalDeclID;
-+  using DeclID = LocalDeclID::DeclID;
-+
-+  static LocalDeclID getEmptyKey() {
-+    return LocalDeclID(DenseMapInfo<DeclID>::getEmptyKey());
-+  }
-+
-+  static LocalDeclID getTombstoneKey() {
-+    return LocalDeclID(DenseMapInfo<DeclID>::getTombstoneKey());
-+  }
-+
-+  static unsigned getHashValue(const LocalDeclID &Key) {
-+    return DenseMapInfo<DeclID>::getHashValue(Key.getRawValue());
-+  }
-+
-+  static bool isEqual(const LocalDeclID &L, const LocalDeclID &R) {
-+    return L == R;
-+  }
-+};
  
- } // namespace llvm
+   void setParentLoop(Loop *L) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     ParentL = L;
+ #endif
+   }
+@@ -347,7 +347,7 @@
+   const bool LoopNestMode;
+   bool LoopNestChanged;
  
-diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTWriter.h b/clang/include/clang/Serialization/ASTWriter.h
---- a/clang/include/clang/Serialization/ASTWriter.h
-+++ b/clang/include/clang/Serialization/ASTWriter.h
-@@ -233,13 +233,13 @@
-   /// instead of comparing the result of `getDeclID()` or `GetDeclRef()`.
-   llvm::SmallPtrSet<const Decl *, 32> PredefinedDecls;
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   // In debug builds we also track the parent loop to implement asserts even in
+   // the face of loop deletion.
+   Loop *ParentL;
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h b/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
+--- a/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
++++ b/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
+@@ -167,7 +167,7 @@
+   /// consistent when instructions are moved.
+   SmallVector<SCEVInsertPointGuard *, 8> InsertPointGuards;
  
--  /// Mapping from FunctionDecl to the list of lambda IDs inside the function.
-+  /// Mapping from FunctionDecl ID to the list of lambda IDs inside the
-+  /// function.
-   ///
-   /// These lambdas have to be loaded right after the function they belong to.
-   /// In order to have canonical declaration for lambda class from the same
-   /// module as enclosing function during deserialization.
--  llvm::DenseMap<const Decl *, SmallVector<LocalDeclID, 4>>
--      FunctionToLambdasMap;
-+  llvm::DenseMap<LocalDeclID, SmallVector<LocalDeclID, 4>> FunctionToLambdasMap;
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   const char *DebugType;
+ #endif
  
-   /// Offset of each declaration in the bitstream, indexed by
-   /// the declaration's ID.
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
---- a/clang/lib/Serialization/ASTWriter.cpp
-+++ b/clang/lib/Serialization/ASTWriter.cpp
-@@ -5713,8 +5713,7 @@
-     // efficent becuase it allows lazy deserialization.
-     RecordData FunctionToLambdasMapRecord;
-     for (const auto &Pair : FunctionToLambdasMap) {
--      FunctionToLambdasMapRecord.push_back(
--          GetDeclRef(Pair.first).getRawValue());
-+      FunctionToLambdasMapRecord.push_back(Pair.first.getRawValue());
-       FunctionToLambdasMapRecord.push_back(Pair.second.size());
-       for (const auto &Lambda : Pair.second)
-         FunctionToLambdasMapRecord.push_back(Lambda.getRawValue());
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTWriterDecl.cpp b/clang/lib/Serialization/ASTWriterDecl.cpp
---- a/clang/lib/Serialization/ASTWriterDecl.cpp
-+++ b/clang/lib/Serialization/ASTWriterDecl.cpp
-@@ -1524,7 +1524,8 @@
-     // For lambdas inside canonical FunctionDecl remember the mapping.
-     if (auto FD = llvm::dyn_cast_or_null<FunctionDecl>(D->getDeclContext());
-         FD && FD->isCanonicalDecl()) {
--      Writer.FunctionToLambdasMap[FD].push_back(Writer.GetDeclRef(D));
-+      Writer.FunctionToLambdasMap[Writer.GetDeclRef(FD)].push_back(
-+          Writer.GetDeclRef(D));
-     }
-   } else {
-     Record.push_back(CXXRecNotTemplate);
+@@ -183,7 +183,7 @@
+         Builder(se.getContext(), InstSimplifyFolder(DL),
+                 IRBuilderCallbackInserter(
+                     [this](Instruction *I) { rememberInstruction(I); })) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     DebugType = "";
+ #endif
+   }
+@@ -193,7 +193,7 @@
+     assert(InsertPointGuards.empty());
+   }
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   void setDebugType(const char *s) { DebugType = s; }
+ #endif
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Passes/StandardInstrumentations.cpp b/llvm/lib/Passes/StandardInstrumentations.cpp
+--- a/llvm/lib/Passes/StandardInstrumentations.cpp
++++ b/llvm/lib/Passes/StandardInstrumentations.cpp
+@@ -1357,7 +1357,7 @@
+   bool Registered = false;
+   PIC.registerBeforeNonSkippedPassCallback([this, &MAM, Registered](
+                                                StringRef P, Any IR) mutable {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     assert(&PassStack.emplace_back(P));
+ #endif
+     (void)this;
+@@ -1386,7 +1386,7 @@
+ 
+   PIC.registerAfterPassInvalidatedCallback(
+       [this](StringRef P, const PreservedAnalyses &PassPA) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+         assert(PassStack.pop_back_val() == P &&
+                "Before and After callbacks must correspond");
+ #endif
+@@ -1395,7 +1395,7 @@
+ 
+   PIC.registerAfterPassCallback([this, &MAM](StringRef P, Any IR,
+                                              const PreservedAnalyses &PassPA) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     assert(PassStack.pop_back_val() == P &&
+            "Before and After callbacks must correspond");
+ #endif
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp b/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
+--- a/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
++++ b/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
+@@ -28,7 +28,7 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include "llvm/Transforms/Utils/LoopUtils.h"
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+ #define SCEV_DEBUG_WITH_TYPE(TYPE, X) DEBUG_WITH_TYPE(TYPE, X)
+ #else
+ #define SCEV_DEBUG_WITH_TYPE(TYPE, X)
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
@@ -131,7 +172,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp 
        NumParts = 1;
      unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
      const auto *It =
-@@ -13630,7 +13638,9 @@
+@@ -13633,7 +13641,9 @@
    auto *VecTy = getWidenedType(ScalarTy, GatheredScalars.size());
    unsigned NumParts = TTI->getNumberOfParts(VecTy);
    if (NumParts == 0 || NumParts >= GatheredScalars.size() ||
@@ -406,3 +447,217 @@ diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch7/include/toy/Lexer.h b/mlir
  #include <memory>
  #include <string>
  
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h b/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
+--- a/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
++++ b/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
+@@ -75,7 +75,7 @@
+   template <typename T>
+   explicit Identifier(T value)
+       : value(llvm::PointerLikeTypeTraits<T>::getAsVoidPointer(value)) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     idType = llvm::getTypeName<T>();
+ #endif
+   }
+@@ -84,7 +84,7 @@
+   /// the type of the identifier used to create it.
+   template <typename T>
+   T getValue() const {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     assert(llvm::getTypeName<T>() == idType &&
+            "Identifier was initialized with a different type than the one used "
+            "to retrieve it.");
+@@ -108,7 +108,7 @@
+   /// The value of the identifier.
+   void *value = nullptr;
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   /// TypeID of the identifiers in space. This should be used in asserts only.
+   llvm::StringRef idType;
+ #endif
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h b/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
+--- a/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
++++ b/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
+@@ -196,7 +196,7 @@
+   /// should be emitted when the value is used.
+   using InvalidatedHandleMap = DenseMap<Value, std::function<void(Location)>>;
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   /// Debug only: A timestamp is associated with each transform IR value, so
+   /// that invalid iterator usage can be detected more reliably.
+   using TransformIRTimestampMapping = DenseMap<Value, int64_t>;
+@@ -211,7 +211,7 @@
+     ValueMapping values;
+     ValueMapping reverseValues;
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     TransformIRTimestampMapping timestamps;
+     void incrementTimestamp(Value value) { ++timestamps[value]; }
+ #endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
+@@ -248,7 +248,7 @@
+   auto getPayloadOps(Value value) const {
+     ArrayRef<Operation *> view = getPayloadOpsView(value);
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     // Memorize the current timestamp and make sure that it has not changed
+     // when incrementing or dereferencing the iterator returned by this
+     // function. The timestamp is incremented when the "direct" mapping is
+@@ -259,7 +259,7 @@
+     // When ops are replaced/erased, they are replaced with nullptr (until
+     // the data structure is compacted). Do not enumerate these ops.
+     return llvm::make_filter_range(view, [=](Operation *op) {
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+       [[maybe_unused]] bool sameTimestamp =
+           currentTimestamp == this->getMapping(value).timestamps.lookup(value);
+       assert(sameTimestamp && "iterator was invalidated during iteration");
+@@ -277,7 +277,7 @@
+   auto getPayloadValues(Value handleValue) const {
+     ArrayRef<Value> view = getPayloadValuesView(handleValue);
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     // Memorize the current timestamp and make sure that it has not changed
+     // when incrementing or dereferencing the iterator returned by this
+     // function. The timestamp is incremented when the "values" mapping is
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp b/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
+--- a/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
++++ b/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
+@@ -330,7 +330,7 @@
+   for (Operation *op : mappings.direct[opHandle])
+     dropMappingEntry(mappings.reverse, op, opHandle);
+   mappings.direct.erase(opHandle);
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   // Payload IR is removed from the mapping. This invalidates the respective
+   // iterators.
+   mappings.incrementTimestamp(opHandle);
+@@ -342,7 +342,7 @@
+     for (Value resultHandle : resultHandles) {
+       Mappings &localMappings = getMapping(resultHandle);
+       dropMappingEntry(localMappings.values, resultHandle, opResult);
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+       // Payload IR is removed from the mapping. This invalidates the respective
+       // iterators.
+       mappings.incrementTimestamp(resultHandle);
+@@ -358,7 +358,7 @@
+   for (Value payloadValue : mappings.reverseValues[valueHandle])
+     dropMappingEntry(mappings.reverseValues, payloadValue, valueHandle);
+   mappings.values.erase(valueHandle);
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+   // Payload IR is removed from the mapping. This invalidates the respective
+   // iterators.
+   mappings.incrementTimestamp(valueHandle);
+@@ -372,7 +372,7 @@
+       dropMappingEntry(localMappings.direct, opHandle, payloadOp);
+       dropMappingEntry(localMappings.reverse, payloadOp, opHandle);
+ 
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+       // Payload IR is removed from the mapping. This invalidates the respective
+       // iterators.
+       localMappings.incrementTimestamp(opHandle);
+@@ -452,7 +452,7 @@
+     // between the handles and the IR objects
+     if (!replacement) {
+       dropMappingEntry(mappings.values, handle, value);
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+       // Payload IR is removed from the mapping. This invalidates the respective
+       // iterators.
+       mappings.incrementTimestamp(handle);
+@@ -804,7 +804,7 @@
+ void transform::TransformState::compactOpHandles() {
+   for (Value handle : opHandlesToCompact) {
+     Mappings &mappings = getMapping(handle, /*allowOutOfScope=*/true);
+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
+     if (llvm::find(mappings.direct[handle], nullptr) !=
+         mappings.direct[handle].end())
+       // Payload IR is removed from the mapping. This invalidates the respective
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+@@ -172,7 +172,6 @@
+     ],
+ )
+ 
+-
+ gentbl(
+     name = "basic_arm_sve_typeflags_gen",
+     tbl_outs = [(
+@@ -996,12 +995,12 @@
+     ],
+     deps = [
+         ":ast_attr_gen",
++        ":ast_bytecode_opcodes_gen",
+         ":ast_comment_command_info_gen",
+         ":ast_comment_html_named_character_references_gen",
+         ":ast_comment_html_tags_gen",
+         ":ast_comment_html_tags_properties_gen",
+         ":ast_comment_nodes_gen",
+-        ":ast_bytecode_opcodes_gen",
+         ":ast_decl_nodes_gen",
+         ":ast_properties_base_gen",
+         ":ast_stmt_data_collectors_gen",
+@@ -1278,6 +1277,9 @@
+     ]),
+     hdrs = glob(["include/clang/Testing/*.h"]),
+     includes = ["include"],
++    textual_hdrs = [
++        "include/clang/Testing/TestLanguage.def",
++    ],
+     deps = [
+         ":basic",
+         ":frontend",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
+@@ -67,6 +67,7 @@
+         "//clang:ast",
+         "//clang:ast_matchers",
+         "//clang:frontend",
++        "//clang:testing",
+         "//clang:tooling",
+         "//llvm:Support",
+         "//llvm:TargetParser",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -144,7 +144,7 @@
+     out = "include/llvm/Config/abi-breaking.h",
+     substitutions = {
+         # Define to enable checks that alter the LLVM C++ ABI
+-        "#cmakedefine01 LLVM_ENABLE_ABI_BREAKING_CHECKS": "#define LLVM_ENABLE_ABI_BREAKING_CHECKS 1",
++        "#cmakedefine01 LLVM_ENABLE_ABI_BREAKING_CHECKS": "#define LLVM_ENABLE_ABI_BREAKING_CHECKS 0",
+ 
+         # Define to enable reverse iteration of unordered llvm containers
+         "#cmakedefine01 LLVM_ENABLE_REVERSE_ITERATION": "#define LLVM_ENABLE_REVERSE_ITERATION 0",
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -10663,8 +10663,8 @@
+ td_library(
+     name = "QuantizationOpsTdFiles",
+     srcs = [
+-        "include/mlir/Dialect/Quant/IR/QuantOps.td",
+         "include/mlir/Dialect/Quant/IR/QuantBase.td",
++        "include/mlir/Dialect/Quant/IR/QuantOps.td",
+     ],
+     includes = ["include"],
+     deps = [
+@@ -13164,6 +13164,7 @@
+     includes = ["include"],
+     deps = [
+         ":ArithDialect",
++        ":ArithUtils",
+         ":DialectUtils",
+         ":IR",
+         ":MathDialect",
