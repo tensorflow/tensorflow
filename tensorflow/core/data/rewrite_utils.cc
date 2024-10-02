@@ -14,7 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/rewrite_utils.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
@@ -30,7 +39,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -45,11 +53,9 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -57,11 +63,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
