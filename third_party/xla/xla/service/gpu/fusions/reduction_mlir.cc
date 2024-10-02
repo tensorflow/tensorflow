@@ -417,12 +417,13 @@ IndexingMap MlirReductionFusion::GetThreadIndexingMap(
     absl::Span<int64_t const> symbol_sizes) const {
   auto affine_map = AffineMap::get(1, symbol_sizes.size(), results,
                                    results.front().getContext());
-  return IndexingMap{affine_map,
-                     {DimVar{0, Product(num_threads_) - 1,
+  return IndexingMap{
+      affine_map,
+      {IndexingMap::Variable{0, Product(num_threads_) - 1,
                              ToVariableName(VariableKind::kThreadX)}},
-                     RangeVarsFromTensorSizes(symbol_sizes),
-                     /*rt_vars=*/{},
-                     constraints};
+      RangeVarsFromTensorSizes(symbol_sizes),
+      /*rt_vars=*/{},
+      constraints};
 }
 
 LaunchDimensions MlirReductionFusion::launch_dimensions() const {

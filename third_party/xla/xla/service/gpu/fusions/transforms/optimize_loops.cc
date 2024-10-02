@@ -201,7 +201,8 @@ struct PipelineLoad : mlir::OpRewritePattern<Op> {
     auto plus_one_map = mlir::AffineMap::get(
         1, 0, mlir::getAffineDimExpr(0, this->getContext()) + 1);
     b.setInsertionPoint(next_value);
-    IndexingMap indexing_map(plus_one_map, {DimVar{0, ub.getSExtValue() - 1}},
+    IndexingMap indexing_map(plus_one_map,
+                             {IndexingMap::Variable{0, ub.getSExtValue() - 1}},
                              /*range_vars=*/{}, /*rt_vars=*/{});
     auto induction_plus_one =
         b.create<ApplyIndexingOp>(new_for.getInductionVar(), indexing_map)

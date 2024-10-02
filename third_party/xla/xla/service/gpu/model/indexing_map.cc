@@ -969,53 +969,48 @@ Interval Interval::FloorDiv(int64_t rhs) const {
   return {std::min(a, b), std::max(a, b)};
 }
 
-bool operator==(const DimVar& lhs, const DimVar& rhs) {
+bool operator==(const IndexingMap::Variable& lhs,
+                const IndexingMap::Variable& rhs) {
   return lhs.bounds == rhs.bounds;
 }
 
-bool operator==(const RangeVar& lhs, const RangeVar& rhs) {
-  return lhs.range == rhs.range;
-}
-
-bool operator==(const RTVar& lhs, const RTVar& rhs) {
-  return lhs.feasible_values == rhs.feasible_values;
-}
-
-std::vector<DimVar> DimVarsFromTensorSizes(
+std::vector<IndexingMap::Variable> DimVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
-  std::vector<DimVar> ranges;
+  std::vector<IndexingMap::Variable> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back(DimVar{0, size - 1});
+    ranges.push_back(IndexingMap::Variable{0, size - 1});
   }
   return ranges;
 }
-std::vector<DimVar> DimVarsFromGPUGrid(absl::Span<const int64_t> grid_sizes) {
+std::vector<IndexingMap::Variable> DimVarsFromGPUGrid(
+    absl::Span<const int64_t> grid_sizes) {
   CHECK_EQ(grid_sizes.size(), 6)
       << "Grid must be 6-dimensional (th_x, th_y, th_z, bl_x, bl_y, bl_z)";
   return {
-      DimVar{0, grid_sizes[0] - 1, kVarKindThreadX},
-      DimVar{0, grid_sizes[1] - 1, kVarKindThreadY},
-      DimVar{0, grid_sizes[2] - 1, kVarKindThreadZ},
-      DimVar{0, grid_sizes[3] - 1, kVarKindBlockX},
-      DimVar{0, grid_sizes[4] - 1, kVarKindBlockY},
-      DimVar{0, grid_sizes[5] - 1, kVarKindBlockZ},
+      IndexingMap::Variable{0, grid_sizes[0] - 1, kVarKindThreadX},
+      IndexingMap::Variable{0, grid_sizes[1] - 1, kVarKindThreadY},
+      IndexingMap::Variable{0, grid_sizes[2] - 1, kVarKindThreadZ},
+      IndexingMap::Variable{0, grid_sizes[3] - 1, kVarKindBlockX},
+      IndexingMap::Variable{0, grid_sizes[4] - 1, kVarKindBlockY},
+      IndexingMap::Variable{0, grid_sizes[5] - 1, kVarKindBlockZ},
   };
 }
 
-std::vector<RangeVar> RangeVarsFromTensorSizes(
+std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes) {
-  std::vector<RangeVar> ranges;
+  std::vector<IndexingMap::Variable> ranges;
   ranges.reserve(tensor_sizes.size());
   for (int64_t size : tensor_sizes) {
-    ranges.push_back({RangeVar{0, size - 1}});
+    ranges.push_back({IndexingMap::Variable{0, size - 1}});
   }
   return ranges;
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<DimVar> dimensions,
-    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
     absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
@@ -1031,8 +1026,9 @@ IndexingMap::IndexingMap(
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<DimVar> dimensions,
-    std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
+    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
     const llvm::DenseMap<AffineExpr, Interval>& constraints)
     : affine_map_(affine_map),
       dim_vars_(std::move(dimensions)),
@@ -1079,8 +1075,8 @@ const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
-             ? range_vars_[symbol_id].range
-             : rt_vars_[symbol_id - range_var_count].feasible_values;
+             ? range_vars_[symbol_id].bounds
+             : rt_vars_[symbol_id - range_var_count].bounds;
 }
 
 Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
@@ -1088,18 +1084,18 @@ Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
-             ? range_vars_[symbol_id].range
-             : rt_vars_[symbol_id - range_var_count].feasible_values;
+             ? range_vars_[symbol_id].bounds
+             : rt_vars_[symbol_id - range_var_count].bounds;
 }
 
 std::vector<Interval> IndexingMap::GetSymbolBounds() const {
   std::vector<Interval> bounds;
   bounds.reserve(affine_map_.getNumSymbols());
   for (const auto& range_var : range_vars_) {
-    bounds.push_back(range_var.range);
+    bounds.push_back(range_var.bounds);
   }
   for (const auto& rt_var : rt_vars_) {
-    bounds.push_back(rt_var.feasible_values);
+    bounds.push_back(rt_var.bounds);
   }
   return bounds;
 }
@@ -1555,7 +1551,7 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   SmallVector<AffineExpr, 2> dim_replacements;
   if (num_dims_changed) {
     affine_map_ = mlir::compressDims(affine_map_, unused_dims);
-    std::vector<DimVar> compressed_dim_vars;
+    std::vector<IndexingMap::Variable> compressed_dim_vars;
     dim_replacements = SmallVector<AffineExpr, 2>(
         num_dims_before, getAffineConstantExpr(0, mlir_context));
     int64_t used_dims_count = 0;
@@ -1574,8 +1570,8 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
     affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols);
     symbol_replacements = SmallVector<AffineExpr, 2>(
         num_symbols_before, getAffineConstantExpr(0, mlir_context));
-    std::vector<RangeVar> compressed_range_vars;
-    std::vector<RTVar> compressed_rt_vars;
+    std::vector<IndexingMap::Variable> compressed_range_vars;
+    std::vector<IndexingMap::Variable> compressed_rt_vars;
     MLIRContext* mlir_context = GetMLIRContext();
     int64_t used_symbols_count = 0;
     auto range_vars_count = range_vars_.size();
@@ -1638,7 +1634,7 @@ void IndexingMap::ResetToKnownEmpty() {
     dim_var.bounds = Interval{0, -1};
   }
   for (auto& range_var : range_vars_) {
-    range_var.range = Interval{0, -1};
+    range_var.bounds = Interval{0, -1};
   }
   constraints_.clear();
   is_known_empty_ = true;
@@ -1647,15 +1643,15 @@ void IndexingMap::ResetToKnownEmpty() {
 bool IndexingMap::VerifyVariableIntervals() {
   // TODO: Check if the variable names are unique.
   return llvm::all_of(dim_vars_,
-                      [](const DimVar& dim_var) {
+                      [](const IndexingMap::Variable& dim_var) {
                         return dim_var.bounds.IsFeasible();
                       }) &&
          llvm::all_of(range_vars_,
-                      [](const RangeVar& range_var) {
-                        return range_var.range.IsFeasible();
+                      [](const IndexingMap::Variable& range_var) {
+                        return range_var.bounds.IsFeasible();
                       }) &&
-         llvm::all_of(rt_vars_, [](const RTVar& rt_var) {
-           return rt_var.feasible_values.IsFeasible();
+         llvm::all_of(rt_vars_, [](const IndexingMap::Variable& rt_var) {
+           return rt_var.bounds.IsFeasible();
          });
 }
 
@@ -1768,17 +1764,19 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as
   // [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)].
-  std::vector<RangeVar> combined_range_vars;
+  std::vector<IndexingMap::Variable> combined_range_vars;
   combined_range_vars.reserve(second.GetRangeVarsCount() +
                               first.GetRangeVarsCount());
-  for (const RangeVar& range_var : llvm::concat<const RangeVar>(
-           second.GetRangeVars(), first.GetRangeVars())) {
+  for (const IndexingMap::Variable& range_var :
+       llvm::concat<const IndexingMap::Variable>(second.GetRangeVars(),
+                                                 first.GetRangeVars())) {
     combined_range_vars.push_back(range_var);
   }
-  std::vector<RTVar> combined_rt_vars;
+  std::vector<IndexingMap::Variable> combined_rt_vars;
   combined_rt_vars.reserve(second.GetRTVarsCount() + first.GetRTVarsCount());
-  for (const RTVar& rt_var :
-       llvm::concat<const RTVar>(second.GetRTVars(), first.GetRTVars())) {
+  for (const IndexingMap::Variable& rt_var :
+       llvm::concat<const IndexingMap::Variable>(second.GetRTVars(),
+                                                 first.GetRTVars())) {
     combined_rt_vars.push_back(rt_var);
   }
   // The symbols in the composed map have to be permuted to keep the invariant
@@ -1876,7 +1874,7 @@ bool IndexingMap::RescaleSymbols() {
         symbol_expr, constant_expr * symbol_expr + shift_value,
         affine_map_.getNumDims(), affine_map_.getNumSymbols());
 
-    auto& symbol_range = range_vars_[symbol_expr.getPosition()].range;
+    auto& symbol_range = range_vars_[symbol_expr.getPosition()].bounds;
     symbol_range.lower = (symbol_range.lower - shift_value) / scaling_factor;
     symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
   }
@@ -1914,7 +1912,7 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   MLIRContext* mlir_context = GetMLIRContext();
   int64_t num_vars = num_dims + num_symbols;
 
-  std::vector<DimVar> new_dim_vars;
+  std::vector<IndexingMap::Variable> new_dim_vars;
   new_dim_vars.reserve(num_vars);
 
   // // Populate the existing dims.
@@ -1923,13 +1921,10 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   // Capture the existing symbols as dims.
   SmallVector<AffineExpr> syms_replacements;
   int64_t symbol_id = num_dims;
-  for (const auto& range_var : range_vars_) {
+  for (const IndexingMap::Variable& var :
+       llvm::concat<const IndexingMap::Variable>(range_vars_, rt_vars_)) {
     syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
-    new_dim_vars.push_back(DimVar{range_var.range});
-  }
-  for (const auto& rt_var : rt_vars_) {
-    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
-    new_dim_vars.push_back(DimVar{rt_var.feasible_values});
+    new_dim_vars.push_back(IndexingMap::Variable{var.bounds});
   }
 
   // Update constraints.

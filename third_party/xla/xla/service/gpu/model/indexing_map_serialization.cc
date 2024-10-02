@@ -618,7 +618,7 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     return std::nullopt;
   }
   // Parse dimension variables.
-  std::vector<DimVar> dim_vars;
+  std::vector<IndexingMap::Variable> dim_vars;
   for (const auto& [dim_id, dim_name] : llvm::enumerate(dim_var_names)) {
     std::string var_name;
     Interval interval;
@@ -637,10 +637,10 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     if (var_name == GetDimVarName(dim_id)) {
       var_name = "";
     }
-    dim_vars.push_back(DimVar{interval, var_name});
+    dim_vars.push_back(IndexingMap::Variable{interval, var_name});
   }
   // Parse range variables.
-  std::vector<RangeVar> range_vars;
+  std::vector<IndexingMap::Variable> range_vars;
   for (const auto& [index, range_name] : llvm::enumerate(symbol_var_names)) {
     std::string var_name;
     Interval interval;
@@ -659,7 +659,7 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     if (var_name == GetRangeVarName(index)) {
       var_name = "";
     }
-    range_vars.push_back(RangeVar{interval, var_name});
+    range_vars.push_back(IndexingMap::Variable{interval, var_name});
   }
   // Parse constraints.
   SmallVector<Interval> constraint_bounds;
@@ -799,13 +799,13 @@ std::string ToString(const IndexingMap& indexing_map,
     }
   }
   for (const auto& [index, range_var] : llvm::enumerate(range_vars)) {
-    ss << symbol_names[index] << " in " << range_var.range;
+    ss << symbol_names[index] << " in " << range_var.bounds;
     if (--remaining_vars_to_print > 0) {
       ss << ", ";
     }
   }
   for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-    ss << rt_names[index] << " in " << rt_var.feasible_values;
+    ss << rt_names[index] << " in " << rt_var.bounds;
     if (--remaining_vars_to_print > 0) {
       ss << ", ";
     }

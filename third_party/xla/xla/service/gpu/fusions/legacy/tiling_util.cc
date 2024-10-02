@@ -334,14 +334,8 @@ IndexingMap GetIndexingMapForTiling(AffineMap block_offsets,
        llvm::zip(block_offsets.getResults(), thread_offsets.getResults())) {
     offsets.push_back(block + thread);
   }
-  std::vector<DimVar> dimension_ranges{
-      DimVar{0, threads_per_block - 1, ToVariableName(VariableKind::kThreadX)},
-      DimVar{0, 0, ToVariableName(VariableKind::kThreadY)},
-      DimVar{0, 0, ToVariableName(VariableKind::kThreadZ)},
-      DimVar{0, num_blocks - 1, ToVariableName(VariableKind::kBlockX)},
-      DimVar{0, 0, ToVariableName(VariableKind::kBlockY)},
-      DimVar{0, 0, ToVariableName(VariableKind::kBlockZ)},
-  };
+  std::vector<IndexingMap::Variable> dimension_ranges =
+      DimVarsFromGPUGrid({threads_per_block, 1, 1, num_blocks, 1, 1});
   auto affine_map = mlir::AffineMap::get(block_offsets.getNumDims(),
                                          block_offsets.getNumSymbols(), offsets,
                                          mlir_context);

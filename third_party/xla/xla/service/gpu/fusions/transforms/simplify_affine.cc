@@ -223,15 +223,16 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
   LogicalResult matchAndRewrite(mlir::affine::AffineApplyOp op,
                                 PatternRewriter& rewriter) const override {
     AffineMap affine_map = op.getAffineMap();
-    std::vector<DimVar> dim_ranges(affine_map.getNumDims());
-    std::vector<RangeVar> symbol_ranges(affine_map.getNumSymbols());
+    std::vector<IndexingMap::Variable> dim_ranges(affine_map.getNumDims());
+    std::vector<IndexingMap::Variable> symbol_ranges(
+        affine_map.getNumSymbols());
 
     for (int i = 0; i < affine_map.getNumInputs(); ++i) {
       if (auto range = GetRange(op->getOperand(i))) {
         if (i >= dim_ranges.size()) {
-          symbol_ranges[i - dim_ranges.size()] = RangeVar{*range};
+          symbol_ranges[i - dim_ranges.size()] = IndexingMap::Variable{*range};
         } else {
-          dim_ranges[i] = DimVar{*range};
+          dim_ranges[i] = IndexingMap::Variable{*range};
         }
       } else {
         return rewriter.notifyMatchFailure(op, "failed to deduce range");

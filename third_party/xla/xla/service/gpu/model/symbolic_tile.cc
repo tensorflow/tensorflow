@@ -1104,8 +1104,8 @@ void ConstraintExpression::Simplify() {
   // DimVars in `indexing_map` represent indices, but in `tile_map` they will
   // represent the size of the tile. So we need to add 1 to the bounds.
   // For example: indices: [0, 9] -> sizes: [1, 10].
-  std::vector<DimVar> tile_sizes = indexing_map.GetDimVars();
-  for (DimVar& tile_size : tile_sizes) {
+  std::vector<IndexingMap::Variable> tile_sizes = indexing_map.GetDimVars();
+  for (IndexingMap::Variable& tile_size : tile_sizes) {
     tile_size.bounds.lower += 1;
     tile_size.bounds.upper += 1;
   }
@@ -1147,11 +1147,11 @@ void SymbolicTile::Print(std::ostream& out) const {
   out << "\toffset_map: " << offset_map();
   out << "\n\tsize_map: " << size_map();
   out << "\n\tstride_map: " << stride_map();
-  const std::vector<RTVar>& rt_vars = tile_map_.GetRTVars();
+  const std::vector<IndexingMap::Variable>& rt_vars = tile_map_.GetRTVars();
   if (!rt_vars.empty()) {
     out << "\n\trt_vars: ";
     for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
-      out << 's' << index << " in " << rt_var.feasible_values << ", ";
+      out << 's' << index << " in " << rt_var.bounds << ", ";
     }
   }
   if (!constraints_.IsAlwaysSatisfied()) {
