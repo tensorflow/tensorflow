@@ -428,6 +428,20 @@ CodegenDecision IsTritonSupportedInstruction(
   return decision;
 }
 
+CodegenDecision IsTritonSupportedComputation(
+    const HloComputation& computation,
+    const se::GpuComputeCapability& gpu_compute_capability) {
+  for (const auto* instruction : computation.instructions()) {
+    if (CodegenDecision can_codegen =
+            IsTritonSupportedInstruction(*instruction, gpu_compute_capability);
+        !can_codegen) {
+      return can_codegen;
+    }
+  }
+
+  return CodegenDecision::Allow();
+}
+
 bool IsTritonFusedComputation(const HloComputation& computation) {
   HloFusionInstruction* fusion =
       static_cast<HloFusionInstruction*>(computation.FusionInstruction());

@@ -125,6 +125,17 @@ message DebugOptions {
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
+  // Enabling this flag will attempt to redirect every already-constructed
+  // fusion possible to the Triton emitter.
+  //
+  // For example, a fusion with kind kLoop will be transformed to a fusion with
+  // kind kCustom (and underlying kTritonFusionKind) if it can be tiled
+  // correctly, and if all the instructions it contains are supported by XLA's
+  // Triton emitter. Tile sizes are assigned automatically.
+  //
+  // Pre-existing block-level fusions are left unmodified.
+  bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
+
   // Gates the experimental feature coupling the Triton Softmax pattern matcher
   // with priority fusion.
   bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
@@ -991,7 +1002,7 @@ message DebugOptions {
   // loop by a factor of two if a collective op is present.
   bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
-  // Next id: 334
+  // Next id: 335
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
