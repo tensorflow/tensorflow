@@ -3675,6 +3675,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "@pypi_packaging//:pkg",
     ],
 )
 

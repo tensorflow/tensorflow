@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for manip_ops."""
 import numpy as np
+from packaging.version import Version
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -24,14 +25,8 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.platform import test as test_lib
 
-# pylint: disable=g-import-not-at-top
-try:
-  from distutils.version import StrictVersion as Version
-  # numpy.roll for multiple shifts was introduced in numpy version 1.12.0
-  NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
-except ImportError:
-  NP_ROLL_CAN_MULTISHIFT = False
-# pylint: enable=g-import-not-at-top
+# numpy.roll for multiple shifts was introduced in numpy version 1.12.0
+NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
 
 
 class RollTest(test_util.TensorFlowTestCase):
