@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 
 namespace tensorflow {
