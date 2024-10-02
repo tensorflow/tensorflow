@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 
@@ -60,7 +61,7 @@ namespace wrap {
     static const char *kName;                                            \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
     static void *GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();          \
+      auto s = tsl::internal::CachedDsoLoader::GetHipfftDsoHandle();     \
       return s.value();                                                  \
     }                                                                    \
     static FuncPtrT LoadOrDie() {                                        \

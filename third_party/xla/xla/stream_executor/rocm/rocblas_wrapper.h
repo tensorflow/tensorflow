@@ -26,6 +26,7 @@ limitations under the License.
 #include "rocm/include/rocblas/rocblas.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/platform.h"
 
@@ -43,7 +44,7 @@ namespace wrap {
   } __name;
 
 #else
-using stream_executor::internal::CachedDsoLoader::GetRocblasDsoHandle;
+using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
 
 #define ROCBLAS_API_WRAPPER(__name)                                      \
   static struct DynLoadShim__##__name {                                  \

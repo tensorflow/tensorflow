@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/determinism.h"
 #include "xla/tsl/util/env_var.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
@@ -248,7 +249,7 @@ namespace wrap {
     static const char* kName;                                            \
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
     static void* GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
+      auto s = tsl::internal::CachedDsoLoader::GetMiopenDsoHandle();     \
       return s.value();                                                  \
     }                                                                    \
     static FuncPtrT LoadOrDie() {                                        \
