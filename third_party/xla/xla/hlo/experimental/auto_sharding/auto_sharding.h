@@ -50,18 +50,12 @@ limitations under the License.
 
 namespace xla {
 
-enum class AutoShardingResult {
-  kModuleUnchanged,
-  kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerformed
-};
-
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  absl::StatusOr<AutoShardingResult> RunAutoSharding(
+  absl::StatusOr<bool> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
