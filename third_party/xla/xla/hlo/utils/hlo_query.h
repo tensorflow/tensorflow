@@ -156,23 +156,17 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
 
 // Gets the computation from the given module with the given name.
 HloComputation* FindComputation(HloModule* module, absl::string_view name);
-// Gets the first instruction and its index from the given computation with the
-// given instruction name. The function returns {nullptr, -1} if the instruction
-// cannot be found.
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, absl::string_view name);
-// Gets the first instruction and its index from the given computation with the
-// given instruction opcode. The function returns {nullptr, -1} if the
-// instruction cannot be found.
-std::pair<HloInstruction*, int> FindFirstInstruction(
-    const HloComputation* computation, HloOpcode opcode);
 
-// Check that one instruction comes before another one for a given computation.
-// The function returns true if the first instruction comes before the second
-// one, and false otherwise. This is useful for partial checks on the
-// transformed IR without going through a full file check.
-bool IsBeforeInComputation(const HloComputation* computation,
-                           absl::string_view inst1, absl::string_view inst2);
+// Gets the instruction from the given computation with the given instruction
+// name. Returns nullptr if no such instruction can be found.
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                absl::string_view name);
+
+// Gets any instruction from the given computation with the given opcode.
+// Returns nullptr if no such instruction can be found.
+HloInstruction* FindInstruction(const HloComputation* computation,
+                                HloOpcode opcode);
+
 }  // namespace hlo_query
 }  // namespace xla
 

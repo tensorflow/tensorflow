@@ -1097,9 +1097,9 @@ HloComputation* HloTestBase::FindComputation(HloModule* module,
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              absl::string_view name) {
   for (const HloComputation* computation : module->computations()) {
-    if (auto instruction = hlo_query::FindFirstInstruction(computation, name);
-        instruction.first != nullptr) {
-      return instruction.first;
+    if (HloInstruction* instruction =
+            hlo_query::FindInstruction(computation, name)) {
+      return instruction;
     }
   }
   return nullptr;
@@ -1108,9 +1108,9 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              HloOpcode opcode) {
   for (const HloComputation* computation : module->computations()) {
-    if (auto instruction = hlo_query::FindFirstInstruction(computation, opcode);
-        instruction.first != nullptr) {
-      return instruction.first;
+    if (HloInstruction* instruction =
+            hlo_query::FindInstruction(computation, opcode)) {
+      return instruction;
     }
   }
   return nullptr;
