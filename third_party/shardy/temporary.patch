@@ -1143,10 +1143,10 @@ index a9705ce..1e2ad3d 100644
    mlir::func::registerAllExtensions(dialects);
  
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index de92cb4..e007e5a 100644
+index de92cb4..1bea535 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,4095 +1,663 @@
+@@ -1,4095 +1,78 @@
  Auto generated patch. Do not edit or delete it, even if empty.
 -diff -ruN --strip-trailing-cr a/llvm/docs/NVPTXUsage.rst b/llvm/docs/NVPTXUsage.rst
 ---- a/llvm/docs/NVPTXUsage.rst
@@ -1154,7 +1154,11 @@ index de92cb4..e007e5a 100644
 -@@ -127,6 +127,69 @@
 - NVPTX Intrinsics
 - ================
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch1/include/toy/Lexer.h b/mlir/examples/toy/Ch1/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch1/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch1/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 -+Address Space Conversion
 -+------------------------
 -+
@@ -1220,14 +1224,18 @@ index de92cb4..e007e5a 100644
 -+
 - Reading PTX Special Registers
 - -----------------------------
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 -diff -ruN --strip-trailing-cr a/llvm/docs/ReleaseNotes.rst b/llvm/docs/ReleaseNotes.rst
 ---- a/llvm/docs/ReleaseNotes.rst
 -+++ b/llvm/docs/ReleaseNotes.rst
 -@@ -63,24 +63,6 @@
 -   * ``llvm.nvvm.bitcast.d2ll``
 -   * ``llvm.nvvm.bitcast.ll2d``
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 --* Remove the following intrinsics which can be replaced with a funnel-shift:
 --
 --  * ``llvm.nvvm.rotate.b32``
@@ -1248,7 +1256,11 @@ index de92cb4..e007e5a 100644
 --
 - Changes to LLVM infrastructure
 - ------------------------------
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch2/include/toy/Lexer.h b/mlir/examples/toy/Ch2/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch2/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch2/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 -diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/IntrinsicsNVVM.td b/llvm/include/llvm/IR/IntrinsicsNVVM.td
 ---- a/llvm/include/llvm/IR/IntrinsicsNVVM.td
 -+++ b/llvm/include/llvm/IR/IntrinsicsNVVM.td
@@ -1272,13 +1284,17 @@ index de92cb4..e007e5a 100644
 -+//   * llvm.nvvm.bitcast.i2f  --> ibid.
 -+//   * llvm.nvvm.bitcast.d2ll --> ibid.
 -+//   * llvm.nvvm.bitcast.ll2d --> ibid.
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 - def llvm_global_ptr_ty  : LLVMQualPointerType<1>;  // (global)ptr
 - def llvm_shared_ptr_ty  : LLVMQualPointerType<3>;  // (shared)ptr
 -@@ -1610,6 +1602,40 @@
 -   [IntrReadMem, IntrArgMemOnly, IntrNoCallback, IntrWillReturn, NoCapture<ArgIndex<0>>],
 -   "llvm.nvvm.ldg.global.p">;
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 -+// Use for generic pointers
 -+// - These intrinsics are used to convert address spaces.
 -+// - The input pointer and output pointer must have the same type, except for
@@ -1319,7 +1335,11 @@ index de92cb4..e007e5a 100644
 -@@ -4453,6 +4479,22 @@
 -               "llvm.nvvm.sust.p.3d.v4i32.trap">,
 -     ClangBuiltin<"__nvvm_sust_p_3d_v4i32_trap">;
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch3/include/toy/Lexer.h b/mlir/examples/toy/Ch3/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch3/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch3/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 -+
 -+def int_nvvm_rotate_b32
 -+  : DefaultAttrsIntrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty],
@@ -1361,48 +1381,15 @@ index de92cb4..e007e5a 100644
 --            Name.starts_with(".to.gen");
 -       else
 -         Expand = false;
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 -@@ -2271,117 +2258,6 @@
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Passes/StandardInstrumentations.h b/llvm/include/llvm/Passes/StandardInstrumentations.h
-+--- a/llvm/include/llvm/Passes/StandardInstrumentations.h
-++++ b/llvm/include/llvm/Passes/StandardInstrumentations.h
-+@@ -171,7 +171,7 @@
-+                     FunctionAnalysisManager::Invalidator &);
-+   };
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   SmallVector<StringRef, 8> PassStack;
-+ #endif
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Support/GenericDomTreeConstruction.h b/llvm/include/llvm/Support/GenericDomTreeConstruction.h
-+--- a/llvm/include/llvm/Support/GenericDomTreeConstruction.h
-++++ b/llvm/include/llvm/Support/GenericDomTreeConstruction.h
-+@@ -640,7 +640,7 @@
-+         Bucket;
-+     SmallDenseSet<TreeNodePtr, 8> Visited;
-+     SmallVector<TreeNodePtr, 8> Affected;
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     SmallVector<TreeNodePtr, 8> VisitedUnaffected;
-+ #endif
-+   };
-+@@ -915,7 +915,7 @@
-+     LLVM_DEBUG(dbgs() << "Deleting edge " << BlockNamePrinter(From) << " -> "
-+                       << BlockNamePrinter(To) << "\n");
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     // Ensure that the edge was in fact deleted from the CFG before informing
-+     // the DomTree about it.
-+     // The check is O(N), so run it only in debug configuration.
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h b/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
-+--- a/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
-++++ b/llvm/include/llvm/Transforms/Scalar/LoopPassManager.h
-+@@ -256,7 +256,7 @@
-    }
+-   }
 - }
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 --static Value *upgradeNVVMIntrinsicCall(StringRef Name, CallBase *CI,
 --                                       Function *F, IRBuilder<> &Builder) {
 --  Value *Rep = nullptr;
@@ -1518,7 +1505,11 @@ index de92cb4..e007e5a 100644
 -                                       IRBuilder<> &Builder) {
 -   LLVMContext &C = F->getContext();
 -@@ -4332,8 +4208,85 @@
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch4/include/toy/Lexer.h b/mlir/examples/toy/Ch4/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch4/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch4/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 -     if (!IsX86 && Name == "stackprotectorcheck") {
 -       Rep = nullptr;
 -+    } else if (IsNVVM && (Name == "abs.i" || Name == "abs.ll")) {
@@ -1613,22 +1604,31 @@ index de92cb4..e007e5a 100644
 - static const LLT S512 = LLT::scalar(512);
 --static const LLT S1024 = LLT::scalar(1024);
 - static const LLT MaxScalar = LLT::scalar(MaxRegisterSize);
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 - static const LLT V2S8 = LLT::fixed_vector(2, 8);
 -@@ -333,8 +332,8 @@
 - static const LLT V2S128 = LLT::fixed_vector(2, 128);
 - static const LLT V4S128 = LLT::fixed_vector(4, 128);
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 --static std::initializer_list<LLT> AllScalarTypes = {
 --    S32, S64, S96, S128, S160, S224, S256, S512, S1024};
 -+static std::initializer_list<LLT> AllScalarTypes = {S32,  S64,  S96,  S128,
 -+                                                    S160, S224, S256, S512};
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch5/include/toy/Lexer.h b/mlir/examples/toy/Ch5/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch5/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch5/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 - static std::initializer_list<LLT> AllS16Vectors{
 -     V2S16, V4S16, V6S16, V8S16, V10S16, V12S16, V16S16, V2S128, V4S128};
 -@@ -890,11 +889,10 @@
 -     .clampScalar(0, S16, S64);
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 -   getActionDefinitionsBuilder({G_IMPLICIT_DEF, G_FREEZE})
 --      .legalIf(isRegisterClassType(0))
 -+      .legalIf(isRegisterType(0))
@@ -1645,18 +1645,26 @@ index de92cb4..e007e5a 100644
 -@@ -174,6 +174,10 @@
 - def hasSHFL : Predicate<"!(Subtarget->getSmVersion() >= 70"
 -                           "&& Subtarget->getPTXVersion() >= 64)">;
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 -+def useShortPtrLocal : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_LOCAL) == 32">;
 -+def useShortPtrShared : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_SHARED) == 32">;
 -+def useShortPtrConst : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_CONST) == 32">;
 -+
 - def useFP16Math: Predicate<"Subtarget->allowFP16Math()">;
 - def hasBF16Math: Predicate<"Subtarget->hasBF16Math()">;
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch6/include/toy/Lexer.h b/mlir/examples/toy/Ch6/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch6/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch6/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 -@@ -1661,6 +1665,167 @@
 -              "brev.b64 \t$dst, $a;",
 -              [(set Int64Regs:$dst, (bitreverse Int64Regs:$a))]>;
-- 
++ #include "llvm/ADT/StringRef.h"
+  
 -+//
 -+// Rotate: Use ptx shf instruction if available.
 -+//
@@ -1818,13 +1826,20 @@ index de92cb4..e007e5a 100644
 -+            "shf.r.clamp.b32 \t$dst, $lo, $hi, $amt;",
 -+            [(set Int32Regs:$dst,
 -+             (FUN_SHFR_CLAMP (i32 Int32Regs:$lo), (i32 Int32Regs:$hi), (i32 Int32Regs:$amt)))]>;
-- 
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 - //
 - // BFE - bit-field extract
 -@@ -3492,42 +3657,6 @@
 - def: Pat<(v2i16 (scalar_to_vector (i16 Int16Regs:$a))),
 -          (CVT_u32_u16 Int16Regs:$a, CvtNONE)>;
-- 
++diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch7/include/toy/Lexer.h b/mlir/examples/toy/Ch7/include/toy/Lexer.h
++--- a/mlir/examples/toy/Ch7/include/toy/Lexer.h
+++++ b/mlir/examples/toy/Ch7/include/toy/Lexer.h
++@@ -15,6 +15,7 @@
+  
 --//
 --// Funnel-Shift
 --//
@@ -1869,8 +1884,12 @@ index de92cb4..e007e5a 100644
 -+++ b/llvm/lib/Target/NVPTX/NVPTXIntrinsics.td
 -@@ -2537,45 +2537,59 @@
 -   : VLDG_G_ELE_V4<"v4.f32 \t{{$dst1, $dst2, $dst3, $dst4}}, [$src];", Float32Regs>;
-- 
-- 
++ #include "llvm/ADT/StringRef.h"
+  
+++#include <cstdlib>
++ #include <memory>
++ #include <string>
+  
 --multiclass NG_TO_G<string Str> {
 -+multiclass NG_TO_G<string Str, Intrinsic Intrin, Predicate ShortPtr> {
 -    def "" : NVPTXInst<(outs Int32Regs:$result), (ins Int32Regs:$src),
@@ -2127,7 +2146,7 @@ index de92cb4..e007e5a 100644
 --  SDLoc DL(N);
 -   assert(SrcAddrSpace != DstAddrSpace &&
 -          "addrspacecast must be between different address spaces");
-  
+- 
 -   if (DstAddrSpace == ADDRESS_SPACE_GENERIC) {
 -     // Specific to generic
 --
@@ -2216,12 +2235,7 @@ index de92cb4..e007e5a 100644
 -+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
 -+                                          Src));
 -     return;
-+   void setParentLoop(Loop *L) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     ParentL = L;
-+ #endif
-    }
+-   }
 - }
 -diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 ---- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
@@ -4547,44 +4561,13 @@ index de92cb4..e007e5a 100644
 -+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankselect.mir
 -@@ -42,6 +42,8 @@
 -     ret void
-+@@ -347,7 +347,7 @@
-+   const bool LoopNestMode;
-+   bool LoopNestChanged;
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   // In debug builds we also track the parent loop to implement asserts even in
-+   // the face of loop deletion.
-+   Loop *ParentL;
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h b/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
-+--- a/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
-++++ b/llvm/include/llvm/Transforms/Utils/ScalarEvolutionExpander.h
-+@@ -167,7 +167,7 @@
-+   /// consistent when instructions are moved.
-+   SmallVector<SCEVInsertPointGuard *, 8> InsertPointGuards;
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   const char *DebugType;
-+ #endif
-+ 
-+@@ -183,7 +183,7 @@
-+         Builder(se.getContext(), InstSimplifyFolder(DL),
-+                 IRBuilderCallbackInserter(
-+                     [this](Instruction *I) { rememberInstruction(I); })) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     DebugType = "";
-+ #endif
-    }
+-   }
 - 
 -+  define void @non_power_of_2() { ret void }
 -+
 -   define amdgpu_kernel void @load_constant_v4i16_from_8_align8(ptr addrspace(4) %ptr0) {
 -     ret void
-+@@ -193,7 +193,7 @@
-+     assert(InsertPointGuards.empty());
-    }
+-   }
 -@@ -185,6 +187,23 @@
 - ...
 - 
@@ -4608,7 +4591,7 @@ index de92cb4..e007e5a 100644
 -+---
 - name: load_constant_v4i16_from_8_align8
 - legalized: true
-  
+- 
 -diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 ---- a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 -+++ b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
@@ -4632,298 +4615,7 @@ index de92cb4..e007e5a 100644
 -+  store i32 10, ptr %t1
 -+  call void @foo(ptr addrspace(1) %t2)
 -+  ret void
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   void setDebugType(const char *s) { DebugType = s; }
-+ #endif
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/lib/Passes/StandardInstrumentations.cpp b/llvm/lib/Passes/StandardInstrumentations.cpp
-+--- a/llvm/lib/Passes/StandardInstrumentations.cpp
-++++ b/llvm/lib/Passes/StandardInstrumentations.cpp
-+@@ -1357,7 +1357,7 @@
-+   bool Registered = false;
-+   PIC.registerBeforeNonSkippedPassCallback([this, &MAM, Registered](
-+                                                StringRef P, Any IR) mutable {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     assert(&PassStack.emplace_back(P));
-+ #endif
-+     (void)this;
-+@@ -1386,7 +1386,7 @@
-+ 
-+   PIC.registerAfterPassInvalidatedCallback(
-+       [this](StringRef P, const PreservedAnalyses &PassPA) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+         assert(PassStack.pop_back_val() == P &&
-+                "Before and After callbacks must correspond");
-+ #endif
-+@@ -1395,7 +1395,7 @@
-+ 
-+   PIC.registerAfterPassCallback([this, &MAM](StringRef P, Any IR,
-+                                              const PreservedAnalyses &PassPA) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     assert(PassStack.pop_back_val() == P &&
-+            "Before and After callbacks must correspond");
-+ #endif
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp b/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
-+--- a/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
-++++ b/llvm/lib/Transforms/Utils/ScalarEvolutionExpander.cpp
-+@@ -28,7 +28,7 @@
-+ #include "llvm/Support/raw_ostream.h"
-+ #include "llvm/Transforms/Utils/LoopUtils.h"
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+ #define SCEV_DEBUG_WITH_TYPE(TYPE, X) DEBUG_WITH_TYPE(TYPE, X)
-+ #else
-+ #define SCEV_DEBUG_WITH_TYPE(TYPE, X)
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -4454,7 +4454,9 @@
-+   auto *VecTy = getWidenedType(ScalarTy, NumScalars);
-+   int NumParts = TTI->getNumberOfParts(VecTy);
-+   if (NumParts == 0 || NumParts >= NumScalars ||
-+-      VecTy->getNumElements() % NumParts != 0)
-++      VecTy->getNumElements() % NumParts != 0 ||
-++      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
-++                                VecTy->getNumElements() / NumParts))
-+     NumParts = 1;
-+   SmallVector<int> ExtractMask;
-+   SmallVector<int> Mask;
-+@@ -6462,7 +6464,9 @@
-+     auto *VecTy = getWidenedType(ScalarTy, NumScalars);
-+     NumParts = TTI.getNumberOfParts(VecTy);
-+     if (NumParts == 0 || NumParts >= NumScalars ||
-+-        VecTy->getNumElements() % NumParts != 0)
-++        VecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, VecTy->getElementType(),
-++                                  VecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-+   }
-+   unsigned VF = PowerOf2Ceil(NumScalars / NumParts);
-+@@ -9961,7 +9965,9 @@
-+     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
-+     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
-+     if (NumParts == 0 || NumParts >= Mask.size() ||
-+-        MaskVecTy->getNumElements() % NumParts != 0)
-++        MaskVecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
-++                                  MaskVecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-+     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
-+     const auto *It =
-+@@ -9979,7 +9985,9 @@
-+     auto *MaskVecTy = getWidenedType(ScalarTy, Mask.size());
-+     unsigned NumParts = TTI.getNumberOfParts(MaskVecTy);
-+     if (NumParts == 0 || NumParts >= Mask.size() ||
-+-        MaskVecTy->getNumElements() % NumParts != 0)
-++        MaskVecTy->getNumElements() % NumParts != 0 ||
-++        !hasFullVectorsOrPowerOf2(TTI, MaskVecTy->getElementType(),
-++                                  MaskVecTy->getNumElements() / NumParts))
-+       NumParts = 1;
-+     unsigned SliceSize = getPartNumElems(Mask.size(), NumParts);
-+     const auto *It =
-+@@ -13633,7 +13641,9 @@
-+   auto *VecTy = getWidenedType(ScalarTy, GatheredScalars.size());
-+   unsigned NumParts = TTI->getNumberOfParts(VecTy);
-+   if (NumParts == 0 || NumParts >= GatheredScalars.size() ||
-+-      VecTy->getNumElements() % NumParts != 0)
-++      VecTy->getNumElements() % NumParts != 0 ||
-++      !hasFullVectorsOrPowerOf2(*TTI, VecTy->getElementType(),
-++                                VecTy->getNumElements() / NumParts))
-+     NumParts = 1;
-+   if (!all_of(GatheredScalars, IsaPred<UndefValue>)) {
-+     // Check for gathered extracts.
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll b/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/non-power-of-2-num-elems.ll
-+@@ -0,0 +1,183 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64--linux-gnu < %s -mcpu=sapphirerapids | FileCheck %s
-++
-++define void @test(ptr %src, ptr %dst, ptr %c, i64 %arrayidx14.15p) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: ptr [[SRC:%.*]], ptr [[DST:%.*]], ptr [[C:%.*]], i64 [[ARRAYIDX14_15P:%.*]]) #[[ATTR0:[0-9]+]] {
-++; CHECK-NEXT:  [[ENTRY:.*]]:
-++; CHECK-NEXT:    [[ARRAYIDX12_5:%.*]] = getelementptr i8, ptr [[C]], i64 192
-++; CHECK-NEXT:    [[ARRAYIDX14_5:%.*]] = getelementptr i8, ptr [[C]], i64 320
-++; CHECK-NEXT:    [[ARRAYIDX_6:%.*]] = getelementptr i8, ptr [[C]], i64 72
-++; CHECK-NEXT:    [[ARRAYIDX12_6:%.*]] = getelementptr i8, ptr [[C]], i64 200
-++; CHECK-NEXT:    [[ARRAYIDX14_6:%.*]] = getelementptr i8, ptr [[C]], i64 328
-++; CHECK-NEXT:    [[ARRAYIDX_7:%.*]] = getelementptr i8, ptr [[C]], i64 80
-++; CHECK-NEXT:    [[ARRAYIDX12_7:%.*]] = getelementptr i8, ptr [[C]], i64 208
-++; CHECK-NEXT:    [[ARRAYIDX14_7:%.*]] = getelementptr i8, ptr [[C]], i64 336
-++; CHECK-NEXT:    [[ARRAYIDX12_8:%.*]] = getelementptr i8, ptr [[C]], i64 216
-++; CHECK-NEXT:    [[ARRAYIDX14_8:%.*]] = getelementptr i8, ptr [[C]], i64 344
-++; CHECK-NEXT:    [[ARRAYIDX_9:%.*]] = getelementptr i8, ptr [[C]], i64 96
-++; CHECK-NEXT:    [[ARRAYIDX12_9:%.*]] = getelementptr i8, ptr [[C]], i64 224
-++; CHECK-NEXT:    [[ARRAYIDX14_9:%.*]] = getelementptr i8, ptr [[C]], i64 352
-++; CHECK-NEXT:    [[ARRAYIDX_10:%.*]] = getelementptr i8, ptr [[C]], i64 104
-++; CHECK-NEXT:    [[ARRAYIDX12_10:%.*]] = getelementptr i8, ptr [[C]], i64 232
-++; CHECK-NEXT:    [[ARRAYIDX14_10:%.*]] = getelementptr i8, ptr [[C]], i64 360
-++; CHECK-NEXT:    [[ARRAYIDX_11:%.*]] = getelementptr i8, ptr [[C]], i64 112
-++; CHECK-NEXT:    [[ARRAYIDX12_11:%.*]] = getelementptr i8, ptr [[C]], i64 240
-++; CHECK-NEXT:    [[ARRAYIDX14_11:%.*]] = getelementptr i8, ptr [[C]], i64 368
-++; CHECK-NEXT:    [[ARRAYIDX_12:%.*]] = getelementptr i8, ptr [[C]], i64 120
-++; CHECK-NEXT:    [[ARRAYIDX12_12:%.*]] = getelementptr i8, ptr [[C]], i64 248
-++; CHECK-NEXT:    [[ARRAYIDX14_12:%.*]] = getelementptr i8, ptr [[C]], i64 376
-++; CHECK-NEXT:    [[ARRAYIDX14_13:%.*]] = getelementptr i8, ptr [[C]], i64 384
-++; CHECK-NEXT:    [[ARRAYIDX12_5P:%.*]] = load i64, ptr [[ARRAYIDX12_5]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_5P:%.*]] = load i64, ptr [[ARRAYIDX14_5]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_6P:%.*]] = load i64, ptr [[ARRAYIDX_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_6P:%.*]] = load i64, ptr [[ARRAYIDX12_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_6P:%.*]] = load i64, ptr [[ARRAYIDX14_6]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_7P:%.*]] = load i64, ptr [[ARRAYIDX_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_7P:%.*]] = load i64, ptr [[ARRAYIDX12_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_7P:%.*]] = load i64, ptr [[ARRAYIDX14_7]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_8P:%.*]] = load i64, ptr [[C]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_8P:%.*]] = load i64, ptr [[ARRAYIDX12_8]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_8P:%.*]] = load i64, ptr [[ARRAYIDX14_8]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_9P:%.*]] = load i64, ptr [[ARRAYIDX_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_9P:%.*]] = load i64, ptr [[ARRAYIDX12_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_9P:%.*]] = load i64, ptr [[ARRAYIDX14_9]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_10P:%.*]] = load i64, ptr [[ARRAYIDX_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_10P:%.*]] = load i64, ptr [[ARRAYIDX12_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_10P:%.*]] = load i64, ptr [[ARRAYIDX14_10]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_11P:%.*]] = load i64, ptr [[ARRAYIDX_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_11P:%.*]] = load i64, ptr [[ARRAYIDX12_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_11P:%.*]] = load i64, ptr [[ARRAYIDX14_11]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_12P:%.*]] = load i64, ptr [[ARRAYIDX_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX12_12P:%.*]] = load i64, ptr [[ARRAYIDX12_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_12P:%.*]] = load i64, ptr [[ARRAYIDX14_12]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX_13P:%.*]] = load i64, ptr [[SRC]], align 8
-++; CHECK-NEXT:    [[ARRAYIDX14_13P:%.*]] = load i64, ptr [[ARRAYIDX14_13]], align 8
-++; CHECK-NEXT:    br label %[[LAND_LHS_TRUE137:.*]]
-++; CHECK:       [[LAND_LHS_TRUE137]]:
-++; CHECK-NEXT:    [[TMP0:%.*]] = phi i64 [ 0, %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_15P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP1:%.*]] = phi i64 [ 0, %[[LAND_LHS_TRUE137]] ], [ 1, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP2:%.*]] = phi i64 [ 1, %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP3:%.*]] = phi i64 [ [[TMP0]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP4:%.*]] = phi i64 [ [[TMP1]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP5:%.*]] = phi i64 [ [[TMP2]], %[[LAND_LHS_TRUE137]] ], [ 0, %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP6:%.*]] = phi i64 [ [[TMP3]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP7:%.*]] = phi i64 [ [[TMP4]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP8:%.*]] = phi i64 [ [[TMP5]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_13P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP9:%.*]] = phi i64 [ [[TMP6]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP10:%.*]] = phi i64 [ [[TMP7]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP11:%.*]] = phi i64 [ [[TMP8]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_12P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP12:%.*]] = phi i64 [ [[TMP9]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP13:%.*]] = phi i64 [ [[TMP10]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP14:%.*]] = phi i64 [ [[TMP11]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_11P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP15:%.*]] = phi i64 [ [[TMP12]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP16:%.*]] = phi i64 [ [[TMP13]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP17:%.*]] = phi i64 [ [[TMP14]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_10P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP18:%.*]] = phi i64 [ [[TMP15]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP19:%.*]] = phi i64 [ [[TMP16]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP20:%.*]] = phi i64 [ [[TMP17]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_9P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP21:%.*]] = phi i64 [ [[TMP18]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP22:%.*]] = phi i64 [ [[TMP19]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP23:%.*]] = phi i64 [ [[TMP20]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_8P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP24:%.*]] = phi i64 [ [[TMP21]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP25:%.*]] = phi i64 [ [[TMP22]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP26:%.*]] = phi i64 [ [[TMP23]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_7P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP27:%.*]] = phi i64 [ [[TMP24]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP28:%.*]] = phi i64 [ [[TMP25]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP29:%.*]] = phi i64 [ [[TMP26]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX_6P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP30:%.*]] = phi i64 [ [[TMP27]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX14_5P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    [[TMP31:%.*]] = phi i64 [ [[TMP28]], %[[LAND_LHS_TRUE137]] ], [ [[ARRAYIDX12_5P]], %[[ENTRY]] ]
-++; CHECK-NEXT:    store i64 [[TMP31]], ptr [[DST]], align 8
-++; CHECK-NEXT:    store i64 [[TMP30]], ptr [[SRC]], align 8
-++; CHECK-NEXT:    store i64 [[TMP29]], ptr [[DST]], align 8
-++; CHECK-NEXT:    br label %[[LAND_LHS_TRUE137]]
-++;
-++entry:
-++  %arrayidx12.5 = getelementptr i8, ptr %c, i64 192
-++  %arrayidx14.5 = getelementptr i8, ptr %c, i64 320
-++  %arrayidx.6 = getelementptr i8, ptr %c, i64 72
-++  %arrayidx12.6 = getelementptr i8, ptr %c, i64 200
-++  %arrayidx14.6 = getelementptr i8, ptr %c, i64 328
-++  %arrayidx.7 = getelementptr i8, ptr %c, i64 80
-++  %arrayidx12.7 = getelementptr i8, ptr %c, i64 208
-++  %arrayidx14.7 = getelementptr i8, ptr %c, i64 336
-++  %arrayidx12.8 = getelementptr i8, ptr %c, i64 216
-++  %arrayidx14.8 = getelementptr i8, ptr %c, i64 344
-++  %arrayidx.9 = getelementptr i8, ptr %c, i64 96
-++  %arrayidx12.9 = getelementptr i8, ptr %c, i64 224
-++  %arrayidx14.9 = getelementptr i8, ptr %c, i64 352
-++  %arrayidx.10 = getelementptr i8, ptr %c, i64 104
-++  %arrayidx12.10 = getelementptr i8, ptr %c, i64 232
-++  %arrayidx14.10 = getelementptr i8, ptr %c, i64 360
-++  %arrayidx.11 = getelementptr i8, ptr %c, i64 112
-++  %arrayidx12.11 = getelementptr i8, ptr %c, i64 240
-++  %arrayidx14.11 = getelementptr i8, ptr %c, i64 368
-++  %arrayidx.12 = getelementptr i8, ptr %c, i64 120
-++  %arrayidx12.12 = getelementptr i8, ptr %c, i64 248
-++  %arrayidx14.12 = getelementptr i8, ptr %c, i64 376
-++  %arrayidx14.13 = getelementptr i8, ptr %c, i64 384
-++  %arrayidx12.5p = load i64, ptr %arrayidx12.5, align 8
-++  %arrayidx14.5p = load i64, ptr %arrayidx14.5, align 8
-++  %arrayidx.6p = load i64, ptr %arrayidx.6, align 8
-++  %arrayidx12.6p = load i64, ptr %arrayidx12.6, align 8
-++  %arrayidx14.6p = load i64, ptr %arrayidx14.6, align 8
-++  %arrayidx.7p = load i64, ptr %arrayidx.7, align 8
-++  %arrayidx12.7p = load i64, ptr %arrayidx12.7, align 8
-++  %arrayidx14.7p = load i64, ptr %arrayidx14.7, align 8
-++  %arrayidx.8p = load i64, ptr %c, align 8
-++  %arrayidx12.8p = load i64, ptr %arrayidx12.8, align 8
-++  %arrayidx14.8p = load i64, ptr %arrayidx14.8, align 8
-++  %arrayidx.9p = load i64, ptr %arrayidx.9, align 8
-++  %arrayidx12.9p = load i64, ptr %arrayidx12.9, align 8
-++  %arrayidx14.9p = load i64, ptr %arrayidx14.9, align 8
-++  %arrayidx.10p = load i64, ptr %arrayidx.10, align 8
-++  %arrayidx12.10p = load i64, ptr %arrayidx12.10, align 8
-++  %arrayidx14.10p = load i64, ptr %arrayidx14.10, align 8
-++  %arrayidx.11p = load i64, ptr %arrayidx.11, align 8
-++  %arrayidx12.11p = load i64, ptr %arrayidx12.11, align 8
-++  %arrayidx14.11p = load i64, ptr %arrayidx14.11, align 8
-++  %arrayidx.12p = load i64, ptr %arrayidx.12, align 8
-++  %arrayidx12.12p = load i64, ptr %arrayidx12.12, align 8
-++  %arrayidx14.12p = load i64, ptr %arrayidx14.12, align 8
-++  %arrayidx.13p = load i64, ptr %src, align 8
-++  %arrayidx14.13p = load i64, ptr %arrayidx14.13, align 8
-++  br label %land.lhs.true137
-++
-++land.lhs.true137:
-++  %0 = phi i64 [ 0, %land.lhs.true137 ], [ %arrayidx14.15p, %entry ]
-++  %1 = phi i64 [ 0, %land.lhs.true137 ], [ 1, %entry ]
-++  %2 = phi i64 [ 1, %land.lhs.true137 ], [ 0, %entry ]
-++  %3 = phi i64 [ %0, %land.lhs.true137 ], [ 0, %entry ]
-++  %4 = phi i64 [ %1, %land.lhs.true137 ], [ 0, %entry ]
-++  %5 = phi i64 [ %2, %land.lhs.true137 ], [ 0, %entry ]
-++  %6 = phi i64 [ %3, %land.lhs.true137 ], [ %arrayidx14.13p, %entry ]
-++  %7 = phi i64 [ %4, %land.lhs.true137 ], [ %arrayidx.13p, %entry ]
-++  %8 = phi i64 [ %5, %land.lhs.true137 ], [ %arrayidx.13p, %entry ]
-++  %9 = phi i64 [ %6, %land.lhs.true137 ], [ %arrayidx14.12p, %entry ]
-++  %10 = phi i64 [ %7, %land.lhs.true137 ], [ %arrayidx12.12p, %entry ]
-++  %11 = phi i64 [ %8, %land.lhs.true137 ], [ %arrayidx.12p, %entry ]
-++  %12 = phi i64 [ %9, %land.lhs.true137 ], [ %arrayidx14.11p, %entry ]
-++  %13 = phi i64 [ %10, %land.lhs.true137 ], [ %arrayidx12.11p, %entry ]
-++  %14 = phi i64 [ %11, %land.lhs.true137 ], [ %arrayidx.11p, %entry ]
-++  %15 = phi i64 [ %12, %land.lhs.true137 ], [ %arrayidx14.10p, %entry ]
-++  %16 = phi i64 [ %13, %land.lhs.true137 ], [ %arrayidx12.10p, %entry ]
-++  %17 = phi i64 [ %14, %land.lhs.true137 ], [ %arrayidx.10p, %entry ]
-++  %18 = phi i64 [ %15, %land.lhs.true137 ], [ %arrayidx14.9p, %entry ]
-++  %19 = phi i64 [ %16, %land.lhs.true137 ], [ %arrayidx12.9p, %entry ]
-++  %20 = phi i64 [ %17, %land.lhs.true137 ], [ %arrayidx.9p, %entry ]
-++  %21 = phi i64 [ %18, %land.lhs.true137 ], [ %arrayidx14.8p, %entry ]
-++  %22 = phi i64 [ %19, %land.lhs.true137 ], [ %arrayidx12.8p, %entry ]
-++  %23 = phi i64 [ %20, %land.lhs.true137 ], [ %arrayidx.8p, %entry ]
-++  %24 = phi i64 [ %21, %land.lhs.true137 ], [ %arrayidx14.7p, %entry ]
-++  %25 = phi i64 [ %22, %land.lhs.true137 ], [ %arrayidx12.7p, %entry ]
-++  %26 = phi i64 [ %23, %land.lhs.true137 ], [ %arrayidx.7p, %entry ]
-++  %27 = phi i64 [ %24, %land.lhs.true137 ], [ %arrayidx14.6p, %entry ]
-++  %28 = phi i64 [ %25, %land.lhs.true137 ], [ %arrayidx12.6p, %entry ]
-++  %29 = phi i64 [ %26, %land.lhs.true137 ], [ %arrayidx.6p, %entry ]
-++  %30 = phi i64 [ %27, %land.lhs.true137 ], [ %arrayidx14.5p, %entry ]
-++  %31 = phi i64 [ %28, %land.lhs.true137 ], [ %arrayidx12.5p, %entry ]
-++  store i64 %31, ptr %dst, align 8
-++  store i64 %30, ptr %src, align 8
-++  store i64 %29, ptr %dst, align 8
-++  br label %land.lhs.true137
- +}
+-+}
 -+
 -diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/rotate_64.ll b/llvm/test/CodeGen/NVPTX/rotate_64.ll
 ---- a/llvm/test/CodeGen/NVPTX/rotate_64.ll
@@ -5606,299 +5298,8 @@ index de92cb4..e007e5a 100644
 - ; CHECK-NEXT:.b8 1                                   // DW_AT_call_file
 - ; CHECK-NEXT:.b8 6                                   // DW_AT_call_line
 - ; CHECK-NEXT:.b8 37                                  // DW_AT_call_column
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch1/include/toy/Lexer.h b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch1/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch2/include/toy/Lexer.h b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch2/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch3/include/toy/Lexer.h b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch3/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch4/include/toy/Lexer.h b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch4/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch5/include/toy/Lexer.h b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch5/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch6/include/toy/Lexer.h b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch6/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch7/include/toy/Lexer.h b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch7/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+ 
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h b/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
-+--- a/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
-++++ b/mlir/include/mlir/Analysis/Presburger/PresburgerSpace.h
-+@@ -75,7 +75,7 @@
-+   template <typename T>
-+   explicit Identifier(T value)
-+       : value(llvm::PointerLikeTypeTraits<T>::getAsVoidPointer(value)) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     idType = llvm::getTypeName<T>();
-+ #endif
-+   }
-+@@ -84,7 +84,7 @@
-+   /// the type of the identifier used to create it.
-+   template <typename T>
-+   T getValue() const {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     assert(llvm::getTypeName<T>() == idType &&
-+            "Identifier was initialized with a different type than the one used "
-+            "to retrieve it.");
-+@@ -108,7 +108,7 @@
-+   /// The value of the identifier.
-+   void *value = nullptr;
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   /// TypeID of the identifiers in space. This should be used in asserts only.
-+   llvm::StringRef idType;
-+ #endif
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h b/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
-+--- a/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
-++++ b/mlir/include/mlir/Dialect/Transform/Interfaces/TransformInterfaces.h
-+@@ -196,7 +196,7 @@
-+   /// should be emitted when the value is used.
-+   using InvalidatedHandleMap = DenseMap<Value, std::function<void(Location)>>;
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   /// Debug only: A timestamp is associated with each transform IR value, so
-+   /// that invalid iterator usage can be detected more reliably.
-+   using TransformIRTimestampMapping = DenseMap<Value, int64_t>;
-+@@ -211,7 +211,7 @@
-+     ValueMapping values;
-+     ValueMapping reverseValues;
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     TransformIRTimestampMapping timestamps;
-+     void incrementTimestamp(Value value) { ++timestamps[value]; }
-+ #endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
-+@@ -248,7 +248,7 @@
-+   auto getPayloadOps(Value value) const {
-+     ArrayRef<Operation *> view = getPayloadOpsView(value);
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     // Memorize the current timestamp and make sure that it has not changed
-+     // when incrementing or dereferencing the iterator returned by this
-+     // function. The timestamp is incremented when the "direct" mapping is
-+@@ -259,7 +259,7 @@
-+     // When ops are replaced/erased, they are replaced with nullptr (until
-+     // the data structure is compacted). Do not enumerate these ops.
-+     return llvm::make_filter_range(view, [=](Operation *op) {
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+       [[maybe_unused]] bool sameTimestamp =
-+           currentTimestamp == this->getMapping(value).timestamps.lookup(value);
-+       assert(sameTimestamp && "iterator was invalidated during iteration");
-+@@ -277,7 +277,7 @@
-+   auto getPayloadValues(Value handleValue) const {
-+     ArrayRef<Value> view = getPayloadValuesView(handleValue);
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     // Memorize the current timestamp and make sure that it has not changed
-+     // when incrementing or dereferencing the iterator returned by this
-+     // function. The timestamp is incremented when the "values" mapping is
-+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp b/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
-+--- a/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
-++++ b/mlir/lib/Dialect/Transform/Interfaces/TransformInterfaces.cpp
-+@@ -330,7 +330,7 @@
-+   for (Operation *op : mappings.direct[opHandle])
-+     dropMappingEntry(mappings.reverse, op, opHandle);
-+   mappings.direct.erase(opHandle);
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   // Payload IR is removed from the mapping. This invalidates the respective
-+   // iterators.
-+   mappings.incrementTimestamp(opHandle);
-+@@ -342,7 +342,7 @@
-+     for (Value resultHandle : resultHandles) {
-+       Mappings &localMappings = getMapping(resultHandle);
-+       dropMappingEntry(localMappings.values, resultHandle, opResult);
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+       // Payload IR is removed from the mapping. This invalidates the respective
-+       // iterators.
-+       mappings.incrementTimestamp(resultHandle);
-+@@ -358,7 +358,7 @@
-+   for (Value payloadValue : mappings.reverseValues[valueHandle])
-+     dropMappingEntry(mappings.reverseValues, payloadValue, valueHandle);
-+   mappings.values.erase(valueHandle);
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+   // Payload IR is removed from the mapping. This invalidates the respective
-+   // iterators.
-+   mappings.incrementTimestamp(valueHandle);
-+@@ -372,7 +372,7 @@
-+       dropMappingEntry(localMappings.direct, opHandle, payloadOp);
-+       dropMappingEntry(localMappings.reverse, payloadOp, opHandle);
-+ 
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+       // Payload IR is removed from the mapping. This invalidates the respective
-+       // iterators.
-+       localMappings.incrementTimestamp(opHandle);
-+@@ -452,7 +452,7 @@
-+     // between the handles and the IR objects
-+     if (!replacement) {
-+       dropMappingEntry(mappings.values, handle, value);
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+       // Payload IR is removed from the mapping. This invalidates the respective
-+       // iterators.
-+       mappings.incrementTimestamp(handle);
-+@@ -804,7 +804,7 @@
-+ void transform::TransformState::compactOpHandles() {
-+   for (Value handle : opHandlesToCompact) {
-+     Mappings &mappings = getMapping(handle, /*allowOutOfScope=*/true);
-+-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-++#ifdef LLVM_ENABLE_ABI_BREAKING_CHECKS
-+     if (llvm::find(mappings.direct[handle], nullptr) !=
-+         mappings.direct[handle].end())
-+       // Payload IR is removed from the mapping. This invalidates the respective
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+@@ -172,7 +172,6 @@
-+     ],
-+ )
-+ 
-+-
-+ gentbl(
-+     name = "basic_arm_sve_typeflags_gen",
-+     tbl_outs = [(
-+@@ -996,12 +995,12 @@
-+     ],
-+     deps = [
-+         ":ast_attr_gen",
-++        ":ast_bytecode_opcodes_gen",
-+         ":ast_comment_command_info_gen",
-+         ":ast_comment_html_named_character_references_gen",
-+         ":ast_comment_html_tags_gen",
-+         ":ast_comment_html_tags_properties_gen",
-+         ":ast_comment_nodes_gen",
-+-        ":ast_bytecode_opcodes_gen",
-+         ":ast_decl_nodes_gen",
-+         ":ast_properties_base_gen",
-+         ":ast_stmt_data_collectors_gen",
-+@@ -1278,6 +1277,9 @@
-+     ]),
-+     hdrs = glob(["include/clang/Testing/*.h"]),
-+     includes = ["include"],
-++    textual_hdrs = [
-++        "include/clang/Testing/TestLanguage.def",
-++    ],
-+     deps = [
-+         ":basic",
-+         ":frontend",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/clang/unittests/BUILD.bazel
-+@@ -67,6 +67,7 @@
-+         "//clang:ast",
-+         "//clang:ast_matchers",
-+         "//clang:frontend",
-++        "//clang:testing",
-+         "//clang:tooling",
-+         "//llvm:Support",
-+         "//llvm:TargetParser",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+@@ -144,7 +144,7 @@
-+     out = "include/llvm/Config/abi-breaking.h",
-+     substitutions = {
-+         # Define to enable checks that alter the LLVM C++ ABI
-+-        "#cmakedefine01 LLVM_ENABLE_ABI_BREAKING_CHECKS": "#define LLVM_ENABLE_ABI_BREAKING_CHECKS 1",
-++        "#cmakedefine01 LLVM_ENABLE_ABI_BREAKING_CHECKS": "#define LLVM_ENABLE_ABI_BREAKING_CHECKS 0",
-+ 
-+         # Define to enable reverse iteration of unordered llvm containers
-+         "#cmakedefine01 LLVM_ENABLE_REVERSE_ITERATION": "#define LLVM_ENABLE_REVERSE_ITERATION 0",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-+@@ -10663,8 +10663,8 @@
-+ td_library(
-+     name = "QuantizationOpsTdFiles",
-+     srcs = [
-+-        "include/mlir/Dialect/Quant/IR/QuantOps.td",
-+         "include/mlir/Dialect/Quant/IR/QuantBase.td",
-++        "include/mlir/Dialect/Quant/IR/QuantOps.td",
-+     ],
-+     includes = ["include"],
-+     deps = [
-+@@ -13164,6 +13164,7 @@
-+     includes = ["include"],
-+     deps = [
-+         ":ArithDialect",
-++        ":ArithUtils",
-+         ":DialectUtils",
-+         ":IR",
-+         ":MathDialect",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index af35fe7..4c76e1a 100644
+index af35fe7..ad9923c 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -5907,8 +5308,8 @@ index af35fe7..4c76e1a 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "9830156f623c56062bf6df1b4c4b4bd8ab5bd57c"
 -    LLVM_SHA256 = "85bb9a61cfdaf0d3386890dc7b4bbaa17eecf4b70b60c314307f2ca3919b9035"
-+    LLVM_COMMIT = "bf25ecb6caff22ac7f3e44a396fb2e5aa830db49"
-+    LLVM_SHA256 = "591a86b0a31f1b9a939d5356fcc33e991c990f85a9a0e5443d0759302ecc6e85"
++    LLVM_COMMIT = "6292f117c39b9fc72da4e40328eeeda2aa94a5f2"
++    LLVM_SHA256 = "31f583de2e077f9289fc5efea74bd6e1a1694fda5f77f09472253cdc072f2e5e"
  
      tf_http_archive(
          name = name,
