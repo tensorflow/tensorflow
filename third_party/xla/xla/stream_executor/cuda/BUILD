@@ -299,6 +299,7 @@ xla_test(
     name = "cuda_collectives_test",
     srcs = ["cuda_collectives_test.cc"],
     backends = ["gpu_any"],
+    tags = ["cuda-only"],
     deps = [
         ":cuda_collectives",
         "//xla/service/gpu/runtime:nccl_api",
@@ -594,6 +595,7 @@ xla_test(
     name = "cuda_kernel_test",
     srcs = ["cuda_kernel_test.cc"],
     backends = ["gpu_any"],
+    tags = ["cuda-only"],
     deps = [
         ":cuda_kernel",
         ":cuda_runtime",
@@ -1069,6 +1071,7 @@ cc_library(
 
 cc_library(
     name = "stream_executor_cuda",
+    tags = ["cuda-only"],
     deps = [
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
