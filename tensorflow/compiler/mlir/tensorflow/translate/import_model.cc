@@ -4345,9 +4345,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)
     specs.control_outputs.push_back(control_ret_node->name());
-  std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
-  return GraphDefImporter::Convert(context, *fbody->graph, dummy_debug_info,
-                                   flib_def, specs, tf_name_to_mlir_name);
+  return ConvertGraphToMlir(*fbody->graph, dummy_debug_info, flib_def, specs,
+                            context);
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelToMlir(
