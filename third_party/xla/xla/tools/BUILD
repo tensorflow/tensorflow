@@ -46,29 +46,6 @@ filegroup(
 )
 
 build_test(
-    name = "hex_floats_to_packed_literal_build_test",
-    targets = [
-        ":hex_floats_to_packed_literal",
-    ],
-)
-
-xla_cc_binary(
-    name = "hex_floats_to_packed_literal",
-    srcs = ["hex_floats_to_packed_literal.cc"],
-    deps = [
-        "//xla/tsl/lib/io:buffered_inputstream",
-        "//xla/tsl/lib/io:random_inputstream",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-build_test(
     name = "show_signature_build_test",
     targets = [
         ":show_signature",
@@ -91,92 +68,6 @@ xla_cc_binary(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-build_test(
-    name = "show_literal_build_test",
-    targets = [
-        ":show_literal",
-    ],
-)
-
-xla_cc_binary(
-    name = "show_literal",
-    srcs = ["show_literal.cc"],
-    deps = [
-        "//xla:literal",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-build_test(
-    name = "convert_computation_build_test",
-    targets = [
-        ":convert_computation",
-    ],
-)
-
-xla_cc_binary(
-    name = "convert_computation",
-    srcs = ["convert_computation.cc"],
-    deps = [
-        "//xla/service:hlo_proto_cc",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-build_test(
-    name = "hlo_module_metadata_processor_build_test",
-    targets = [
-        ":hlo_module_metadata_processor",
-    ],
-)
-
-xla_cc_binary(
-    name = "hlo_module_metadata_processor",
-    srcs = ["hlo_module_metadata_processor.cc"],
-    deps = [
-        "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-build_test(
-    name = "show_text_literal_build_test",
-    targets = [
-        ":show_text_literal",
-    ],
-)
-
-xla_cc_binary(
-    name = "show_text_literal",
-    srcs = ["show_text_literal.cc"],
-    deps = [
-        "//xla:literal",
-        "//xla:text_literal_reader",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -238,28 +129,6 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-build_test(
-    name = "hlo_proto_to_json_build_test",
-    targets = [
-        ":hlo_proto_to_json",
-    ],
-)
-
-xla_cc_binary(
-    name = "hlo_proto_to_json",
-    srcs = ["hlo_proto_to_json.cc"],
-    deps = [
-        "//xla:util",
-        "//xla/service:hlo_proto_cc",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
