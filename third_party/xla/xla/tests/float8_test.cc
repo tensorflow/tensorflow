@@ -27,12 +27,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Test FP8 floating-point types
+// Test FP8 floating-point types (F8E5M2, F8E4M3FN)
 template <typename T>
 class Float8Test : public ClientLibraryTestBase {};
 
-using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3,
-                                   tsl::float8_e4m3fn, tsl::float8_e3m4>;
+using DataTypes = ::testing::Types<tsl::float8_e5m2, tsl::float8_e4m3fn>;
 TYPED_TEST_SUITE(Float8Test, DataTypes);
 
 XLA_TYPED_TEST(Float8Test, ScalarOperation) {

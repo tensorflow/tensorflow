@@ -181,11 +181,6 @@ constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2>() {
 }
 
 template <>
-constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3>() {
-  return F8E4M3;
-}
-
-template <>
 constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fn>() {
   return F8E4M3FN;
 }
@@ -203,11 +198,6 @@ constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e5m2fnuz>() {
 template <>
 constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e4m3fnuz>() {
   return F8E4M3FNUZ;
-}
-
-template <>
-constexpr PrimitiveType NativeToPrimitiveType<tsl::float8_e3m4>() {
-  return F8E3M4;
 }
 
 // Complex
@@ -320,11 +310,6 @@ struct PrimitiveTypeToNative<F8E5M2> {
 };
 
 template <>
-struct PrimitiveTypeToNative<F8E4M3> {
-  using type = tsl::float8_e4m3;
-};
-
-template <>
 struct PrimitiveTypeToNative<F8E4M3FN> {
   using type = tsl::float8_e4m3fn;
 };
@@ -342,11 +327,6 @@ struct PrimitiveTypeToNative<F8E5M2FNUZ> {
 template <>
 struct PrimitiveTypeToNative<F8E4M3FNUZ> {
   using type = tsl::float8_e4m3fnuz;
-};
-
-template <>
-struct PrimitiveTypeToNative<F8E3M4> {
-  using type = tsl::float8_e3m4;
 };
 
 // Complex
@@ -382,9 +362,8 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
 }
 
 constexpr bool IsF8Type(PrimitiveType type) {
-  return type == F8E5M2 || type == F8E4M3 || type == F8E4M3FN ||
-         type == F8E4M3B11FNUZ || type == F8E5M2FNUZ || type == F8E4M3FNUZ ||
-         type == F8E3M4;
+  return type == F8E5M2 || type == F8E4M3FN || type == F8E4M3B11FNUZ ||
+         type == F8E5M2FNUZ || type == F8E4M3FNUZ;
 }
 
 constexpr bool IsFloatingPointType(PrimitiveType type) {
@@ -449,12 +428,6 @@ template <typename R, typename F>
 constexpr R FloatingPointTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
     switch (type) {
-      case F8E3M4:
-        return std::forward<F>(f)(
-            PrimitiveTypeConstant<PrimitiveType::F8E3M4>());
-      case F8E4M3:
-        return std::forward<F>(f)(
-            PrimitiveTypeConstant<PrimitiveType::F8E4M3>());
       case F8E4M3FN:
         return std::forward<F>(f)(
             PrimitiveTypeConstant<PrimitiveType::F8E4M3FN>());

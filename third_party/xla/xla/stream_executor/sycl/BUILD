@@ -86,5 +86,6 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor/platform:dso_loader",
     ] + if_static([":all_runtime"]),
 )

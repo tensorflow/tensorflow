@@ -54,9 +54,6 @@ xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
 xla_client._xla.jax_jit.global_state().enable_memories = False
 
 bfloat16 = xla_client.bfloat16
-# TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-# float8_e3m4 = xla_client.float8_e3m4
-# float8_e4m3 = xla_client.float8_e4m3
 float8_e4m3fn = xla_client.float8_e4m3fn
 float8_e4m3fnuz = xla_client.float8_e4m3fnuz
 float8_e4m3b11fnuz = xla_client.float8_e4m3b11fnuz
@@ -153,8 +150,6 @@ def TestFactory(xla_backend,
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
   standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
-  # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
-  # standard_dtypes += [float8_e3m4, float8_e4m3]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
 
   class ComputationTest(parameterized.TestCase):

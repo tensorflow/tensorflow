@@ -1,8 +1,5 @@
 # PJRT C API changelog
 
-## 0.55
-* Added types F8E4M3 and F8E3M4.
-
 ## 0.54
 * Deprecated PJRT_Buffer_GetMemoryLayout.
 

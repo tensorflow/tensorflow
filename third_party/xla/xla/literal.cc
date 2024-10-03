@@ -91,10 +91,9 @@ bool LiteralProtoHasValues(const LiteralProto& proto) {
          !proto.s16s().empty() || proto.s32s_size() || proto.s64s_size() ||
          !proto.u2s().empty() || !proto.u4s().empty() || !proto.u8s().empty() ||
          !proto.u16s().empty() || proto.u32s_size() || proto.u64s_size() ||
-         !proto.f8e5m2s().empty() || !proto.f8e4m3s().empty() ||
-         !proto.f8e4m3fns().empty() || !proto.f8e4m3b11fnuzs().empty() ||
-         !proto.f8e5m2fnuzs().empty() || !proto.f8e4m3fnuzs().empty() ||
-         !proto.f8e3m4s().empty() || !proto.f16s().empty() ||
+         !proto.f8e5m2s().empty() || !proto.f8e4m3fns().empty() ||
+         !proto.f8e4m3b11fnuzs().empty() || !proto.f8e5m2fnuzs().empty() ||
+         !proto.f8e4m3fnuzs().empty() || !proto.f16s().empty() ||
          !proto.bf16s().empty() || proto.f32s_size() || proto.f64s_size() ||
          proto.c64s_size() || proto.c128s_size() || proto.preds_size() ||
          proto.tuple_literals_size();
@@ -1685,15 +1684,7 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
         return std::numeric_limits<NativeDestT>::lowest();
       }
     }
-    // TODO(b/370786669): Once ml_dtypes is updated to include
-    // https://github.com/jax-ml/ml_dtypes/pull/205, do not special-case e3m4 by
-    // casting to half first.
-    if constexpr (sizeof(src) == 1 &&
-                  std::is_same_v<NativeDestT, tsl::float8_e3m4>) {
-      return static_cast<NativeDestT>(static_cast<half>(src));
-    } else {
-      return static_cast<NativeDestT>(src);
-    }
+    return static_cast<NativeDestT>(src);
   };
 
   NativeDestT* dest_data = static_cast<NativeDestT*>(dst_base);
@@ -2267,11 +2258,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
           reinterpret_cast<const char*>(data<tsl::float8_e5m2>().data()),
           size_bytes_dense());
       break;
-    case F8E4M3:
-      *proto->mutable_f8e4m3s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e4m3>().data()),
-          size_bytes_dense());
-      break;
     case F8E4M3FN:
       *proto->mutable_f8e4m3fns() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e4m3fn>().data()),
@@ -2290,11 +2276,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case F8E4M3FNUZ:
       *proto->mutable_f8e4m3fnuzs() = std::string(
           reinterpret_cast<const char*>(data<tsl::float8_e4m3fnuz>().data()),
-          size_bytes_dense());
-      break;
-    case F8E3M4:
-      *proto->mutable_f8e3m4s() = std::string(
-          reinterpret_cast<const char*>(data<tsl::float8_e3m4>().data()),
           size_bytes_dense());
       break;
     case F16:
@@ -2455,13 +2436,6 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       memcpy(untyped_data(), s.data(), s.size());
       break;
     }
-    case F8E4M3: {
-      const std::string& s(proto.f8e4m3s());
-      TF_RET_CHECK(data<tsl::float8_e4m3>().size() * sizeof(tsl::float8_e4m3) ==
-                   s.size());
-      memcpy(untyped_data(), s.data(), s.size());
-      break;
-    }
     case F8E4M3FN: {
       const std::string& s(proto.f8e4m3fns());
       TF_RET_CHECK(data<tsl::float8_e4m3fn>().size() *
@@ -2490,13 +2464,6 @@ absl::Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.f8e4m3fnuzs());
       TF_RET_CHECK(data<tsl::float8_e4m3fnuz>().size() *
                        sizeof(tsl::float8_e4m3fnuz) ==
-                   s.size());
-      memcpy(untyped_data(), s.data(), s.size());
-      break;
-    }
-    case F8E3M4: {
-      const std::string& s(proto.f8e3m4s());
-      TF_RET_CHECK(data<tsl::float8_e3m4>().size() * sizeof(tsl::float8_e3m4) ==
                    s.size());
       memcpy(untyped_data(), s.data(), s.size());
       break;

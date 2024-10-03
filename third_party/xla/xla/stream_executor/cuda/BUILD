@@ -1079,6 +1079,7 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
+        "//xla/stream_executor/platform:dso_loader",
         "//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_google(
         select({
