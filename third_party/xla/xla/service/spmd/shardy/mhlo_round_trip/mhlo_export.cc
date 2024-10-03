@@ -23,6 +23,8 @@ limitations under the License.
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_export.h"
+#include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
+#include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 
 namespace xla {
 namespace sdy {
@@ -33,6 +35,7 @@ void addMhloExportPipeline(mlir::OpPassManager& pm) {
   // shouldn't be applied before converting to HLO as they apply folding.
   pm.addPass(createExportOpsPass());
   pm.addPass(createMhloRoundTripShardMapExportPass());
+  pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createExportMhloShardingsPass());
 }
 

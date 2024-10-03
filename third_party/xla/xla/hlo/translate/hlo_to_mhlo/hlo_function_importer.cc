@@ -879,6 +879,20 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           new_operation->setAttr(attr.getName(), attr.getValue());
         }
       }
+      // Shardy currently requires roundtripping passes after HW specific passes
+      // which introduce kCall with backend_config for host communication. If
+      // we get to a point where compiler flow for sharding propagation doesn't
+      // require roundtrip this can likely be removed.
+      const std::string& raw_backend_config =
+          instruction->raw_backend_config_string();
+      if (!raw_backend_config.empty()) {
+        llvm::SmallVector<NamedAttribute, 1> frontend_attributes;
+        frontend_attributes.push_back(builder_->getNamedAttr(
+            "backend_config", builder_->getStringAttr(raw_backend_config)));
+        new_operation->setAttr(
+            kFrontendAttributesAttr,
+            builder_->getDictionaryAttr(frontend_attributes));
+      }
       return new_operation;
     }
     case HloOpcode::kCollectiveBroadcast: {

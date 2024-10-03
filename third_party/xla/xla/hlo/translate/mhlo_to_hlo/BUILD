@@ -124,6 +124,7 @@ cc_library(
         "//xla/client/lib:matrix",
         "//xla/client/lib:quantize",
         "//xla/client/lib:slicing",
+        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/mlir/utils:error_util",
         "//xla/mlir/utils:type_util",
