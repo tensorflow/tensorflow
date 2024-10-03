@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -103,8 +102,8 @@ absl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
 
 absl::Status CUDAFftPlan::Initialize(
     GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
-    uint64_t *input_embed, uint64 input_stride, uint64 input_distance,
-    uint64_t *output_embed, uint64 output_stride, uint64 output_distance,
+    uint64_t *input_embed, uint64_t input_stride, uint64_t input_distance,
+    uint64_t *output_embed, uint64_t output_stride, uint64_t output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
   if (IsInitialized()) {
     return absl::InternalError("cuFFT is already initialized.");
@@ -309,9 +308,9 @@ int CUDAFftPlan::GetFftDirection() const {
 }
 
 std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
-    Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
-    uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
-    uint64_t output_stride, uint64 output_distance, fft::Type type,
+    Stream *stream, int rank, uint64_t *elem_count, uint64_t *input_embed,
+    uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,
+    uint64_t output_stride, uint64_t output_distance, fft::Type type,
     bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
   absl::Status status = fft_plan_ptr->Initialize(

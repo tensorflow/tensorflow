@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/casts.h"
@@ -935,7 +934,7 @@ absl::Status GpuDriver::LoadHsaco(Context* context, const char* hsaco_contents,
 
 absl::Status GpuDriver::SynchronousMemsetUint8(Context* context,
                                                hipDeviceptr_t location,
-                                               uint8 value, size_t size) {
+                                               uint8_t value, size_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(wrap::hipMemsetD8(location, value, size),
                        "Failed to memset memory");
@@ -944,7 +943,7 @@ absl::Status GpuDriver::SynchronousMemsetUint8(Context* context,
 
 absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
                                                 hipDeviceptr_t location,
-                                                uint32 value,
+                                                uint32_t value,
                                                 size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
@@ -955,7 +954,8 @@ absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
 
 absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                                                 hipDeviceptr_t location,
-                                                uint8 value, size_t uint8_count,
+                                                uint8_t value,
+                                                size_t uint8_count,
                                                 GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
@@ -966,7 +966,7 @@ absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
 
 absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
                                                  hipDeviceptr_t location,
-                                                 uint32 value,
+                                                 uint32_t value,
                                                  size_t uint32_count,
                                                  GpuStreamHandle stream) {
   ScopedActivateContext activation{context};

@@ -29,7 +29,6 @@ limitations under the License.
 
 #include "rocm/include/hipsolver.h"
 #endif
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 

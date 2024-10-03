@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
@@ -899,7 +898,7 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> batch_matrix_bytes,
                       scratch_allocator->AllocateBytes(matrix_batch_byte_size));
   res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
@@ -1113,9 +1112,9 @@ bool ROCMBlas::DoBlasGemmBatched(
 #define IMPL_DoBlasGemmBatched(T, Fun)                                         \
   bool ROCMBlas::DoBlasGemmBatched(                                            \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64_t m, uint64_t n, uint64 k, T alpha, DeviceMemorySlice<T> a_array, \
-      int lda, DeviceMemorySlice<T> b_array, int ldb, T beta,                  \
-      DeviceMemorySlice<T> c_array, int ldc, int batch_count,                  \
+      uint64_t m, uint64_t n, uint64_t k, T alpha,                             \
+      DeviceMemorySlice<T> a_array, int lda, DeviceMemorySlice<T> b_array,     \
+      int ldb, T beta, DeviceMemorySlice<T> c_array, int ldc, int batch_count, \
       const NumericOptions &numeric_options,                                   \
       ScratchAllocator *scratch_allocator, blas::CallContext context) {        \
     MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
@@ -1138,7 +1137,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 #define IMPL_DoBlasTrsm(T, Fun, Fun2)                                        \
   bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,                 \
                             blas::UpperLower uplo, blas::Transpose transa,   \
-                            blas::Diagonal diag, uint64_t m, uint64 n,       \
+                            blas::Diagonal diag, uint64_t m, uint64_t n,     \
                             T alpha, const DeviceMemory<T> &a, int lda,      \
                             DeviceMemory<T> *b, int ldb) {                   \
     return DoBlasInternal(Fun, stream, /* pointer_mode_host = */ true,       \
@@ -1150,7 +1149,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
                                                                              \
   bool ROCMBlas::DoBlasTrsmBatched(                                          \
       Stream *stream, blas::Side side, blas::UpperLower uplo,                \
-      blas::Transpose transa, blas::Diagonal diag, uint64_t m, uint64 n,     \
+      blas::Transpose transa, blas::Diagonal diag, uint64_t m, uint64_t n,   \
       T alpha, const DeviceMemory<T *> &as, int lda, DeviceMemory<T *> *bs,  \
       int ldb, int batch_count) {                                            \
     return DoBlasInternal(Fun2, stream, true /* = pointer_mode_host */,      \

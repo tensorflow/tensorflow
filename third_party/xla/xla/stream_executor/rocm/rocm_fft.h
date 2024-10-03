@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_FFT_H_
 
+#include <cstdint>
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 
@@ -33,7 +34,6 @@ limitations under the License.
 
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -70,9 +70,9 @@ class ROCMFftPlan : public fft::Plan {
 
   // Initialize function for batched plan
   absl::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
-                          uint64_t *elem_count, uint64 *input_embed,
-                          uint64_t input_stride, uint64 input_distance,
-                          uint64_t *output_embed, uint64 output_stride,
+                          uint64_t *elem_count, uint64_t *input_embed,
+                          uint64_t input_stride, uint64_t input_distance,
+                          uint64_t *output_embed, uint64_t output_stride,
                           uint64_t output_distance, fft::Type type,
                           int batch_count, ScratchAllocator *scratch_allocator);
 
@@ -94,7 +94,7 @@ class ROCMFftPlan : public fft::Plan {
   GpuExecutor *parent_;
   hipfftHandle plan_;
   fft::Type fft_type_;
-  DeviceMemory<uint8> scratch_;
+  DeviceMemory<uint8_t> scratch_;
   size_t scratch_size_bytes_;
   bool is_initialized_;
 };
