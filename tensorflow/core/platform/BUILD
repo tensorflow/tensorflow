@@ -1091,7 +1091,6 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
         "@local_xla//xla/stream_executor/host:host_platform_id",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_rocm_is_configured([
         "@local_xla//xla/stream_executor/rocm:miopen_plugin",
@@ -1114,7 +1113,6 @@ cc_library(
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
     ],
 )
