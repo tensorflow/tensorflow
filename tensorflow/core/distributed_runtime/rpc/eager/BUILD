@@ -17,7 +17,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
-        "@local_xla//xla/stream_executor/platform",
     ] + tf_grpc_cc_dependencies(),
 )
 
