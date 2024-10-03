@@ -3632,7 +3632,6 @@ cc_library(
     ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
     ]) + if_rocm([
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
