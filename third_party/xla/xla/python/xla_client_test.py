@@ -27,6 +27,7 @@ from absl import flags
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
+import ml_dtypes
 import numpy as np
 
 from xla.python import xla_client
@@ -152,7 +153,8 @@ def TestFactory(xla_backend,
   # TODO(zhangqiaorjc): test fp8 types when XLA support is complete.
   # standard_dtypes is only used for BufferProtocolTest so we only test fp8
   # round trip tests.
-  standard_dtypes += [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
+  fp8_dtypes = [float8_e4m3b11fnuz, float8_e4m3fn, float8_e5m2]
+  standard_dtypes += fp8_dtypes
   # TODO(reedwm): Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
   # standard_dtypes += [float8_e3m4, float8_e4m3]
   dlpack_dtypes = int_dtypes + float_dtypes + [np.bool_] + complex_dtypes
@@ -2191,15 +2193,36 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           c, expected=[np.fft.irfftn(a, axes=(1, 2, 3))], rtol=2e-4
       )
 
-    def testNextAfter(self):
+    @parameterized.named_parameters({
+        "testcase_name": "_{}".format(dtype.__name__),
+        "dtype": dtype,
+    } for dtype in float_dtypes + fp8_dtypes)
+    def testNextAfter(self, dtype):
+      if dtype == np.float64 and self.backend.platform == "tpu":
+        self.skipTest("TPU doesn't support float64")
+      if dtype == bfloat16 and self.backend.platform == "tpu":
+        self.skipTest("b/371119032: Test fails on TPUs with bfloat16")
+      finfo = ml_dtypes.finfo(dtype)
+      eps = finfo.eps
       c = self._NewComputation()
-      ops.NextAfter(
-          ops.Constant(c, np.array([1, 2], dtype=np.float32)),
-          ops.Constant(c, np.array([2, 1], dtype=np.float32)))
+      # Each row is (value, direction, expected), where
+      # 'nextafter(value, direction)' should be 'expected'.
+      data = np.array(
+          [
+              [1, 2, 1 + finfo.eps],
+              [2, 1, 2 - eps],
+              [-0., 1, finfo.smallest_subnormal],
+              [0., -1, -finfo.smallest_subnormal],
+              [-finfo.smallest_subnormal, 1, -0.],
+              [finfo.smallest_subnormal, 1, 2 * finfo.smallest_subnormal],
+              [finfo.smallest_subnormal, -1, 0],
+          ],
+          dtype=dtype,
+      )
+
+      ops.NextAfter(ops.Constant(c, data[:, 0]), ops.Constant(c, data[:, 1]))
       out, = self._Execute(c, ())
-      eps = np.finfo(np.float32).eps
-      np.testing.assert_equal(
-          np.array([eps + 1, 2 - eps], dtype=np.float32), out)
+      np.testing.assert_equal(out, data[:, 2])
 
     @parameterized.named_parameters({
         "testcase_name": "_{}".format(dtype.__name__),

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <vector>
@@ -1487,6 +1488,23 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
                Broadcast(ScalarLike(from_as_int, -1), shape.dimensions()),
                Broadcast(ScalarLike(from_as_int, 1), shape.dimensions()));
     auto result = Add(from_as_int, magnitude_adjustment);
+
+    if (shape.element_type() == F8E5M2FNUZ ||
+        shape.element_type() == F8E4M3FNUZ ||
+        shape.element_type() == F8E4M3B11FNUZ) {
+      // Handle 'from' is the negative value closest to zero and 'to' is
+      // positive. For FNUZ dtypes, the result is +0 instead of -0 since -0
+      // represents a NaN value.
+      const int64_t least_negative = sign_mask | 1;
+      auto to_is_nonnegative = Not(ConvertElementType(to_sign, PRED));
+      auto predicate =
+          And(Eq(from_as_int, ScalarLike(from_as_int, least_negative)),
+              to_is_nonnegative);
+      auto result_if_predicate =
+          Broadcast(ScalarLike(from_as_int, 0), shape.dimensions());
+      result = Select(predicate, result_if_predicate, result);
+    }
+
     // Handle from == ±0.
     result = Select(from_is_zero,
                     Select(to_is_zero, result_for_both_zero,

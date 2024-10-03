@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
@@ -63,6 +64,7 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::FieldsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::IsFalse;
 using ::testing::IsTrue;
@@ -70,6 +72,7 @@ using ::testing::Not;
 using ::testing::Pair;
 using ::testing::ResultOf;
 using ::testing::UnorderedElementsAre;
+using ::testing::status::StatusIs;
 
 TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
   DeviceMesh device_mesh({2, 4});
@@ -2837,10 +2840,10 @@ ENTRY matmul {
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
   // TODO(b/369616683) Fix the error message output in this case.
-  EXPECT_DEATH(
-      absl::StatusOr<bool> status = AutoSharding(option).Run(module.get()),
-      "The auto-sharding pass could not find shardings that works for this "
-      "input.");
+  EXPECT_THAT(AutoSharding(option).Run(module.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Auto-sharding currently does not support "
+                                 "shard_as/shard_like sharding annotations")));
 }
 
 TEST_F(AutoShardingTest, IgnoreShardAsShardLike) {
