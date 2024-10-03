@@ -46,6 +46,7 @@ cc_library(
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

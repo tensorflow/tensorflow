@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -32,6 +31,7 @@ namespace spmd {
 struct AutoShardingSolverOutput {
   std::vector<NodeStrategyIdx> s_val;
   double cost = -1.0;
+  bool is_optimal = true;
   absl::flat_hash_set<LivenessIdx> peak_times;
 
   bool operator==(const AutoShardingSolverOutput& other) const;

@@ -78,7 +78,7 @@ constexpr double kMaxCostValue = 1e18;
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && cost == other.cost &&
-         peak_times == other.peak_times;
+         is_optimal == other.is_optimal && peak_times == other.peak_times;
 }
 
 void PrintLargestInstructions(
@@ -833,6 +833,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
   auto status = solver.Solve();
   LOG(INFO) << "Solver absl::Status: " << status;
 
+  bool is_optimal = false;
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
@@ -873,6 +874,8 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     return absl::InternalError("Solver timed out.");
   } else if (status != operations_research::MPSolver::OPTIMAL) {
     LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
+  } else {
+    is_optimal = true;
   }
   // Fingerprint the model & solution (useful when checking for determinism).
   // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
@@ -941,7 +944,8 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
   }
   PrintLargestInstructions(chosen_node_strategy, request);
   return AutoShardingSolverOutput{.s_val = std::move(chosen_node_strategy),
-                                  .cost = solver.Objective().Value()};
+                                  .cost = solver.Objective().Value(),
+                                  .is_optimal = is_optimal};
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {

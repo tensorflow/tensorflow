@@ -86,9 +86,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -3805,6 +3807,10 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
               option_, request_name, sharding_propagation_solution));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       this->solver_optimal_objective_value_ = output.cost;
+    } else {
+      TF_RET_CHECK(output.is_optimal)
+          << "The solver did not find an optimal solution for a partial mesh "
+          << "shape.";
     }
 
     XLA_VLOG_LINES(5, PrintAutoShardingSolution(
