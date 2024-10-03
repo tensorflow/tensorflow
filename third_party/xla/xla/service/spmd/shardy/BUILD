@@ -24,31 +24,6 @@ package_group(
 )
 
 cc_library(
-    name = "shardy_call_inliner",
-    srcs = ["shardy_call_inliner.cc"],
-    hdrs = ["shardy_call_inliner.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/service:call_inliner",
-        "//xla/service/spmd/shardy:constants",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "shardy_call_inliner_test",
-    srcs = ["shardy_call_inliner_test.cc"],
-    deps = [
-        ":shardy_call_inliner",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/log",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "shardy_xla_pass",
     srcs = ["shardy_xla_pass.cc"],
     hdrs = ["shardy_xla_pass.h"],
