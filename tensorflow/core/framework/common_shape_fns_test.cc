@@ -47,7 +47,7 @@ OpDef MakeOpDef(int num_inputs, int num_outputs) {
   for (int i = 0; i < num_outputs; ++i) {
     b.Output(strings::StrCat("o", i, ": float"));
   }
-  CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
+  CHECK_OK(b.Attr("foo:string").Finalize(&op_reg_data));
   return op_reg_data.op_def;
 }
 
