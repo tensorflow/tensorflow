@@ -81,12 +81,6 @@ bool AutoShardingSolverOutput::operator==(
          peak_times == other.peak_times;
 }
 
-bool AutoShardingSolverResult::operator==(
-    const AutoShardingSolverResult& other) const {
-  return status == other.status &&
-         skip_auto_sharding == other.skip_auto_sharding;
-}
-
 void PrintLargestInstructions(
     const std::vector<NodeStrategyIdx>& chosen_strategy,
     const AutoShardingSolverRequest& request) {
@@ -143,7 +137,7 @@ void PrintLargestInstructions(
   }
 }
 
-AutoShardingSolverResult SolveAndExtractSolution(
+absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
@@ -399,7 +393,7 @@ void AddMemoryTerms(
 //    can be a few (usually < 10) edges in the problem with negative costs. This
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
-AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
@@ -568,8 +562,7 @@ AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
-        return AutoShardingSolverResult(absl::InternalError(err_msg),
-                                        /*skip_auto_sharding=*/false);
+        return absl::InternalError(err_msg);
       }
     }
   }
@@ -783,9 +776,9 @@ AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
   }
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
                                         makespan_var, *solver);
-  if (result.status.ok()) {
+  if (result.ok()) {
     const AutoShardingEvaluation evaluation =
-        Evaluate(unscaled_request, result);
+        Evaluate(unscaled_request, *result);
     LOG(INFO) << "*** Total costs for the (unscaled) solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
@@ -831,7 +824,7 @@ std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
   return chosen_node_strategy;
 }
 
-AutoShardingSolverResult SolveAndExtractSolution(
+absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
@@ -869,22 +862,18 @@ AutoShardingSolverResult SolveAndExtractSolution(
       }
     }
 #endif
-    return AutoShardingSolverResult(
-        absl::InternalError("MPSolver could not find any feasible solution."),
-        /*skip_auto_sharding=*/false);
+    return absl::InternalError(
+        "MPSolver could not find any feasible solution.");
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
-    LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
-                  "likely a bug and should be reported.";
-    return AutoShardingSolverResult(absl::InternalError("Invalid MIP."),
-                                    /*skip_auto_sharding=*/false);
+    LOG(FATAL) << "The MIP fed to the solver is invalid. This is most likely a "
+                  "bug and should be reported.";
+    return absl::InternalError("Invalid MIP.");
   } else if (status == operations_research::MPSolver::NOT_SOLVED) {
     LOG(WARNING) << "Solver timeout; no solution was produced";
-    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
-                                    /*skip_auto_sharding=*/true);
+    return absl::InternalError("Solver timed out.");
   } else if (status != operations_research::MPSolver::OPTIMAL) {
     LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
   }
-
   // Fingerprint the model & solution (useful when checking for determinism).
   // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
   operations_research::MPModelProto model_proto;
@@ -951,9 +940,8 @@ AutoShardingSolverResult SolveAndExtractSolution(
               << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
   }
   PrintLargestInstructions(chosen_node_strategy, request);
-  const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
-                                           solver.Objective().Value()};
-  return AutoShardingSolverResult(output, /*skip_auto_sharding=*/false);
+  return AutoShardingSolverOutput{.s_val = std::move(chosen_node_strategy),
+                                  .cost = solver.Objective().Value()};
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {
@@ -977,13 +965,13 @@ bool AutoShardingEvaluation::operator==(
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverResult& result) {
+                                const AutoShardingSolverOutput& result) {
   const auto& c = request.computation_costs();
   const auto& d = request.communication_costs();
   const auto& r = request.resharding_costs();
   const auto& v = request.value_costs();
   const auto& p = request.departure_costs();
-  const std::vector<NodeStrategyIdx>& s_val = result.status->s_val;
+  const std::vector<NodeStrategyIdx>& s_val = result.s_val;
   const auto e_val = [&](EdgeIdx edge_idx) {
     const auto& edge = request.edges(edge_idx);
     return s_val[edge.first()] * request.s_len(edge.second()) +

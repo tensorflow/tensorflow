@@ -37,17 +37,7 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-struct AutoShardingSolverResult {
- public:
-  AutoShardingSolverResult(absl::StatusOr<AutoShardingSolverOutput> status,
-                           bool skip_auto_sharding)
-      : status(status), skip_auto_sharding(skip_auto_sharding) {}
-  bool operator==(const AutoShardingSolverResult& other) const;
-  absl::StatusOr<AutoShardingSolverOutput> status;
-  bool skip_auto_sharding;
-};
-
-AutoShardingSolverResult FormulateAndSolveMIPFromSolverRequest(
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 
 enum AutoShardingViolationCode {
@@ -92,7 +82,7 @@ struct AutoShardingEvaluation {
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverResult& result);
+                                const AutoShardingSolverOutput& result);
 
 // Creates and returns a variable for makespan.
 operations_research::MPVariable* CreateMakespanVar(
@@ -101,7 +91,7 @@ operations_research::MPVariable* CreateMakespanVar(
     operations_research::MPSolver& solver);
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverResult& result,
+                        const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation);
 
 // Scale down values to reduce the range of costs & coefficients in the solver.

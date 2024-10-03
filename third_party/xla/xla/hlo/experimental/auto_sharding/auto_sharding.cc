@@ -1745,7 +1745,8 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
   return strategy_group;
 }
 
-AutoShardingSolverResult CreateAutoShardingSolverRequestAndCallSolver(
+absl::StatusOr<AutoShardingSolverOutput>
+CreateAutoShardingSolverRequestAndCallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
@@ -3796,14 +3797,12 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
 
     // ----- Call the ILP Solver -----
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
-    spmd::AutoShardingSolverResult solver_result =
+    TF_ASSIGN_OR_RETURN(
+        spmd::AutoShardingSolverOutput output,
         Solve(*module, *hlo_live_range, strategy_map, strategy_groups,
               cost_graph, alias_set, reduced_node_intervals,
               reduced_edge_intervals, reduced_node_groups, reduced_edge_groups,
-              option_, request_name, sharding_propagation_solution);
-    TF_ASSIGN_OR_RETURN(spmd::AutoShardingSolverOutput output,
-                        solver_result.status);
-
+              option_, request_name, sharding_propagation_solution));
     if (mesh_idx == partial_mesh_shapes.size() - 1) {
       this->solver_optimal_objective_value_ = output.cost;
     }
