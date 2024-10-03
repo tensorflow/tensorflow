@@ -906,6 +906,7 @@ cc_library(
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf",
         "//tensorflow/compiler/mlir/lite/stablehlo:optimize_layout",
         "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_legalize_hlo",
