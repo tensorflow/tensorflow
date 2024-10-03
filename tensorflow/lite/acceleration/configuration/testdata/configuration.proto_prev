@@ -310,6 +310,20 @@ enum XNNPackFlags {
   TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8 = 3;
   // Force 16-bit floating point inference.
   TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 = 4;
+  // Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
+  // weights.
+  TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED = 8;
+  // Enable XNNPACK acceleration for VAR_HANDLE, READ_VARIABLE, and
+  // ASSIGN_VARIABLE operators.
+  TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS = 16;
+  // Enable transient indirection buffer to reduce memory usage in selected
+  // operators.
+  TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER = 32;
+  // Enable the latest XNNPACK operators and features in the delegate which have
+  // not yet been enabled by default.
+  TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS = 64;
+  // Enable XNNPack subgraph reshaping.
+  TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING = 128;
 }
 
 message XNNPackSettings {
