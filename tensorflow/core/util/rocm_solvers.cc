@@ -40,7 +40,6 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/platform/default/dso_loader.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"

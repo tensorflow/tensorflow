@@ -744,7 +744,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
         "@local_xla//xla/stream_executor/rocm:rocblas_plugin",
         "@local_xla//xla/stream_executor/rocm:rocblas_wrapper",
