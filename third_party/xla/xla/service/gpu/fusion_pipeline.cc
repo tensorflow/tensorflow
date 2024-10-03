@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_merger.h"
 #include "xla/service/gpu/transforms/horizontal_input_fusion.h"
 #include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
@@ -85,10 +84,6 @@ HloPassPipeline FusionPipeline(
                          /*only_fusion_computations=*/true);
   fusion.AddPass<HloDCE>();
 
-  if (debug_options.xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
-    fusion.AddPass<FusionBlockLevelRewriter>(gpu_device_info,
-                                             shape_size_bytes_function);
-  }
   return std::move(fusion);
 }
 

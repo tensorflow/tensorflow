@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
@@ -1065,11 +1066,30 @@ struct PassRunIndex {
 void VerifyPassOrder(
     const absl::flat_hash_map<std::string, PassRunIndex>& passes,
     absl::string_view before, absl::string_view after) {
-  EXPECT_TRUE(passes.contains(before))
+  ASSERT_TRUE(passes.contains(before))
       << "Expected pass did not run: " << before;
-  EXPECT_TRUE(passes.contains(after)) << "Expected pass did not run: " << after;
+  ASSERT_TRUE(passes.contains(after)) << "Expected pass did not run: " << after;
   EXPECT_LT(passes.at(before).last_run, passes.at(after).first_run)
       << "Pass " << before << " ran after " << after;
+}
+
+// Traverses the module's pass metadata and gathers, for each pass, its smallest
+// and largest run index.  If a pass p0's run index is smaller than another pass
+// p1's run index, then p0 ran before p1.
+absl::flat_hash_map<std::string, PassRunIndex> GatherPassOrderInformation(
+    const HloModule& module) {
+  // Maps a pass name to its first and last index.
+  absl::flat_hash_map<std::string, PassRunIndex> passes;
+  int run_index = 0;
+  for (const HloPassMetadata& pass_metadata :
+       module.metadata().proto().pass_metadata()) {
+    auto& pass = passes[pass_metadata.pass_name()];
+    pass.first_run = std::min(pass.first_run, run_index);
+    pass.last_run = std::max(pass.last_run, run_index);
+    ++run_index;
+  }
+
+  return passes;
 }
 
 TEST_F(GpuCompilerPassTest, PassesAreRunInCorrectOrder) {
@@ -1084,20 +1104,59 @@ ENTRY main {
                           GetOptimizedModule(std::move(module)));
 
   // Maps a pass name to its first and last index.
-  absl::flat_hash_map<std::string, PassRunIndex> passes;
-  int run_index = 0;
-  for (const HloPassMetadata& pass_metadata :
-       optimized_module->metadata()->proto().pass_metadata()) {
-    auto& pass = passes[pass_metadata.pass_name()];
-    pass.first_run = std::min(pass.first_run, run_index);
-    pass.last_run = std::max(pass.last_run, run_index);
-    ++run_index;
-  }
+  absl::flat_hash_map<std::string, PassRunIndex> passes =
+      GatherPassOrderInformation(*optimized_module);
 
   // This test captures known dependencies between passes.
-  VerifyPassOrder(passes, "layout-assignment", "priority-fusion");
-  VerifyPassOrder(passes, "layout-assignment", "layout_normalization");
-  VerifyPassOrder(passes, "host-offload-legalize", "layout_normalization");
+  VerifyPassOrder(passes, /*before=*/"layout-assignment",
+                  /*after=*/"priority-fusion");
+  VerifyPassOrder(passes, /*before=*/"layout-assignment",
+                  /*after=*/"layout_normalization");
+  VerifyPassOrder(passes, /*before=*/"host-offload-legalize",
+                  /*after=*/"layout_normalization");
+}
+
+TEST_F(GpuCompilerPassTest, FusionBlockLevelRewriterRunsAfterAllFusionPasses) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
+  }
+
+  constexpr absl::string_view constant_module = R"(
+ENTRY main {
+  ROOT constant = f32[] constant(0)
+})";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(
+      true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      ParseAndReturnVerifiedModule(constant_module, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+
+  absl::flat_hash_map<std::string, PassRunIndex> passes =
+      GatherPassOrderInformation(*optimized_module);
+
+  absl::string_view kFusionBlockLevelRewriterName =
+      "fusion-block-level-rewriter";
+
+  for (const auto& [pass_name, _] : passes) {
+    if (pass_name != kFusionBlockLevelRewriterName &&
+        absl::StrContains(pass_name, "fusion")) {
+      VerifyPassOrder(passes, /*before=*/pass_name,
+                      /*after=*/kFusionBlockLevelRewriterName);
+      VLOG(2) << "Verified pass order: " << pass_name << " -> "
+              << kFusionBlockLevelRewriterName;
+    }
+  }
 }
 
 }  // namespace
