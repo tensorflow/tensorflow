@@ -751,7 +751,7 @@ alias(
     name = "is_cuda_enabled",
     actual = if_oss(
         "@local_config_cuda//:is_cuda_enabled",
-        "@local_config_cuda//cuda:using_clang",
+        "@local_config_cuda//cuda:using_config_cuda",
     ),
 )
 
@@ -765,6 +765,14 @@ alias(
     ),
 )
 
+selects.config_setting_group(
+    name = "is_cuda_clang",
+    match_all = [
+        ":is_cuda_enabled",
+        ":is_cuda_compiler_clang",
+    ],
+)
+
 # Config setting that is satisfied when CUDA device code should be compiled
 # with nvcc. It does not imply that CUDA support has been enabled.
 alias(
@@ -773,6 +781,14 @@ alias(
         "@local_config_cuda//:is_cuda_compiler_nvcc",
         "@local_config_cuda//cuda:FALSE",
     ),
+)
+
+selects.config_setting_group(
+    name = "is_cuda_nvcc",
+    match_all = [
+        ":is_cuda_enabled",
+        ":is_cuda_compiler_nvcc",
+    ],
 )
 
 # Config setting that is satisfied when building with --config=cuda in OSS.

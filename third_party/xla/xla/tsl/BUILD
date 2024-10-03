@@ -39,7 +39,7 @@ alias(
     name = "is_cuda_enabled",
     actual = if_oss(
         "@local_config_cuda//:is_cuda_enabled",
-        "@local_config_cuda//cuda:using_clang",
+        "@local_config_cuda//cuda:using_config_cuda",
     ),
     visibility = ["//visibility:public"],
 )
