@@ -229,7 +229,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
 
-  opts.set_xla_gpu_enable_triton_hopper(false);
   opts.set_xla_gpu_experimental_enable_fusion_block_level_rewriter(false);
 
   opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -1787,11 +1786,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Einsums that have partitioned operand(can be either LHS or RHS) that's "
       "larger than this threshold will be transformed to use windowed einsums."
       "Default is 100000"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_triton_hopper",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_hopper),
-      debug_options->xla_gpu_enable_triton_hopper(),
-      "Currently used to enable MMA_V3 for Hopper in Triton"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_enable_fusion_block_level_rewriter",
       bool_setter_for(
