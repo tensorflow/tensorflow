@@ -1289,6 +1289,74 @@ CHECK:     tt.load
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+TEST_F(TritonEmitterTest, Chaining0DElementwiseScalarsIsSupported) {
+  const std::string kHloText = R"(
+triton_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  exp0 = f32[] exponential(p0)
+  exp1 = f32[] exponential(p1)
+  neg0 = f32[] negate(exp0)
+  neg1 = f32[] negate(exp1)
+  add = f32[] add(neg0, neg1)
+  mul = f32[] multiply(add, add)
+  div = f32[] divide(mul, p0)
+  conv = bf16[] convert(div)
+  const = bf16[] constant(0.5)
+  sub = bf16[] subtract(conv, const)
+
+  // We still don't support 0D outputs, so we need to broadcast.
+  ROOT broadcast = bf16[1] broadcast(sub), dimensions={}
+}
+
+ENTRY entry_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = bf16[1] fusion(p0, p1), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+)"));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/6e-1, /*arel=*/6e-1}));
+}
+
+TEST_F(TritonEmitterTest, Multiple0DBroadcastsAreSupported) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = f32[] parameter(0)
+  exp = f32[] exponential(p)
+  b1 = f32[10] broadcast(exp), dimensions={}
+  b2 = f32[10,10] broadcast(exp), dimensions={}
+  b3 = f32[10,10] broadcast(b1), dimensions={0}
+  ROOT add = f32[10,10] add(b2,b3)
+}
+
+ENTRY entry_computation {
+  p = f32[] parameter(0)
+  ROOT fusion = f32[10,10] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["4","4"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.splat
+CHECK:     arith.addf
+)"));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/6e-1, /*arel=*/6e-1}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

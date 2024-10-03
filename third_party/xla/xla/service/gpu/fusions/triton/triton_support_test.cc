@@ -445,6 +445,31 @@ ENTRY triton_computation {
                  skip_failure_branch_to_avoid_crash);
 }
 
+TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise0D) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[] parameter(0)
+  parameter_1 = $0[] parameter(1)
+  ROOT binary = $0[] $1(parameter_0, parameter_1)
+})";
+
+  const std::string kHloCompareTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[] parameter(0)
+  parameter_1 = $0[] parameter(1)
+  ROOT compare = pred[] $1(parameter_0, parameter_1), direction=GE
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(opcode == HloOpcode::kCompare
+                                         ? kHloCompareTestTemplate
+                                         : kHloTestTemplate,
+                                     data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
 constexpr std::array kTestedOpsBinaryElementwise = {
     HloOpcode::kAnd,
     HloOpcode::kOr,

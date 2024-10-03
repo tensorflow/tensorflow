@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -64,6 +65,15 @@ CodegenDecision IsTritonSupportedComputation(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+// This function returns `true` if the provided instruction has an unsupported
+// 0D tensor shape in the output. Triton generally does not support 0D tensors,
+// but there are some exceptions:
+//  - within reduction computations
+//  - constants
+//  - feeding into a broadcast.
+bool IsUnsupported0DTensor(const HloInstruction& instr,
+                           bool is_within_reduction_computation);
 
 namespace internal {
 // TODO(b/363981282): Remove the function below once all ops are tested via
