@@ -20,12 +20,14 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_replace.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
-#include "tsl/platform/logging.h"
 #include "tsl/platform/regexp.h"
 
 using llvm::LessRecord;
