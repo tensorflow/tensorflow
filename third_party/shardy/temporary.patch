@@ -1143,10 +1143,10 @@ index a9705ce..1e2ad3d 100644
    mlir::func::registerAllExtensions(dialects);
  
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index de92cb4..1bea535 100644
+index de92cb4..155d3f2 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,4095 +1,78 @@
+@@ -1,4095 +1,901 @@
  Auto generated patch. Do not edit or delete it, even if empty.
 -diff -ruN --strip-trailing-cr a/llvm/docs/NVPTXUsage.rst b/llvm/docs/NVPTXUsage.rst
 ---- a/llvm/docs/NVPTXUsage.rst
@@ -1154,11 +1154,7 @@ index de92cb4..1bea535 100644
 -@@ -127,6 +127,69 @@
 - NVPTX Intrinsics
 - ================
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch1/include/toy/Lexer.h b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch1/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch1/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -+Address Space Conversion
 -+------------------------
 -+
@@ -1224,18 +1220,14 @@ index de92cb4..1bea535 100644
 -+
 - Reading PTX Special Registers
 - -----------------------------
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 -diff -ruN --strip-trailing-cr a/llvm/docs/ReleaseNotes.rst b/llvm/docs/ReleaseNotes.rst
 ---- a/llvm/docs/ReleaseNotes.rst
 -+++ b/llvm/docs/ReleaseNotes.rst
 -@@ -63,24 +63,6 @@
 -   * ``llvm.nvvm.bitcast.d2ll``
 -   * ``llvm.nvvm.bitcast.ll2d``
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 --* Remove the following intrinsics which can be replaced with a funnel-shift:
 --
 --  * ``llvm.nvvm.rotate.b32``
@@ -1256,11 +1248,7 @@ index de92cb4..1bea535 100644
 --
 - Changes to LLVM infrastructure
 - ------------------------------
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch2/include/toy/Lexer.h b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch2/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch2/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -diff -ruN --strip-trailing-cr a/llvm/include/llvm/IR/IntrinsicsNVVM.td b/llvm/include/llvm/IR/IntrinsicsNVVM.td
 ---- a/llvm/include/llvm/IR/IntrinsicsNVVM.td
 -+++ b/llvm/include/llvm/IR/IntrinsicsNVVM.td
@@ -1284,17 +1272,13 @@ index de92cb4..1bea535 100644
 -+//   * llvm.nvvm.bitcast.i2f  --> ibid.
 -+//   * llvm.nvvm.bitcast.d2ll --> ibid.
 -+//   * llvm.nvvm.bitcast.ll2d --> ibid.
-+ #include "llvm/ADT/StringRef.h"
-  
+- 
 - def llvm_global_ptr_ty  : LLVMQualPointerType<1>;  // (global)ptr
 - def llvm_shared_ptr_ty  : LLVMQualPointerType<3>;  // (shared)ptr
 -@@ -1610,6 +1602,40 @@
 -   [IntrReadMem, IntrArgMemOnly, IntrNoCallback, IntrWillReturn, NoCapture<ArgIndex<0>>],
 -   "llvm.nvvm.ldg.global.p">;
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 -+// Use for generic pointers
 -+// - These intrinsics are used to convert address spaces.
 -+// - The input pointer and output pointer must have the same type, except for
@@ -1335,11 +1319,7 @@ index de92cb4..1bea535 100644
 -@@ -4453,6 +4479,22 @@
 -               "llvm.nvvm.sust.p.3d.v4i32.trap">,
 -     ClangBuiltin<"__nvvm_sust_p_3d_v4i32_trap">;
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch3/include/toy/Lexer.h b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch3/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch3/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -+
 -+def int_nvvm_rotate_b32
 -+  : DefaultAttrsIntrinsic<[llvm_i32_ty], [llvm_i32_ty, llvm_i32_ty],
@@ -1381,14 +1361,72 @@ index de92cb4..1bea535 100644
 --            Name.starts_with(".to.gen");
 -       else
 -         Expand = false;
-+ #include "llvm/ADT/StringRef.h"
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDeclCXX.cpp b/clang/lib/CodeGen/CGDeclCXX.cpp
++--- a/clang/lib/CodeGen/CGDeclCXX.cpp
+++++ b/clang/lib/CodeGen/CGDeclCXX.cpp
++@@ -640,13 +640,13 @@
++       addUsedGlobal(COMDATKey);
++     }
   
 -@@ -2271,117 +2258,6 @@
 -   }
-- }
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
++-    // If comdats are in use and supported, place the initializer function into
++-    // the comdat group of the global. In the MS ABI, initializers are mangled
++-    // and have their own comdat, so we don't include them in the group for
++-    // consistency with MSVC.
+++    // If we used a COMDAT key for the global ctor, the init function can be
+++    // discarded if the global ctor entry is discarded.
+++    // FIXME: Do we need to restrict this to ELF and Wasm?
++     llvm::Comdat *C = Addr->getComdat();
++-    if (COMDATKey && C && getTriple().supportsCOMDAT() &&
++-        !getTarget().getCXXABI().isMicrosoft()) {
+++    if (COMDATKey && C &&
+++        (getTarget().getTriple().isOSBinFormatELF() ||
+++         getTarget().getTriple().isOSBinFormatWasm())) {
++       Fn->setComdat(C);
++     }
++   } else {
++diff -ruN --strip-trailing-cr a/libcxx/docs/Status/Cxx23Issues.csv b/libcxx/docs/Status/Cxx23Issues.csv
++--- a/libcxx/docs/Status/Cxx23Issues.csv
+++++ b/libcxx/docs/Status/Cxx23Issues.csv
++@@ -296,7 +296,7 @@
++ "`LWG3862 <https://wg21.link/LWG3862>`__","``basic_const_iterator``'s ``common_type`` specialization is underconstrained","2023-02 (Issaquah)","","",""
++ "`LWG3865 <https://wg21.link/LWG3865>`__","Sorting a range of ``pairs``","2023-02 (Issaquah)","|Complete|","17.0",""
++ "`LWG3869 <https://wg21.link/LWG3869>`__","Deprecate ``std::errc`` constants related to UNIX STREAMS","2023-02 (Issaquah)","|Complete|","19.0",""
++-"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","|Complete|","20.0",""
+++"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","","",""
++ "`LWG3871 <https://wg21.link/LWG3871>`__","Adjust note about ``terminate``","2023-02 (Issaquah)","","",""
++ "`LWG3872 <https://wg21.link/LWG3872>`__","``basic_const_iterator`` should have custom ``iter_move``","2023-02 (Issaquah)","","",""
++ "`LWG3875 <https://wg21.link/LWG3875>`__","``std::ranges::repeat_view<T, IntegerClass>::iterator`` may be ill-formed","2023-02 (Issaquah)","|Complete|","17.0",""
++diff -ruN --strip-trailing-cr a/libcxx/include/CMakeLists.txt b/libcxx/include/CMakeLists.txt
++--- a/libcxx/include/CMakeLists.txt
+++++ b/libcxx/include/CMakeLists.txt
++@@ -560,6 +560,7 @@
++   __memory/unique_temporary_buffer.h
++   __memory/uses_allocator.h
++   __memory/uses_allocator_construction.h
+++  __memory/voidify.h
++   __memory_resource/memory_resource.h
++   __memory_resource/monotonic_buffer_resource.h
++   __memory_resource/polymorphic_allocator.h
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/construct_at.h b/libcxx/include/__memory/construct_at.h
++--- a/libcxx/include/__memory/construct_at.h
+++++ b/libcxx/include/__memory/construct_at.h
++@@ -14,6 +14,7 @@
++ #include <__config>
++ #include <__iterator/access.h>
++ #include <__memory/addressof.h>
+++#include <__memory/voidify.h>
++ #include <__type_traits/enable_if.h>
++ #include <__type_traits/is_array.h>
++ #include <__utility/declval.h>
++@@ -37,7 +38,7 @@
++ template <class _Tp, class... _Args, class = decltype(::new(std::declval<void*>()) _Tp(std::declval<_Args>()...))>
++ _LIBCPP_HIDE_FROM_ABI constexpr _Tp* construct_at(_Tp* __location, _Args&&... __args) {
++   _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at");
++-  return ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
+++  return ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
+  }
   
 --static Value *upgradeNVVMIntrinsicCall(StringRef Name, CallBase *CI,
 --                                       Function *F, IRBuilder<> &Builder) {
@@ -1505,11 +1543,7 @@ index de92cb4..1bea535 100644
 -                                       IRBuilder<> &Builder) {
 -   LLVMContext &C = F->getContext();
 -@@ -4332,8 +4208,85 @@
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch4/include/toy/Lexer.h b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch4/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch4/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 -     if (!IsX86 && Name == "stackprotectorcheck") {
 -       Rep = nullptr;
 -+    } else if (IsNVVM && (Name == "abs.i" || Name == "abs.ll")) {
@@ -1604,30 +1638,58 @@ index de92cb4..1bea535 100644
 - static const LLT S512 = LLT::scalar(512);
 --static const LLT S1024 = LLT::scalar(1024);
 - static const LLT MaxScalar = LLT::scalar(MaxRegisterSize);
-+ #include "llvm/ADT/StringRef.h"
++ #endif
++@@ -48,7 +49,7 @@
++   return std::construct_at(__location, std::forward<_Args>(__args)...);
++ #else
++   return _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at"),
++-         ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
+++         ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
++ #endif
++ }
   
 - static const LLT V2S8 = LLT::fixed_vector(2, 8);
 -@@ -333,8 +332,8 @@
 - static const LLT V2S128 = LLT::fixed_vector(2, 128);
 - static const LLT V4S128 = LLT::fixed_vector(4, 128);
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
++--- a/libcxx/include/__memory/shared_ptr.h
+++++ b/libcxx/include/__memory/shared_ptr.h
++@@ -248,35 +248,33 @@
++ 
++ template <class _Tp, class _Alloc>
++ struct __shared_ptr_emplace : __shared_weak_count {
++-  using __value_type = __remove_cv_t<_Tp>;
++-
++   template <class... _Args,
++             class _Allocator                                                                         = _Alloc,
++             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
++   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&...) : __storage_(std::move(__a)) {
++     static_assert(
++         sizeof...(_Args) == 0, "No argument should be provided to the control block when using _for_overwrite");
++-    ::new (static_cast<void*>(__get_elem())) __value_type;
+++    ::new ((void*)__get_elem()) _Tp;
++   }
   
 --static std::initializer_list<LLT> AllScalarTypes = {
 --    S32, S64, S96, S128, S160, S224, S256, S512, S1024};
 -+static std::initializer_list<LLT> AllScalarTypes = {S32,  S64,  S96,  S128,
 -+                                                    S160, S224, S256, S512};
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch5/include/toy/Lexer.h b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch5/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch5/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
++   template <class... _Args,
++             class _Allocator                                                                          = _Alloc,
++             __enable_if_t<!is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
++   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&... __args) : __storage_(std::move(__a)) {
++-    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __value_type>::type;
+++    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __remove_cv_t<_Tp> >::type;
++     _TpAlloc __tmp(*__get_alloc());
++     allocator_traits<_TpAlloc>::construct(__tmp, __get_elem(), std::forward<_Args>(__args)...);
++   }
   
 - static std::initializer_list<LLT> AllS16Vectors{
 -     V2S16, V4S16, V6S16, V8S16, V10S16, V12S16, V16S16, V2S128, V4S128};
 -@@ -890,11 +889,10 @@
 -     .clampScalar(0, S16, S64);
-+ #include "llvm/ADT/StringRef.h"
++   _LIBCPP_HIDE_FROM_ABI _Alloc* __get_alloc() _NOEXCEPT { return __storage_.__get_alloc(); }
   
 -   getActionDefinitionsBuilder({G_IMPLICIT_DEF, G_FREEZE})
 --      .legalIf(isRegisterClassType(0))
@@ -1645,9 +1707,8 @@ index de92cb4..1bea535 100644
 -@@ -174,6 +174,10 @@
 - def hasSHFL : Predicate<"!(Subtarget->getSmVersion() >= 70"
 -                           "&& Subtarget->getPTXVersion() >= 64)">;
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
++-  _LIBCPP_HIDE_FROM_ABI __value_type* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
+++  _LIBCPP_HIDE_FROM_ABI _Tp* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
   
 -+def useShortPtrLocal : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_LOCAL) == 32">;
 -+def useShortPtrShared : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_SHARED) == 32">;
@@ -1655,20 +1716,151 @@ index de92cb4..1bea535 100644
 -+
 - def useFP16Math: Predicate<"Subtarget->allowFP16Math()">;
 - def hasBF16Math: Predicate<"Subtarget->hasBF16Math()">;
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch6/include/toy/Lexer.h b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch6/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch6/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
++ private:
++   template <class _Allocator                                                                         = _Alloc,
++             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
++   _LIBCPP_HIDE_FROM_ABI void __on_zero_shared_impl() _NOEXCEPT {
++-    __get_elem()->~__value_type();
+++    __get_elem()->~_Tp();
++   }
   
 -@@ -1661,6 +1665,167 @@
 -              "brev.b64 \t$dst, $a;",
 -              [(set Int64Regs:$dst, (bitreverse Int64Regs:$a))]>;
-+ #include "llvm/ADT/StringRef.h"
++   template <class _Allocator                                                                          = _Alloc,
++@@ -302,7 +300,7 @@
++   // through `std::allocate_shared` and `std::make_shared`.
++   struct _Storage {
++     struct _Data {
++-      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, __value_type, __elem_);
+++      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, _Tp, __elem_);
++     };
++ 
++     _ALIGNAS_TYPE(_Data) char __buffer_[sizeof(_Data)];
++@@ -314,7 +312,7 @@
++       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__alloc_);
++     }
   
--+//
++-    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI __value_type* __get_elem() _NOEXCEPT {
+++    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI _Tp* __get_elem() _NOEXCEPT {
++       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__elem_);
++     }
++   };
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/uninitialized_algorithms.h b/libcxx/include/__memory/uninitialized_algorithms.h
++--- a/libcxx/include/__memory/uninitialized_algorithms.h
+++++ b/libcxx/include/__memory/uninitialized_algorithms.h
++@@ -21,6 +21,7 @@
++ #include <__memory/allocator_traits.h>
++ #include <__memory/construct_at.h>
++ #include <__memory/pointer_traits.h>
+++#include <__memory/voidify.h>
++ #include <__type_traits/enable_if.h>
++ #include <__type_traits/extent.h>
++ #include <__type_traits/is_array.h>
++@@ -63,7 +64,7 @@
++   try {
++ #endif
++     for (; __ifirst != __ilast && !__stop_copying(__idx); ++__ifirst, (void)++__idx)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
+++      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
++ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__ofirst, __idx);
++@@ -93,7 +94,7 @@
++   try {
++ #endif
++     for (; __n > 0 && !__stop_copying(__idx); ++__ifirst, (void)++__idx, (void)--__n)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
+++      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
++ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__ofirst, __idx);
++@@ -123,7 +124,7 @@
++   try {
++ #endif
++     for (; __idx != __last; ++__idx)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
+++      ::new (std::__voidify(*__idx)) _ValueType(__x);
++ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -151,7 +152,7 @@
++   try {
++ #endif
++     for (; __n > 0; ++__idx, (void)--__n)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
+++      ::new (std::__voidify(*__idx)) _ValueType(__x);
++ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -181,7 +182,7 @@
++   try {
++ #  endif
++     for (; __idx != __last; ++__idx)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
+++      ::new (std::__voidify(*__idx)) _ValueType;
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -207,7 +208,7 @@
++   try {
++ #  endif
++     for (; __n > 0; ++__idx, (void)--__n)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
+++      ::new (std::__voidify(*__idx)) _ValueType;
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -234,7 +235,7 @@
++   try {
++ #  endif
++     for (; __idx != __last; ++__idx)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
+++      ::new (std::__voidify(*__idx)) _ValueType();
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -260,7 +261,7 @@
++   try {
++ #  endif
++     for (; __n > 0; ++__idx, (void)--__n)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
+++      ::new (std::__voidify(*__idx)) _ValueType();
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__first, __idx);
++@@ -296,7 +297,7 @@
++   try {
++ #  endif
++     for (; __ifirst != __ilast && !__stop_moving(__idx); ++__idx, (void)++__ifirst) {
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
+++      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
++     }
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++@@ -334,7 +335,7 @@
++   try {
++ #  endif
++     for (; __n > 0 && !__stop_moving(__idx); ++__idx, (void)++__ifirst, --__n)
++-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
+++      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
++ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
++   } catch (...) {
++     std::__destroy(__ofirst, __idx);
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/voidify.h b/libcxx/include/__memory/voidify.h
++--- a/libcxx/include/__memory/voidify.h
+++++ b/libcxx/include/__memory/voidify.h
++@@ -0,0 +1,30 @@
+++// -*- C++ -*-
+++//===----------------------------------------------------------------------===//
+ +//
 -+// Rotate: Use ptx shf instruction if available.
--+//
--+
+++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+++// See https://llvm.org/LICENSE.txt for license information.
+++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ +//
+++//===----------------------------------------------------------------------===//
+ +
 -+// 32 bit r2 = rotl r1, n
 -+//    =>
 -+//        r2 = shf.l r1, r1, n
@@ -1774,7 +1966,9 @@ index de92cb4..1bea535 100644
 -+          (ROT64imm_sw Int64Regs:$src, imm:$amt, (SUB_FRM_64 node:$amt))>;
 -+def : Pat<(rotr Int64Regs:$src, (i32 imm:$amt)),
 -+          (ROT64imm_sw Int64Regs:$src, (SUB_FRM_64 node:$amt), imm:$amt)>;
--+
+++#ifndef _LIBCPP___MEMORY_VOIDIFY_H
+++#define _LIBCPP___MEMORY_VOIDIFY_H
+ +
 -+// 64-bit software rotate left by register.
 -+def ROTL64reg_sw :
 -+  NVPTXInst<(outs Int64Regs:$dst), (ins Int64Regs:$src, Int32Regs:$amt),
@@ -1789,7 +1983,9 @@ index de92cb4..1bea535 100644
 -+            "add.u64 \t$dst, %lhs, %rhs;\n\t"
 -+            "}}",
 -+            [(set Int64Regs:$dst, (rotl Int64Regs:$src, (i32 Int32Regs:$amt)))]>;
--+
+++#include <__config>
+++#include <__memory/addressof.h>
+ +
 -+def ROTR64reg_sw :
 -+  NVPTXInst<(outs Int64Regs:$dst), (ins Int64Regs:$src, Int32Regs:$amt),
 -+            "{{\n\t"
@@ -1803,43 +1999,46 @@ index de92cb4..1bea535 100644
 -+            "add.u64 \t$dst, %lhs, %rhs;\n\t"
 -+            "}}",
 -+            [(set Int64Regs:$dst, (rotr Int64Regs:$src, (i32 Int32Regs:$amt)))]>;
--+
+++#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+++#  pragma GCC system_header
+++#endif
+ +
 -+//
 -+// Funnnel shift in clamp mode
 -+//
--+
+++_LIBCPP_BEGIN_NAMESPACE_STD
+ +
 -+// Create SDNodes so they can be used in the DAG code, e.g.
 -+// NVPTXISelLowering (LowerShiftLeftParts and LowerShiftRightParts)
 -+def FUN_SHFL_CLAMP : SDNode<"NVPTXISD::FUN_SHFL_CLAMP", SDTIntShiftDOp, []>;
 -+def FUN_SHFR_CLAMP : SDNode<"NVPTXISD::FUN_SHFR_CLAMP", SDTIntShiftDOp, []>;
--+
+++template <typename _Tp>
+++_LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void* __voidify(_Tp& __from) {
+++  // Cast away cv-qualifiers to allow modifying elements of a range through const iterators.
+++  return const_cast<void*>(static_cast<const volatile void*>(std::addressof(__from)));
+++}
+ +
 -+def FUNSHFLCLAMP :
 -+  NVPTXInst<(outs Int32Regs:$dst),
 -+            (ins Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+            "shf.l.clamp.b32 \t$dst, $lo, $hi, $amt;",
 -+            [(set Int32Regs:$dst,
 -+              (FUN_SHFL_CLAMP (i32 Int32Regs:$lo), (i32 Int32Regs:$hi), (i32 Int32Regs:$amt)))]>;
--+
+++_LIBCPP_END_NAMESPACE_STD
+ +
 -+def FUNSHFRCLAMP :
 -+  NVPTXInst<(outs Int32Regs:$dst),
 -+            (ins Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+            "shf.r.clamp.b32 \t$dst, $lo, $hi, $amt;",
 -+            [(set Int32Regs:$dst,
 -+             (FUN_SHFR_CLAMP (i32 Int32Regs:$lo), (i32 Int32Regs:$hi), (i32 Int32Regs:$amt)))]>;
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
 - //
 - // BFE - bit-field extract
 -@@ -3492,42 +3657,6 @@
 - def: Pat<(v2i16 (scalar_to_vector (i16 Int16Regs:$a))),
 -          (CVT_u32_u16 Int16Regs:$a, CvtNONE)>;
-+diff -ruN --strip-trailing-cr a/mlir/examples/toy/Ch7/include/toy/Lexer.h b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+--- a/mlir/examples/toy/Ch7/include/toy/Lexer.h
-++++ b/mlir/examples/toy/Ch7/include/toy/Lexer.h
-+@@ -15,6 +15,7 @@
-  
+- 
 --//
 --// Funnel-Shift
 --//
@@ -1884,12 +2083,8 @@ index de92cb4..1bea535 100644
 -+++ b/llvm/lib/Target/NVPTX/NVPTXIntrinsics.td
 -@@ -2537,45 +2537,59 @@
 -   : VLDG_G_ELE_V4<"v4.f32 \t{{$dst1, $dst2, $dst3, $dst4}}, [$src];", Float32Regs>;
-+ #include "llvm/ADT/StringRef.h"
-  
-++#include <cstdlib>
-+ #include <memory>
-+ #include <string>
-  
+- 
+- 
 --multiclass NG_TO_G<string Str> {
 -+multiclass NG_TO_G<string Str, Intrinsic Intrin, Predicate ShortPtr> {
 -    def "" : NVPTXInst<(outs Int32Regs:$result), (ins Int32Regs:$src),
@@ -1907,7 +2102,55 @@ index de92cb4..1bea535 100644
 -+      [(set Int64Regs:$result, (Intrin Int32Regs:$src))]>,
 -+      Requires<[ShortPtr]>;
 - }
-- 
+++#endif // _LIBCPP___MEMORY_VOIDIFY_H
++diff -ruN --strip-trailing-cr a/libcxx/include/module.modulemap b/libcxx/include/module.modulemap
++--- a/libcxx/include/module.modulemap
+++++ b/libcxx/include/module.modulemap
++@@ -1528,6 +1528,7 @@
++     }
++     module uses_allocator                     { header "__memory/uses_allocator.h" }
++     module uses_allocator_construction        { header "__memory/uses_allocator_construction.h" }
+++    module voidify                            { header "__memory/voidify.h" }
++ 
++     header "memory"
++     export *
++diff -ruN --strip-trailing-cr a/libcxx/include/optional b/libcxx/include/optional
++--- a/libcxx/include/optional
+++++ b/libcxx/include/optional
++@@ -287,7 +287,7 @@
++   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
++   union {
++     char __null_state_;
++-    remove_cv_t<value_type> __val_;
+++    value_type __val_;
++   };
++   bool __engaged_;
++ 
++@@ -323,7 +323,7 @@
++   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
++   union {
++     char __null_state_;
++-    remove_cv_t<value_type> __val_;
+++    value_type __val_;
++   };
++   bool __engaged_;
++ 
++@@ -377,7 +377,7 @@
++   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __assign_from(_That&& __opt) {
++     if (this->__engaged_ == __opt.has_value()) {
++       if (this->__engaged_)
++-        static_cast<_Tp&>(this->__val_) = std::forward<_That>(__opt).__get();
+++        this->__val_ = std::forward<_That>(__opt).__get();
++     } else {
++       if (this->__engaged_)
++         this->reset();
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
++@@ -80,6 +80,21 @@
++         a.deallocate(p, 2);
++     }
+  
 --multiclass G_TO_NG<string Str> {
 -+multiclass G_TO_NG<string Str, Intrinsic Intrin, Predicate ShortPtr> {
 -    def "" : NVPTXInst<(outs Int32Regs:$result), (ins Int32Regs:$src),
@@ -1924,8 +2167,24 @@ index de92cb4..1bea535 100644
 -+          #"  cvt.u32.u64 \t$result, %tmp; }}",
 -+      [(set Int32Regs:$result, (Intrin Int64Regs:$src))]>,
 -+      Requires<[ShortPtr]>;
-- }
-- 
+++    {
+++        std::allocator<Counted> a;
+++        Counted const* p = a.allocate(2);
+++        int count = 0;
+++        std::construct_at(p, count);
+++        assert(count == 1);
+++        std::construct_at(p+1, count);
+++        assert(count == 2);
+++        (p+1)->~Counted();
+++        assert(count == 1);
+++        p->~Counted();
+++        assert(count == 0);
+++        a.deallocate(const_cast<Counted*>(p), 2);
+++    }
+++
++     return true;
+  }
+  
 --defm cvta_local  : NG_TO_G<"local">;
 --defm cvta_shared : NG_TO_G<"shared">;
 --defm cvta_global : NG_TO_G<"global">;
@@ -1977,8 +2236,18 @@ index de92cb4..1bea535 100644
 -@@ -2618,6 +2632,24 @@
 -                              [(set Int64Regs:$r,
 -                              (int_nvvm_move_ptr texternalsym:$s))]>;*/
-- 
--+
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
++@@ -99,6 +99,16 @@
++     alloc.deallocate(out, 2);
++   }
+  
+++  // Works with const pointers.
+++  {
+++    int x = 1;
+++    const int* ptr = &x;
+ +
 -+// MoveParam        %r1, param
 -+// ptr_local_to_gen %r2, %r1
 -+// ptr_gen_to_local %r3, %r2
@@ -1995,14 +2264,26 @@ index de92cb4..1bea535 100644
 -+def : Pat<(i32 (int_nvvm_ptr_gen_to_local (int_nvvm_ptr_local_to_gen
 -+                (MoveParam texternalsym:$src)))),
 -+               (nvvm_move_ptr32  texternalsym:$src)>;
--+
+++    const int* result = std::ranges::construct_at(ptr, 42);
+++    assert(result == ptr);
+++    assert(x == 42);
+++  }
+ +
 - def texsurf_handles
 -   : NVPTXInst<(outs Int64Regs:$result), (ins imem:$src),
 -               "mov.u64 \t$result, $src;", []>;
 -@@ -2701,9 +2733,134 @@
 - def : Pat<(int_nvvm_read_ptx_sreg_envreg31), (MOV_SPECIAL ENVREG31)>;
-- 
-- 
++   return true;
++ }
+  
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
++@@ -75,5 +75,17 @@
++   }
++ #endif  // TEST_HAS_NO_EXCEPTIONS
+  
 -+// rotate builtin support
 -+
 -+def ROTATE_B32_HW_IMM
@@ -2071,13 +2352,23 @@ index de92cb4..1bea535 100644
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+                "shf.l.wrap.b32 \t$dst, $lo, $hi, $amt;",[]>,
 -+      Requires<[hasHWROT32]>;
--+
+++  // Works with const iterators.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+ +
 -+  def SHF_R_WRAP_B32_IMM
 -+    : NVPTXInst<(outs Int32Regs:$dst),
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, i32imm:$amt),
 -+                "shf.r.wrap.b32 \t$dst, $lo, $hi, $amt;",[]>,
 -+      Requires<[hasHWROT32]>;
--+
+++    std::ranges::uninitialized_default_construct_n(buf.cbegin(), N);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+ +
 -+  def SHF_R_WRAP_B32_REG
 -+    : NVPTXInst<(outs Int32Regs:$dst),
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
@@ -2235,8 +2526,42 @@ index de92cb4..1bea535 100644
 -+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
 -+                                          Src));
 -     return;
--   }
-- }
++   return 0;
++ }
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
++@@ -163,5 +163,30 @@
+    }
++ #endif  // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators, (iter, sentinel) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++
+++    std::ranges::uninitialized_default_construct(buf.cbegin(), buf.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
+++  // Works with const iterators, (range) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
+++
+++    std::ranges::uninitialized_default_construct(range);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
++   return 0;
+  }
 -diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 ---- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 -+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
@@ -4302,19 +4627,35 @@ index de92cb4..1bea535 100644
 -     %1:_(s32) = G_EXTRACT %0, 0
 -@@ -297,6 +296,18 @@
 - ...
-- 
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
++@@ -94,5 +94,17 @@
++   }
++ #endif // TEST_HAS_NO_EXCEPTIONS
+  
 - ---
 -+name: test_implicit_def_v17s32
 -+body: |
 -+  bb.0:
--+
+++  // Works with const iterators.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+ +
 -+    ; CHECK-LABEL: name: test_implicit_def_v17s32
 -+    ; CHECK: [[DEF:%[0-9]+]]:_(<17 x s32>) = G_IMPLICIT_DEF
 -+    ; CHECK-NEXT: S_NOP 0, implicit [[DEF]](<17 x s32>)
 -+    %0:_(<17 x s32>) = G_IMPLICIT_DEF
 -+    S_NOP 0, implicit %0
 -+...
--+
+++    std::ranges::uninitialized_value_construct_n(buf.cbegin(), N);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+ +
 -+---
 - name: test_implicit_def_v32s32
 - body: |
@@ -4561,13 +4902,121 @@ index de92cb4..1bea535 100644
 -+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankselect.mir
 -@@ -42,6 +42,8 @@
 -     ret void
--   }
++   return 0;
++ }
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
++@@ -183,5 +183,30 @@
+    }
 - 
 -+  define void @non_power_of_2() { ret void }
 -+
 -   define amdgpu_kernel void @load_constant_v4i16_from_8_align8(ptr addrspace(4) %ptr0) {
 -     ret void
--   }
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators, (iter, sentinel) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++
+++    std::ranges::uninitialized_value_construct(buf.cbegin(), buf.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
+++  // Works with const iterators, (range) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++
+++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
+++    std::ranges::uninitialized_value_construct(range);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
++   return 0;
++ }
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
++@@ -104,6 +104,22 @@
++ 
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::uninitialized_copy_n(in, N, out.cbegin(), out.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
++   // Conversions.
++   {
++     constexpr int N = 3;
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
++@@ -278,6 +278,39 @@
++   Counted::reset();
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators, (iter, sentinel) overload.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::uninitialized_copy(in, in + N, out.cbegin(), out.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
+++  // Works with const iterators, (range) overload.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::subrange out_range(out.cbegin(), out.cend());
+++    std::ranges::uninitialized_copy(in, out_range);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
++   // Conversions, (iter, sentinel) overload.
++   {
++     constexpr int N = 3;
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
++@@ -198,5 +198,34 @@
+    }
 -@@ -185,6 +187,23 @@
 - ...
 - 
@@ -4591,7 +5040,46 @@ index de92cb4..1bea535 100644
 -+---
 - name: load_constant_v4i16_from_8_align8
 - legalized: true
-- 
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators, (iter, sentinel) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++
+++    std::ranges::uninitialized_fill(buf.cbegin(), buf.cend(), x);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::all_of(buf.begin(), buf.end(), pred));
+++
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
+++  // Works with const iterators, (range) overload.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+++
+++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
+++    std::ranges::uninitialized_fill(range, x);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::all_of(buf.begin(), buf.end(), pred));
+++
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+++
++   return 0;
++ }
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
++@@ -101,5 +101,19 @@
++   }
++ #endif // TEST_HAS_NO_EXCEPTIONS
+  
 -diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 ---- a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 -+++ b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
@@ -4601,11 +5089,22 @@ index de92cb4..1bea535 100644
 -+; Address space intrinsics were erroneously marked NoCapture, leading to bad
 -+; optimizations (such as the store below being eliminated as dead code). This
 -+; test makes sure we don't regress.
--+
+++  // Works with const iterators.
+++  {
+++    constexpr int N = 5;
+++    Buffer<Counted, N> buf;
+ +
 -+declare void @foo(ptr addrspace(1))
--+
+++    std::ranges::uninitialized_fill_n(buf.cbegin(), N, x);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::all_of(buf.begin(), buf.end(), pred));
+ +
 -+declare ptr addrspace(1) @llvm.nvvm.ptr.gen.to.global.p1.p0(ptr)
--+
+++    std::destroy(buf.begin(), buf.end());
+++    Counted::reset();
+++  }
+ +
 -+; CHECK: @bar
 -+define void @bar() {
 -+  %t1 = alloca i32
@@ -4647,7 +5146,8 @@ index de92cb4..1bea535 100644
 -+; CHECK: ret
 -   %val = tail call i64 @llvm.nvvm.rotate.b64(i64 %a, i32 3)
 -   ret i64 %val
-- }
++   return 0;
+  }
 - 
 -+; CHECK: rotateright64
 - define i64 @rotateright64(i64 %a, i32 %b) {
@@ -4809,7 +5309,130 @@ index de92cb4..1bea535 100644
 -+; SM20-NEXT:    }
 -+; SM20-NEXT:    st.param.b64 [func_retval0+0], %rd2;
 - ; SM20-NEXT:    ret;
-- ;
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
++@@ -105,6 +105,22 @@
++ 
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::uninitialized_move_n(in, N, out.cbegin(), out.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
++   // Conversions.
++   {
++     constexpr int N = 3;
++diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
++--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
+++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
++@@ -282,6 +282,39 @@
++   Counted::reset();
++ #endif // TEST_HAS_NO_EXCEPTIONS
++ 
+++  // Works with const iterators, (iter, sentinel) overload.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::uninitialized_move(in, in + N, out.cbegin(), out.cend());
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
+++  // Works with const iterators, (range) overload.
+++  {
+++    constexpr int N = 5;
+++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
+++    Buffer<Counted, N> out;
+++    Counted::reset();
+++
+++    std::ranges::subrange out_range (out.cbegin(), out.cend());
+++    std::ranges::uninitialized_move(in, out_range);
+++    assert(Counted::current_objects == N);
+++    assert(Counted::total_objects == N);
+++    assert(std::equal(in, in + N, out.begin(), out.end()));
+++
+++    std::destroy(out.begin(), out.end());
+++  }
+++  Counted::reset();
+++
++   // Conversions, (iter, sentinel) overload.
++   {
++     constexpr int N = 3;
++diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
+++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
++@@ -10287,10 +10287,8 @@
++   SDValue LeftOp = ShiftOperand.getOperand(0);
++   SDValue RightOp = ShiftOperand.getOperand(1);
++ 
++-  // Treat zext nneg as sext - we might need to support handling these as zext
++-  // as well in the future, but for now just prefer sext.
++-  bool IsSignExt = sd_match(LeftOp, m_SExtLike(m_Value()));
++-  bool IsZeroExt = sd_match(LeftOp, m_ZExt(m_Value()));
+++  bool IsSignExt = LeftOp.getOpcode() == ISD::SIGN_EXTEND;
+++  bool IsZeroExt = LeftOp.getOpcode() == ISD::ZERO_EXTEND;
++ 
++   if (!IsSignExt && !IsZeroExt)
++     return SDValue();
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++@@ -9181,12 +9181,13 @@
++         for (unsigned Cnt : Slices) {
++           ArrayRef<Value *> Slice = VL.slice(Cnt, VF);
++           // If any instruction is vectorized already - do not try again.
++-          if (const TreeEntry *SE = getTreeEntry(Slice.front());
+++          if (TreeEntry *SE = getTreeEntry(Slice.front());
++               SE || getTreeEntry(Slice.back())) {
++             if (!SE)
++               continue;
++             if (VF != SE->getVectorFactor() || !SE->isSame(Slice))
++               continue;
+++            SE->UserTreeIndices.emplace_back(&E, UINT_MAX);
++             AddCombinedNode(SE->Idx, Cnt);
++             continue;
++           }
++@@ -13396,7 +13397,12 @@
++         if (CommonMask[Idx] != PoisonMaskElem)
++           CommonMask[Idx] = Idx;
++       for (auto [E, Idx] : SubVectors) {
++-        Value *V = castToScalarTyElem(E->VectorizedValue);
+++        Value *V = E->VectorizedValue;
+++        if (V->getType()->isIntOrIntVectorTy())
+++          V = castToScalarTyElem(V, any_of(E->Scalars, [&](Value *V) {
+++                                   return !isKnownNonNegative(
+++                                       V, SimplifyQuery(*R.DL));
+++                                 }));
++         Vec = Builder.CreateInsertVector(Vec->getType(), Vec, V,
++                                          Builder.getInt64(Idx));
++         if (!CommonMask.empty()) {
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pmulh.ll b/llvm/test/CodeGen/X86/pmulh.ll
++--- a/llvm/test/CodeGen/X86/pmulh.ll
+++++ b/llvm/test/CodeGen/X86/pmulh.ll
++@@ -953,15 +953,39 @@
++ ; SSE-NEXT:    movdqa %xmm0, 16(%rdi)
++ ; SSE-NEXT:    retq
+  ;
 - ; SM35-LABEL: rotateright64(
 - ; SM35:       {
 --; SM35-NEXT:    .reg .b32 %r<5>;
@@ -5298,8 +5921,187 @@ index de92cb4..1bea535 100644
 - ; CHECK-NEXT:.b8 1                                   // DW_AT_call_file
 - ; CHECK-NEXT:.b8 6                                   // DW_AT_call_line
 - ; CHECK-NEXT:.b8 37                                  // DW_AT_call_column
++-; AVX-LABEL: PR109790:
++-; AVX:       # %bb.0:
++-; AVX-NEXT:    movq %rdi, %rax
++-; AVX-NEXT:    vmovdqa (%rsi), %ymm0
++-; AVX-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
++-; AVX-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
++-; AVX-NEXT:    vmovdqa %ymm0, (%rdi)
++-; AVX-NEXT:    vzeroupper
++-; AVX-NEXT:    retq
+++; AVX2-LABEL: PR109790:
+++; AVX2:       # %bb.0:
+++; AVX2-NEXT:    movq %rdi, %rax
+++; AVX2-NEXT:    vmovdqa (%rsi), %ymm0
+++; AVX2-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
+++; AVX2-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
+++; AVX2-NEXT:    vmovdqa %ymm0, (%rdi)
+++; AVX2-NEXT:    vzeroupper
+++; AVX2-NEXT:    retq
+++;
+++; AVX512F-LABEL: PR109790:
+++; AVX512F:       # %bb.0:
+++; AVX512F-NEXT:    movq %rdi, %rax
+++; AVX512F-NEXT:    vmovdqa (%rsi), %ymm0
+++; AVX512F-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
+++; AVX512F-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
+++; AVX512F-NEXT:    vpmulld {{\.?LCPI[0-9]+_[0-9]+}}(%rip){1to16}, %zmm0, %zmm0
+++; AVX512F-NEXT:    vpsrld $16, %zmm0, %zmm0
+++; AVX512F-NEXT:    vpmovdw %zmm0, (%rdi)
+++; AVX512F-NEXT:    vzeroupper
+++; AVX512F-NEXT:    retq
+++;
+++; AVX512BW-LABEL: PR109790:
+++; AVX512BW:       # %bb.0:
+++; AVX512BW-NEXT:    movq %rdi, %rax
+++; AVX512BW-NEXT:    vmovdqa (%rsi), %ymm0
+++; AVX512BW-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
+++; AVX512BW-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
+++; AVX512BW-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0]
+++; AVX512BW-NEXT:    vpsrld $16, %zmm0, %zmm0
+++; AVX512BW-NEXT:    vpmovdw %zmm0, (%rdi)
+++; AVX512BW-NEXT:    vzeroupper
+++; AVX512BW-NEXT:    retq
++   %load = load <16 x i16>, ptr %a, align 32
++   %and = and <16 x i16> %load, <i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767>
++   %ext = zext nneg <16 x i16> %and to <16 x i32>
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
++--- a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
+++++ b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
++@@ -0,0 +1,97 @@
+++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
+++
+++define i1 @test(i64 %v1, ptr %v2, i32 %v3, i1 %v4) {
+++; CHECK-LABEL: define i1 @test(
+++; CHECK-SAME: i64 [[V1:%.*]], ptr [[V2:%.*]], i32 [[V3:%.*]], i1 [[V4:%.*]]) {
+++; CHECK-NEXT:  [[NEWFUNCROOT:.*:]]
+++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i64> poison, i64 [[V1]], i32 0
+++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i64> [[TMP0]], <2 x i64> poison, <2 x i32> zeroinitializer
+++; CHECK-NEXT:    [[TMP2:%.*]] = lshr <2 x i64> [[TMP1]], <i64 32, i64 40>
+++; CHECK-NEXT:    [[TMP3:%.*]] = trunc <2 x i64> [[TMP2]] to <2 x i8>
+++; CHECK-NEXT:    [[TMP4:%.*]] = and <2 x i8> [[TMP3]], <i8 1, i8 -1>
+++; CHECK-NEXT:    [[TMP5:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
+++; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq <2 x i32> [[TMP5]], zeroinitializer
+++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <4 x i32> poison, i32 [[V3]], i32 0
+++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x i32> [[TMP7]], <4 x i32> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
+++; CHECK-NEXT:    [[TMP9:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
+++; CHECK-NEXT:    [[TMP10:%.*]] = call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> [[TMP8]], <2 x i32> [[TMP9]], i64 0)
+++; CHECK-NEXT:    [[TMP11:%.*]] = uitofp <4 x i32> [[TMP10]] to <4 x float>
+++; CHECK-NEXT:    [[TMP12:%.*]] = fdiv <4 x float> zeroinitializer, [[TMP11]]
+++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <4 x i1> poison, i1 [[V4]], i32 0
+++; CHECK-NEXT:    [[TMP14:%.*]] = shufflevector <4 x i1> [[TMP13]], <4 x i1> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
+++; CHECK-NEXT:    [[TMP15:%.*]] = call <4 x i1> @llvm.vector.insert.v4i1.v2i1(<4 x i1> [[TMP14]], <2 x i1> [[TMP6]], i64 0)
+++; CHECK-NEXT:    [[TMP16:%.*]] = select <4 x i1> [[TMP15]], <4 x float> zeroinitializer, <4 x float> [[TMP12]]
+++; CHECK-NEXT:    [[TMP17:%.*]] = extractelement <4 x float> [[TMP16]], i32 3
+++; CHECK-NEXT:    [[CONV_I_I1743_3:%.*]] = fptoui float [[TMP17]] to i32
+++; CHECK-NEXT:    [[TMP18:%.*]] = icmp ne i32 [[CONV_I_I1743_3]], 0
+++; CHECK-NEXT:    [[TMP19:%.*]] = bitcast <4 x float> [[TMP16]] to <4 x i32>
+++; CHECK-NEXT:    [[TMP20:%.*]] = icmp ult <4 x i32> [[TMP19]], <i32 1333788672, i32 1333788672, i32 1333788672, i32 1333788672>
+++; CHECK-NEXT:    [[TMP21:%.*]] = extractelement <4 x i1> [[TMP20]], i32 3
+++; CHECK-NEXT:    [[NARROW:%.*]] = select i1 [[TMP21]], i1 [[TMP18]], i1 false
+++; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <4 x float> [[TMP16]], i32 2
+++; CHECK-NEXT:    [[CONV_I_I1743_2:%.*]] = fptoui float [[TMP22]] to i32
+++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <4 x i1> [[TMP20]], i32 2
+++; CHECK-NEXT:    [[NARROW1:%.*]] = select i1 [[TMP23]], i32 [[CONV_I_I1743_2]], i32 0
+++; CHECK-NEXT:    [[TMP24:%.*]] = zext i1 [[NARROW]] to i32
+++; CHECK-NEXT:    [[TMP25:%.*]] = or i32 [[NARROW1]], [[TMP24]]
+++; CHECK-NEXT:    [[TMP26:%.*]] = extractelement <4 x float> [[TMP16]], i32 1
+++; CHECK-NEXT:    [[CONV_I_I1743_1:%.*]] = fptoui float [[TMP26]] to i32
+++; CHECK-NEXT:    [[TMP27:%.*]] = extractelement <4 x i1> [[TMP20]], i32 1
+++; CHECK-NEXT:    [[NARROW2:%.*]] = select i1 [[TMP27]], i32 [[CONV_I_I1743_1]], i32 0
+++; CHECK-NEXT:    [[RV3:%.*]] = or i32 [[TMP25]], [[NARROW2]]
+++; CHECK-NEXT:    [[TMP28:%.*]] = extractelement <4 x float> [[TMP16]], i32 0
+++; CHECK-NEXT:    [[CONV_I_I1743:%.*]] = fptoui float [[TMP28]] to i32
+++; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <4 x i1> [[TMP20]], i32 0
+++; CHECK-NEXT:    [[NARROW4:%.*]] = select i1 [[TMP29]], i32 [[CONV_I_I1743]], i32 0
+++; CHECK-NEXT:    [[RT5:%.*]] = or i32 [[RV3]], [[NARROW4]]
+++; CHECK-NEXT:    [[RT:%.*]] = zext i32 [[RT5]] to i64
+++; CHECK-NEXT:    store i64 [[RT]], ptr [[V2]], align 1
+++; CHECK-NEXT:    ret i1 false
+++;
+++newFuncRoot:
+++  %conv.i147.i1756.3 = uitofp i32 %v3 to float
+++  %div.i.i.i1749.3 = fdiv float 0.000000e+00, %conv.i147.i1756.3
+++  %cond.i.i.i1751.3 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.3
+++  %conv.i147.i1756.2 = uitofp i32 %v3 to float
+++  %div.i.i.i1749.2 = fdiv float 0.000000e+00, %conv.i147.i1756.2
+++  %cond.i.i.i1751.2 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.2
+++  %0 = lshr i64 %v1, 40
+++  %1 = trunc i64 %0 to i32
+++  %tt2 = and i32 %1, 255
+++  %cmp1.i.i.i1746.1 = icmp eq i32 %tt2, 0
+++  %conv.i147.i1756.1 = uitofp i32 %tt2 to float
+++  %div.i.i.i1749.1 = fdiv float 0.000000e+00, %conv.i147.i1756.1
+++  %cond.i.i.i1751.1 = select i1 %cmp1.i.i.i1746.1, float 0.000000e+00, float %div.i.i.i1749.1
+++  %tt3 = lshr i64 %v1, 32
+++  %2 = trunc i64 %tt3 to i32
+++  %tt1 = and i32 %2, 1
+++  %cmp1.i.i.i1746 = icmp eq i32 %tt1, 0
+++  %conv.i147.i1756 = uitofp i32 %tt1 to float
+++  %div.i.i.i1749 = fdiv float 0.000000e+00, %conv.i147.i1756
+++  %cond.i.i.i1751 = select i1 %cmp1.i.i.i1746, float 0.000000e+00, float %div.i.i.i1749
+++  %3 = bitcast float %cond.i.i.i1751.3 to i32
+++  %cmp.i99.i1736.3 = icmp ult i32 %3, 1333788672
+++  %conv.i.i1743.3 = fptoui float %cond.i.i.i1751.3 to i32
+++  %4 = icmp ne i32 %conv.i.i1743.3, 0
+++  %narrow = select i1 %cmp.i99.i1736.3, i1 %4, i1 false
+++  %5 = bitcast float %cond.i.i.i1751.2 to i32
+++  %cmp.i99.i1736.2 = icmp ult i32 %5, 1333788672
+++  %conv.i.i1743.2 = fptoui float %cond.i.i.i1751.2 to i32
+++  %narrow1 = select i1 %cmp.i99.i1736.2, i32 %conv.i.i1743.2, i32 0
+++  %6 = zext i1 %narrow to i32
+++  %7 = or i32 %narrow1, %6
+++  %8 = bitcast float %cond.i.i.i1751.1 to i32
+++  %cmp.i99.i1736.1 = icmp ult i32 %8, 1333788672
+++  %conv.i.i1743.1 = fptoui float %cond.i.i.i1751.1 to i32
+++  %narrow2 = select i1 %cmp.i99.i1736.1, i32 %conv.i.i1743.1, i32 0
+++  %rv3 = or i32 %7, %narrow2
+++  %9 = bitcast float %cond.i.i.i1751 to i32
+++  %cmp.i99.i1736 = icmp ult i32 %9, 1333788672
+++  %conv.i.i1743 = fptoui float %cond.i.i.i1751 to i32
+++  %narrow4 = select i1 %cmp.i99.i1736, i32 %conv.i.i1743, i32 0
+++  %rt5 = or i32 %rv3, %narrow4
+++  %rt = zext i32 %rt5 to i64
+++  store i64 %rt, ptr %v2, align 1
+++  ret i1 false
+++}
++diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
++--- a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
+++++ b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
++@@ -280,6 +280,7 @@
++     "rdpruintrin.h",
++     "rdseedintrin.h",
++     "riscv_bitmanip.h",
+++    "riscv_corev_alu.h",
++     "riscv_crypto.h",
++     "riscv_ntlh.h",
++     "rtmintrin.h",
++diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
++--- a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
+++++ b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
++@@ -632,6 +632,7 @@
++       "__memory/unique_temporary_buffer.h",
++       "__memory/uses_allocator.h",
++       "__memory/uses_allocator_construction.h",
+++      "__memory/voidify.h",
++       "__memory_resource/memory_resource.h",
++       "__memory_resource/monotonic_buffer_resource.h",
++       "__memory_resource/polymorphic_allocator.h",
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++@@ -358,6 +358,7 @@
++     td_file = "include/clang/Basic/BuiltinsRISCV.td",
++     td_srcs = [
++         "include/clang/Basic/BuiltinsRISCV.td",
+++        "include/clang/Basic/BuiltinsRISCVXCV.td",
++         "include/clang/Basic/BuiltinsBase.td",
++     ],
++ )
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index af35fe7..ad9923c 100644
+index af35fe7..80f07d3 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -5308,920 +6110,13 @@ index af35fe7..ad9923c 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "9830156f623c56062bf6df1b4c4b4bd8ab5bd57c"
 -    LLVM_SHA256 = "85bb9a61cfdaf0d3386890dc7b4bbaa17eecf4b70b60c314307f2ca3919b9035"
-+    LLVM_COMMIT = "6292f117c39b9fc72da4e40328eeeda2aa94a5f2"
-+    LLVM_SHA256 = "31f583de2e077f9289fc5efea74bd6e1a1694fda5f77f09472253cdc072f2e5e"
++    LLVM_COMMIT = "00128a20eec27246719d73ba427bf821883b00b4"
++    LLVM_SHA256 = "9fff2ccb6c262f3d5e2f98c281a0b99a585daee83742e1599709ff61cfc222af"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 8b13789..7102b01 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1 +1,902 @@
-+diff --ruN a/stablehlo/examples/c++/ExampleAdd.cpp b/stablehlo/examples/c++/ExampleAdd.cpp
-+--- stablehlo/examples/c++/ExampleAdd.cpp
-++++ stablehlo/examples/c++/ExampleAdd.cpp
-+@@ -18,7 +18,7 @@
-+ #include "llvm/ADT/SmallVector.h"
-+ #include "llvm/Support/LogicalResult.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/Block.h"
-+ #include "mlir/IR/Builders.h"
-+@@ -43,7 +43,7 @@
-+       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
-+   module->getContext()->loadDialect<mlir::func::FuncDialect>();
-+   module->getContext()->loadDialect<mlir::stablehlo::StablehloDialect>();
-+-  module->getContext()->loadDialect<mlir::quant::QuantizationDialect>();
-++  module->getContext()->loadDialect<mlir::quant::QuantDialect>();
-+   module->setName("test_module");
-+ 
-+   /** create function **/
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-+@@ -17,7 +17,7 @@
-+ #include <utility>
-+ 
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
-+ #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
-+ #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-+--- stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-++++ stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-+@@ -18,7 +18,7 @@
-+ #include <utility>
-+ 
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
-+ #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
-+ #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
-+--- stablehlo/stablehlo/dialect/Base.cpp
-++++ stablehlo/stablehlo/dialect/Base.cpp
-+@@ -31,7 +31,7 @@
-+ #include "llvm/ADT/SmallVector.h"
-+ #include "llvm/Support/Debug.h"
-+ #include "llvm/Support/ErrorHandling.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/Dialect/Shape/IR/Shape.h"
-+ #include "mlir/IR/Builders.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.h b/stablehlo/stablehlo/dialect/ChloOps.h
-+--- stablehlo/stablehlo/dialect/ChloOps.h
-++++ stablehlo/stablehlo/dialect/ChloOps.h
-+@@ -20,7 +20,7 @@
-+ #include "llvm/ADT/APFloat.h"
-+ #include "llvm/ADT/StringRef.h"
-+ #include "mlir/Bytecode/BytecodeOpInterface.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/Builders.h"
-+ #include "mlir/IR/BuiltinTypes.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/Register.cpp b/stablehlo/stablehlo/dialect/Register.cpp
-+--- stablehlo/stablehlo/dialect/Register.cpp
-++++ stablehlo/stablehlo/dialect/Register.cpp
-+@@ -17,7 +17,7 @@
-+ #include "stablehlo/dialect/Register.h"
-+ 
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
-+ #include "mlir/IR/DialectRegistry.h"
-+ #include "stablehlo/dialect/ChloOps.h"
-+@@ -30,7 +30,7 @@
-+ void registerAllDialects(mlir::DialectRegistry &registry) {
-+   // clang-format off
-+   registry.insert<mlir::func::FuncDialect,
-+-                  mlir::quant::QuantizationDialect,
-++                  mlir::quant::QuantDialect,
-+                   mlir::sparse_tensor::SparseTensorDialect>();
-+   registry.insert<mlir::chlo::ChloDialect,
-+                   mlir::stablehlo::StablehloDialect,
-+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
-+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
-++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-+@@ -52,7 +52,7 @@
-+ #include "llvm/Support/Regex.h"
-+ #include "mlir/Dialect/Arith/IR/Arith.h"
-+ #include "mlir/Dialect/Complex/IR/Complex.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/Dialect/Shape/IR/Shape.h"
-+ #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
-+ #include "mlir/Dialect/Tensor/IR/Tensor.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
-+--- stablehlo/stablehlo/dialect/StablehloOps.h
-++++ stablehlo/stablehlo/dialect/StablehloOps.h
-+@@ -21,7 +21,7 @@
-+ #include <optional>
-+ 
-+ #include "llvm/ADT/StringRef.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/Dialect/Shape/IR/Shape.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/Builders.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
-+--- stablehlo/stablehlo/dialect/TypeInference.cpp
-++++ stablehlo/stablehlo/dialect/TypeInference.cpp
-+@@ -52,7 +52,7 @@
-+ #include "llvm/Support/Regex.h"
-+ #include "llvm/Support/raw_ostream.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/Builders.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
-+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
-++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
-+@@ -20,7 +20,7 @@
-+ #include "llvm/ADT/SmallVectorExtras.h"
-+ #include "llvm/ADT/StringRef.h"
-+ #include "llvm/ADT/TypeSwitch.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/Dialect/Shape/IR/Shape.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/BuiltinTypes.h"
-+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
-+--- stablehlo/stablehlo/reference/Api.cpp
-++++ stablehlo/stablehlo/reference/Api.cpp
-+@@ -31,7 +31,7 @@
-+ #include "llvm/Support/Path.h"
-+ #include "llvm/Support/SourceMgr.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+ #include "mlir/IR/BuiltinOps.h"
-+ #include "mlir/IR/BuiltinTypeInterfaces.h"
-+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.h b/stablehlo/stablehlo/tests/CheckOps.h
-+--- stablehlo/stablehlo/tests/CheckOps.h
-++++ stablehlo/stablehlo/tests/CheckOps.h
-+@@ -17,7 +17,7 @@
-+ #define STABLEHLO_DIALECT_CHECKOPS_H_
-+ 
-+ #include "mlir/Bytecode/BytecodeOpInterface.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+ #include "mlir/IR/BuiltinTypes.h"
-+ #include "mlir/IR/Dialect.h"
-+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-+--- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-++++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-+@@ -1338,24 +1338,24 @@
-+ 
-+ // -----
-+ 
-++// expected-error@+1 {{scale out of expressed type range}}
-+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>) {
-+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 1.055040e+05>>'}}
-+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 10.550400e+04>>
-+    func.return
-+ }
-+ 
-+ // -----
-+ 
-++// expected-error@+1 {{scale out of expressed type range}}
-+ func.func @quantized_element_type_c6(%arg0: tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>) {
-+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x2x!quant.uniform<i4:f16, 4.9604639999999998E-8>>'}}
-+    %0 = stablehlo.add %arg0,  %arg0 : tensor<1x2x!quant.uniform<i4:f16, 4.960464e-08>>
-+    func.return
-+ }
-+ 
-+ // -----
-+ 
-++// expected-error@+1 {{illegal quantized dimension: -1}}
-+ func.func @quantized_element_type_c11(%arg0: tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>) {
-+-  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}} 2/4/8/16/32-bit uniform quantized signed integer or 2/4/8/16/32-bit uniform quantized unsigned integer or 2/4/8/16/32-bit uniform quantized per axis signed integer or 2/4/8/16/32-bit uniform quantized per axis unsigned integer values, but got 'tensor<1x5x2x!quant.uniform<i8:f32:-1, {1.000000e-01:-30,1.000000e-01:-30}>>'}}
-+   %0 = stablehlo.add %arg0,  %arg0 : tensor<1x5x2x!quant.uniform<i8<-128:127>:f32:-1, {0.1:-30, 0.1:-30}>>
-+   func.return
-+ }
-+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
-+--- stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
-++++ stablehlo/stablehlo/tests/transforms/stablehlo_create_compatibility_expander.mlir
-+@@ -69,7 +69,7 @@
-+       index_vector_dim = 3
-+     >,
-+     slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-+-    indices_are_sorted = true
-++    indices_are_sorted = false
-+   } : (tensor<3x2x4x7x9xi32>, tensor<4x3x5x2xi32>) -> tensor<4x3x5x8xi32>
-+   func.return %0 : tensor<4x3x5x8xi32>
-+ }
-+@@ -77,9 +77,9 @@
-+ // -----
-+ 
-+ // CHECK-LABEL: @gather_with_batching_no_index_vector_dim
-++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
-+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
-+ // CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-+ // CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-+@@ -102,7 +102,7 @@
-+       index_vector_dim = 3
-+     >,
-+     slice_sizes = array<i64: 1, 1, 1, 8>,
-+-    indices_are_sorted = true
-++    indices_are_sorted = false
-+   }> : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>) -> tensor<4x3x5x8xi32>
-+   func.return %0 : tensor<4x3x5x8xi32>
-+ }
-+@@ -133,9 +133,305 @@
-+       index_vector_dim = 3
-+     >,
-+     slice_sizes = array<i64: 0, 1, 8>,
-+-    indices_are_sorted = true
-++    indices_are_sorted = false
-+   }> : (tensor<0x2x9xi32>, tensor<0x3x5x1xi32>) -> tensor<0x3x5x8xi32>
-+   func.return %0 : tensor<0x3x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<3x4x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 1 : tensor<3x4x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<3x4x5x1xi32>, tensor<3x4x5x1xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x4xi32>) -> tensor<3x4x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<3x4x5x8xi32>
-++func.func @gather_batching_dims_indices_become_unsorted(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [0, 1],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = true
-++  } : (tensor<3x2x4x7x9xi32>, tensor<3x4x5x2xi32>) -> tensor<3x4x5x8xi32>
-++  func.return %0 : tensor<3x4x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dims_indices_become_unsorted_2
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
-++func.func @gather_batching_dims_indices_become_unsorted_2(%arg0: tensor<3x2x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [2, 3],
-++      operand_batching_dims = [0, 1],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [2, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = true
-++  } : (tensor<3x2x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
-++  func.return %0 : tensor<2x3x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dims_indices_remain_sorted
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = true,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
-++func.func @gather_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [2, 3],
-++      operand_batching_dims = [0, 1],
-++      start_indices_batching_dims = [0, 2],
-++      start_index_map = [2, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = true
-++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
-++  func.return %0 : tensor<2x3x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dims_indices_remain_unsorted
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 1, 2, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>) -> tensor<2x3x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<2x3x5x8xi32>
-++func.func @gather_batching_dims_indices_remain_unsorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [2, 3],
-++      operand_batching_dims = [0, 1],
-++      start_indices_batching_dims = [0, 2],
-++      start_index_map = [2, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x8xi32>
-++  func.return %0 : tensor<2x3x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dims_does_not_overflow_indices_type
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x127x5x1xi8>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x127x5x1xi8>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<4x127x5x1xi8>, tensor<4x127x5x1xi8>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x4xi8>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x4xi8>) -> tensor<4x127x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<4x127x5x8xi32>
-++func.func @gather_batching_dims_does_not_overflow_indices_type(%arg0: tensor<127x2x4x7x9xi32>, %arg1: tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<127x2x4x7x9xi32>, tensor<4x127x5x2xi8>) -> tensor<4x127x5x8xi32>
-++  func.return %0 : tensor<4x127x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dim_overflows_signless_indices_type
-++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5x2xi8>) -> tensor<4x128x5x2xi32>
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x2xi32>) -> tensor<4x128x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x4xi32>) -> tensor<4x128x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
-++func.func @gather_batching_dim_overflows_signless_indices_type(%arg0: tensor<128x2x4x7x9xi32>, %arg1: tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<128x2x4x7x9xi32>, tensor<4x128x5x2xi8>) -> tensor<4x128x5x8xi32>
-++  func.return %0 : tensor<4x128x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dim_overflows_unsigned_indices_type
-++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<256x4x5x2xui8>) -> tensor<256x4x5x2xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<256x4x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<256x4x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim0]], %[[iota_dim1]], %[[convert]], dim = 3 : (tensor<256x4x5x1xi32>, tensor<256x4x5x1xi32>, tensor<256x4x5x2xi32>) -> tensor<256x4x5x4xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x4xi32>) -> tensor<256x4x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<256x4x5x8xi32>
-++func.func @gather_batching_dim_overflows_unsigned_indices_type(%arg0: tensor<256x2x4x7x9xi32>, %arg1: tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [0, 1],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<256x2x4x7x9xi32>, tensor<256x4x5x2xui8>) -> tensor<256x4x5x8xi32>
-++  func.return %0 : tensor<256x4x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dim_overflows_indices_type_and_i32
-++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x2xi64>
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x2147483648x5x1xi64>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x2147483648x5x1xi64>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[convert]], dim = 3 : (tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x1xi64>, tensor<4x2147483648x5x2xi64>) -> tensor<4x2147483648x5x4xi64>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     start_index_map = [0, 2, 1, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x4xi64>) -> tensor<4x2147483648x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<4x2147483648x5x8xi32>
-++func.func @gather_batching_dim_overflows_indices_type_and_i32(%arg0: tensor<2147483648x2x4x7x9xi32>, %arg1: tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<2147483648x2x4x7x9xi32>, tensor<4x2147483648x5x2xi8>) -> tensor<4x2147483648x5x8xi32>
-++  func.return %0 : tensor<4x2147483648x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dim_dynamic_size
-++// CHECK: operand_batching_dims = [0, 2]
-++// CHECK: start_indices_batching_dims = [1, 0]
-++func.func @gather_batching_dim_dynamic_size(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1, 3],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi8>) -> tensor<4x?x5x8xi32>
-++  func.return %0 : tensor<4x?x5x8xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @gather_batching_dim_overflows_and_no_index_vector_dim
-++// CHECK-NEXT: %[[convert:.*]] = stablehlo.convert %arg1 : (tensor<4x128x5xi8>) -> tensor<4x128x5xi32>
-++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %[[convert]] : (tensor<4x128x5xi32>) -> tensor<4x128x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x128x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x128x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>, tensor<4x128x5x1xi32>) -> tensor<4x128x5x3xi32>
-++// CHECK-NEXT: %[[gather:.*]] = "stablehlo.gather"(%arg0, %[[concat]]) <{
-++// CHECK-SAME:   dimension_numbers = #stablehlo.gather<
-++// CHECK-SAME:     offset_dims = [3], collapsed_slice_dims = [0, 1, 2],
-++// CHECK-SAME:     start_index_map = [0, 2, 1], index_vector_dim = 3>,
-++// CHECK-SAME:   indices_are_sorted = false,
-++// CHECK-SAME:   slice_sizes = array<i64: 1, 1, 1, 8>
-++// CHECK-SAME: }> : (tensor<128x2x4x9xi32>, tensor<4x128x5x3xi32>) -> tensor<4x128x5x8xi32>
-++// CHECK-NEXT: return %[[gather]] : tensor<4x128x5x8xi32>
-++func.func @gather_batching_dim_overflows_and_no_index_vector_dim(%arg0: tensor<128x2x4x9xi32>, %arg1: tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32> {
-++  %0 = "stablehlo.gather"(%arg0, %arg1) {
-++    dimension_numbers = #stablehlo.gather<
-++      offset_dims = [3],
-++      collapsed_slice_dims = [1],
-++      operand_batching_dims = [0, 2],
-++      start_indices_batching_dims = [1, 0],
-++      start_index_map = [1],
-++      index_vector_dim = 3
-++    >,
-++    slice_sizes = array<i64: 1, 1, 1, 8>,
-++    indices_are_sorted = false
-++  } : (tensor<128x2x4x9xi32>, tensor<4x128x5xi8>) -> tensor<4x128x5x8xi32>
-++  func.return %0 : tensor<4x128x5x8xi32>
-+ }
-+ 
-+ // -----
-+@@ -156,7 +452,7 @@
-+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
-+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
-+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
-+-    indices_are_sorted = true,
-++    indices_are_sorted = false,
-+     scatter_dimension_numbers = #stablehlo.scatter<
-+       update_window_dims = [3],
-+       inserted_window_dims = [1, 3],
-+@@ -176,9 +472,9 @@
-+ // -----
-+ 
-+ // CHECK-LABEL: @scatter_with_batching_no_index_vector_dim
-++// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 1 : tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 0 : tensor<4x3x5x1xi32>
-+-// CHECK-NEXT: %[[reshape:.*]] = stablehlo.reshape %arg1 : (tensor<4x3x5xi32>) -> tensor<4x3x5x1xi32>
-+ // CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %[[reshape]], dim = 3 : (tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>, tensor<4x3x5x1xi32>) -> tensor<4x3x5x3xi32>
-+ // CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
-+ // CHECK-SAME:   indices_are_sorted = false,
-+@@ -192,7 +488,7 @@
-+   // CHECK-NO-DOWNGRADE: input_batching_dims = [0, 2]
-+   // CHECK-NO-DOWNGRADE: scatter_indices_batching_dims = [1, 0]
-+   %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
-+-    indices_are_sorted = true,
-++    indices_are_sorted = false,
-+     scatter_dimension_numbers = #stablehlo.scatter<
-+       update_window_dims = [3],
-+       inserted_window_dims = [1],
-+@@ -208,3 +504,60 @@
-+   }) : (tensor<3x2x4x9xi32>, tensor<4x3x5xi32>, tensor<4x3x5x8xi32>) -> tensor<3x2x4x9xi32>
-+   func.return %0 : tensor<3x2x4x9xi32>
-+ }
-++
-++// -----
-++
-++// CHECK-LABEL: @scatter_batching_dims_indices_remain_sorted
-++// CHECK-NEXT: %[[iota_dim1:.*]] = stablehlo.iota dim = 0 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[iota_dim0:.*]] = stablehlo.iota dim = 2 : tensor<2x3x5x1xi32>
-++// CHECK-NEXT: %[[concat:.*]] = stablehlo.concatenate %[[iota_dim1]], %[[iota_dim0]], %arg1, dim = 3 : (tensor<2x3x5x1xi32>, tensor<2x3x5x1xi32>, tensor<2x3x5x2xi32>) -> tensor<2x3x5x4xi32>
-++// CHECK-NEXT: %[[scatter:.*]] = "stablehlo.scatter"(%arg0, %[[concat]], %arg2) <{
-++// CHECK-SAME:   indices_are_sorted = true,
-++// CHECK-SAME:   dimension_numbers = #stablehlo.scatter<
-++// CHECK-SAME:     update_window_dims = [3], inserted_window_dims = [0, 1, 2, 3],
-++// CHECK-SAME:     scatter_dims_to_operand_dims = [0, 1, 2, 3], index_vector_dim = 3>,
-++// CHECK-SAME:   unique_indices = false}>
-++// CHECK:      (tensor<2x5x4x7x9xi32>, tensor<2x3x5x4xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
-++// CHECK-NEXT: return %[[scatter]] : tensor<2x5x4x7x9xi32>
-++func.func @scatter_batching_dims_indices_remain_sorted(%arg0: tensor<2x5x4x7x9xi32>, %arg1: tensor<2x3x5x2xi32>, %arg2: tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32> {
-++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
-++    indices_are_sorted = true,
-++    scatter_dimension_numbers = #stablehlo.scatter<
-++      update_window_dims = [3],
-++      inserted_window_dims = [2, 3],
-++      input_batching_dims = [0, 1],
-++      scatter_indices_batching_dims = [0, 2],
-++      scatter_dims_to_operand_dims = [2, 3],
-++      index_vector_dim = 3
-++    >,
-++    unique_indices = false
-++  }> ({
-++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-++    stablehlo.return %arg4 : tensor<i32>
-++  }) : (tensor<2x5x4x7x9xi32>, tensor<2x3x5x2xi32>, tensor<2x3x5x8xi32>) -> tensor<2x5x4x7x9xi32>
-++  func.return %0 : tensor<2x5x4x7x9xi32>
-++}
-++
-++// -----
-++
-++// CHECK-LABEL: @scatter_batching_dim_dynamic_scatter_indices
-++// CHECK: input_batching_dims = [0, 2]
-++// CHECK: scatter_indices_batching_dims = [1, 0]
-++func.func @scatter_batching_dim_dynamic_scatter_indices(%arg0: tensor<?x2x4x7x9xi32>, %arg1: tensor<4x?x5x2xi32>, %arg2: tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32> {
-++  %0 = "stablehlo.scatter"(%arg0, %arg1, %arg2) <{
-++    indices_are_sorted = false,
-++    scatter_dimension_numbers = #stablehlo.scatter<
-++      update_window_dims = [3],
-++      inserted_window_dims = [1, 3],
-++      input_batching_dims = [0, 2],
-++      scatter_indices_batching_dims = [1, 0],
-++      scatter_dims_to_operand_dims = [1, 3],
-++      index_vector_dim = 3
-++    >,
-++    unique_indices = false
-++  }> ({
-++  ^bb0(%arg3: tensor<i32>, %arg4: tensor<i32>):
-++    stablehlo.return %arg4 : tensor<i32>
-++  }) : (tensor<?x2x4x7x9xi32>, tensor<4x?x5x2xi32>, tensor<4x?x5x8xi32>) -> tensor<?x2x4x7x9xi32>
-++  func.return %0 : tensor<?x2x4x7x9xi32>
-++}
-+diff --ruN a/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp b/stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
-+--- stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
-++++ stablehlo/stablehlo/tools/StablehloTranslateMain.cpp
-+@@ -24,7 +24,7 @@
-+ #include "llvm/Support/ErrorHandling.h"
-+ #include "llvm/Support/LogicalResult.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+ #include "mlir/IR/BuiltinOps.h"
-+ #include "mlir/IR/DialectRegistry.h"
-+@@ -237,7 +237,7 @@
-+     },
-+     [](DialectRegistry &registry) {
-+       registry.insert<func::FuncDialect>();
-+-      registry.insert<quant::QuantizationDialect>();
-++      registry.insert<quant::QuantDialect>();
-+       registry.insert<stablehlo::check::CheckDialect>();
-+       registry.insert<stablehlo::interpreter::InterpreterDialect>();
-+       registry.insert<stablehlo::StablehloDialect>();
-+diff --ruN a/stablehlo/stablehlo/transforms/Passes.h b/stablehlo/stablehlo/transforms/Passes.h
-+--- stablehlo/stablehlo/transforms/Passes.h
-++++ stablehlo/stablehlo/transforms/Passes.h
-+@@ -19,7 +19,7 @@
-+ #include <memory>
-+ 
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-+ #include "mlir/Dialect/Shape/IR/Shape.h"
-+ #include "mlir/IR/BuiltinOps.h"
-+ #include "mlir/Pass/Pass.h"
-+diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
-+--- stablehlo/stablehlo/transforms/Passes.td
-++++ stablehlo/stablehlo/transforms/Passes.td
-+@@ -68,7 +68,7 @@
-+   let summary = "Legalize VHLO to StableHLO.";
-+   let dependentDialects = [
-+     "mlir::func::FuncDialect",
-+-    "mlir::quant::QuantizationDialect",
-++    "mlir::quant::QuantDialect",
-+     "mlir::shape::ShapeDialect",
-+     "mlir::stablehlo::StablehloDialect",
-+   ];
-+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp b/stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
-+--- stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
-++++ stablehlo/stablehlo/transforms/StablehloCreateCompatibilityExpander.cpp
-+@@ -22,8 +22,11 @@
-+ #include "llvm/ADT/STLExtras.h"
-+ #include "llvm/ADT/SmallVector.h"
-+ #include "llvm/Support/ErrorHandling.h"
-++#include "llvm/Support/MathExtras.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-++#include "mlir/IR/Builders.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-++#include "mlir/IR/BuiltinTypeInterfaces.h"
-+ #include "mlir/IR/BuiltinTypes.h"
-+ #include "mlir/IR/Diagnostics.h"
-+ #include "mlir/IR/PatternMatch.h"
-+@@ -75,6 +78,42 @@
-+   return result;
-+ }
-+ 
-++bool fitsInIntegralType(int64_t size, IntegerType type) {
-++  if (type.isUnsigned()) {
-++    return llvm::isUIntN(type.getWidth(), size);
-++  } else {
-++    return llvm::isIntN(type.getWidth(), size);
-++  }
-++}
-++
-++// If `type` is an integer type in which `size` doesn't fit, promote it to i32
-++// or i64 (depending on `size`).
-++Type promoteTypeForSize(Type type, int64_t size, OpBuilder &builder) {
-++  // Gather/Scatter should have an integer type, but we check just in case.
-++  auto intType = dyn_cast<IntegerType>(type);
-++  if (!intType || fitsInIntegralType(size, intType)) {
-++    return type;
-++  }
-++  if (fitsInIntegralType(size, builder.getI32Type())) {
-++    return builder.getI32Type();
-++  }
-++  return builder.getI64Type();
-++}
-++
-++// If `indices_batching_dims` and `updated_index_map` are both sorted, then the
-++// `indices_are_sorted` property is preserved.
-++//
-++// This is because each concatenated iota is monotonically increasing, sorted
-++// indices batching dims mean their order corresponds to the order of batching
-++// dims in the operand, and a sorted updated start index map means the order of
-++// the index vector dim corresponds to the order of operand dims.
-++bool getUpdatedIndicesAreSorted(bool indices_are_sorted,
-++                                ArrayRef<int64_t> indices_batching_dims,
-++                                ArrayRef<int64_t> updated_index_map) {
-++  return indices_are_sorted && llvm::is_sorted(indices_batching_dims) &&
-++         llvm::is_sorted(updated_index_map);
-++}
-++
-+ // Returns an updated indices tensor such that an `IotaOp` is prepended for each
-+ // dim in `indicesBatchingDims` with a `ConcatenateOp`.
-+ //
-+@@ -85,16 +124,31 @@
-+                           PatternRewriter &rewriter) {
-+   Location loc = indices.getLoc();
-+   auto indicesType = cast<RankedTensorType>(indices.getType());
-++  Type elementType = indicesType.getElementType();
-++
-++  // The batching dim sizes might not fit in the existing element type,
-++  // in which case we need to promote it.
-++  for (int64_t batchingDim : indicesBatchingDims) {
-++    elementType = promoteTypeForSize(
-++        elementType, indicesType.getDimSize(batchingDim), rewriter);
-++  }
-++  if (elementType != indicesType.getElementType()) {
-++    indicesType = RankedTensorType::get(indicesType.getShape(), elementType);
-++    indices = rewriter.create<ConvertOp>(loc, indicesType, indices);
-++  }
-++
-+   bool indexVectorDimOnLastDim = indexVectorDim == indicesType.getRank();
-+-
-+   SmallVector<int64_t> iotaShape(indicesType.getShape());
-+   if (indexVectorDimOnLastDim) {
-+     iotaShape.push_back(1);
-+   } else {
-+     iotaShape[indexVectorDim] = 1;
-+   }
-+-  auto iotaType =
-+-      RankedTensorType::get(iotaShape, indicesType.getElementType());
-++  auto iotaType = RankedTensorType::get(iotaShape, elementType);
-++
-++  if (indexVectorDimOnLastDim) {
-++    indices = rewriter.create<ReshapeOp>(loc, iotaType, indices);
-++  }
-+ 
-+   SmallVector<Value> indicesToConcat;
-+   indicesToConcat.reserve(indicesBatchingDims.size() + 1);
-+@@ -102,12 +156,7 @@
-+     indicesToConcat.push_back(
-+         rewriter.create<IotaOp>(loc, iotaType, batchingDim));
-+   }
-+-  if (indexVectorDimOnLastDim) {
-+-    indicesToConcat.push_back(
-+-        rewriter.create<ReshapeOp>(loc, iotaType, indices));
-+-  } else {
-+-    indicesToConcat.push_back(indices);
-+-  }
-++  indicesToConcat.push_back(indices);
-+   return rewriter.create<ConcatenateOp>(loc, indicesToConcat, indexVectorDim);
-+ }
-+ 
-+@@ -125,9 +174,17 @@
-+                                 PatternRewriter &rewriter) const override {
-+     GatherDimensionNumbersAttr dimNumbers = op.getDimensionNumbers();
-+     ArrayRef<int64_t> operandBatchingDims = dimNumbers.getOperandBatchingDims();
-++    ArrayRef<int64_t> startIndicesBatchingDims =
-++        dimNumbers.getStartIndicesBatchingDims();
-+     if (operandBatchingDims.empty()) {
-+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
-+         diag << "gather op has no batching dims";
-++      });
-++    }
-++
-++    if (!op.getStartIndices().getType().hasStaticShape()) {
-++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
-++        diag << "gather op has start indices with dynamic shape, can't expand";
-+       });
-+     }
-+ 
-+@@ -136,16 +193,18 @@
-+     SmallVector<int64_t> newStartIndexMap =
-+         llvm::to_vector(llvm::concat<const int64_t>(
-+             operandBatchingDims, dimNumbers.getStartIndexMap()));
-+-    Value newIndices = createConcatIndices(
-+-        op.getStartIndices(), dimNumbers.getIndexVectorDim(),
-+-        dimNumbers.getStartIndicesBatchingDims(), rewriter);
-++    Value newIndices = createConcatIndices(op.getStartIndices(),
-++                                           dimNumbers.getIndexVectorDim(),
-++                                           startIndicesBatchingDims, rewriter);
-+     rewriter.replaceOpWithNewOp<GatherOp>(
-+         op, op.getOperand(), newIndices,
-+         GatherDimensionNumbersAttr::get(
-+             op.getContext(), dimNumbers.getOffsetDims(), newCollapsedSliceDims,
-+             /*operandBatchingDims=*/{}, /*startIndicesBatchingDims=*/{},
-+             newStartIndexMap, dimNumbers.getIndexVectorDim()),
-+-        op.getSliceSizes(), /*indicesAreSorted=*/false);
-++        op.getSliceSizes(),
-++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
-++                                   startIndicesBatchingDims, newStartIndexMap));
-+ 
-+     return success();
-+   }
-+@@ -161,9 +220,17 @@
-+                                 PatternRewriter &rewriter) const override {
-+     ScatterDimensionNumbersAttr dimNumbers = op.getScatterDimensionNumbers();
-+     ArrayRef<int64_t> inputBatchingDims = dimNumbers.getInputBatchingDims();
-++    ArrayRef<int64_t> scatterIndicesBatchingDims =
-++        dimNumbers.getScatterIndicesBatchingDims();
-+     if (inputBatchingDims.empty()) {
-+       return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
-+         diag << "scatter op has no batching dims";
-++      });
-++    }
-++
-++    if (!op.getScatterIndices().getType().hasStaticShape()) {
-++      return rewriter.notifyMatchFailure(op, [](Diagnostic &diag) {
-++        diag << "gather op has start indices with dynamic shape, can't expand";
-+       });
-+     }
-+ 
-+@@ -174,7 +241,7 @@
-+             inputBatchingDims, dimNumbers.getScatterDimsToOperandDims()));
-+     Value newIndices = createConcatIndices(
-+         op.getScatterIndices(), dimNumbers.getIndexVectorDim(),
-+-        dimNumbers.getScatterIndicesBatchingDims(), rewriter);
-++        scatterIndicesBatchingDims, rewriter);
-+     auto newScatterOp = rewriter.create<ScatterOp>(
-+         op.getLoc(), op->getResultTypes(), op.getInputs(), newIndices,
-+         op.getUpdates(),
-+@@ -183,7 +250,10 @@
-+             newInsertedWindowDims,
-+             /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
-+             newScatterDimsToOperandDims, dimNumbers.getIndexVectorDim()),
-+-        /*indicesAreSorted=*/false, op.getUniqueIndices());
-++        getUpdatedIndicesAreSorted(op.getIndicesAreSorted(),
-++                                   scatterIndicesBatchingDims,
-++                                   newScatterDimsToOperandDims),
-++        op.getUniqueIndices());
-+ 
-+     newScatterOp.getUpdateComputation().takeBody(op.getUpdateComputation());
-+     rewriter.replaceOp(op, newScatterOp.getResults());
-+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
-+--- stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
-++++ stablehlo/stablehlo/transforms/StablehloLegalizeQDQToQuantizedOp.cpp
-+@@ -15,7 +15,7 @@
-+ 
-+ #include "llvm/ADT/SmallVector.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/Operation.h"
-+ #include "mlir/IR/PatternMatch.h"
-+ #include "mlir/Transforms/DialectConversion.h"  // Include for TypeConverter
-+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantToMath.cpp
-+@@ -24,8 +24,8 @@
-+ #include "llvm/ADT/SmallVector.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+ #include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-+-#include "mlir/Dialect/Quant/QuantOps.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/Quant.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/Attributes.h"
-+ #include "mlir/IR/BuiltinAttributes.h"
-+ #include "mlir/IR/BuiltinTypeInterfaces.h"
-+@@ -1331,7 +1331,7 @@
-+     populateReturnOpTypeConversionPattern(patterns, converter);
-+ 
-+     ConversionTarget target(*op->getContext());
-+-    target.addIllegalDialect<quant::QuantizationDialect>();
-++    target.addIllegalDialect<quant::QuantDialect>();
-+     auto isLegal = [&converter](Operation *op) {
-+       return converter.isLegal(op);
-+     };
-+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
-+--- stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
-++++ stablehlo/stablehlo/transforms/StablehloLegalizeQuantizedOpToQDQ.cpp
-+@@ -17,7 +17,7 @@
-+ 
-+ #include "llvm/ADT/STLExtras.h"
-+ #include "mlir/Dialect/Func/IR/FuncOps.h"
-+-#include "mlir/Dialect/Quant/QuantTypes.h"
-++#include "mlir/Dialect/Quant/IR/QuantTypes.h"
-+ #include "mlir/IR/BuiltinTypeInterfaces.h"
-+ #include "mlir/IR/PatternMatch.h"
-+ #include "mlir/IR/TypeRange.h"
- 
 diff --git a/third_party/stablehlo/workspace.bzl b/third_party/stablehlo/workspace.bzl
-index 2e87599..0a9d3d0 100644
+index 2e87599..1aa833a 100644
 --- a/third_party/stablehlo/workspace.bzl
 +++ b/third_party/stablehlo/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
@@ -6230,8 +6125,8 @@ index 2e87599..0a9d3d0 100644
      #
 -    STABLEHLO_COMMIT = "ca13d31b5ed0b2053dde0a624480ad765e219ebf"
 -    STABLEHLO_SHA256 = "123462093f087f2576bb6a6cc471370eed2d43c291f881ff359fd4ca812003db"
-+    STABLEHLO_COMMIT = "9d9290dc2308c1850cea69ea05f8c94017e484ee"
-+    STABLEHLO_SHA256 = "29803fc8a3a96f9e5469c7ab51f2ff4292dc2419c17bd0466f5d15a448cf6815"
++    STABLEHLO_COMMIT = "f7f8e4e35296deeff2e12e39421ac8d9599ba340"
++    STABLEHLO_SHA256 = "c92b55d5512e58d6fefba62c58e60d7762adb184dc3ad489521de562f6ca7aeb"
      #
  
      tf_http_archive(
