@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
 #include <array>
 #include <atomic>
@@ -25,9 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -37,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -47,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -58,7 +55,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 //===----------------------------------------------------------------------===//
-// Implementation details device kernels required by GpuCommandBuffer.
+// Implementation details device kernels required by CudaCommandBuffer.
 //===----------------------------------------------------------------------===//
 
 // See device specific implementations. These are
@@ -92,7 +89,7 @@ absl::Status UnsupportedStateError(State state) {
 }
 
 //===----------------------------------------------------------------------===//
-// GpuCommandBuffer resource usage tracking
+// CudaCommandBuffer resource usage tracking
 //===----------------------------------------------------------------------===//
 
 static std::atomic<int64_t> allocated_execs(0);
@@ -108,12 +105,12 @@ static int64_t NotifyExecDestroyed() {
   return alive_execs.fetch_sub(1, std::memory_order_relaxed) - 1;
 }
 
-/*static*/ int64_t GpuCommandBuffer::AliveExecs() {
+/*static*/ int64_t CudaCommandBuffer::AliveExecs() {
   return alive_execs.load(std::memory_order_relaxed);
 }
 
 //===----------------------------------------------------------------------===//
-// GpuCommandBuffer implementation
+// CudaCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
 static std::string_view ModeToString(CommandBuffer::Mode mode) {
@@ -125,8 +122,8 @@ static std::string_view ModeToString(CommandBuffer::Mode mode) {
   }
 }
 
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
-                                   GpuGraphHandle graph, bool is_owned_graph)
+CudaCommandBuffer::CudaCommandBuffer(Mode mode, GpuExecutor* parent,
+                                     GpuGraphHandle graph, bool is_owned_graph)
     : mode_(mode),
       parent_(parent),
       graph_(graph),
@@ -137,7 +134,7 @@ GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
   execution_scopes_.try_emplace(kDefaulExecutionScope);
 }
 
-GpuCommandBuffer::~GpuCommandBuffer() {
+CudaCommandBuffer::~CudaCommandBuffer() {
   if (exec_ != nullptr && is_owned_graph_exec_) {
     VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
             << "(remaining alive executable graphs: " << NotifyExecDestroyed()
@@ -153,8 +150,8 @@ GpuCommandBuffer::~GpuCommandBuffer() {
   }
 }
 
-GpuCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
-    GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec)
+CudaCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
+    CudaCommandBuffer* cmd_buffer, GpuGraphExecHandle exec)
     : cmd_buffer(cmd_buffer),
       restore(cmd_buffer->exec_),
       restore_is_owned(cmd_buffer->is_owned_graph_exec_) {
@@ -162,7 +159,7 @@ GpuCommandBuffer::ScopedGpuGraphExec::ScopedGpuGraphExec(
   cmd_buffer->is_owned_graph_exec_ = false;
 }
 
-GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
+CudaCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
   cmd_buffer->exec_ = restore;
   cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
 }
@@ -171,15 +168,9 @@ static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
   return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
 }
 
-absl::Status GpuCommandBuffer::Trace(
+absl::Status CudaCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
-#if defined(TENSORFLOW_USE_ROCM)
-  TF_ASSIGN_OR_RETURN(size_t count, GpuDriver::GraphGetNodeCount(graph_));
-  if (count != 0 || !is_owned_graph_)
-    return absl::InternalError(
-        "Stream can't be traced on non empty command buffer");
-#endif  // TENSORFLOW_USE_ROCM
 
   VLOG(5) << "Trace into GPU command buffer graph " << graph_
           << " on a stream: " << stream;
@@ -188,24 +179,14 @@ absl::Status GpuCommandBuffer::Trace(
 
   // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-#if !defined(TENSORFLOW_USE_ROCM)
   TF_RETURN_IF_ERROR(GpuDriver::StreamBeginCaptureToGraph(
       gpu_stream, graph_, GpuDriver::StreamCaptureMode::kThreadLocal));
-#else
-  TF_RETURN_IF_ERROR(GpuDriver::StreamBeginCapture(
-      gpu_stream, GpuDriver::StreamCaptureMode::kThreadLocal));
-#endif  // TENSORFLOW_USE_ROCM
   auto traced = function();
 
   // Always stop capturing the stream before checking `traced` result.
   GpuGraphHandle captured_graph;
   TF_RETURN_IF_ERROR(GpuDriver::StreamEndCapture(gpu_stream, &captured_graph));
-#if !defined(TENSORFLOW_USE_ROCM)
   DCHECK(captured_graph == graph_) << "Stream capture should update graph_";
-#else
-  TF_RETURN_IF_ERROR(
-      GpuDriver::DestroyGraph(std::exchange(graph_, captured_graph)));
-#endif  // TENSORFLOW_USE_ROCM
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
   if (!traced.ok())
@@ -218,7 +199,7 @@ absl::Status GpuCommandBuffer::Trace(
   return absl::OkStatus();
 }
 
-GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
+CudaCommandBuffer::Dependencies CudaCommandBuffer::GetBarrier(
     ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
   return execution_scope.barriers.empty()
@@ -226,8 +207,8 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
              : Dependencies{execution_scope.barriers.back().handle};
 }
 
-absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
-GpuCommandBuffer::GetSetIfConditionKernel() {
+absl::StatusOr<CudaCommandBuffer::SetIfConditionKernel*>
+CudaCommandBuffer::GetSetIfConditionKernel() {
   if (!set_if_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetSetIfConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -237,8 +218,8 @@ GpuCommandBuffer::GetSetIfConditionKernel() {
   return &set_if_condition_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
-GpuCommandBuffer::GetSetIfElseConditionKernel() {
+absl::StatusOr<CudaCommandBuffer::SetIfElseConditionKernel*>
+CudaCommandBuffer::GetSetIfElseConditionKernel() {
   if (!set_if_else_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetSetIfElseConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -248,8 +229,8 @@ GpuCommandBuffer::GetSetIfElseConditionKernel() {
   return &set_if_else_condition_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
-GpuCommandBuffer::GetSetCaseConditionKernel() {
+absl::StatusOr<CudaCommandBuffer::SetCaseConditionKernel*>
+CudaCommandBuffer::GetSetCaseConditionKernel() {
   if (!set_case_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetSetCaseConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -259,8 +240,8 @@ GpuCommandBuffer::GetSetCaseConditionKernel() {
   return &set_case_condition_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
-GpuCommandBuffer::GetSetForConditionKernel() {
+absl::StatusOr<CudaCommandBuffer::SetForConditionKernel*>
+CudaCommandBuffer::GetSetForConditionKernel() {
   if (!set_for_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetSetForConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -270,8 +251,8 @@ GpuCommandBuffer::GetSetForConditionKernel() {
   return &set_for_condition_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
-GpuCommandBuffer::GetSetWhileConditionKernel() {
+absl::StatusOr<CudaCommandBuffer::SetWhileConditionKernel*>
+CudaCommandBuffer::GetSetWhileConditionKernel() {
   if (!set_while_condition_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetSetWhileConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
@@ -281,8 +262,8 @@ GpuCommandBuffer::GetSetWhileConditionKernel() {
   return &set_while_condition_kernel_;
 }
 
-absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
-GpuCommandBuffer::GetNoOpKernel() {
+absl::StatusOr<CudaCommandBuffer::NoOpKernel*>
+CudaCommandBuffer::GetNoOpKernel() {
   if (!noop_kernel_) {
     TF_ASSIGN_OR_RETURN(auto spec, GetNoOpKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(noop_kernel_,
@@ -291,12 +272,11 @@ GpuCommandBuffer::GetNoOpKernel() {
   return &noop_kernel_;
 }
 
-absl::Status GpuCommandBuffer::DisableBarriersExecution(
+absl::Status CudaCommandBuffer::DisableBarriersExecution(
     GpuGraphExecHandle exec) {
-#if !defined(TENSORFLOW_USE_ROCM)
   ExecutionScope& execution_scope = execution_scopes_[kDefaulExecutionScope];
 
-  for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
+  for (CudaGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
       TF_RETURN_IF_ERROR(
           GpuDriver::GraphNodeSetEnabled(exec, barrier.handle, false));
@@ -308,18 +288,17 @@ absl::Status GpuCommandBuffer::DisableBarriersExecution(
       TF_RETURN_IF_ERROR(cmd_buffer->DisableBarriersExecution(exec));
     }
   }
-#endif  // TENSORFLOW_USE_ROCM
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::CheckNotFinalized() {
+absl::Status CudaCommandBuffer::CheckNotFinalized() {
   if (state_ == State::kFinalized)
     return absl::InternalError(
         "Command can't be added to a command buffer after it was finalized");
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
+absl::Status CudaCommandBuffer::CheckNumCommandBuffers(
     const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers) {
   if (cmd_buffers.handles.size() != num_cmd_buffers) {
     return absl::InternalError(absl::StrCat(
@@ -329,10 +308,10 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
   return absl::OkStatus();
 }
 
-absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
+absl::StatusOr<GpuGraphNodeHandle> CudaCommandBuffer::CreateBarrierNode(
     const Dependencies& dependencies) {
   GpuGraphNodeHandle barrier_handle = nullptr;
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12040
+#if CUDA_VERSION < 12040
   // Instead of empty nodes we create no-op kernel nodes as barriers because
   // CUDA 12.3 does not support empty nodes inside conditional command buffers.
   TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
@@ -344,12 +323,12 @@ absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
 #else
   TF_RETURN_IF_ERROR(
       GpuDriver::GraphAddEmptyNode(&barrier_handle, graph_, dependencies));
-#endif  // TENSORFLOW_USE_ROCM
+#endif  // CUDA_VERSION
 
   return barrier_handle;
 }
 
-GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
+CudaCommandBuffer::Dependencies CudaCommandBuffer::GetBarrierDependencies(
     ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
   auto& barriers = execution_scope.barriers;
@@ -364,7 +343,7 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
   return dependencies;
 }
 
-absl::Status GpuCommandBuffer::Barrier(ExecutionScopeId execution_scope_id) {
+absl::Status CudaCommandBuffer::Barrier(ExecutionScopeId execution_scope_id) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   if (state_ == State::kCreate) {
@@ -413,7 +392,7 @@ absl::Status GpuCommandBuffer::Barrier(ExecutionScopeId execution_scope_id) {
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Barrier(
+absl::Status CudaCommandBuffer::Barrier(
     absl::Span<const ExecutionScopeId> execution_scope_ids) {
   // Nothing to synchronize here.
   if (execution_scope_ids.empty()) return absl::OkStatus();
@@ -468,8 +447,9 @@ absl::Status GpuCommandBuffer::Barrier(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Barrier(ExecutionScopeId from_execution_scope_id,
-                                       ExecutionScopeId to_execution_scope_id) {
+absl::Status CudaCommandBuffer::Barrier(
+    ExecutionScopeId from_execution_scope_id,
+    ExecutionScopeId to_execution_scope_id) {
   // If scopes are the same simply add a barrier to it.
   if (from_execution_scope_id == to_execution_scope_id) {
     return Barrier(from_execution_scope_id);
@@ -513,7 +493,7 @@ absl::Status GpuCommandBuffer::Barrier(ExecutionScopeId from_execution_scope_id,
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
+absl::Status CudaCommandBuffer::LaunchWithPackedArgs(
     ExecutionScopeId execution_scope_id, const ThreadDim& threads,
     const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args) {
@@ -531,7 +511,7 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
+    CudaGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddKernelNode(
         &node_info.handle, graph_, barrier, kernel.name(), gpu_func, blocks.x,
         blocks.y, blocks.z, threads.x, threads.y, threads.z,
@@ -551,11 +531,11 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Launch(ExecutionScopeId execution_scope_id,
-                                      const ThreadDim& threads,
-                                      const BlockDim& blocks,
-                                      const Kernel& kernel,
-                                      const KernelArgs& args) {
+absl::Status CudaCommandBuffer::Launch(ExecutionScopeId execution_scope_id,
+                                       const ThreadDim& threads,
+                                       const BlockDim& blocks,
+                                       const Kernel& kernel,
+                                       const KernelArgs& args) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // If arguments are already packed we can just launch the kernel.
@@ -581,18 +561,18 @@ absl::Status GpuCommandBuffer::Launch(ExecutionScopeId execution_scope_id,
   return absl::InternalError("Unsupported kernel arguments type");
 }
 
-absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
+absl::Status CudaCommandBuffer::AddNestedCommandBuffer(
     ExecutionScopeId execution_scope_id, const CommandBuffer& nested) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
+  GpuGraphHandle child_graph = CudaCommandBuffer::Cast(&nested)->graph();
 
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
+    CudaGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddChildNode(&node_info.handle, graph_, barrier,
                                         child_graph);
   }
@@ -607,7 +587,7 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
+absl::Status CudaCommandBuffer::MemcpyDeviceToDevice(
     ExecutionScopeId execution_scope_id, DeviceMemoryBase* dst,
     const DeviceMemoryBase& src, uint64_t size) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -616,7 +596,7 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
+    CudaGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddMemcpyD2DNode(
         parent_->gpu_context(), &node_info.handle, graph_, barrier,
         AsDevicePtr(*dst), AsDevicePtr(src), size);
@@ -633,17 +613,17 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
-                                      DeviceMemoryBase* dst,
-                                      CommandBuffer::BitPattern bit_pattern,
-                                      size_t num_elements) {
+absl::Status CudaCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
+                                       DeviceMemoryBase* dst,
+                                       CommandBuffer::BitPattern bit_pattern,
+                                       size_t num_elements) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
+    CudaGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
     return GpuDriver::GraphAddMemsetNode(
         parent_->gpu_context(), &node_info.handle, graph_, barrier,
         AsDevicePtr(*dst), bit_pattern, num_elements);
@@ -666,8 +646,8 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
 
 using ConditionalHandles = absl::Span<const GpuGraphConditionalHandle>;
 
-/*static*/ GpuCommandBuffer::ConditionBuilder
-GpuCommandBuffer::ToConditionBuilder(Builder builder) {
+/*static*/ CudaCommandBuffer::ConditionBuilder
+CudaCommandBuffer::ToConditionBuilder(Builder builder) {
   return [builder = std::move(builder)](CommandBuffer* cmd_buffer,
                                         GpuGraphConditionalHandle) {
     return builder(cmd_buffer);
@@ -675,7 +655,7 @@ GpuCommandBuffer::ToConditionBuilder(Builder builder) {
 }
 
 absl::StatusOr<std::vector<GpuGraphConditionalHandle>>
-GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
+CudaCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   std::vector<GpuGraphConditionalHandle> handles;
   for (size_t i = 0; i < num_handles; ++i) {
     TF_RETURN_IF_ERROR(GpuDriver::GraphConditionalHandleCreate(
@@ -684,12 +664,12 @@ GpuCommandBuffer::CreateConditionalHandles(size_t num_handles) {
   return handles;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
-GpuCommandBuffer::CreateConditionalCommandBuffers(
+absl::StatusOr<std::vector<std::unique_ptr<CudaCommandBuffer>>>
+CudaCommandBuffer::CreateConditionalCommandBuffers(
     absl::Span<const GpuGraphConditionalHandle> handles,
     absl::Span<const GpuGraphHandle> graphs,
     absl::Span<const ConditionBuilder> builders) {
-  std::vector<std::unique_ptr<GpuCommandBuffer>> cmd_buffers;
+  std::vector<std::unique_ptr<CudaCommandBuffer>> cmd_buffers;
 
   // Conditional command buffers always created in nested mode and with
   // underlying graphs owned by a conditional node.
@@ -697,7 +677,7 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
   bool is_owned_graph = false;
 
   for (size_t i = 0; i < handles.size(); ++i) {
-    auto command_buffer = std::make_unique<GpuCommandBuffer>(
+    auto command_buffer = std::make_unique<CudaCommandBuffer>(
         nested, parent_, graphs[i], is_owned_graph);
     TF_RETURN_IF_ERROR(builders[i](command_buffer.get(), handles[i]));
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
@@ -708,9 +688,9 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
   return cmd_buffers;
 }
 
-absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
+absl::Status CudaCommandBuffer::UpdateConditionalCommandBuffers(
     absl::Span<const GpuGraphConditionalHandle> handles,
-    absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
+    absl::Span<const std::unique_ptr<CudaCommandBuffer>> command_buffers,
     absl::Span<const ConditionBuilder> builders) {
   for (size_t i = 0; i < command_buffers.size(); ++i) {
     // Use parent graph executable for conditional command buffer update.
@@ -725,7 +705,7 @@ absl::Status GpuCommandBuffer::UpdateConditionalCommandBuffers(
 }
 
 absl::StatusOr<std::vector<GpuGraphHandle>>
-GpuCommandBuffer::CreateConditionalNodes(
+CudaCommandBuffer::CreateConditionalNodes(
     ExecutionScopeId execution_scope_id, ConditionType type,
     absl::Span<const GpuGraphConditionalHandle> handles) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -737,7 +717,7 @@ GpuCommandBuffer::CreateConditionalNodes(
 
   for (GpuGraphConditionalHandle handle : handles) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
+    CudaGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
 
     ConditionalParams params;
     params.type = type;
@@ -754,7 +734,7 @@ GpuCommandBuffer::CreateConditionalNodes(
   return conditional_graphs;
 }
 
-absl::Status GpuCommandBuffer::CreateConditionalCommand(
+absl::Status CudaCommandBuffer::CreateConditionalCommand(
     ExecutionScopeId execution_scope_id, ConditionType type,
     SetConditionFn set_condition, absl::Span<const ConditionBuilder> builders) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
@@ -812,9 +792,9 @@ absl::Status GpuCommandBuffer::CreateConditionalCommand(
   return UnsupportedStateError(state_);
 }
 
-absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
-                                  DeviceMemory<bool> predicate,
-                                  Builder then_builder) {
+absl::Status CudaCommandBuffer::If(ExecutionScopeId execution_scope_id,
+                                   DeviceMemory<bool> predicate,
+                                   Builder then_builder) {
   TF_ASSIGN_OR_RETURN(SetIfConditionKernel * set_if_condition,
                       GetSetIfConditionKernel());
 
@@ -830,10 +810,10 @@ absl::Status GpuCommandBuffer::If(ExecutionScopeId execution_scope_id,
                                   set_cond_fn, builders);
 }
 
-absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
-                                      DeviceMemory<bool> predicate,
-                                      Builder then_builder,
-                                      Builder else_builder) {
+absl::Status CudaCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
+                                       DeviceMemory<bool> predicate,
+                                       Builder then_builder,
+                                       Builder else_builder) {
   TF_ASSIGN_OR_RETURN(SetIfElseConditionKernel * set_if_else_condition,
                       GetSetIfElseConditionKernel());
 
@@ -850,9 +830,9 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
                                   set_cond_fn, builders);
 }
 
-absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
-                                    DeviceMemory<int32_t> index,
-                                    std::vector<Builder> branches) {
+absl::Status CudaCommandBuffer::Case(ExecutionScopeId execution_scope_id,
+                                     DeviceMemory<int32_t> index,
+                                     std::vector<Builder> branches) {
   TF_ASSIGN_OR_RETURN(SetCaseConditionKernel * set_case_condition,
                       GetSetCaseConditionKernel());
 
@@ -908,10 +888,10 @@ absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
-                                   int32_t num_iteration,
-                                   DeviceMemory<int32_t> loop_counter,
-                                   Builder body_builder) {
+absl::Status CudaCommandBuffer::For(ExecutionScopeId execution_scope_id,
+                                    int32_t num_iteration,
+                                    DeviceMemory<int32_t> loop_counter,
+                                    Builder body_builder) {
   TF_ASSIGN_OR_RETURN(SetForConditionKernel * set_for_condition,
                       GetSetForConditionKernel());
 
@@ -940,10 +920,10 @@ absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,
                                   set_cond_fn, builders);
 }
 
-absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
-                                     DeviceMemory<bool> pred,
-                                     ExecutionScopeBuilder cond_builder,
-                                     Builder body_builder) {
+absl::Status CudaCommandBuffer::While(ExecutionScopeId execution_scope_id,
+                                      DeviceMemory<bool> pred,
+                                      ExecutionScopeBuilder cond_builder,
+                                      Builder body_builder) {
   TF_ASSIGN_OR_RETURN(SetWhileConditionKernel * set_while_condition,
                       GetSetWhileConditionKernel());
 
@@ -971,12 +951,11 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
                                   set_cond_fn, builders);
 }
 
-absl::Status GpuCommandBuffer::Finalize() {
+absl::Status CudaCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
   // TODO(b/362769658): Remove this workaround when cuda supports conditionals
   // with empty graphs.
-#if !defined(TENSORFLOW_USE_ROCM)
   TF_ASSIGN_OR_RETURN(auto node_count, GpuDriver::GraphGetNodeCount(graph_));
   if (node_count == 0) {
     GpuGraphNodeHandle empty_node_handle = nullptr;
@@ -987,7 +966,6 @@ absl::Status GpuCommandBuffer::Finalize() {
         AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
         /*kernel_params=*/nullptr, /*extra=*/nullptr));
   }
-#endif
 
   // Maybe dump created CUDA graph to a dot file for debugging.
   if (state_ == State::kCreate && VLOG_IS_ON(10)) {
@@ -1052,7 +1030,7 @@ absl::Status GpuCommandBuffer::Finalize() {
             << "; conditionals: " << num_cond_cmd_buffers
             << "; alive executable graphs: " << AliveExecs();
 
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12040
+#if CUDA_VERSION < 12040
     TF_RETURN_IF_ERROR(DisableBarriersExecution(exec_));
 #endif
 
@@ -1073,7 +1051,7 @@ absl::Status GpuCommandBuffer::Finalize() {
   return absl::OkStatus();
 }
 
-absl::Status GpuCommandBuffer::Update() {
+absl::Status CudaCommandBuffer::Update() {
   if (exec_ == nullptr) {
     return absl::InternalError(
         "Command buffer has to have a graph executable to be updated");
@@ -1094,21 +1072,21 @@ absl::Status GpuCommandBuffer::Update() {
   return absl::OkStatus();
 }
 
-absl::Span<const GpuCommandBuffer::GpuGraphNodeInfo> GpuCommandBuffer::nodes(
+absl::Span<const CudaCommandBuffer::CudaGraphNodeInfo> CudaCommandBuffer::nodes(
     ExecutionScopeId id) const {
   if (auto it = execution_scopes_.find(id); it != execution_scopes_.end())
     return it->second.nodes;
   return {};
 }
 
-absl::Span<const GpuCommandBuffer::GpuGraphBarrierInfo>
-GpuCommandBuffer::barriers(ExecutionScopeId id) const {
+absl::Span<const CudaCommandBuffer::CudaGraphBarrierInfo>
+CudaCommandBuffer::barriers(ExecutionScopeId id) const {
   if (auto it = execution_scopes_.find(id); it != execution_scopes_.end())
     return it->second.barriers;
   return {};
 }
 
-absl::Status GpuCommandBuffer::Submit(Stream* stream) {
+absl::Status CudaCommandBuffer::Submit(Stream* stream) {
   if (mode_ != CommandBuffer::Mode::kPrimary) {
     return absl::InvalidArgumentError(
         "Can't submit non-primary command buffer for execution");

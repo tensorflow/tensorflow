@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -22,20 +22,17 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "xla/service/platform_util.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -53,9 +50,7 @@ namespace stream_executor::gpu {
 using ExecutionScopeId = CommandBuffer::ExecutionScopeId;
 
 static Platform* GpuPlatform() {
-  auto name = absl::AsciiStrToUpper(
-      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  return PlatformManager::PlatformWithName(name).value();
+  return PlatformManager::PlatformWithName("CUDA").value();
 }
 
 static MultiKernelLoaderSpec GetAddI32KernelSpec() {
@@ -79,15 +74,15 @@ static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
 template <typename Info>
-static std::vector<GpuGraphNodeHandle> Deps(Info info) {
+static std::vector<CUgraphNode> Deps(Info info) {
   if (auto deps = GpuDriver::GraphNodeGetDependencies(info.handle); deps.ok()) {
     return *deps;
   }
-  return {GpuGraphNodeHandle(0xDEADBEEF)};
+  return {CUgraphNode(0xDEADBEEF)};
 }
 
 template <typename... Infos>
-static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
+static std::vector<CUgraphNode> ExpectedDeps(Infos... info) {
   return {info.handle...};
 }
 
@@ -105,7 +100,7 @@ static bool IsAtLeastCuda12300(
   return true;
 }
 
-TEST(GpuCommandBufferTest, LaunchSingleKernel) {
+TEST(CudaCommandBufferTest, LaunchSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -161,10 +156,6 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-
-  if (platform->id() == rocm::kROCmPlatformId) {
-    GTEST_SKIP() << "Not supported on ROCM";
-  }
 
   if (platform->id() == cuda::kCudaPlatformId &&
       executor->GetDeviceDescription().runtime_version() <
@@ -225,7 +216,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
+TEST(CudaCommandBufferTest, LaunchNestedCommandBuffer) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -282,7 +273,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
+TEST(CudaCommandBufferTest, MemcpyDeviceToDevice) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -327,7 +318,7 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, Memset) {
+TEST(CudaCommandBufferTest, Memset) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -367,7 +358,7 @@ TEST(GpuCommandBufferTest, Memset) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, Barriers) {
+TEST(CudaCommandBufferTest, Barriers) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -418,7 +409,7 @@ TEST(GpuCommandBufferTest, Barriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
   ASSERT_EQ(gpu_cmd_buffer->nodes().size(), 6);
   ASSERT_EQ(gpu_cmd_buffer->barriers().size(), 6);
 
@@ -455,7 +446,7 @@ TEST(GpuCommandBufferTest, Barriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 }
 
-TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
+TEST(CudaCommandBufferTest, IndependentExecutionScopes) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -498,7 +489,7 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -525,7 +516,7 @@ TEST(GpuCommandBufferTest, IndependentExecutionScopes) {
   ASSERT_EQ(transfer_buffers(), expected);
 }
 
-TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
+TEST(CudaCommandBufferTest, ExecutionScopeBarriers) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -572,7 +563,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -617,7 +608,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 }
 
-TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
+TEST(CudaCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -662,7 +653,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -693,7 +684,7 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
   ASSERT_EQ(transfer_buffers(), expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalIf) {
+TEST(CudaCommandBufferTest, ConditionalIf) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -779,13 +770,9 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
+TEST(CudaCommandBufferTest, ConditionalIfWithMemset) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
-
-  if (platform->id() == rocm::kROCmPlatformId) {
-    GTEST_SKIP() << "Not supported on ROCM";
-  }
 
   if (platform->id() == cuda::kCudaPlatformId &&
       executor->GetDeviceDescription().driver_version() <
@@ -848,7 +835,7 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalIfElse) {
+TEST(CudaCommandBufferTest, ConditionalIfElse) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -944,7 +931,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
+TEST(CudaCommandBufferTest, ConditionalCaseEmptyGraph) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1029,7 +1016,7 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   ASSERT_EQ(dst, expected_add);
 }
 
-class GpuCommandBufferCaseTest : public testing::TestWithParam<int> {
+class CudaCommandBufferCaseTest : public testing::TestWithParam<int> {
  protected:
   int GetNumCases() { return GetParam(); }
 
@@ -1038,7 +1025,7 @@ class GpuCommandBufferCaseTest : public testing::TestWithParam<int> {
   }
 };
 
-TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
+TEST_P(CudaCommandBufferCaseTest, ConditionalMultiCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1118,11 +1105,11 @@ TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, GpuCommandBufferCaseTest,
+INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, CudaCommandBufferCaseTest,
                          testing::Range(1, 32),
                          testing::PrintToStringParamName());
 
-TEST(GpuCommandBufferTest, ConditionalCase) {
+TEST(CudaCommandBufferTest, ConditionalCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1211,7 +1198,7 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-TEST(GpuCommandBufferTest, ConditionalFor) {
+TEST(CudaCommandBufferTest, ConditionalFor) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1260,7 +1247,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalWhile) {
+TEST(CudaCommandBufferTest, ConditionalWhile) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1328,7 +1315,7 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 }
 
 // TODO(b/339653343): Re-enable when not failing.
-TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
+TEST(CudaCommandBufferTest, DISABLED_WhileNestedConditional) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1410,7 +1397,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   ASSERT_EQ(dst, expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
+TEST(CudaCommandBufferTest, ConditionalIfInExecutionScope) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1471,7 +1458,7 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(transfer_buffers(), expected);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);
@@ -1505,7 +1492,7 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(transfer_buffers(), expected);
 }
 
-TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
+TEST(CudaCommandBufferTest, ConditionalWhileInExecutionScope) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
@@ -1577,7 +1564,7 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
   EXPECT_EQ(c_dst, 42);
 
   // Check the command buffer structure.
-  GpuCommandBuffer* gpu_cmd_buffer = GpuCommandBuffer::Cast(cmd_buffer.get());
+  CudaCommandBuffer* gpu_cmd_buffer = CudaCommandBuffer::Cast(cmd_buffer.get());
 
   auto nodes0 = gpu_cmd_buffer->nodes(s0);
   auto nodes1 = gpu_cmd_buffer->nodes(s1);

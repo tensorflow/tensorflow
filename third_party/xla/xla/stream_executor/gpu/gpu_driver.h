@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 

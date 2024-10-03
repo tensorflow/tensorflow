@@ -160,6 +160,7 @@ cc_library(
         "manual",
     ]),
     deps = [
+        ":rocm_command_buffer",
         ":rocm_diagnostics",
         ":rocm_driver",
         ":rocm_event",
@@ -182,7 +183,6 @@ cc_library(
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:context",
-        "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_event",
@@ -264,23 +264,6 @@ xla_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
-    name = "command_buffer_kernels",
-    srcs = ["command_buffer_kernels.cc"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google([
-        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
-        "manual",
-    ]),
-    deps = [
-        "//xla/stream_executor:kernel_spec",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -869,6 +852,7 @@ cc_library(
         "manual",
     ]),
     deps = [
+        ":rocm_platform_id",
         ":rocm_rpath",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
@@ -876,7 +860,6 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
-        "//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_static(
         [":all_runtime"],
     ),
@@ -911,5 +894,77 @@ cc_test(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "rocm_command_buffer",
+    srcs = ["rocm_command_buffer.cc"],
+    hdrs = ["rocm_command_buffer.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google(["manual"]),
+    deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "rocm_command_buffer_test",
+    srcs = ["rocm_command_buffer_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google(["manual"]),
+    deps = [
+        ":rocm_command_buffer",
+        ":rocm_platform",
+        "//xla/stream_executor",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:trace_command_buffer_factory",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_
-#define XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -31,35 +30,35 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 
 namespace stream_executor::gpu {
 
-// GpuCommandBuffer provides platform-specific CommandBuffer implementation
+// CudaCommandBuffer provides platform-specific CommandBuffer implementation
 // (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
-class GpuCommandBuffer : public CommandBuffer {
+class CudaCommandBuffer : public CommandBuffer {
  public:
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
-  struct GpuGraphNodeInfo {
+  struct CudaGraphNodeInfo {
     // A handle to the gpu graph node corresponding to a command.
-    GpuGraphNodeHandle handle = nullptr;
+    CUgraphNode handle = nullptr;
   };
 
   // A handle to Gpu graph barrier and metadata describing its properties. Each
   // call to `Barrier` creates a new barrier record.
-  struct GpuGraphBarrierInfo {
+  struct CudaGraphBarrierInfo {
     // A handle to graph node acting as a barrier that defines execution order.
-    // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
+    // It can be a handle to a `CUgraphNode` node or a handle to an empty
     // node created to be a barrier. We try to reuse existing nodes as barriers
     // if possible to reduce the size of constructed gpu graphs.
-    GpuGraphNodeHandle handle = nullptr;
+    CUgraphNode handle = nullptr;
 
     // If `true` it means `handle` corresponds to an empty node specifically
     // created to act as an execution barrier, otherwise `handle` points to one
@@ -72,9 +71,15 @@ class GpuCommandBuffer : public CommandBuffer {
     size_t nodes_offset = 0;
   };
 
-  GpuCommandBuffer(Mode mode, GpuExecutor* parent, GpuGraphHandle graph,
-                   bool is_owned_graph = true);
-  ~GpuCommandBuffer() override;
+#if CUDA_VERSION >= 12030
+  using CudaGraphConditionalHandle = CUgraphConditionalHandle;
+#else
+  using CudaGraphConditionalHandle = UnsupportedGpuFeature;
+#endif  // #if CUDA_VERSION >= 12030
+
+  CudaCommandBuffer(Mode mode, GpuExecutor* parent, CUgraph graph,
+                    bool is_owned_graph = true);
+  ~CudaCommandBuffer() override;
 
   absl::Status Barrier(ExecutionScopeId execution_scope_id) override;
 
@@ -124,28 +129,28 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Update() override;
   absl::Status Submit(Stream* stream) override;
 
-  GpuGraphExecHandle executable() const { return exec_; }
-  GpuGraphHandle graph() const { return graph_; }
+  CUgraphExec executable() const { return exec_; }
+  CUgraph graph() const { return graph_; }
 
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
 
-  static GpuCommandBuffer* Cast(CommandBuffer* command_buffer) {
-    return static_cast<GpuCommandBuffer*>(command_buffer);
+  static CudaCommandBuffer* Cast(CommandBuffer* command_buffer) {
+    return static_cast<CudaCommandBuffer*>(command_buffer);
   }
 
-  static const GpuCommandBuffer* Cast(const CommandBuffer* command_buffer) {
-    return static_cast<const GpuCommandBuffer*>(command_buffer);
+  static const CudaCommandBuffer* Cast(const CommandBuffer* command_buffer) {
+    return static_cast<const CudaCommandBuffer*>(command_buffer);
   }
 
-  absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
-  absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
+  absl::Span<const CudaGraphNodeInfo> nodes(ExecutionScopeId id) const;
+  absl::Span<const CudaGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
-  absl::Span<const GpuGraphNodeInfo> nodes() const {
+  absl::Span<const CudaGraphNodeInfo> nodes() const {
     return nodes(kDefaulExecutionScope);
   }
 
-  absl::Span<const GpuGraphBarrierInfo> barriers() const {
+  absl::Span<const CudaGraphBarrierInfo> barriers() const {
     return barriers(kDefaulExecutionScope);
   }
 
@@ -160,40 +165,39 @@ class GpuCommandBuffer : public CommandBuffer {
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
 
- private:
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+  using Dependencies = absl::InlinedVector<CUgraphNode, 1>;
 
   using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+      TypedKernel<CudaGraphConditionalHandle, DeviceMemory<bool>>;
 
   using SetIfElseConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+      TypedKernel<CudaGraphConditionalHandle, CudaGraphConditionalHandle,
                   DeviceMemory<bool>>;
 
   using SetCaseConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  GpuGraphConditionalHandle, GpuGraphConditionalHandle,
+      TypedKernel<CudaGraphConditionalHandle, CudaGraphConditionalHandle,
+                  CudaGraphConditionalHandle, CudaGraphConditionalHandle,
+                  CudaGraphConditionalHandle, CudaGraphConditionalHandle,
+                  CudaGraphConditionalHandle, CudaGraphConditionalHandle,
                   DeviceMemory<int32_t>, int32_t, int32_t, bool>;
 
   using SetForConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;
+      TypedKernel<CudaGraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;
 
   using SetWhileConditionKernel =
-      TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
+      TypedKernel<CudaGraphConditionalHandle, DeviceMemory<bool>>;
 
   // A callback to launch a kernel that updates conditional handles state.
   using SetConditionFn = std::function<absl::Status(
-      ExecutionScopeId, absl::Span<const GpuGraphConditionalHandle>)>;
+      ExecutionScopeId, absl::Span<const CudaGraphConditionalHandle>)>;
 
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
   using ConditionBuilder =
-      std::function<absl::Status(CommandBuffer*, GpuGraphConditionalHandle)>;
+      std::function<absl::Status(CommandBuffer*, CudaGraphConditionalHandle)>;
 
   // Wraps a regular command buffer builder into condition builder.
   static ConditionBuilder ToConditionBuilder(Builder builder);
@@ -206,40 +210,40 @@ class GpuCommandBuffer : public CommandBuffer {
   // do not have their own executable), which is required for updating
   // conditional commands.
   struct ScopedGpuGraphExec {
-    ScopedGpuGraphExec(GpuCommandBuffer* cmd_buffer, GpuGraphExecHandle exec);
+    ScopedGpuGraphExec(CudaCommandBuffer* cmd_buffer, CUgraphExec exec);
     ~ScopedGpuGraphExec();
 
-    GpuCommandBuffer* cmd_buffer;
-    GpuGraphExecHandle restore;
+    CudaCommandBuffer* cmd_buffer;
+    CUgraphExec restore;
     bool restore_is_owned;
   };
 
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.
   struct ConditionalCommandBuffers {
-    std::vector<GpuGraphConditionalHandle> handles;
-    std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers;
+    std::vector<CudaGraphConditionalHandle> handles;
+    std::vector<std::unique_ptr<CudaCommandBuffer>> command_buffers;
   };
 
-  using AllocationResult = std::pair<GpuDevicePtr, uint64_t>;
+  using AllocationResult = std::pair<CUdeviceptr, uint64_t>;
 
-  absl::StatusOr<std::vector<GpuGraphConditionalHandle>>
+  absl::StatusOr<std::vector<CudaGraphConditionalHandle>>
   CreateConditionalHandles(size_t num_handles);
 
-  absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CudaCommandBuffer>>>
   CreateConditionalCommandBuffers(
-      absl::Span<const GpuGraphConditionalHandle> handles,
-      absl::Span<const GpuGraphHandle> graphs,
+      absl::Span<const CudaGraphConditionalHandle> handles,
+      absl::Span<const CUgraph> graphs,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status UpdateConditionalCommandBuffers(
-      absl::Span<const GpuGraphConditionalHandle> handles,
-      absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
+      absl::Span<const CudaGraphConditionalHandle> handles,
+      absl::Span<const std::unique_ptr<CudaCommandBuffer>> command_buffers,
       absl::Span<const ConditionBuilder> builders);
 
-  absl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
+  absl::StatusOr<std::vector<CUgraph>> CreateConditionalNodes(
       ExecutionScopeId execution_scope_id, ConditionType type,
-      absl::Span<const GpuGraphConditionalHandle> handles);
+      absl::Span<const CudaGraphConditionalHandle> handles);
 
   absl::Status CreateConditionalCommand(
       ExecutionScopeId execution_scope_id, ConditionType type,
@@ -261,7 +265,7 @@ class GpuCommandBuffer : public CommandBuffer {
   // conditional command buffers). This is work around the fact that we can't
   // use empty nodes inside conditional CUDA graphs and instead we add no-op
   // kernel nodes, however large number of no-op kernels impacts performance.
-  absl::Status DisableBarriersExecution(GpuGraphExecHandle exec);
+  absl::Status DisableBarriersExecution(CUgraphExec exec);
 
   // Launches CUDA kernels with packed arguments.
   absl::Status LaunchWithPackedArgs(
@@ -279,29 +283,29 @@ class GpuCommandBuffer : public CommandBuffer {
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
   // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
+  absl::StatusOr<CUgraphNode> CreateBarrierNode(
       const Dependencies& dependencies);
 
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
 
-  static_assert(std::is_pointer_v<GpuGraphHandle>,
-                "GpuGraphHandle must be a pointer");
-  static_assert(std::is_pointer_v<GpuGraphExecHandle>,
-                "GpuGraphExecHandle must be a pointer");
-  static_assert(std::is_pointer_v<GpuGraphNodeHandle>,
-                "GpuGraphNodeHandle must be a pointer");
+  static_assert(std::is_pointer_v<CUgraph>,
+                "CUgraph must be a pointer");
+  static_assert(std::is_pointer_v<CUgraphExec>,
+                "CUgraphExec must be a pointer");
+  static_assert(std::is_pointer_v<CUgraphNode>,
+                "CUgraphNode must be a pointer");
 
   Mode mode_;
   State state_ = State::kCreate;
 
   GpuExecutor* parent_;  // not owned, must outlive *this
 
-  GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
-  bool is_owned_graph_ = true;      // ownership of `graph_`
+  CUgraph graph_ = nullptr;     // owned if `is_owned_graph_`
+  bool is_owned_graph_ = true;  // ownership of `graph_`
 
-  GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
-  bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
+  CUgraphExec exec_ = nullptr;       // owned if `is_owned_graph_exec_`
+  bool is_owned_graph_exec_ = true;  // ownership of `is_owned_graph_exec_`
 
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an
   // barriers added to a graph) for a single execution scope.
@@ -323,10 +327,10 @@ class GpuCommandBuffer : public CommandBuffer {
 
     // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
     // etc.).
-    std::vector<GpuGraphNodeInfo> nodes;
+    std::vector<CudaGraphNodeInfo> nodes;
 
     // Gpu graph barriers that define recorded commands execution order.
-    std::vector<GpuGraphBarrierInfo> barriers;
+    std::vector<CudaGraphBarrierInfo> barriers;
 
     // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
     // graphs owned by the `graph_` instance.
@@ -354,4 +358,4 @@ class GpuCommandBuffer : public CommandBuffer {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
