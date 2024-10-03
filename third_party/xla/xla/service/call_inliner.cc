@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -152,6 +154,29 @@ CallInliner::Inline(HloInstruction* call) {
   const auto& callees = call->called_computations();
   TF_RET_CHECK(callees.size() == 1);
   HloComputation* callee = callees[0];
+
+  // Propagate the frontend attributes related to fusion from the call to the
+  // inlined instructions.
+  if (call->has_frontend_attributes()) {
+    const FrontendAttributes& call_attributes = call->frontend_attributes();
+    std::string has_fuse =
+        call_attributes.map().contains("MUST_FUSE")      ? "MUST_FUSE"
+        : call_attributes.map().contains("MAXIMAL_FUSE") ? "MAXIMAL_FUSE"
+                                                         : "";
+    if (!has_fuse.empty()) {
+      for (auto instruction : callee->instructions()) {
+        // Do so for only fusible instructions.
+        if (instruction->IsFusible()) {
+          FrontendAttributes frontend_attributes =
+              instruction->frontend_attributes();
+          frontend_attributes.mutable_map()->insert(
+              {has_fuse, call_attributes.map().at(has_fuse)});
+          instruction->set_frontend_attributes(frontend_attributes);
+        }
+      }
+    }
+  }
+
   // We visit the callee, cloning its body into its caller.
   SubcomputationInsertionVisitor visitor(call);
   TF_RETURN_IF_ERROR(callee->Accept(&visitor));
