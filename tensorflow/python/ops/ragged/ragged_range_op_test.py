@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for ragged_range op."""
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -128,6 +130,22 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
         ragged_math_ops.range([1, 2, 3]).shape.as_list(), [3, None])
     self.assertAllEqual(
         ragged_math_ops.range([1, 2, 3], [4, 5, 6]).shape.as_list(), [3, None])
+
+  def testInt32Overflow(self):
+    start = 1136033460
+    end = -2110457150
+    step = -1849827689
+    expected = [np.arange(start, end, step)]
+    actual = ragged_math_ops.range(start, end, step)
+    self.assertAllEqual(expected, self.evaluate(actual))
+
+  def testInt64Overflow(self):
+    start = 5000000000000000000
+    end = -5000000000000000000
+    step = -1
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Requires ((limit - start) / delta) <= "):
+      self.evaluate(ragged_math_ops.range(start, end, step))
 
 
 if __name__ == '__main__':
