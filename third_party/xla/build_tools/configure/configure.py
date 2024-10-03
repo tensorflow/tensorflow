@@ -310,7 +310,7 @@ class XLAConfigOptions:
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
         )
       elif compiler_pair == (CudaCompiler.NVCC, HostCompiler.CLANG):
-        rc.append("build --config nvcc_clang")
+        rc.append("build --config cuda_nvcc")
         # This is demanded by cuda_configure.bzl
         rc.append(
             f"build --action_env CLANG_CUDA_COMPILER_PATH={dpav.clang_path}"
@@ -328,8 +328,8 @@ class XLAConfigOptions:
             f"build:cuda --repo_env HERMETIC_CUDA_VERSION={dpav.cuda_version}"
         )
       rc.append(
-          "build:cuda --repo_env"
-          f" HERMETIC_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
+          "build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES="
+          f"{','.join(dpav.cuda_compute_capabilities)}"
       )
       if dpav.cudnn_version:
         rc.append(
