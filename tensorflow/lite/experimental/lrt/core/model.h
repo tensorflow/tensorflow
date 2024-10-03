@@ -35,7 +35,7 @@
 // Tensor
 //
 
-struct LrtBufferT {
+struct LrtWeightsT {
   std::unique_ptr<tflite::BufferT> fb_buffer = nullptr;
 };
 
@@ -58,7 +58,7 @@ struct LrtTensorT {
   lrt_param_index_t defining_op_out_ind;
 
   // Not a reference.
-  LrtBufferT buffer;
+  LrtWeightsT weights;
 
   LrtTensorTypeId type_id;
 

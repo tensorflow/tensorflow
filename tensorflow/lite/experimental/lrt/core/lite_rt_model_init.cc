@@ -201,8 +201,8 @@ LrtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
   const auto buffer_ind = tensor.buffer;
 
   if (buffer_ind != 0) {
-    target->buffer.fb_buffer = GetBuffer(buffer_ind);
-    LRT_RETURN_STATUS_IF_NOT_OK(IsBufferSupported(*target->buffer.fb_buffer));
+    target->weights.fb_buffer = GetBuffer(buffer_ind);
+    LRT_RETURN_STATUS_IF_NOT_OK(IsBufferSupported(*target->weights.fb_buffer));
   }
 
   target->type_id = kLrtRankedTensorType;
@@ -396,8 +396,8 @@ LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
     target.shape.push_back(type.layout.dimensions[i]);
   }
 
-  DCHECK(tensor->buffer.fb_buffer != nullptr) << "Submitting a null buffer";
-  target.buffer = SubmitBuffer(std::move(tensor->buffer.fb_buffer));
+  DCHECK(tensor->weights.fb_buffer != nullptr) << "Submitting a null buffer";
+  target.buffer = SubmitBuffer(std::move(tensor->weights.fb_buffer));
 
   return kLrtStatusOk;
 }

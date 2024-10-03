@@ -60,7 +60,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
   std::unordered_set<LrtTensor> implied_subgraph_ins;
   for (auto tensor : subgraph->tensors) {
     if (tensor->defining_op == nullptr &&
-        tensor->buffer.fb_buffer->data.empty()) {
+        tensor->weights.fb_buffer->data.empty()) {
       implied_subgraph_ins.insert(tensor);
     }
   }

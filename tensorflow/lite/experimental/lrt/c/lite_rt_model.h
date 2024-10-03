@@ -26,7 +26,7 @@
 extern "C" {
 #endif  // __cplusplus
 
-LITE_RT_DEFINE_HANDLE(LrtBuffer);
+LITE_RT_DEFINE_HANDLE(LrtWeights);
 
 LITE_RT_DEFINE_HANDLE(LrtTensor);
 LITE_RT_DEFINE_HANDLE_ARRAY(LrtTensor);
@@ -107,12 +107,12 @@ LrtStatus GetUrankedTensorType(LrtTensor tensor,
 LrtStatus GetRankedTensorType(LrtTensor tensor,
                               LrtRankedTensorType* ranked_tensor_type);
 
-// Get opaque array from given buffer.
-LrtStatus GetBufferInfo(LrtBuffer buffer, size_t* size, const void** addr);
+// Get opaque array from given tensor weights.
+LrtStatus GetWeightsInfo(LrtWeights weights, size_t* size, const void** addr);
 
-// Get buffer associated with given tensor. All tensors have a buffer,
-// null buffers have size = 0;
-LrtStatus GetTensorBuffer(LrtTensor tensor, LrtBuffer* buffer);
+// Get static weights associated with a given tensor. All tensors have weights,
+// null weights have size = 0;
+LrtStatus GetTensorWeights(LrtTensor tensor, LrtWeights* weights);
 
 // Get all the ops that reference given tensor, and at what operand index.
 LrtStatus GetTensorUses(LrtTensor tensor, lrt_param_index_t* num_uses,

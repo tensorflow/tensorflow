@@ -243,8 +243,8 @@ TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
   ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -285,14 +285,14 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
   ASSERT_EQ(op_inputs[0], subgraph_inputs[0]);
-  ASSERT_TRUE(graph_tools::MatchBuffer(
+  ASSERT_TRUE(graph_tools::MatchWeights(
       op_inputs[1], llvm::ArrayRef<float>{1.0, 2.0, 3.0, 4.0}));
 
   ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(

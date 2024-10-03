@@ -321,16 +321,16 @@ inline bool ValidateTopology(llvm::ArrayRef<LrtOp> ops) {
   return true;
 }
 
-// Match buffer behind given tensor contains data.
+// Match weights behind given tensor contains data.
 template <typename T>
-inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+inline bool MatchWeights(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
+  LrtWeights weights = nullptr;
+  LRT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LRT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
   MATCH_TRUE(data != nullptr);
 
   MATCH_EQ(size, expected_data.size() * sizeof(T));
@@ -338,15 +338,15 @@ inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
          expected_data;
 }
 
-// Match given tensor having no (empty) buffer.
-inline bool MatchNoBuffer(LrtTensor tensor) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+// Match given tensor having no (empty) weights.
+inline bool MatchNoWeights(LrtTensor tensor) {
+  LrtWeights weights = nullptr;
+  LRT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LRT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
 
   return size == 0;
 }

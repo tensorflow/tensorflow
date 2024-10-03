@@ -106,19 +106,19 @@ LrtStatus GetOpCode(LrtOp op, LrtOpCode* code) {
 // Tensor
 //
 
-LrtStatus GetBufferInfo(LrtBuffer buffer, size_t* size, const void** addr) {
-  if (buffer->fb_buffer == nullptr) {
+LrtStatus GetWeightsInfo(LrtWeights weights, size_t* size, const void** addr) {
+  if (weights->fb_buffer == nullptr) {
     *size = 0;
     *addr = nullptr;
   } else {
-    *size = buffer->fb_buffer->data.size();
-    *addr = buffer->fb_buffer->data.data();
+    *size = weights->fb_buffer->data.size();
+    *addr = weights->fb_buffer->data.data();
   }
   return kLrtStatusOk;
 }
 
-LrtStatus GetTensorBuffer(LrtTensor tensor, LrtBuffer* buffer) {
-  *buffer = &tensor->buffer;
+LrtStatus GetTensorWeights(LrtTensor tensor, LrtWeights* weights) {
+  *weights = &tensor->weights;
   return kLrtStatusOk;
 }
 
