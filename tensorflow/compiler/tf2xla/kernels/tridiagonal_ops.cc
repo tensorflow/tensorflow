@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/lib/tridiagonal.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/lib/tridiagonal.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"

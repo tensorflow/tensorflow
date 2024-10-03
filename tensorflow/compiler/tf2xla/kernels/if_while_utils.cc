@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/value_inference.h"
+#include "xla/hlo/builder/value_inference.h"
 #include "xla/literal.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/framework/attr_value.pb.h"

@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "xla/client/lib/approx_topk.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/approx_topk.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
