@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_STABLEHLO_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_STABLEHLO_PASSES_H_
 
 #include <memory>
 
@@ -80,9 +80,9 @@ void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
 
 #define GEN_PASS_DECL
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 }  // namespace odml
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_STABLEHLO_PASSES_H_

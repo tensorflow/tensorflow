@@ -80,7 +80,7 @@ const char* kPaddingSame = "SAME";
 const char* kPaddingValid = "VALID";
 
 #define GEN_PASS_DEF_UNIFORMQUANTIZEDSTABLEHLOTOTFLPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class UniformQuantizedStableHloToTflPass
     : public impl::UniformQuantizedStableHloToTflPassBase<

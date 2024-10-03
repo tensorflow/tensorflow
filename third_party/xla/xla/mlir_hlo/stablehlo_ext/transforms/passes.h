@@ -32,12 +32,6 @@ namespace stablehlo_ext {
 
 void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
 
-// Expand backward compatibility with the given StableHLO version by decomposing
-// newer StableHLO operations into equivalent operations supported by that older
-// version.
-std::unique_ptr<Pass> createStablehloCompatibilityExpanderPass(
-    std::string targetVersionOption);
-
 }  // namespace stablehlo_ext
 }  // namespace mlir
 

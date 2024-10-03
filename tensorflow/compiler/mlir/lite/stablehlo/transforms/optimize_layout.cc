@@ -43,7 +43,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 namespace mlir {
 namespace odml {
@@ -52,7 +52,7 @@ namespace {
 #define DEBUG_TYPE "stablehlo-optimize-layout"
 
 #define GEN_PASS_DEF_TRANSPOSECOMMUTEOPSPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class TransposeCommuteOpsPass
     : public impl::TransposeCommuteOpsPassBase<TransposeCommuteOpsPass> {

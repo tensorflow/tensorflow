@@ -358,18 +358,18 @@ gentbl_cc_library(
                 "-gen-pass-decls",
                 "-name=OdmlStablehlo",
             ],
-            "transforms/passes.h.inc",
+            "transforms/stablehlo_passes.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/passes.td",
+    td_file = "transforms/stablehlo_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
 )
 
 cc_library(
     name = "compose_uniform_quantized_type_pass",
     srcs = ["transforms/compose_uniform_quantized_type_pass.cc"],
-    hdrs = ["transforms/passes.h"],
+    hdrs = ["transforms/stablehlo_passes.h"],
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
@@ -394,7 +394,7 @@ cc_library(
         "transforms/unfuse_batch_norm_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -422,7 +422,7 @@ cc_library(
         "transforms/fold_broadcast_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -447,7 +447,7 @@ cc_library(
         "transforms/fold_broadcast_to_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -473,7 +473,7 @@ cc_library(
         "transforms/fuse_convolution_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -502,7 +502,7 @@ cc_library(
         "transforms/unfold_splat_constant_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -557,8 +557,8 @@ cc_library(
         "transforms/legalize_stablehlo_composite_to_tfl_custom.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
-        "transforms/passes.h.inc",
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
     ],
     copts = [
         "-Ithird_party",
@@ -583,8 +583,8 @@ cc_library(
         "transforms/legalize_stablehlo_to_vhlo.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
-        "transforms/passes.h.inc",
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
     ],
     copts = [
         "-Ithird_party",
@@ -626,8 +626,8 @@ cc_library(
         "transforms/legalize_stablehlo_custom_call_to_composite.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
-        "transforms/passes.h.inc",
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
     ],
     copts = [
         "-Ithird_party",
@@ -651,7 +651,7 @@ cc_library(
         "transforms/optimize.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -673,8 +673,8 @@ cc_library(
     name = "uniform_quantized_stablehlo_to_tfl_pass",
     srcs = ["transforms/uniform_quantized_stablehlo_to_tfl_pass.cc"],
     hdrs = [
-        "transforms/passes.h",
-        "transforms/passes.h.inc",
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
     ],
     copts = ["-Ithird_party"],
     deps = [
@@ -742,7 +742,7 @@ cc_library(
         "transforms/tflite_legalize_hlo.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -803,7 +803,7 @@ cc_library(
         "transforms/prepare_hlo.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -833,7 +833,7 @@ cc_library(
     srcs = [
         "transforms/tfl_legalize_chlo.cc",
     ],
-    hdrs = ["transforms/passes.h"],
+    hdrs = ["transforms/stablehlo_passes.h"],
     compatible_with = get_compatible_with_portable(),
     copts = [
         "-Ithird_party",
@@ -860,8 +860,8 @@ cc_library(
         "transforms/legalize_hlo.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
-        "transforms/passes.h.inc",
+        "transforms/stablehlo_passes.h",
+        "transforms/stablehlo_passes.h.inc",
     ],
     copts = [
         "-Ithird_party",
@@ -966,7 +966,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/composite_avg_pool.h",
-        "transforms/passes.h",
+        "transforms/stablehlo_passes.h",
     ],
     copts = [
         "-Ithird_party",
@@ -993,7 +993,7 @@ cc_library(
     srcs = [
         "transforms/optimize_layout.cc",
     ],
-    hdrs = ["transforms/passes.h"],
+    hdrs = ["transforms/stablehlo_passes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":passes_inc_gen",

@@ -38,7 +38,7 @@ namespace {
 #define DEBUG_TYPE "unfold-splat-constant-pass"
 
 #define GEN_PASS_DEF_UNFOLDSPLATCONSTANTPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 // Undo the MHLO::BroadcastInDimOp folding pattern on splat tensor.
 // TODO(b/295966255): Remove this pass after moving MHLO folders to a separate

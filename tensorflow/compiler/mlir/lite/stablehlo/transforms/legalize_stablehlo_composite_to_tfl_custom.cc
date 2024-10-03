@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 #define DEBUG_TYPE "composite-to-custom"
 
@@ -38,7 +38,7 @@ namespace mlir {
 namespace odml {
 
 #define GEN_PASS_DEF_LEGALIZECOMPOSITETOCUSTOMOPPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 namespace {
 bool IsSupportedComposite(::mlir::stablehlo::CompositeOp op) {
