@@ -306,6 +306,8 @@ class DebugOptions:
   xla_cpu_fast_math_honor_nans: bool
   xla_cpu_fast_math_honor_division: bool
   xla_cpu_fast_math_honor_functions: bool
+  xla_pjrt_cpu_intra_op_threads: int
+  xla_pjrt_cpu_async_execute_threads: int
   xla_gpu_enable_fast_min_max: bool
   xla_backend_optimization_level: int
   xla_cpu_enable_xprof_traceme: bool

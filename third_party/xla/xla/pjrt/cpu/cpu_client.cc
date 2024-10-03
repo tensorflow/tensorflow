@@ -427,14 +427,24 @@ TfrtCpuClient::TfrtCpuClient(
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
-          tsl::Env::Default(), GetThreadOptions(), "XLAEigen",
-          std::min(num_threads, kMaxIntraOpThreads))),
-      eigen_intraop_device_(
-          new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
-                                      eigen_intraop_pool_->NumThreads())),
-      pjrt_client_thread_pool_(
-          new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
-                                      "XLATfrtCpuClient", num_threads)),
+          tsl::Env::Default(), GetThreadOptions(), "XLAEigenTfrtCpuClient",
+          std::min(
+              {num_threads, kMaxIntraOpThreads,
+               static_cast<size_t>(GetDebugOptionsFromFlags()
+                                       .xla_pjrt_cpu_intra_op_threads())}))),
+      eigen_intraop_device_(new Eigen::ThreadPoolDevice(
+          eigen_intraop_pool_->AsEigenThreadPool(),
+          std::min(
+              eigen_intraop_pool_->NumThreads(),
+              GetDebugOptionsFromFlags().xla_pjrt_cpu_intra_op_threads()))),
+      pjrt_client_thread_pool_(new tsl::thread::ThreadPool(
+          tsl::Env::Default(), GetThreadOptions(),
+          "XLATfrtCpuClient",  // num_threads
+          std::min(num_threads,
+                   std::max(owned_devices_.size(),
+                            static_cast<size_t>(
+                                GetDebugOptionsFromFlags()
+                                    .xla_pjrt_cpu_async_execute_threads()))))),
       async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
           pjrt_client_thread_pool_.get())),
       last_collective_launch_event_(

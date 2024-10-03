@@ -92,6 +92,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa("");
+  opts.set_xla_pjrt_cpu_intra_op_threads(256);
+  opts.set_xla_pjrt_cpu_async_execute_threads(4);
 
   opts.set_xla_cpu_enable_fast_math(false);
   // Disable forms of fast math that have caused users problems in the past.
@@ -921,6 +923,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
                 debug_options->xla_cpu_use_thunk_runtime(),
                 "Use Thunk-based runtime for the CPU backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_pjrt_cpu_intra_op_threads",
+      int32_setter_for(&DebugOptions::set_xla_pjrt_cpu_intra_op_threads),
+      debug_options->xla_pjrt_cpu_intra_op_threads(),
+      "Number of threads to use for intra-op parallelism on the CPU backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_pjrt_cpu_async_execute_threads",
+      int32_setter_for(&DebugOptions::set_xla_pjrt_cpu_async_execute_threads),
+      debug_options->xla_pjrt_cpu_async_execute_threads(),
+      "Number of threads to use for async work runners on the CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),

@@ -1011,6 +1011,7 @@ cc_library(
         ":platform_util",
         ":stream_pool",
         ":transfer_manager",
+        "//xla:debug_options_flags",
         "//xla:util",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",

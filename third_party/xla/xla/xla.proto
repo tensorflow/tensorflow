@@ -243,6 +243,12 @@ message DebugOptions {
   // If true, a set of expensive LLVM optimization passes will not be run.
   bool xla_llvm_disable_expensive_passes = 73;
 
+  // The number of threads to use for intra-op parallelism on the CPU backend.
+  int32 xla_pjrt_cpu_intra_op_threads = 358;
+
+  // The number of threads to use for async work runners on the CPU backend.
+  int32 xla_pjrt_cpu_async_execute_threads = 359;
+
   reserved 80;  // Was hlo_reduce_precision_options
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
@@ -1093,7 +1099,7 @@ message DebugOptions {
   // be deterministic, although with additional overhead.
   bool xla_gpu_enable_scatter_determinism_expander = 345;
 
-  // Next id: 358
+  // Next id: 360
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

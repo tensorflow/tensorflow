@@ -791,10 +791,15 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   pipeline.AddPass<ReshapeDecomposer>();
 
-  const int max_parallelism =
-      module->config().intra_op_parallelism_threads() > 0
-          ? module->config().intra_op_parallelism_threads()
-          : tsl::port::NumSchedulableCPUs();
+  int max_parallelism = module->config().intra_op_parallelism_threads() > 0
+                            ? module->config().intra_op_parallelism_threads()
+                            : tsl::port::NumSchedulableCPUs();
+
+  // Override max_parallelism if intra-op parallelism is set in debug options.
+  if (module->config().debug_options().xla_pjrt_cpu_intra_op_threads() > 0) {
+    max_parallelism =
+        module->config().debug_options().xla_pjrt_cpu_intra_op_threads();
+  }
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   auto& debug_options = module->config().debug_options();

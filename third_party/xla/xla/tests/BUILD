@@ -3433,6 +3433,34 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "embarrassingly_parallel_test",
+    srcs = ["embarrassingly_parallel_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_xla_cpu_thunks"],
+    deps = [
+        ":hlo_runner_agnostic_test_base",
+        ":pjrt_client_registry",
+        ":test_macros_header",
+        ":xla_internal_test_main",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/service:backend",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner",
+        "//xla/service:hlo_runner_interface",
+        "//xla/service:hlo_runner_pjrt",
+        "//xla/service:platform_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 bzl_library(
     name = "plugin_bzl",
     srcs = ["plugin.bzl"],
