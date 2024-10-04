@@ -1195,9 +1195,8 @@ std::vector<TritonGemmConfig>
 GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
   std::vector<TritonGemmConfig> configs;
   se::CudaComputeCapability cc = GetComputeCapability();
-  // Clusters are only supported from Hopper. We don't autotune them by default.
-  bool should_tune_ctas =
-      debug_options_.xla_gpu_exhaustive_tiling_search() && cc.IsAtLeastHopper();
+  bool tune_ctas =
+      debug_options_.xla_gpu_enable_triton_hopper() && cc.IsAtLeastHopper();
 
   for (int num_stages : kNumStages) {
     for (int tile_m : kBlockSizes) {
@@ -1216,19 +1215,18 @@ GemmFusionAutotunerImpl::GetExhaustiveTritonConfigs() const {
                   split_k > 1) {
                 break;
               }
-
-              if (should_tune_ctas) {
-                for (int num_ctas : kNumCtas) {
-                  if (num_ctas <= num_warps) {
-                    configs.push_back(TritonGemmConfig(tile_m, tile_n, tile_k,
-                                                       split_k, num_stages,
-                                                       num_warps, num_ctas));
-                  }
+              for (int num_ctas : kNumCtas) {
+                // Clusters are only supported on Hopper.
+                // Autotuning this parameter is enabled by a flag.
+                if (!tune_ctas && num_ctas > 1) {
+                  break;
                 }
-              } else {
+                if (num_ctas > num_warps) {
+                  break;
+                }
                 configs.push_back(TritonGemmConfig(tile_m, tile_n, tile_k,
                                                    split_k, num_stages,
-                                                   num_warps, /*num_ctas=*/1));
+                                                   num_warps, num_ctas));
               }
             }
           }

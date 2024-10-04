@@ -782,7 +782,8 @@ message DebugOptions {
   // Threshold to enable windowed einsum (collective matmul) in MB.
   int64 xla_gpu_threshold_for_windowed_einsum_mib = 265;
 
-  reserved 266;  // was xla_gpu_enable_triton_hopper
+  // Enables currently disabled features within Triton for Hopper.
+  bool xla_gpu_enable_triton_hopper = 266;
 
   // Enable NCCL user buffers.
   bool xla_gpu_enable_nccl_user_buffers = 267;
