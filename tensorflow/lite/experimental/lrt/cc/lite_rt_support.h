@@ -163,4 +163,10 @@ class LrtResult {
     return kLrtStatusErrorUnsupported;                              \
   }
 
+#define LRT_ENSURE(expr, fail_stat, msg)                            \
+  if (!(expr)) {                                                    \
+    std::cerr << __FILE__ << ":" << __LINE__ << " " << msg << "\n"; \
+    return fail_stat;                                               \
+  }
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_

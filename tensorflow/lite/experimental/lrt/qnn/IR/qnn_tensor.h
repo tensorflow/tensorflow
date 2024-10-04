@@ -32,6 +32,9 @@ namespace qnn {
 // Construct a "blank" QNN Tensor.
 Qnn_Tensor_t BuildDefaultTensor();
 
+// Construct a "blank" QNN Tensor with given id.
+Qnn_Tensor_t BuildDefaultTensor(uint32_t id);
+
 // Constructa a "blank" QNN Tensor meant to be used as a graph input.
 Qnn_Tensor_t BuildInputTensor();
 
@@ -46,6 +49,11 @@ void SetOutputTensorAttrs(Qnn_Tensor_t& tensor);
 
 // Reset the given tensor, deallocating anything on the heap that it points to.
 void ResetTensor(Qnn_Tensor_t& tensor);
+
+// Resets all fields other than id in the given tensor and returns the id for
+// convenience. Only the id is needed to traffic QNN Tensors after they have
+// been registered with the context.
+uint32_t MoveToId(Qnn_Tensor_t& tensor);
 
 //
 // Legalize Lrt Tensors to Analogous QNN Construct.

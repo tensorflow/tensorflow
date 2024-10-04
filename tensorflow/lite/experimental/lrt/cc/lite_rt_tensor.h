@@ -50,6 +50,10 @@ class LrtTensorManager {
 
   LrtElementType ElementType() const;
 
+  bool IsSubgraphOutput() const;
+
+  bool IsSubgraphInput() const;
+
   LrtTensor Tensor();
 
  private:

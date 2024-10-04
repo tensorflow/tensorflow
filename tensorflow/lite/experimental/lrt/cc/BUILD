@@ -36,6 +36,7 @@ cc_library(
     deps = [
         ":lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "@com_google_absl//absl/types:span",
     ],
 )
