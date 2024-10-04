@@ -3625,6 +3625,10 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
   } else {
     partial_mesh_shapes = {option_.device_mesh_shape};
   }
+  // Allocate an equal portion of solver timeout to each partial mesh shape.
+  option_.solver_timeout_in_seconds /= partial_mesh_shapes.size();
+  LOG(INFO) << "Setting solver timeout per partial mesh shape to "
+            << option_.solver_timeout_in_seconds << " seconds.";
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
@@ -4124,6 +4128,10 @@ absl::StatusOr<bool> AutoSharding::Run(
       this_option.device_mesh_beta.clear();
       TF_RETURN_IF_ERROR(this_option.CheckAndSetup());
     }
+    // Allocate an equal portion of solver timeout to each attempted mesh shape.
+    this_option.solver_timeout_in_seconds /= mesh_shapes.size();
+    LOG(INFO) << "Setting solver timeout per mesh shape to "
+              << this_option.solver_timeout_in_seconds << " seconds.";
     auto pass = std::make_unique<AutoShardingImplementation>(this_option);
     std::unique_ptr<HloModule> module_clone = CloneModule(module);
     absl::StatusOr<bool> pass_result =

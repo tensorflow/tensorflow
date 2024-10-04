@@ -758,7 +758,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
           << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
-          << "Time limit: " << solver->time_limit() << "\n"
+          << "Time limit: "
+          << request.solver_timeout().solver_timeout_in_seconds()
+          << " seconds\n"
           << "Request valid: " << ValidateRequest(request).ok() << "\n"
           << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
