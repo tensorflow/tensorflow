@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/fft.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/gather.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/get_dimension_size.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/if.h"
@@ -432,6 +433,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateWhilePatterns(context, patterns, target);
   PopulateGetDimensionSizePatterns(context, patterns, target);
   PopulateIfPatterns(context, patterns, target);
+  PopulateFftPatterns(context, patterns, target);
   PopulateCustomCallPatterns(context, patterns, target);
 
   patterns.add<odml::LowerDotGeneralOp>(context);
