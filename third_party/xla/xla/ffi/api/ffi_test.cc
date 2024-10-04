@@ -455,6 +455,25 @@ TEST(FfiTest, WrongTypeBufferArgument) {
                HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
+TEST(FfiTest, WrongNumberOfArguments) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("foo", 42);
+  attrs.Insert("bar", 43);
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler =
+      Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
+  auto status = Call(*handler, call_frame);
+
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status.message(), HasSubstr("foo"));
+  EXPECT_THAT(status.message(), HasSubstr("bar"));
+}
+
 TEST(FfiTest, TokenArgument) {
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,

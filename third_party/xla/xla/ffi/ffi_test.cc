@@ -198,8 +198,10 @@ TEST(FfiTest, WrongNumAttrs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of attributes: expected 1 but got 2");
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, BuiltinAttributes) {
