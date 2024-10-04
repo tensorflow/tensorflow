@@ -65,7 +65,6 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/stream_executor/platform",
     ],
     alwayslink = 1,
 )

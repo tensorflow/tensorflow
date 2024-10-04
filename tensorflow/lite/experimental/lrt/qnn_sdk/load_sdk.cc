@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/load_sdk.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/load_sdk.h"
 
 #include <dlfcn.h>
 #include <link.h>
@@ -33,7 +33,7 @@ void DumpDlInfo(void* handle) {
   }
 
   std::string dl_origin;
-  dl_origin.resize(245);
+  dl_origin.resize(512);
   if (0 != ::dlinfo(handle, RTLD_DI_ORIGIN, dl_origin.data())) {
     return;
   }
@@ -65,6 +65,7 @@ void DumpDlInfo(void* handle) {
 }
 
 void* LoadSO(absl::string_view so_path) {
+  // TODO: Figure out why deepbind is actually needed (sigsegv w/o).
   void* lib_handle =
       ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
   if (lib_handle == nullptr) {

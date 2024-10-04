@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -339,7 +340,7 @@ void AddPreVariableFreezingTFToTFLConversionPasses(
   // folded before being converted to tfl.quantize and tfl.dequantize ops.
   std::vector<std::string> target_ops = mlir::TFL::AllTfFakeQuantOps();
   mlir::TFL::RaiseCustomOpsPassOptions raise_custom_ops_pass_options;
-  raise_custom_ops_pass_options.target_ops_ = target_ops;
+  raise_custom_ops_pass_options.target_ops_ = llvm::to_vector(target_ops);
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TFL::CreateRaiseCustomOpsPass(raise_custom_ops_pass_options));
 

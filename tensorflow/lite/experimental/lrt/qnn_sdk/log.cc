@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/log.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/log.h"
 
 #include <cstdarg>
 #include <cstdint>

@@ -1,0 +1,16 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index f1766d9582..849a991cea 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -56,7 +56,7 @@ bool_flag(
+ 
+ bool_flag(
+     name = "openmp",
+-    build_setting_default = True,
++    build_setting_default = False,
+     visibility = ["//visibility:public"],
+ )
+ 
+-- 
+2.34.1
+

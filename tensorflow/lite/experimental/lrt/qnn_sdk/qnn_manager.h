@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_MANAGER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_MANAGER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -23,6 +23,15 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 
 namespace qnn {
+
+#ifndef QNN_SDK_LIB_HTP
+
+// If path not provided, dlopen will search DT_RUNPATH (-rpath).
+constexpr absl::string_view kLibQnnHtpSo = "libQnnHtp.so";
+#else
+
+constexpr absl::string_view kLibQnnHtpSo = QNN_SDK_LIB_HTP;
+#endif
 
 typedef QNN_INTERFACE_VER_TYPE QnnFunctionPointers;
 
@@ -127,4 +136,4 @@ inline absl::Span<const QnnContext_Config_t*> GetDefaultContextConfigs() {
 
 }  // namespace qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_MANAGER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_

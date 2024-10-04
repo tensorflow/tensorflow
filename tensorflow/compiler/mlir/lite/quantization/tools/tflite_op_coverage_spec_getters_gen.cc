@@ -56,7 +56,8 @@ const std::map<std::string, std::string> &GetTypeToStringRepresentation() {
   return *entries;
 }
 
-void EmitDynamicRangeOp(std::vector<Record *> &defs, raw_ostream *ostream) {
+void EmitDynamicRangeOp(std::vector<const Record *> &defs,
+                        raw_ostream *ostream) {
   std::string dynamic_quant_kernel_support_regex =
       "bool GetDynamicRangeQuantKernelSupport() { return true; }";
   raw_ostream &os = *ostream;
@@ -106,7 +107,7 @@ void EmitDynamicRangeOp(std::vector<Record *> &defs, raw_ostream *ostream) {
   os.indent(0) << "}\n";
 }
 
-void EmitSparseOp(std::vector<Record *> &defs, raw_ostream *ostream) {
+void EmitSparseOp(std::vector<const Record *> &defs, raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   llvm::sort(defs, LessRecord());
 
@@ -146,7 +147,7 @@ bool CheckTypeConstraints(llvm::Init *input_value,
   return true;
 }
 
-void GenerateStaticQuantOp(std::vector<Record *> &defs,
+void GenerateStaticQuantOp(std::vector<const Record *> &defs,
                            std::vector<std::string> &result,
                            InputDataType act_type, const bool per_axis,
                            const bool is_toco) {
@@ -226,7 +227,7 @@ void GenerateStaticQuantOp(std::vector<Record *> &defs,
   }
 }
 
-void EmitStaticInt8PerAxisQuantOp(std::vector<Record *> &defs,
+void EmitStaticInt8PerAxisQuantOp(std::vector<const Record *> &defs,
                                   raw_ostream &os) {
   os.indent(0)
       << "const std::set<std::string> &ExportStaticInt8PerAxisSpec() {\n";
@@ -246,7 +247,7 @@ void EmitStaticInt8PerAxisQuantOp(std::vector<Record *> &defs,
   os.indent(0) << "}\n";
 }
 
-void EmitStaticInt8PerTensorQuantOp(std::vector<Record *> &defs,
+void EmitStaticInt8PerTensorQuantOp(std::vector<const Record *> &defs,
                                     raw_ostream &os) {
   os.indent(0)
       << "const std::set<std::string> &ExportStaticInt8PerTensorSpec() {\n";
@@ -266,7 +267,7 @@ void EmitStaticInt8PerTensorQuantOp(std::vector<Record *> &defs,
   os.indent(0) << "}\n";
 }
 
-void EmitStaticUInt8PerAxisQuantOp(std::vector<Record *> &defs,
+void EmitStaticUInt8PerAxisQuantOp(std::vector<const Record *> &defs,
                                    raw_ostream &os) {
   os.indent(0)
       << "const std::set<std::string> &ExportStaticUInt8PerAxisSpec() {\n";
@@ -286,7 +287,7 @@ void EmitStaticUInt8PerAxisQuantOp(std::vector<Record *> &defs,
   os.indent(0) << "}\n";
 }
 
-void EmitStaticUInt8PerTensorQuantOp(std::vector<Record *> &defs,
+void EmitStaticUInt8PerTensorQuantOp(std::vector<const Record *> &defs,
                                      raw_ostream &os) {
   os.indent(0)
       << "const std::set<std::string> &ExportStaticUInt8PerTensorSpec() {\n";
@@ -306,7 +307,8 @@ void EmitStaticUInt8PerTensorQuantOp(std::vector<Record *> &defs,
   os.indent(0) << "}\n";
 }
 
-void EmitStaticQuantOp(std::vector<Record *> &defs, raw_ostream *ostream) {
+void EmitStaticQuantOp(std::vector<const Record *> &defs,
+                       raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   llvm::sort(defs, LessRecord());
 
@@ -316,7 +318,7 @@ void EmitStaticQuantOp(std::vector<Record *> &defs, raw_ostream *ostream) {
   EmitStaticUInt8PerTensorQuantOp(defs, os);
 }
 
-void EmitStaticQuantWithInt16ActOp(std::vector<Record *> &defs,
+void EmitStaticQuantWithInt16ActOp(std::vector<const Record *> &defs,
                                    raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   llvm::sort(defs, LessRecord());
@@ -339,7 +341,7 @@ void EmitStaticQuantWithInt16ActOp(std::vector<Record *> &defs,
   os.indent(0) << "}\n";
 }
 
-void EmitStaticQuantWithInt16ActTocoOp(std::vector<Record *> &defs,
+void EmitStaticQuantWithInt16ActTocoOp(std::vector<const Record *> &defs,
                                        raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   llvm::sort(defs, LessRecord());
@@ -363,8 +365,9 @@ void EmitStaticQuantWithInt16ActTocoOp(std::vector<Record *> &defs,
 }
 
 static bool TFLiteOpCoverageSpecWritersMain(raw_ostream &os,
-                                            RecordKeeper &records) {
-  std::vector<Record *> op_defs = records.getAllDerivedDefinitions("TFL_Op");
+                                            const RecordKeeper &records) {
+  std::vector<const Record *> op_defs =
+      records.getAllDerivedDefinitions("TFL_Op");
   EmitStaticQuantOp(op_defs, &os);
   EmitDynamicRangeOp(op_defs, &os);
   EmitStaticQuantWithInt16ActOp(op_defs, &os);

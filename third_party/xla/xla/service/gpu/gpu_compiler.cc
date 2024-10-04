@@ -524,6 +524,10 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
 
+  // On GPU it helps to reorder them so that the fused cuDNN kernel can be
+  // used.
+  layout_insensitive_algsimp_opts.set_enable_conv_add_multiply_reorder(true);
+
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
       !hlo_module_config.debug_options().xla_gpu_enable_fast_min_max());
@@ -1227,6 +1231,7 @@ absl::Status RunLayoutNormalizationPasses(
   opts.set_supports_non_canonical_dots(false);
   opts.set_is_layout_sensitive(true);
   opts.set_enable_conv_operand_swap(false);
+  opts.set_enable_conv_add_multiply_reorder(true);
   // "slow" minmax means we propagate nan.
   opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
   opts.set_enable_unconditional_reduce_of_concat_replacement(false);
@@ -1430,6 +1435,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     opts.set_supports_non_canonical_dots(false);
     opts.set_is_layout_sensitive(true);
     opts.set_enable_conv_operand_swap(false);
+    opts.set_enable_conv_add_multiply_reorder(true);
     // "slow" minmax means we propagate nan.
     opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
     opts.set_enable_unconditional_reduce_of_concat_replacement(false);

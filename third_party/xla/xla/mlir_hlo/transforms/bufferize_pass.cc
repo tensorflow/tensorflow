@@ -66,6 +66,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -235,7 +236,8 @@ struct OneShotBufferizePass
     opts.allowReturnAllocsFromLoops = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionArgTypeConverterFn =
-        [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
+        [=](TensorType tensorType, Attribute memorySpace,
+            FunctionOpInterface funcOp,
             const bufferization::BufferizationOptions& /*options*/) {
           // Functions created by fusion outlining should have fully dynamic
           // layout. All other functions (for now only "main") gets static
