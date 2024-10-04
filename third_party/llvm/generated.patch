@@ -1,686 +1,4 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDeclCXX.cpp b/clang/lib/CodeGen/CGDeclCXX.cpp
---- a/clang/lib/CodeGen/CGDeclCXX.cpp
-+++ b/clang/lib/CodeGen/CGDeclCXX.cpp
-@@ -640,13 +640,13 @@
-       addUsedGlobal(COMDATKey);
-     }
- 
--    // If comdats are in use and supported, place the initializer function into
--    // the comdat group of the global. In the MS ABI, initializers are mangled
--    // and have their own comdat, so we don't include them in the group for
--    // consistency with MSVC.
-+    // If we used a COMDAT key for the global ctor, the init function can be
-+    // discarded if the global ctor entry is discarded.
-+    // FIXME: Do we need to restrict this to ELF and Wasm?
-     llvm::Comdat *C = Addr->getComdat();
--    if (COMDATKey && C && getTriple().supportsCOMDAT() &&
--        !getTarget().getCXXABI().isMicrosoft()) {
-+    if (COMDATKey && C &&
-+        (getTarget().getTriple().isOSBinFormatELF() ||
-+         getTarget().getTriple().isOSBinFormatWasm())) {
-       Fn->setComdat(C);
-     }
-   } else {
-diff -ruN --strip-trailing-cr a/libcxx/docs/Status/Cxx23Issues.csv b/libcxx/docs/Status/Cxx23Issues.csv
---- a/libcxx/docs/Status/Cxx23Issues.csv
-+++ b/libcxx/docs/Status/Cxx23Issues.csv
-@@ -296,7 +296,7 @@
- "`LWG3862 <https://wg21.link/LWG3862>`__","``basic_const_iterator``'s ``common_type`` specialization is underconstrained","2023-02 (Issaquah)","","",""
- "`LWG3865 <https://wg21.link/LWG3865>`__","Sorting a range of ``pairs``","2023-02 (Issaquah)","|Complete|","17.0",""
- "`LWG3869 <https://wg21.link/LWG3869>`__","Deprecate ``std::errc`` constants related to UNIX STREAMS","2023-02 (Issaquah)","|Complete|","19.0",""
--"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","|Complete|","20.0",""
-+"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","","",""
- "`LWG3871 <https://wg21.link/LWG3871>`__","Adjust note about ``terminate``","2023-02 (Issaquah)","","",""
- "`LWG3872 <https://wg21.link/LWG3872>`__","``basic_const_iterator`` should have custom ``iter_move``","2023-02 (Issaquah)","","",""
- "`LWG3875 <https://wg21.link/LWG3875>`__","``std::ranges::repeat_view<T, IntegerClass>::iterator`` may be ill-formed","2023-02 (Issaquah)","|Complete|","17.0",""
-diff -ruN --strip-trailing-cr a/libcxx/include/CMakeLists.txt b/libcxx/include/CMakeLists.txt
---- a/libcxx/include/CMakeLists.txt
-+++ b/libcxx/include/CMakeLists.txt
-@@ -560,6 +560,7 @@
-   __memory/unique_temporary_buffer.h
-   __memory/uses_allocator.h
-   __memory/uses_allocator_construction.h
-+  __memory/voidify.h
-   __memory_resource/memory_resource.h
-   __memory_resource/monotonic_buffer_resource.h
-   __memory_resource/polymorphic_allocator.h
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/construct_at.h b/libcxx/include/__memory/construct_at.h
---- a/libcxx/include/__memory/construct_at.h
-+++ b/libcxx/include/__memory/construct_at.h
-@@ -14,6 +14,7 @@
- #include <__config>
- #include <__iterator/access.h>
- #include <__memory/addressof.h>
-+#include <__memory/voidify.h>
- #include <__type_traits/enable_if.h>
- #include <__type_traits/is_array.h>
- #include <__utility/declval.h>
-@@ -37,7 +38,7 @@
- template <class _Tp, class... _Args, class = decltype(::new(std::declval<void*>()) _Tp(std::declval<_Args>()...))>
- _LIBCPP_HIDE_FROM_ABI constexpr _Tp* construct_at(_Tp* __location, _Args&&... __args) {
-   _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at");
--  return ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
-+  return ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
- }
- 
- #endif
-@@ -48,7 +49,7 @@
-   return std::construct_at(__location, std::forward<_Args>(__args)...);
- #else
-   return _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at"),
--         ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
-+         ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
- #endif
- }
- 
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
---- a/libcxx/include/__memory/shared_ptr.h
-+++ b/libcxx/include/__memory/shared_ptr.h
-@@ -248,35 +248,33 @@
- 
- template <class _Tp, class _Alloc>
- struct __shared_ptr_emplace : __shared_weak_count {
--  using __value_type = __remove_cv_t<_Tp>;
--
-   template <class... _Args,
-             class _Allocator                                                                         = _Alloc,
-             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&...) : __storage_(std::move(__a)) {
-     static_assert(
-         sizeof...(_Args) == 0, "No argument should be provided to the control block when using _for_overwrite");
--    ::new (static_cast<void*>(__get_elem())) __value_type;
-+    ::new ((void*)__get_elem()) _Tp;
-   }
- 
-   template <class... _Args,
-             class _Allocator                                                                          = _Alloc,
-             __enable_if_t<!is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&... __args) : __storage_(std::move(__a)) {
--    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __value_type>::type;
-+    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __remove_cv_t<_Tp> >::type;
-     _TpAlloc __tmp(*__get_alloc());
-     allocator_traits<_TpAlloc>::construct(__tmp, __get_elem(), std::forward<_Args>(__args)...);
-   }
- 
-   _LIBCPP_HIDE_FROM_ABI _Alloc* __get_alloc() _NOEXCEPT { return __storage_.__get_alloc(); }
- 
--  _LIBCPP_HIDE_FROM_ABI __value_type* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
-+  _LIBCPP_HIDE_FROM_ABI _Tp* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
- 
- private:
-   template <class _Allocator                                                                         = _Alloc,
-             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI void __on_zero_shared_impl() _NOEXCEPT {
--    __get_elem()->~__value_type();
-+    __get_elem()->~_Tp();
-   }
- 
-   template <class _Allocator                                                                          = _Alloc,
-@@ -302,7 +300,7 @@
-   // through `std::allocate_shared` and `std::make_shared`.
-   struct _Storage {
-     struct _Data {
--      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, __value_type, __elem_);
-+      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, _Tp, __elem_);
-     };
- 
-     _ALIGNAS_TYPE(_Data) char __buffer_[sizeof(_Data)];
-@@ -314,7 +312,7 @@
-       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__alloc_);
-     }
- 
--    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI __value_type* __get_elem() _NOEXCEPT {
-+    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI _Tp* __get_elem() _NOEXCEPT {
-       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__elem_);
-     }
-   };
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/uninitialized_algorithms.h b/libcxx/include/__memory/uninitialized_algorithms.h
---- a/libcxx/include/__memory/uninitialized_algorithms.h
-+++ b/libcxx/include/__memory/uninitialized_algorithms.h
-@@ -21,6 +21,7 @@
- #include <__memory/allocator_traits.h>
- #include <__memory/construct_at.h>
- #include <__memory/pointer_traits.h>
-+#include <__memory/voidify.h>
- #include <__type_traits/enable_if.h>
- #include <__type_traits/extent.h>
- #include <__type_traits/is_array.h>
-@@ -63,7 +64,7 @@
-   try {
- #endif
-     for (; __ifirst != __ilast && !__stop_copying(__idx); ++__ifirst, (void)++__idx)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
-+      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
- #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__ofirst, __idx);
-@@ -93,7 +94,7 @@
-   try {
- #endif
-     for (; __n > 0 && !__stop_copying(__idx); ++__ifirst, (void)++__idx, (void)--__n)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
-+      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
- #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__ofirst, __idx);
-@@ -123,7 +124,7 @@
-   try {
- #endif
-     for (; __idx != __last; ++__idx)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
-+      ::new (std::__voidify(*__idx)) _ValueType(__x);
- #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -151,7 +152,7 @@
-   try {
- #endif
-     for (; __n > 0; ++__idx, (void)--__n)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
-+      ::new (std::__voidify(*__idx)) _ValueType(__x);
- #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -181,7 +182,7 @@
-   try {
- #  endif
-     for (; __idx != __last; ++__idx)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
-+      ::new (std::__voidify(*__idx)) _ValueType;
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -207,7 +208,7 @@
-   try {
- #  endif
-     for (; __n > 0; ++__idx, (void)--__n)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
-+      ::new (std::__voidify(*__idx)) _ValueType;
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -234,7 +235,7 @@
-   try {
- #  endif
-     for (; __idx != __last; ++__idx)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
-+      ::new (std::__voidify(*__idx)) _ValueType();
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -260,7 +261,7 @@
-   try {
- #  endif
-     for (; __n > 0; ++__idx, (void)--__n)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
-+      ::new (std::__voidify(*__idx)) _ValueType();
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__first, __idx);
-@@ -296,7 +297,7 @@
-   try {
- #  endif
-     for (; __ifirst != __ilast && !__stop_moving(__idx); ++__idx, (void)++__ifirst) {
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
-+      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
-     }
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-@@ -334,7 +335,7 @@
-   try {
- #  endif
-     for (; __n > 0 && !__stop_moving(__idx); ++__idx, (void)++__ifirst, --__n)
--      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
-+      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
- #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-   } catch (...) {
-     std::__destroy(__ofirst, __idx);
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/voidify.h b/libcxx/include/__memory/voidify.h
---- a/libcxx/include/__memory/voidify.h
-+++ b/libcxx/include/__memory/voidify.h
-@@ -0,0 +1,30 @@
-+// -*- C++ -*-
-+//===----------------------------------------------------------------------===//
-+//
-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-+// See https://llvm.org/LICENSE.txt for license information.
-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+//
-+//===----------------------------------------------------------------------===//
-+
-+#ifndef _LIBCPP___MEMORY_VOIDIFY_H
-+#define _LIBCPP___MEMORY_VOIDIFY_H
-+
-+#include <__config>
-+#include <__memory/addressof.h>
-+
-+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
-+#  pragma GCC system_header
-+#endif
-+
-+_LIBCPP_BEGIN_NAMESPACE_STD
-+
-+template <typename _Tp>
-+_LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void* __voidify(_Tp& __from) {
-+  // Cast away cv-qualifiers to allow modifying elements of a range through const iterators.
-+  return const_cast<void*>(static_cast<const volatile void*>(std::addressof(__from)));
-+}
-+
-+_LIBCPP_END_NAMESPACE_STD
-+
-+#endif // _LIBCPP___MEMORY_VOIDIFY_H
-diff -ruN --strip-trailing-cr a/libcxx/include/module.modulemap b/libcxx/include/module.modulemap
---- a/libcxx/include/module.modulemap
-+++ b/libcxx/include/module.modulemap
-@@ -1528,6 +1528,7 @@
-     }
-     module uses_allocator                     { header "__memory/uses_allocator.h" }
-     module uses_allocator_construction        { header "__memory/uses_allocator_construction.h" }
-+    module voidify                            { header "__memory/voidify.h" }
- 
-     header "memory"
-     export *
-diff -ruN --strip-trailing-cr a/libcxx/include/optional b/libcxx/include/optional
---- a/libcxx/include/optional
-+++ b/libcxx/include/optional
-@@ -287,7 +287,7 @@
-   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
-   union {
-     char __null_state_;
--    remove_cv_t<value_type> __val_;
-+    value_type __val_;
-   };
-   bool __engaged_;
- 
-@@ -323,7 +323,7 @@
-   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
-   union {
-     char __null_state_;
--    remove_cv_t<value_type> __val_;
-+    value_type __val_;
-   };
-   bool __engaged_;
- 
-@@ -377,7 +377,7 @@
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __assign_from(_That&& __opt) {
-     if (this->__engaged_ == __opt.has_value()) {
-       if (this->__engaged_)
--        static_cast<_Tp&>(this->__val_) = std::forward<_That>(__opt).__get();
-+        this->__val_ = std::forward<_That>(__opt).__get();
-     } else {
-       if (this->__engaged_)
-         this->reset();
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
-@@ -80,6 +80,21 @@
-         a.deallocate(p, 2);
-     }
- 
-+    {
-+        std::allocator<Counted> a;
-+        Counted const* p = a.allocate(2);
-+        int count = 0;
-+        std::construct_at(p, count);
-+        assert(count == 1);
-+        std::construct_at(p+1, count);
-+        assert(count == 2);
-+        (p+1)->~Counted();
-+        assert(count == 1);
-+        p->~Counted();
-+        assert(count == 0);
-+        a.deallocate(const_cast<Counted*>(p), 2);
-+    }
-+
-     return true;
- }
- 
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
-@@ -99,6 +99,16 @@
-     alloc.deallocate(out, 2);
-   }
- 
-+  // Works with const pointers.
-+  {
-+    int x = 1;
-+    const int* ptr = &x;
-+
-+    const int* result = std::ranges::construct_at(ptr, 42);
-+    assert(result == ptr);
-+    assert(x == 42);
-+  }
-+
-   return true;
- }
- 
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
-@@ -75,5 +75,17 @@
-   }
- #endif  // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_default_construct_n(buf.cbegin(), N);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
-@@ -163,5 +163,30 @@
-   }
- #endif  // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators, (iter, sentinel) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_default_construct(buf.cbegin(), buf.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-+  // Works with const iterators, (range) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-+
-+    std::ranges::uninitialized_default_construct(range);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
-@@ -94,5 +94,17 @@
-   }
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_value_construct_n(buf.cbegin(), N);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
-@@ -183,5 +183,30 @@
-   }
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators, (iter, sentinel) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_value_construct(buf.cbegin(), buf.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-+  // Works with const iterators, (range) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-+    std::ranges::uninitialized_value_construct(range);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
-@@ -104,6 +104,22 @@
- 
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::uninitialized_copy_n(in, N, out.cbegin(), out.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-   // Conversions.
-   {
-     constexpr int N = 3;
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
-@@ -278,6 +278,39 @@
-   Counted::reset();
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators, (iter, sentinel) overload.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::uninitialized_copy(in, in + N, out.cbegin(), out.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-+  // Works with const iterators, (range) overload.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::subrange out_range(out.cbegin(), out.cend());
-+    std::ranges::uninitialized_copy(in, out_range);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-   // Conversions, (iter, sentinel) overload.
-   {
-     constexpr int N = 3;
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
-@@ -198,5 +198,34 @@
-   }
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators, (iter, sentinel) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_fill(buf.cbegin(), buf.cend(), x);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::all_of(buf.begin(), buf.end(), pred));
-+
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-+  // Works with const iterators, (range) overload.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-+    std::ranges::uninitialized_fill(range, x);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::all_of(buf.begin(), buf.end(), pred));
-+
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
-@@ -101,5 +101,19 @@
-   }
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators.
-+  {
-+    constexpr int N = 5;
-+    Buffer<Counted, N> buf;
-+
-+    std::ranges::uninitialized_fill_n(buf.cbegin(), N, x);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::all_of(buf.begin(), buf.end(), pred));
-+
-+    std::destroy(buf.begin(), buf.end());
-+    Counted::reset();
-+  }
-+
-   return 0;
- }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
-@@ -105,6 +105,22 @@
- 
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::uninitialized_move_n(in, N, out.cbegin(), out.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-   // Conversions.
-   {
-     constexpr int N = 3;
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
---- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
-+++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
-@@ -282,6 +282,39 @@
-   Counted::reset();
- #endif // TEST_HAS_NO_EXCEPTIONS
- 
-+  // Works with const iterators, (iter, sentinel) overload.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::uninitialized_move(in, in + N, out.cbegin(), out.cend());
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-+  // Works with const iterators, (range) overload.
-+  {
-+    constexpr int N = 5;
-+    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-+    Buffer<Counted, N> out;
-+    Counted::reset();
-+
-+    std::ranges::subrange out_range (out.cbegin(), out.cend());
-+    std::ranges::uninitialized_move(in, out_range);
-+    assert(Counted::current_objects == N);
-+    assert(Counted::total_objects == N);
-+    assert(std::equal(in, in + N, out.begin(), out.end()));
-+
-+    std::destroy(out.begin(), out.end());
-+  }
-+  Counted::reset();
-+
-   // Conversions, (iter, sentinel) overload.
-   {
-     constexpr int N = 3;
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
---- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-@@ -10287,10 +10287,8 @@
-   SDValue LeftOp = ShiftOperand.getOperand(0);
-   SDValue RightOp = ShiftOperand.getOperand(1);
- 
--  // Treat zext nneg as sext - we might need to support handling these as zext
--  // as well in the future, but for now just prefer sext.
--  bool IsSignExt = sd_match(LeftOp, m_SExtLike(m_Value()));
--  bool IsZeroExt = sd_match(LeftOp, m_ZExt(m_Value()));
-+  bool IsSignExt = LeftOp.getOpcode() == ISD::SIGN_EXTEND;
-+  bool IsZeroExt = LeftOp.getOpcode() == ISD::ZERO_EXTEND;
- 
-   if (!IsSignExt && !IsZeroExt)
-     return SDValue();
 diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 --- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
 +++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
@@ -699,7 +17,7 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp 
              AddCombinedNode(SE->Idx, Cnt);
              continue;
            }
-@@ -13396,7 +13397,12 @@
+@@ -13439,7 +13440,12 @@
          if (CommonMask[Idx] != PoisonMaskElem)
            CommonMask[Idx] = Idx;
        for (auto [E, Idx] : SubVectors) {
@@ -713,58 +31,6 @@ diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp 
          Vec = Builder.CreateInsertVector(Vec->getType(), Vec, V,
                                           Builder.getInt64(Idx));
          if (!CommonMask.empty()) {
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pmulh.ll b/llvm/test/CodeGen/X86/pmulh.ll
---- a/llvm/test/CodeGen/X86/pmulh.ll
-+++ b/llvm/test/CodeGen/X86/pmulh.ll
-@@ -953,15 +953,39 @@
- ; SSE-NEXT:    movdqa %xmm0, 16(%rdi)
- ; SSE-NEXT:    retq
- ;
--; AVX-LABEL: PR109790:
--; AVX:       # %bb.0:
--; AVX-NEXT:    movq %rdi, %rax
--; AVX-NEXT:    vmovdqa (%rsi), %ymm0
--; AVX-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
--; AVX-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
--; AVX-NEXT:    vmovdqa %ymm0, (%rdi)
--; AVX-NEXT:    vzeroupper
--; AVX-NEXT:    retq
-+; AVX2-LABEL: PR109790:
-+; AVX2:       # %bb.0:
-+; AVX2-NEXT:    movq %rdi, %rax
-+; AVX2-NEXT:    vmovdqa (%rsi), %ymm0
-+; AVX2-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-+; AVX2-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
-+; AVX2-NEXT:    vmovdqa %ymm0, (%rdi)
-+; AVX2-NEXT:    vzeroupper
-+; AVX2-NEXT:    retq
-+;
-+; AVX512F-LABEL: PR109790:
-+; AVX512F:       # %bb.0:
-+; AVX512F-NEXT:    movq %rdi, %rax
-+; AVX512F-NEXT:    vmovdqa (%rsi), %ymm0
-+; AVX512F-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-+; AVX512F-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-+; AVX512F-NEXT:    vpmulld {{\.?LCPI[0-9]+_[0-9]+}}(%rip){1to16}, %zmm0, %zmm0
-+; AVX512F-NEXT:    vpsrld $16, %zmm0, %zmm0
-+; AVX512F-NEXT:    vpmovdw %zmm0, (%rdi)
-+; AVX512F-NEXT:    vzeroupper
-+; AVX512F-NEXT:    retq
-+;
-+; AVX512BW-LABEL: PR109790:
-+; AVX512BW:       # %bb.0:
-+; AVX512BW-NEXT:    movq %rdi, %rax
-+; AVX512BW-NEXT:    vmovdqa (%rsi), %ymm0
-+; AVX512BW-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-+; AVX512BW-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-+; AVX512BW-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0]
-+; AVX512BW-NEXT:    vpsrld $16, %zmm0, %zmm0
-+; AVX512BW-NEXT:    vpmovdw %zmm0, (%rdi)
-+; AVX512BW-NEXT:    vzeroupper
-+; AVX512BW-NEXT:    retq
-   %load = load <16 x i16>, ptr %a, align 32
-   %and = and <16 x i16> %load, <i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767>
-   %ext = zext nneg <16 x i16> %and to <16 x i32>
 diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
 --- a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
 +++ b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
@@ -866,36 +132,76 @@ diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/subvector
 +  store i64 %rt, ptr %v2, align 1
 +  ret i1 false
 +}
-diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
---- a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
-+++ b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
-@@ -280,6 +280,7 @@
-     "rdpruintrin.h",
-     "rdseedintrin.h",
-     "riscv_bitmanip.h",
-+    "riscv_corev_alu.h",
-     "riscv_crypto.h",
-     "riscv_ntlh.h",
-     "rtmintrin.h",
-diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
---- a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
-+++ b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
-@@ -632,6 +632,7 @@
-       "__memory/unique_temporary_buffer.h",
-       "__memory/uses_allocator.h",
-       "__memory/uses_allocator_construction.h",
-+      "__memory/voidify.h",
-       "__memory_resource/memory_resource.h",
-       "__memory_resource/monotonic_buffer_resource.h",
-       "__memory_resource/polymorphic_allocator.h",
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-@@ -358,6 +358,7 @@
-     td_file = "include/clang/Basic/BuiltinsRISCV.td",
-     td_srcs = [
-         "include/clang/Basic/BuiltinsRISCV.td",
-+        "include/clang/Basic/BuiltinsRISCVXCV.td",
-         "include/clang/Basic/BuiltinsBase.td",
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tensor/Utils/Utils.cpp b/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
+--- a/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
++++ b/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
+@@ -16,7 +16,7 @@
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+ #include "mlir/Dialect/Utils/IndexingUtils.h"
+-#include "mlir/Dialect/Vector/IR//VectorOps.h"
++#include "mlir/Dialect/Vector/IR/VectorOps.h"
+ #include "mlir/Interfaces/ValueBoundsOpInterface.h"
+ 
+ using namespace mlir;
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -148,6 +148,9 @@
+ libc_support_library(
+     name = "hdr_stdio_macros",
+     hdrs = ["hdr/stdio_macros.h"],
++    deps = [
++        ":hdr_stdio_overlay",
++    ],
+ )
+ 
+ libc_support_library(
+@@ -215,11 +218,17 @@
+ libc_support_library(
+     name = "types_off_t",
+     hdrs = ["hdr/types/off_t.h"],
++    deps = [
++        ":hdr_stdio_overlay",
++    ],
+ )
+ 
+ libc_support_library(
+     name = "types_FILE",
+     hdrs = ["hdr/types/FILE.h"],
++    deps = [
++        ":hdr_stdio_overlay",
++    ],
+ )
+ 
+ libc_support_library(
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel b/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
+@@ -1091,6 +1091,7 @@
+         "//lldb:Utility",
+         "//lldb:UtilityPrivateHeaders",
+         "//llvm:Core",
++        "//llvm:Support",
+         "//llvm:TargetParser",
      ],
  )
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -7694,6 +7694,7 @@
+         ":DialectUtils",
+         ":TensorDialect",
+         ":ValueBoundsOpInterface",
++        ":VectorDialect",
+     ],
+ )
+ 
+@@ -13902,6 +13903,7 @@
+         ":BufferViewFlowOpInterfaceIncGen",
+         ":BufferizableOpInterfaceIncGen",
+         ":BufferizationEnumsIncGen",
++        ":FunctionInterfaces",
+         ":IR",
+         ":Support",
+         "//llvm:Support",

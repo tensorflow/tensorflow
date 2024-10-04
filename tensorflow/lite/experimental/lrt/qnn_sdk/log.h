@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOG_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOG_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_
 
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 #include "third_party/qairt/include/QNN/QnnLog.h"
@@ -37,4 +37,4 @@ QnnLog_Callback_t GetDefaultStdOutLogger();
 
 }  // namespace qnn::log
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOG_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_

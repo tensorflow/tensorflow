@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/qnn_manager.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
 
 #include <cstdint>
 #include <iostream>
@@ -25,8 +25,8 @@
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/qnn/load_sdk.h"
-#include "tensorflow/lite/experimental/lrt/qnn/log.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/load_sdk.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/log.h"
 
 using ::qnn::load::QnnInterfaceGetProvidersFn_t;
 

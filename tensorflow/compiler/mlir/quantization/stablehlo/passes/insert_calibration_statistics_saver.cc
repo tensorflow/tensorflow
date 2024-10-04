@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -180,7 +181,7 @@ CreateInsertCalibrationStatisticsSaverPass(
     StringRef calibration_data_dir,
     const std::vector<std::string>& aggregator_ops_to_ignore) {
   InsertCalibrationStatisticsSaverPassOptions options = {
-      .aggregator_ops_to_ignore_ = aggregator_ops_to_ignore,
+      .aggregator_ops_to_ignore_ = llvm::to_vector(aggregator_ops_to_ignore),
       .calibration_data_dir_ = calibration_data_dir.str(),
   };
   return std::make_unique<InsertCalibrationStatisticsSaverPass>(options);

@@ -1,8 +1,8 @@
 diff --git a/docs/sdy_dialect.md b/docs/sdy_dialect.md
-index 5442c1e..4719975 100755
+index 5442c1e..0caa94a 100755
 --- a/docs/sdy_dialect.md
 +++ b/docs/sdy_dialect.md
-@@ -215,6 +215,63 @@ Interfaces: `Symbol`
+@@ -215,6 +215,67 @@ Interfaces: `Symbol`
  </table>
  
  
@@ -15,6 +15,8 @@ index 5442c1e..4719975 100755
 +
 +```
 +operation ::= `sdy.named_computation` `<`$name`>` `` `(` $operands `)`
++              (`in_shardings````=```custom<StrippedTensorShardingPerValueAttr>($in_shardings)^)?
++              (`out_shardings````=```custom<StrippedTensorShardingPerValueAttr>($out_shardings)^)?
 +              custom<SingleBlockRegionNoBlockId>($body)
 +              attr-dict
 +              `:` functional-type($operands, results)
@@ -41,13 +43,15 @@ index 5442c1e..4719975 100755
 +
 +Traits: `IsolatedFromAbove`, `RecursiveMemoryEffects`, `RecursivelySpeculatableImplTrait`, `SingleBlockImplicitTerminator<ReturnOp>`, `SingleBlock`
 +
-+Interfaces: `ConditionallySpeculatable`
++Interfaces: `ConditionallySpeculatable`, `ShardableDataFlowOpInterface`
 +
 +#### Attributes:
 +
 +<table>
 +<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 +<tr><td><code>name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
++<tr><td><code>in_shardings</code></td><td>::mlir::sdy::TensorShardingPerValueAttr</td><td>Tensor sharding per operand/result of an op</td></tr>
++<tr><td><code>out_shardings</code></td><td>::mlir::sdy::TensorShardingPerValueAttr</td><td>Tensor sharding per operand/result of an op</td></tr>
 +</table>
 +
 +#### Operands:
@@ -124,11 +128,176 @@ index 7a7e3ef..d5f678f 100755
  ### `-sdy-sharding-constraint-to-reshard`
  
  _Converts ShardingConstraintOp into ReshardOp._
+diff --git a/docs/sdy_op_interfaces.md b/docs/sdy_op_interfaces.md
+index 38e78f9..ec53cdb 100755
+--- a/docs/sdy_op_interfaces.md
++++ b/docs/sdy_op_interfaces.md
+@@ -57,7 +57,8 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ void setBlockArgumentEdgeOwnerSharding(unsigned index, mlir::sdy::TensorShardingAttr sharding);
+ ```
+-Sets the shardings of the block argument edge owner with the given index.
++Sets the `sharding` of the block argument edge owner with the given
++`index`.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+@@ -66,7 +67,34 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ void setBlockArgumentEdgeOwnerShardings(mlir::ArrayRef<mlir::sdy::TensorShardingAttr> shardings);
+ ```
+-Sets shardings of all block argument edge owners.
++Sets `shardings` of all block argument edge owners.
++
++NOTE: This method *must* be implemented by the user.
++
++#### `getOpResultEdgeOwnerShardings`
++
++```c++
++mlir::ArrayRef<mlir::sdy::TensorShardingAttr> getOpResultEdgeOwnerShardings();
++```
++Returns the shardings of all op result data flow edge owners.
++
++NOTE: This method *must* be implemented by the user.
++
++#### `setOpResultEdgeOwnerSharding`
++
++```c++
++void setOpResultEdgeOwnerSharding(unsigned index, mlir::sdy::TensorShardingAttr sharding);
++```
++Sets the `sharding` of the op result edge owner with the given `index`.
++
++NOTE: This method *must* be implemented by the user.
++
++#### `setOpResultEdgeOwnerShardings`
++
++```c++
++void setOpResultEdgeOwnerShardings(mlir::ArrayRef<mlir::sdy::TensorShardingAttr> shardings);
++```
++Sets `shardings` of all op result edge owners.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+@@ -93,7 +121,7 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ mlir::SmallVector<mlir::Value> getEdgeSources(mlir::Value target);
+ ```
+-Gets the data flow edge sources given a target value.
++Gets the data flow edge sources given a `target` value.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+@@ -102,7 +130,8 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ mlir::Value getEdgeOwnerFromTarget(mlir::Value target);
+ ```
+-Gets the owner target of a data flow edge given a target that may or may not be the owner.
++Gets the owner `target` of a data flow edge given a `target` that may or
++may not be the owner.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+@@ -111,7 +140,7 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ mlir::Value getEdgeOwnerFromSource(mlir::OpOperand&source);
+ ```
+-Gets the owner target of a data flow edge given a source.
++Gets the owner target of a data flow edge given a `source`.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+@@ -120,7 +149,7 @@ NOTE: This method *must* be implemented by the user.
+ ```c++
+ mlir::SmallVector<mlir::Value> getNonEdgeOwnerTargets(mlir::Value owner);
+ ```
+-Gets the non-owner targets of a data flow edge given the edge owner.
++Gets the non-owner targets of a data flow edge given the edge `owner`.
+ 
+ NOTE: This method *must* be implemented by the user.
+ 
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index d94c85e..ff8a885 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -518,11 +518,17 @@ def Sdy_TensorShardingPerValue : AttrDef<Sdy_Dialect, "TensorShardingPerValue">
+   let assemblyFormat = "`<` `[` (`]`):($shardings^ `]`)? `>`";
+ 
+   let extraClassDeclaration = [{
+-    // Builds a `TensorShardingPerValue` for each type in `types`, with all
+-    // dimension shardings marked open (can be further replicated/sharded).
++    // Builds a `TensorSharding` for each type in `types`, with all dimension
++    // shardings marked open (can be further replicated/sharded).
+     static TensorShardingPerValueAttr getFullyOpen(
+         MLIRContext* context, TypeRange types, StringRef meshName);
+ 
++    // Builds an open `TensorSharding` for each type in `types`, but
++    // with the sharding at `index` replaced with `sharding`.
++    static TensorShardingPerValueAttr getOpenWithShardingAtIndex(
++        MLIRContext* context, TypeRange types, int64_t index,
++        TensorShardingAttr sharding);
++
+     // Returns whether there are no values.
+     bool empty() const { return getShardings().empty(); }
+ 
+diff --git a/shardy/dialect/sdy/ir/data_flow_utils.cc b/shardy/dialect/sdy/ir/data_flow_utils.cc
+index abee3b7..08f863e 100644
+--- a/shardy/dialect/sdy/ir/data_flow_utils.cc
++++ b/shardy/dialect/sdy/ir/data_flow_utils.cc
+@@ -97,6 +97,14 @@ void setBlockArgumentEdgeOwnerShardings(
+       shardings);
+ }
+ 
++void setOpResultEdgeOwnerShardings(Operation* op,
++                                   ArrayRef<TensorShardingAttr> shardings) {
++  if (auto shardableDataFlowOp = dyn_cast<ShardableDataFlowOpInterface>(op)) {
++    return shardableDataFlowOp.setOpResultEdgeOwnerShardings(shardings);
++  }
++  setShardings(op, shardings);
++}
++
+ DataFlowEdgeOp getDataFlowEdge(Value target) {
+   return DataFlowEdgeOp::getDataFlowEdgeUser(getDataFlowEdgeOwner(target));
+ }
+diff --git a/shardy/dialect/sdy/ir/data_flow_utils.h b/shardy/dialect/sdy/ir/data_flow_utils.h
+index 8d2bb82..1c65529 100644
+--- a/shardy/dialect/sdy/ir/data_flow_utils.h
++++ b/shardy/dialect/sdy/ir/data_flow_utils.h
+@@ -61,11 +61,16 @@ SmallVector<Value> getDataFlowSources(DataFlowEdgeOp dataFlowEdge);
+ // Returns all non-edge-owner targets of the given `dataFlowEdge`.
+ SmallVector<Value> getNonEdgeOwnerTargets(DataFlowEdgeOp dataFlowEdge);
+ 
+-// Sets the block argument edge owner shardings if the `op` is a
++// Sets the block argument edge owner `shardings` if the `op` is a
+ // `ShardableDataFlowOpInterface`.
+ void setBlockArgumentEdgeOwnerShardings(Operation* op,
+                                         ArrayRef<TensorShardingAttr> shardings);
+ 
++// Sets the op result edge owner `shardings` if the `op` is a
++// `ShardableDataFlowOpInterface`.
++void setOpResultEdgeOwnerShardings(Operation* op,
++                                   ArrayRef<TensorShardingAttr> shardings);
++
+ }  // namespace sdy
+ }  // namespace mlir
+ 
 diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
-index 00cf709..1fa27b7 100644
+index 00cf709..07a0975 100644
 --- a/shardy/dialect/sdy/ir/dialect.cc
 +++ b/shardy/dialect/sdy/ir/dialect.cc
-@@ -59,8 +59,8 @@ struct ShardyDialectInlinerInterface : public DialectInlinerInterface {
+@@ -31,10 +31,12 @@ limitations under the License.
+ #include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
++#include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/OperationSupport.h"
+ #include "mlir/IR/Region.h"
+ #include "mlir/IR/TypeRange.h"
+ #include "mlir/IR/Types.h"
++#include "mlir/IR/Value.h"
+ #include "mlir/IR/ValueRange.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+@@ -59,8 +61,8 @@ struct ShardyDialectInlinerInterface : public DialectInlinerInterface {
      return true;
    }
  
@@ -139,11 +308,457 @@ index 00cf709..1fa27b7 100644
    bool isLegalToInline(Region*, Region*, bool, IRMapping&) const final {
      return true;
    }
+@@ -90,6 +92,67 @@ void SdyDialect::initialize() {
+       >();
+ }
+ 
++namespace details {
++
++ArrayRef<TensorShardingAttr> getOpResultEdgeOwnerShardingsImpl(Operation* op) {
++  return getShardings(op);
++}
++
++void setOpResultEdgeOwnerShardingImpl(Operation* op, unsigned index,
++                                      TensorShardingAttr sharding) {
++  replaceShardingAtIndex(op, index, sharding);
++}
++
++void setOpResultEdgeOwnerShardingsImpl(Operation* op,
++                                       ArrayRef<TensorShardingAttr> shardings) {
++  setShardings(op, shardings);
++}
++
++}  // namespace details
++
++//===----------------------------------------------------------------------===//
++// ShardableDataFlowOpInterface
++//===----------------------------------------------------------------------===//
++
++mlir::sdy::TensorShardingAttr
++ShardableDataFlowOpInterface::getBlockArgumentEdgeOwnerSharding(
++    unsigned index) {
++  if (mlir::ArrayRef<mlir::sdy::TensorShardingAttr> argSharding =
++          getBlockArgumentEdgeOwnerShardings();
++      !argSharding.empty()) {
++    return argSharding[index];
++  }
++  return nullptr;
++}
++
++mlir::sdy::TensorShardingAttr
++ShardableDataFlowOpInterface::getOpResultEdgeOwnerSharding(unsigned index) {
++  if (mlir::ArrayRef<mlir::sdy::TensorShardingAttr> resultSharding =
++          getOpResultEdgeOwnerShardings();
++      !resultSharding.empty()) {
++    return resultSharding[index];
++  }
++  return nullptr;
++}
++
++mlir::sdy::TensorShardingAttr
++ShardableDataFlowOpInterface::getEdgeOwnerSharding(Value value) {
++  if (auto blockArg = dyn_cast<BlockArgument>(value)) {
++    return getBlockArgumentEdgeOwnerSharding(blockArg.getArgNumber());
++  }
++  return getOpResultEdgeOwnerSharding(cast<OpResult>(value).getResultNumber());
++}
++
++void ShardableDataFlowOpInterface::setEdgeOwnerSharding(
++    Value value, mlir::sdy::TensorShardingAttr sharding) {
++  if (auto blockArg = dyn_cast<BlockArgument>(value)) {
++    setBlockArgumentEdgeOwnerSharding(blockArg.getArgNumber(), sharding);
++  } else {
++    setOpResultEdgeOwnerSharding(cast<OpResult>(value).getResultNumber(),
++                                 sharding);
++  }
++}
++
+ //===----------------------------------------------------------------------===//
+ // MeshAttr
+ //===----------------------------------------------------------------------===//
+@@ -466,10 +529,13 @@ TensorShardingAttr TensorShardingAttr::getFullyOpenLike(
+ // TensorShardingPerValueAttr
+ //===----------------------------------------------------------------------===//
+ 
+-TensorShardingPerValueAttr TensorShardingPerValueAttr::getFullyOpen(
+-    MLIRContext* context, TypeRange types, StringRef meshName) {
+-  SmallVector<TensorShardingAttr> shardingPerResult;
+-  shardingPerResult.reserve(types.size());
++namespace {
++
++SmallVector<TensorShardingAttr> getFullyOpenShardings(MLIRContext* context,
++                                                      TypeRange types,
++                                                      StringRef meshName) {
++  SmallVector<TensorShardingAttr> shardings;
++  shardings.reserve(types.size());
+   for (Type type : types) {
+     int64_t rank = 0;
+     // TODO(tomnatan): remove mlir:: once Attribute::dyn_cast is removed.
+@@ -477,10 +543,29 @@ TensorShardingPerValueAttr TensorShardingPerValueAttr::getFullyOpen(
+       assert(tensorType.hasStaticShape());
+       rank = tensorType.getRank();
+     }
+-    shardingPerResult.push_back(
++    shardings.push_back(
+         TensorShardingAttr::getFullyOpen(context, rank, meshName));
+   }
+-  return TensorShardingPerValueAttr::get(context, shardingPerResult);
++  return shardings;
++}
++
++}  // namespace
++
++TensorShardingPerValueAttr TensorShardingPerValueAttr::getFullyOpen(
++    MLIRContext* context, TypeRange types, StringRef meshName) {
++  return TensorShardingPerValueAttr::get(
++      context, getFullyOpenShardings(context, types, meshName));
++}
++
++TensorShardingPerValueAttr
++TensorShardingPerValueAttr::getOpenWithShardingAtIndex(
++    MLIRContext* context, TypeRange types, int64_t index,
++    TensorShardingAttr sharding) {
++  assert(index >= 0 && index < types.size());
++  SmallVector<TensorShardingAttr> shardings =
++      getFullyOpenShardings(context, types, sharding.getMeshName());
++  shardings[index] = sharding;
++  return TensorShardingPerValueAttr::get(context, shardings);
+ }
+ 
+ TensorShardingPerValueAttr TensorShardingPerValueAttr::replaceValueSharding(
+@@ -665,6 +750,111 @@ DataFlowEdgeOp DataFlowEdgeOp::getDataFlowEdgeUser(Value root) {
+       root && root.hasOneUse() ? *root.user_begin() : nullptr);
+ }
+ 
++//===----------------------------------------------------------------------===//
++// NamedComputationOp
++//===----------------------------------------------------------------------===//
++
++void NamedComputationOp::setOpResultEdgeOwnerSharding(
++    unsigned resultIndex, TensorShardingAttr sharding) {
++  TensorShardingPerValueAttr outShardings =
++      getOutShardings().value_or(TensorShardingPerValueAttr::getFullyOpen(
++          getContext(), getResultTypes(), sharding.getMeshName()));
++  setOutShardingsAttr(outShardings.replaceValueSharding(resultIndex, sharding));
++}
++
++void NamedComputationOp::setOpResultEdgeOwnerShardings(
++    ArrayRef<TensorShardingAttr> shardings) {
++  setOutShardingsAttr(TensorShardingPerValueAttr::get(getContext(), shardings));
++}
++
++ArrayRef<TensorShardingAttr>
++NamedComputationOp::getBlockArgumentEdgeOwnerShardings() {
++  if (std::optional<TensorShardingPerValueAttr> inShardings =
++          getInShardings()) {
++    return inShardings->getShardings();
++  }
++  return {};
++}
++
++ArrayRef<TensorShardingAttr>
++NamedComputationOp::getOpResultEdgeOwnerShardings() {
++  if (std::optional<TensorShardingPerValueAttr> outShardings =
++          getOutShardings()) {
++    return outShardings->getShardings();
++  }
++  return {};
++}
++
++void NamedComputationOp::setBlockArgumentEdgeOwnerSharding(
++    unsigned index, TensorShardingAttr sharding) {
++  TensorShardingPerValueAttr inShardings =
++      getInShardings().value_or(TensorShardingPerValueAttr::getFullyOpen(
++          getContext(), getOperandTypes(), sharding.getMeshName()));
++  setInShardingsAttr(inShardings.replaceValueSharding(index, sharding));
++}
++
++void NamedComputationOp::setBlockArgumentEdgeOwnerShardings(
++    ArrayRef<TensorShardingAttr> shardings) {
++  setInShardingsAttr(TensorShardingPerValueAttr::get(getContext(), shardings));
++}
++
++ArrayRef<BlockArgument> NamedComputationOp::getBlockArgumentEdgeOwners() {
++  return getBody().getArguments();
++}
++
++ResultRange NamedComputationOp::getOpResultEdgeOwners() { return getResults(); }
++
++// Gets the sources given a target value.
++//
++// Note that the return value is a vector, for `NamedComputationOp`s there can
++// only be one value but sdy's interface expects a vector.
++//
++// For example, given the following:
++// ```
++// %r = sdy.named_computation<"my_tan">(%operand0) (%arg0)
++//   %a = tanh(%arg0)
++//   sdy.return %a
++// }
++// ```
++// If the target is a block argument (e.g., `%operand0`), return `%arg0`.
++// If the target is a result (e.g., `%r`), return `%a`.
++SmallVector<Value> NamedComputationOp::getEdgeSources(Value target) {
++  assert(getOwningOp(target) == getOperation());
++  return mlir::TypeSwitch<Value, SmallVector<Value>>(target)
++      .Case<BlockArgument>(
++          [this](BlockArgument blockArg) -> SmallVector<Value> {
++            return {getOperand(blockArg.getArgNumber())};
++          })
++      .Case<mlir::OpResult>([this](
++                                mlir::OpResult opResult) -> SmallVector<Value> {
++        return {getBodyTerminatorOperand(*this, opResult.getResultNumber())};
++      })
++      .Default([](Value _) -> SmallVector<Value> { return {}; });
++}
++
++// Returns the edge owner value given a `target`.
++//
++// For `NamedComputationOp`s, there is only one target per data flow edge which
++// is also the edge owner.
++Value NamedComputationOp::getEdgeOwnerFromTarget(Value target) {
++  assert(getOwningOp(target) == getOperation());
++  return target;
++}
++
++// Returns the edge owner given a `source`.
++//
++// If the `source` is an operand of a terminator, return the corresponding
++// result. Otherwise it should be an operand of the `NamedComputationOp`, return
++// the `BlockArgument` with the same index.
++Value NamedComputationOp::getEdgeOwnerFromSource(OpOperand& source) {
++  Operation* sourceOwner = source.getOwner();
++  if (sourceOwner->hasTrait<mlir::OpTrait::IsTerminator>()) {
++    return getResult(source.getOperandNumber());
++  }
++  assert(sourceOwner == getOperation());
++  return getOperand(source.getOperandNumber());
++}
++
+ }  // namespace sdy
+ }  // namespace mlir
+ 
+diff --git a/shardy/dialect/sdy/ir/dialect.h b/shardy/dialect/sdy/ir/dialect.h
+index 870608a..3fa2c51 100644
+--- a/shardy/dialect/sdy/ir/dialect.h
++++ b/shardy/dialect/sdy/ir/dialect.h
+@@ -34,9 +34,12 @@ limitations under the License.
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/IR/Types.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Interfaces/CallInterfaces.h"
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
++#include "shardy/dialect/sdy/ir/constants.h"
+ 
+ // IWYU pragma: end_keep
+ 
+@@ -49,6 +52,31 @@ limitations under the License.
+ #include "shardy/dialect/sdy/ir/attrs.h.inc"
+ // ODS-generated enum classes.
+ #include "shardy/dialect/sdy/ir/enums.h.inc"
++
++// Below are methods that are the bodies of ODS-generated op-interface classes
++// which cannot be inlined due to cyclic dependencies on helper functions.
++namespace mlir {
++namespace sdy {
++namespace details {
++
++// Default implementation of the `getOpResultEdgeOwnerShardings` method of
++// `ShardableDataFlowOpInterface`.
++ArrayRef<TensorShardingAttr> getOpResultEdgeOwnerShardingsImpl(Operation* op);
++
++// Default implementation of the `setOpResultEdgeOwnerSharding` method of
++// `ShardableDataFlowOpInterface`.
++void setOpResultEdgeOwnerShardingImpl(Operation* op, unsigned index,
++                                      TensorShardingAttr sharding);
++
++// Default implementation of the `setOpResultEdgeOwnerShardings` method of
++// `ShardableDataFlowOpInterface`.
++void setOpResultEdgeOwnerShardingsImpl(Operation* op,
++                                       ArrayRef<TensorShardingAttr> shardings);
++
++}  // namespace details
++}  // namespace sdy
++}  // namespace mlir
++
+ // ODS-generated op-interface classes.
+ #include "shardy/dialect/sdy/ir/op_interface.h.inc"
+ // ODS-generated op classes.
+diff --git a/shardy/dialect/sdy/ir/op_interface.td b/shardy/dialect/sdy/ir/op_interface.td
+index f20220a..201ba07 100644
+--- a/shardy/dialect/sdy/ir/op_interface.td
++++ b/shardy/dialect/sdy/ir/op_interface.td
+@@ -67,6 +67,11 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+   }];
+   let cppNamespace = "::mlir::sdy";
+ 
++  // TODO(bartchr): make the methods:
++  // - setOpResultEdgeOwnerSharding
++  // - setBlockArgumentEdgeOwnerSharding
++  // an extra class declaration method which are implemented through their
++  // plural counterparts.
+   let methods = [
+     InterfaceMethod<
+       /*desc=*/[{
+@@ -77,20 +82,64 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Sets the shardings of the block argument edge owner with the given index.
++        Sets the `sharding` of the block argument edge owner with the given
++        `index`.
+       }],
+       /*retType=*/"void",
+       /*methodName=*/"setBlockArgumentEdgeOwnerSharding",
+-      /*args=*/(ins "unsigned":$index, "mlir::sdy::TensorShardingAttr":$sharding)
++      /*args=*/(ins
++          "unsigned":$index,
++          "mlir::sdy::TensorShardingAttr":$sharding)
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Sets shardings of all block argument edge owners.
++        Sets `shardings` of all block argument edge owners.
+       }],
+       /*retType=*/"void",
+       /*methodName=*/"setBlockArgumentEdgeOwnerShardings",
+       /*args=*/(ins "mlir::ArrayRef<mlir::sdy::TensorShardingAttr>":$shardings)
+     >,
++    InterfaceMethod<
++      /*desc=*/[{
++        Returns the shardings of all op result data flow edge owners.
++      }],
++      /*retType=*/"mlir::ArrayRef<mlir::sdy::TensorShardingAttr>",
++      /*methodName=*/"getOpResultEdgeOwnerShardings",
++      /*args=*/(ins),
++      /*methodBody=*/"",
++      /*defaultImplementation=*/[{
++        return mlir::sdy::details::getOpResultEdgeOwnerShardingsImpl(
++            this->getOperation());
++      }]
++    >,
++    InterfaceMethod<
++      /*desc=*/[{
++        Sets the `sharding` of the op result edge owner with the given `index`.
++      }],
++      /*retType=*/"void",
++      /*methodName=*/"setOpResultEdgeOwnerSharding",
++      /*args=*/(ins
++          "unsigned":$index,
++          "mlir::sdy::TensorShardingAttr":$sharding),
++      /*methodBody=*/"",
++      /*defaultImplementation=*/[{
++        mlir::sdy::details::setOpResultEdgeOwnerShardingImpl(
++            this->getOperation(), index, sharding);
++      }]
++    >,
++    InterfaceMethod<
++      /*desc=*/[{
++        Sets `shardings` of all op result edge owners.
++      }],
++      /*retType=*/"void",
++      /*methodName=*/"setOpResultEdgeOwnerShardings",
++      /*args=*/(ins "mlir::ArrayRef<mlir::sdy::TensorShardingAttr>":$shardings),
++      /*methodBody=*/"",
++      /*defaultImplementation=*/[{
++        mlir::sdy::details::setOpResultEdgeOwnerShardingsImpl(
++            this->getOperation(), shardings);
++      }]
++    >,
+     InterfaceMethod<
+       /*desc=*/[{
+         Gets all block argument edge owners.
+@@ -107,7 +156,7 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Gets the data flow edge sources given a target value.
++        Gets the data flow edge sources given a `target` value.
+       }],
+       /*retType=*/"mlir::SmallVector<mlir::Value>",
+       /*methodName=*/"getEdgeSources",
+@@ -115,7 +164,8 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Gets the owner target of a data flow edge given a target that may or may not be the owner.
++        Gets the owner `target` of a data flow edge given a `target` that may or
++        may not be the owner.
+       }],
+       /*retType=*/"mlir::Value",
+       /*methodName=*/"getEdgeOwnerFromTarget",
+@@ -123,7 +173,7 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Gets the owner target of a data flow edge given a source.
++        Gets the owner target of a data flow edge given a `source`.
+       }],
+       /*retType=*/"mlir::Value",
+       /*methodName=*/"getEdgeOwnerFromSource",
+@@ -131,7 +181,7 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+     >,
+     InterfaceMethod<
+       /*desc=*/[{
+-        Gets the non-owner targets of a data flow edge given the edge owner.
++        Gets the non-owner targets of a data flow edge given the edge `owner`.
+       }],
+       /*retType=*/"mlir::SmallVector<mlir::Value>",
+       /*methodName=*/"getNonEdgeOwnerTargets",
+@@ -142,14 +192,20 @@ def ShardableDataFlowOpInterface : OpInterface<"ShardableDataFlowOpInterface"> {
+   ];
+ 
+   let extraClassDeclaration = [{
+-    // Gets the sharding of the block argument edge owner with the given index.
+-    mlir::sdy::TensorShardingAttr getBlockArgumentEdgeOwnerSharding(unsigned index){
+-      mlir::ArrayRef<mlir::sdy::TensorShardingAttr> argSharding = getBlockArgumentEdgeOwnerShardings();
+-      if(!argSharding.empty()) {
+-        return argSharding[index];
+-      }
+-      return nullptr;
+-    }
++    // Gets the sharding of the block argument edge owner with the given
++    // `index`.
++    mlir::sdy::TensorShardingAttr getBlockArgumentEdgeOwnerSharding(
++        unsigned index);
++
++    // Gets the sharding of the op result edge owner with the given `index`.
++    mlir::sdy::TensorShardingAttr getOpResultEdgeOwnerSharding(unsigned index);
++
++    // Gets the sharding of the edge owner of the given `value`.
++    mlir::sdy::TensorShardingAttr getEdgeOwnerSharding(Value value);
++
++    // Sets the `sharding` of the edge owner of the given `value`.
++    void setEdgeOwnerSharding(
++        Value value, mlir::sdy::TensorShardingAttr sharding);
+   }];
+ }
+ 
 diff --git a/shardy/dialect/sdy/ir/ops.td b/shardy/dialect/sdy/ir/ops.td
-index 135f9b5..f43548e 100644
+index 135f9b5..63ecbab 100644
 --- a/shardy/dialect/sdy/ir/ops.td
 +++ b/shardy/dialect/sdy/ir/ops.td
-@@ -372,4 +372,50 @@ def PropagationBarrierOp : Sdy_Op<"propagation_barrier",
+@@ -25,6 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
+ include "shardy/dialect/sdy/ir/attrs.td"
+ include "shardy/dialect/sdy/ir/dialect.td"
+ include "shardy/dialect/sdy/ir/enums.td"
++include "shardy/dialect/sdy/ir/op_interface.td"
+ 
+ class Sdy_Op<string mnemonic, list<Trait> traits = []> :
+    Op<Sdy_Dialect, mnemonic, traits>;
+@@ -166,7 +167,7 @@ def Sdy_ManualComputationOp : Sdy_Op<"manual_computation",
+     }
+ 
+     void setInShardings(ArrayRef<TensorShardingAttr> shardings);
+-    void setOutShardings(ArrayRef<TensorShardingAttr> sharding);
++    void setOutShardings(ArrayRef<TensorShardingAttr> shardings);
+ 
+     void setInSharding(int64_t operandIndex, TensorShardingAttr sharding);
+     void setOutSharding(int64_t resultIndex, TensorShardingAttr sharding);
+@@ -372,4 +373,58 @@ def PropagationBarrierOp : Sdy_Op<"propagation_barrier",
    let hasVerifier = 1;
  }
  
@@ -153,7 +768,12 @@ index 135f9b5..f43548e 100644
 +
 +def NamedComputationOp : Sdy_Op<"named_computation",
 +    [RecursiveMemoryEffects, SingleBlockImplicitTerminator<"ReturnOp">,
-+     RecursivelySpeculatable, IsolatedFromAbove]> {
++     RecursivelySpeculatable, IsolatedFromAbove,
++     DeclareOpInterfaceMethods<
++         ShardableDataFlowOpInterface,
++         /*methodOverrides=*/["getOpResultEdgeOwnerShardings",
++                              "setOpResultEdgeOwnerSharding",
++                              "setOpResultEdgeOwnerShardings"]>]> {
 +  let summary = "named computation operation";
 +  let description = [{
 +    Groups a computation, i.e. a block of operations, and gives it a name.
@@ -178,13 +798,16 @@ index 135f9b5..f43548e 100644
 +
 +  let arguments = (ins
 +    StrAttr:$name,
-+    Variadic<AnyType>:$operands
++    Variadic<AnyType>:$operands,
++    OptionalAttr<Sdy_TensorShardingPerValue>:$in_shardings,
++    OptionalAttr<Sdy_TensorShardingPerValue>:$out_shardings
 +  );
 +  let results = (outs Variadic<AnyType>);
 +  let regions = (region SizedRegion<1>:$body);
-+
 +  let assemblyFormat = [{
 +    `<`$name`>` `` `(` $operands `)`
++    (`in_shardings````=```custom<StrippedTensorShardingPerValueAttr>($in_shardings)^)?
++    (`out_shardings````=```custom<StrippedTensorShardingPerValueAttr>($out_shardings)^)?
 +    custom<SingleBlockRegionNoBlockId>($body)
 +    attr-dict
 +    `:` functional-type($operands, results)
@@ -196,11 +819,13 @@ index 135f9b5..f43548e 100644
  #endif  // SDY_OPS
 diff --git a/shardy/dialect/sdy/ir/test/named_computation_parse_print.mlir b/shardy/dialect/sdy/ir/test/named_computation_parse_print.mlir
 new file mode 100644
-index 0000000..45de49d
+index 0000000..002974e
 --- /dev/null
 +++ b/shardy/dialect/sdy/ir/test/named_computation_parse_print.mlir
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,49 @@
 +// RUN: sdy_opt %s 2>&1 | FileCheck %s
++
++sdy.mesh @mesh = <["a"=2, "b"=2]>
 +
 +// CHECK-LABEL: func @one_input_output
 +func.func @one_input_output(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
@@ -224,12 +849,35 @@ index 0000000..45de49d
 +  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
 +  return %0#0, %0#1 : tensor<8x2xi32>, tensor<4x2xi32>
 +}
++
++// CHECK-LABEL: func @in_out_shardings
++func.func @in_out_shardings(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"b"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   sdy.return %arg1 : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"b"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  return %0 : tensor<8x2xi32>
++}
++
++
++// CHECK-LABEL: func @token_type_with_sharding
++func.func @token_type_with_sharding(%arg0: tensor<8x2xi32>, %arg1: !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token) {
++  // CHECK-NEXT: %0:2 = sdy.named_computation<"foo">(%arg0, %arg1) in_shardings=[<@mesh, [{"b"}, {}]>, <@mesh, []>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, []>] (%arg2: tensor<8x2xi32>, %arg3: !stablehlo.token) {
++  // CHECK-NEXT:   sdy.return %arg2, %arg3 : tensor<8x2xi32>, !stablehlo.token
++  // CHECK-NEXT: } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  %0:2 = sdy.named_computation<"foo">(%arg0, %arg1) in_shardings=[<@mesh, [{"b"}, {}]>, <@mesh, []>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, []>] (%arg2: tensor<8x2xi32>, %arg3: !stablehlo.token) {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, !stablehlo.token
++  } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  return %0#0, %0#1 : tensor<8x2xi32>, !stablehlo.token
++}
 diff --git a/shardy/dialect/sdy/ir/test/named_computation_verification.mlir b/shardy/dialect/sdy/ir/test/named_computation_verification.mlir
 new file mode 100644
-index 0000000..c24892e
+index 0000000..2ce9839
 --- /dev/null
 +++ b/shardy/dialect/sdy/ir/test/named_computation_verification.mlir
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,87 @@
 +// RUN: sdy_opt %s -split-input-file -verify-diagnostics
 +
 +func.func @invalid_operand_type(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
@@ -271,11 +919,283 @@ index 0000000..c24892e
 +  }: (tensor<8x2xi32>) -> tensor<8x2xi32>
 +  return %0 : tensor<8x2xi32>
 +}
++
++// -----
++
++sdy.mesh @mesh = <["a"=2, "b"=2]>
++
++func.func @result_shardings_mismatch(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // expected-error@+1 {{op out_shardings shardings don't match number of values: 2 shardings vs 1 values}}
++  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"b"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  }: (tensor<8x2xi32>) -> tensor<8x2xi32>
++  return %0 : tensor<8x2xi32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["a"=2, "b"=2]>
++
++func.func @operand_shardings_mismatch(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // expected-error@+1 {{op in_shardings shardings don't match number of values: 2 shardings vs 1 values}}
++  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"b"}, {}]>, <@mesh, [{"a"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  }: (tensor<8x2xi32>) -> tensor<8x2xi32>
++  return %0 : tensor<8x2xi32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["a"=2, "b"=2]>
++
++func.func @sharding_rank_mismatch(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // expected-error@+1 {{op in_shardings - sharding doesn't match tensor rank: 3 != 2}}
++  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh, [{"b"}, {}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  }: (tensor<8x2xi32>) -> tensor<8x2xi32>
++  return %0 : tensor<8x2xi32>
++}
++
++// -----
++
++func.func @unknown_mesh(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // expected-error@+1 {{op in_shardings - unknown mesh: @unknown_mesh}}
++  %0 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@unknown_mesh, [{"b"}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>] (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  }: (tensor<8x2xi32>) -> tensor<8x2xi32>
++  return %0 : tensor<8x2xi32>
++}
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index 2395351..4f07365 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -48,17 +48,6 @@ namespace {
+ 
+ using func::FuncOp;
+ 
+-TensorShardingPerValueAttr getOrCreateShardingPerResult(Operation* op,
+-                                                        StringRef meshName) {
+-  if (auto shardingPerResult =
+-          op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
+-    return shardingPerResult;
+-  }
+-
+-  return TensorShardingPerValueAttr::getFullyOpen(
+-      op->getContext(), op->getResultTypes(), meshName);
+-}
+-
+ template <typename T>
+ std::string mlirToString(T* mlirVal) {
+   std::string out;
+@@ -71,6 +60,17 @@ std::string mlirToString(T* mlirVal) {
+ 
+ }  // namespace
+ 
++void replaceShardingAtIndex(Operation* op, unsigned index,
++                            TensorShardingAttr sharding) {
++  if (TensorShardingPerValueAttr shardingPerResult = getShardingPerValue(op)) {
++    setShardings(op, shardingPerResult.replaceValueSharding(index, sharding));
++  } else {
++    setShardings(op,
++                 TensorShardingPerValueAttr::getOpenWithShardingAtIndex(
++                     op->getContext(), op->getResultTypes(), index, sharding));
++  }
++}
++
+ void emitOpWarningOnce(llvm::once_flag& flag, Operation* op, StringRef msg) {
+   llvm::call_once(flag, [=]() {
+     InFlightDiagnostic diag = emitWarning(op->getLoc(), msg);
+@@ -248,25 +248,13 @@ TensorShardingAttr getSharding(Value value) {
+       })
+       // TODO: b/360076171 - Add tests for ShardableDataFlowOpInterface,
+       // potentially with a test dialect.
+-      // TODO: b/360076171 - Move the cases to the interface.
+-      .Case<ShardableDataFlowOpInterface>([value](ShardableDataFlowOpInterface
+-                                                      shardableRegionOp) {
+-        if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+-          return shardableRegionOp.getBlockArgumentEdgeOwnerSharding(
+-              blockArg.getArgNumber());
+-        }
+-        // TODO: b/360076171 - Add a `getOpResultEdgeOwnerSharding`.
+-        if (auto shardingPerResult =
+-                getOwningOp(value)->getAttrOfType<TensorShardingPerValueAttr>(
+-                    kShardingAttr)) {
+-          return shardingPerResult
+-              .getShardings()[cast<OpResult>(value).getResultNumber()];
+-        }
+-        return TensorShardingAttr();
+-      })
++      .Case<ShardableDataFlowOpInterface>(
++          [value](ShardableDataFlowOpInterface shardableRegionOp) {
++            return shardableRegionOp.getEdgeOwnerSharding(value);
++          })
+       .Default([value](Operation* op) {
+-        if (auto shardingPerResult =
+-                op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
++        if (TensorShardingPerValueAttr shardingPerResult =
++                getShardingPerValue(op)) {
+           return shardingPerResult
+               .getShardings()[cast<OpResult>(value).getResultNumber()];
+         }
+@@ -318,25 +306,11 @@ void setSharding(Value value, TensorShardingAttr sharding) {
+       })
+       .Case<ShardableDataFlowOpInterface>(
+           [&](ShardableDataFlowOpInterface shardableRegionOp) {
+-            if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+-              shardableRegionOp.setBlockArgumentEdgeOwnerSharding(
+-                  blockArg.getArgNumber(), sharding);
+-            }
+-            // TODO: b/360076171 - Add a `setOpResultEdgeOwnerSharding`.
+-            if (auto opResult = dyn_cast<OpResult>(value)) {
+-              Operation* op = opResult.getOwner();
+-              op->setAttr(
+-                  kShardingAttr,
+-                  getOrCreateShardingPerResult(op, sharding.getMeshName())
+-                      .replaceValueSharding(
+-                          cast<OpResult>(value).getResultNumber(), sharding));
+-            }
++            shardableRegionOp.setEdgeOwnerSharding(value, sharding);
+           })
+       .Default([&](Operation* op) {
+-        op->setAttr(kShardingAttr,
+-                    getOrCreateShardingPerResult(op, sharding.getMeshName())
+-                        .replaceValueSharding(
+-                            cast<OpResult>(value).getResultNumber(), sharding));
++        replaceShardingAtIndex(op, cast<OpResult>(value).getResultNumber(),
++                               sharding);
+       });
+ }
+ 
+@@ -345,6 +319,26 @@ SmallVector<TensorShardingAttr> getShardings(ValueRange values) {
+       llvm::map_range(values, [](Value value) { return getSharding(value); }));
+ }
+ 
++ArrayRef<TensorShardingAttr> getShardings(Operation* op) {
++  if (auto shardingPerResult = getShardingPerValue(op)) {
++    return shardingPerResult.getShardings();
++  }
++  return {};
++}
++
++TensorShardingPerValueAttr getShardingPerValue(Operation* op) {
++  return op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr);
++}
++
++void setShardings(Operation* op, ArrayRef<TensorShardingAttr> shardings) {
++  setShardings(op,
++               TensorShardingPerValueAttr::get(op->getContext(), shardings));
++}
++
++void setShardings(Operation* op, TensorShardingPerValueAttr shardingPerValue) {
++  op->setAttr(kShardingAttr, shardingPerValue);
++}
++
+ void removeShardingRules(Operation* rootOp) {
+   rootOp->walk([](Operation* op) {
+     if (auto shardingRule =
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index de70c58..dc44038 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -24,6 +24,7 @@ limitations under the License.
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/FormatVariadic.h"
+ #include "llvm/Support/Threading.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+@@ -52,7 +53,6 @@ bool inDialect(Operation* op) {
+   return op->getDialect()->getNamespace() == Dialect::getDialectNamespace();
+ }
+ 
+-
+ // Emits a warning once for the given `flag`, with `op` attached as a note
+ // if `MLIRContext::shouldPrintOpOnDiagnostic` is true (assuming the op is
+ // verified).
+@@ -168,6 +168,14 @@ TensorShardingAttr getSharding(Value value);
+ // `TensorShardingAttr` if `value` doesn't have a sharding.
+ TensorShardingAttr getOrCreateSharding(Value value, StringRef meshName);
+ 
++// Sets the `TensorShardingPerValueAttr` of the given `op`, but
++// replaces the sharding at the given `index` with the given `sharding`.
++//
++// If no `TensorShardingPerValueAttr` exists, it's set to a new one with
++// a fully open sharding for each result with the same mesh name as `sharding`.
++void replaceShardingAtIndex(Operation* op, unsigned index,
++                            TensorShardingAttr sharding);
++
+ // Sets the sharding of the given `value`, whose location depends on the type of
+ // the value, to `sharding`.
+ //
+@@ -179,8 +187,26 @@ TensorShardingAttr getOrCreateSharding(Value value, StringRef meshName);
+ // TODO(tomnatan): consider moving this to a dedicated sdy/utils dir.
+ void setSharding(Value value, TensorShardingAttr sharding);
+ 
++// Returns the sharding of each value in `values`. Returns an empty array if the
++// op has no sharding attributes.
+ SmallVector<TensorShardingAttr> getShardings(ValueRange values);
+ 
++// Gets the sharding attributes that live on `op` inside the `sdy.sharding`
++// attr. Returns an empty array if the op has no sharding attributes.
++ArrayRef<TensorShardingAttr> getShardings(Operation* op);
++
++// Gets the `TensorShardingPerValueAttr` that lives on `op` inside the
++// `sdy.sharding` attr. Returns a null attr if the op has no such attr.
++TensorShardingPerValueAttr getShardingPerValue(Operation* op);
++
++// Sets the sharding attributes on `op` to a
++// `TensorShardingPerValueAttr` named `sdy.sharding` consisting of `shardings`.
++void setShardings(Operation* op, ArrayRef<TensorShardingAttr> shardings);
++
++// Sets the sharding attributes on `op` to a
++// `TensorShardingPerValueAttr` named `sdy.sharding` consisting of `shardings`.
++void setShardings(Operation* op, TensorShardingPerValueAttr shardingPerValue);
++
+ // Cleanup the module by removing sharding rule attrs. Keep any user specified
+ // ones.
+ void removeShardingRules(Operation* rootOp);
+@@ -203,6 +229,12 @@ ValueRange getBodyTerminatorOperands(RegionOpTy op) {
+   return getBodyTerminator(op)->getOperands();
+ }
+ 
++// Gets the value of the `op` body terminator at `index`.
++template <typename RegionOpTy>
++Value getBodyTerminatorOperand(RegionOpTy op, int64_t index) {
++  return getBodyTerminator(op)->getOperand(index);
++}
++
+ // Gets the value types returned from the `op` body terminator.
+ template <typename RegionOpTy>
+ TypeRange getBodyTerminatorOpOperandTypes(RegionOpTy op) {
 diff --git a/shardy/dialect/sdy/ir/verifiers.cc b/shardy/dialect/sdy/ir/verifiers.cc
-index 3d2e9bf..1eab21c 100644
+index 3d2e9bf..1715f0e 100644
 --- a/shardy/dialect/sdy/ir/verifiers.cc
 +++ b/shardy/dialect/sdy/ir/verifiers.cc
-@@ -852,6 +852,46 @@ LogicalResult PropagationBarrierOp::verify() {
+@@ -356,6 +356,8 @@ LogicalResult verifyTensorShardingAttr(TensorShardingAttr shardingAttr,
+ // - All shardings reference the same mesh name, and that name is present in the
+ //   module's symbol table.
+ // - All shardings are valid (see `verifyTensorShardingAttr`).
++// TODO(bartchr): relax this to allow different meshes when the op is a dataflow
++// op
+ LogicalResult verifyTensorShardingPerValueAttr(
+     TensorShardingPerValueAttr shardingPerValueAttr, TypeRange types,
+     Operation* op, EmitErrorFn emitError, SymbolRefAttr meshName) {
+@@ -636,10 +638,11 @@ LogicalResult DataFlowEdgeOp::verify() {
+         "expected input of sdy.data_flow_edge to have a single user");
+   }
+   if (Operation* depOp = getInput().getDefiningOp();
+-      depOp && inDialect<SdyDialect>(depOp)) {
++      depOp && inDialect<SdyDialect>(depOp) &&
++      !mlir::isa<ShardableDataFlowOpInterface>(depOp)) {
+     return emitOpError(
+                "expected input of sdy.data_flow_edge to not be defined by an "
+-               "SdyDialect op")
++               "SdyDialect op (other than an sdy.named_computation).")
+                .attachNote(depOp->getLoc())
+            << "sdy op defining the input of the sdy.data_flow_edge";
+   }
+@@ -852,6 +855,69 @@ LogicalResult PropagationBarrierOp::verify() {
    return success();
  }
  
@@ -313,6 +1233,29 @@ index 3d2e9bf..1eab21c 100644
 +      failed(AllInnerAndOuterTypesMatchInNamedComputation(
 +          *this, getBodyTerminatorOpOperandTypes(*this), getResultTypes(),
 +          "returned value", "result"))) {
++    return failure();
++  }
++
++  std::optional<TensorShardingPerValueAttr> inShardings = getInShardings();
++  std::optional<TensorShardingPerValueAttr> outShardings = getOutShardings();
++  if (!(inShardings || outShardings)) {
++    return success();
++  }
++
++  // Verify the in/out shardings.
++  if (inShardings &&
++      failed(verifyTensorShardingPerValueAttr(
++          *inShardings, getOperandTypes(), *this,
++          [this](StringRef msg) { return emitOpError("in_shardings ") << msg; },
++          /*meshName=*/nullptr))) {
++    return failure();
++  }
++  if (outShardings && failed(verifyTensorShardingPerValueAttr(
++                          *outShardings, getResultTypes(), *this,
++                          [this](StringRef msg) {
++                            return emitOpError("out_shardings ") << msg;
++                          },
++                          /*meshName=*/nullptr))) {
 +    return failure();
 +  }
 +
@@ -454,6 +1397,20 @@ index c87a24f..1c0725c 100644
 +  }];
 +  let dependentDialects = ["mlir::sdy::SdyDialect"];
 +}
+diff --git a/shardy/dialect/sdy/transforms/export/sink_data_flow_edges.cc b/shardy/dialect/sdy/transforms/export/sink_data_flow_edges.cc
+index 9b2f62a..53edfd1 100644
+--- a/shardy/dialect/sdy/transforms/export/sink_data_flow_edges.cc
++++ b/shardy/dialect/sdy/transforms/export/sink_data_flow_edges.cc
+@@ -112,8 +112,7 @@ struct SinkDataFlowEdgesPass
+       if (SmallVector<TensorShardingAttr> resultShardings =
+               getShardingsFromDataFlowEdges(getDataFlowEdgeResultOwners(op));
+           !resultShardings.empty()) {
+-        op->setAttr(kShardingAttr, TensorShardingPerValueAttr::get(
+-                                       op->getContext(), resultShardings));
++        setOpResultEdgeOwnerShardings(op, resultShardings);
+       }
+       return WalkResult::advance();
+     });
 diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
 new file mode 100644
 index 0000000..3eb7c42
@@ -479,6 +1436,53 @@ index 0000000..3eb7c42
 +  // CHECK-NOT: sdy.reshard
 +  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding_per_value = #sdy.sharding<@mesh, [{"x"}, {}]>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
 +  return %0 : tensor<8x16xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/sink_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/export/test/sink_data_flow_edges.mlir
+index eee582c..5e939a7 100644
+--- a/shardy/dialect/sdy/transforms/export/test/sink_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/sink_data_flow_edges.mlir
+@@ -143,3 +143,42 @@ func.func @edge_missing_sharding(%arg0: tensor<32x96xf32>, %arg1: tensor<32x96xf
+   %2 = sdy.data_flow_edge %0#1 sharding=<@mesh, [{"a", ?}, {}]> : tensor<32x96xf32>
+   return %1, %2 : tensor<32x96xf32>, tensor<32x96xf32>
+ }
++
++// CHECK-LABEL: func @named_computation_multiple_inputs_outputs
++func.func @named_computation_multiple_inputs_outputs(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func">(%arg0, %arg1)
++  // CHECK-SAME:   out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>]
++  // CHECK-SAME:   (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>) {
++  // CHECK-NEXT:   sdy.return %arg2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  // CHECK-NEXT: return %[[NC]]#0, %[[NC]]#1 : tensor<8x2xi32>, tensor<4x2xi32>
++  %0:2 = sdy.named_computation<"my_func">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>) {
++    %3 = sdy.data_flow_edge %arg2 : tensor<8x2xi32>
++    %4 = sdy.data_flow_edge %arg3 : tensor<4x2xi32>
++    sdy.return %3, %4 : tensor<8x2xi32>, tensor<4x2xi32>
++  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  %1 = sdy.data_flow_edge %0#0 sharding=<@mesh, [{"a"}, {}]> : tensor<8x2xi32>
++  %2 = sdy.data_flow_edge %0#1 sharding=<@mesh, [{?}, {}]> : tensor<4x2xi32>
++  return %1, %2 : tensor<8x2xi32>, tensor<4x2xi32>
++}
++
++// This use case shouldn't happen as `sdy-add-data-flow-edges` would copy the
++// sharding of the out_sharding/in_sharding to the edge.
++// CHECK-LABEL: func @named_computation_multiple_inputs_outputs_override
++func.func @named_computation_multiple_inputs_outputs_override(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func">(%arg0, %arg1)
++  // CHECK-SAME: in_shardings=[<@mesh, [{"b"}, {}]>, <@mesh, [{?}, {?}]>]
++  // CHECK-SAME: out_shardings=[<@mesh, [{"b"}, {}]>, <@mesh, [{?}, {}]>]
++  // CHECK-SAME: (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>) {
++  // CHECK-NEXT:   sdy.return %arg2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  // CHECK-NEXT: return %[[NC]]#0, %[[NC]]#1 : tensor<8x2xi32>, tensor<4x2xi32>
++  %0:2 = sdy.named_computation<"my_func">(%arg0, %arg1) in_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>) {
++    %3 = sdy.data_flow_edge %arg2 sharding=<@mesh, [{"b"}, {}]>  : tensor<8x2xi32>
++    %4 = sdy.data_flow_edge %arg3 : tensor<4x2xi32>
++    sdy.return %3, %4 : tensor<8x2xi32>, tensor<4x2xi32>
++  } {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>]>} : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  %1 = sdy.data_flow_edge %0#0 sharding=<@mesh, [{"b"}, {}]> : tensor<8x2xi32>
++  %2 = sdy.data_flow_edge %0#1 sharding=<@mesh, [{?}, {}]> : tensor<4x2xi32>
++  return %1, %2 : tensor<8x2xi32>, tensor<4x2xi32>
 +}
 diff --git a/shardy/dialect/sdy/transforms/import/import_pipeline.cc b/shardy/dialect/sdy/transforms/import/import_pipeline.cc
 index 5ff4027..7c89a85 100644
@@ -669,6 +1673,96 @@ index 348685f..74d66fe 100644
    }
  };
  
+diff --git a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+index 97c4c4f..9075cf6 100644
+--- a/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/add_data_flow_edges.mlir
+@@ -97,3 +97,85 @@ func.func @while_unused_result(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
+   }
+   return %3#0 : tensor<32x96xf32>
+ }
++
++// CHECK-LABEL: func @named_computation_multiple_inputs_outputs
++func.func @named_computation_multiple_inputs_outputs(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[EDGE_2:.*]] = sdy.data_flow_edge %arg3 : tensor<4x2xi32>
++  // CHECK-NEXT:   return %[[EDGE_1]], %[[EDGE_2]] : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  // CHECK-NEXT: %[[EDGE_3:.*]] = sdy.data_flow_edge %[[NC]]#0 : tensor<8x2xi32>
++  // CHECK-NEXT: %[[EDGE_4:.*]] = sdy.data_flow_edge %[[NC]]#1 : tensor<4x2xi32>
++  // CHECK-NEXT: return %[[EDGE_3]], %[[EDGE_4]] : tensor<8x2xi32>, tensor<4x2xi32>
++  %0:2 = sdy.named_computation<"my_func">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  return %0#0, %0#1 : tensor<8x2xi32>, tensor<4x2xi32>
++}
++
++// CHECK-LABEL: func @named_computation_with_shardings
++func.func @named_computation_with_shardings(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func">(%arg0, %arg1) in_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 sharding=<@mesh, [{"a"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[EDGE_2:.*]] = sdy.data_flow_edge %arg3 sharding=<@mesh, [{?}, {}]> : tensor<4x2xi32>
++  // CHECK-NEXT:   return %[[EDGE_1]], %[[EDGE_2]] : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  // CHECK-NEXT: %[[EDGE_3:.*]] = sdy.data_flow_edge %[[NC]]#0 sharding=<@mesh, [{"a"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT: %[[EDGE_4:.*]] = sdy.data_flow_edge %[[NC]]#1 sharding=<@mesh, [{?}, {}]> : tensor<4x2xi32>
++  // CHECK-NEXT: return %[[EDGE_3]], %[[EDGE_4]] : tensor<8x2xi32>, tensor<4x2xi32>
++  %0:2 = sdy.named_computation<"my_func">(%arg0, %arg1) in_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] out_shardings=[<@mesh, [{"a"}, {}]>, <@mesh, [{?}, {}]>] (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  return %0#0, %0#1 : tensor<8x2xi32>, tensor<4x2xi32>
++}
++
++// CHECK-LABEL: func @named_computation_ops_inside_and_outside
++func.func @named_computation_ops_inside_and_outside(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[EDGE_2:.*]] = sdy.data_flow_edge %arg3 : tensor<4x2xi32>
++  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %[[EDGE_1]], %[[EDGE_1]] : tensor<8x2xi32>
++  // CHECK-NEXT:   return %[[ADD]], %[[EDGE_2]] : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  // CHECK-NEXT: %[[EDGE_3:.*]] = sdy.data_flow_edge %[[NC]]#0 : tensor<8x2xi32>
++  // CHECK-NEXT: %[[EDGE_4:.*]] = sdy.data_flow_edge %[[NC]]#1 : tensor<4x2xi32>
++  // CHECK-NEXT: %[[SUB:.*]] = stablehlo.subtract %[[EDGE_3]], %[[EDGE_3]] : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[SUB]], %[[EDGE_4]] : tensor<8x2xi32>, tensor<4x2xi32>
++  %0:2 = sdy.named_computation<"my_func">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>) {
++    %2 = stablehlo.add %arg2, %arg2 : tensor<8x2xi32>
++    sdy.return %2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  %1 = stablehlo.subtract %0#0, %0#0 : tensor<8x2xi32>
++  return %1, %0#1 : tensor<8x2xi32>, tensor<4x2xi32>
++}
++
++// CHECK-LABEL: func @named_computation_unused_result
++func.func @named_computation_unused_result(%arg0: tensor<8x2xi32>, %arg1: tensor<4x2xi32>) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"my_func_1">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[EDGE_2:.*]] = sdy.data_flow_edge %arg3 : tensor<4x2xi32>
++  // CHECK-NEXT:   return %[[EDGE_1]], %[[EDGE_2]] : tensor<8x2xi32>, tensor<4x2xi32>
++  // CHECK-NEXT: }
++  // CHECK-NEXT: %[[EDGE_1:.*]] = sdy.data_flow_edge %[[NC]]#0 : tensor<8x2xi32>
++  // CHECK-NEXT: %[[EDGE_2:.*]] = sdy.data_flow_edge %[[NC]]#1 : tensor<4x2xi32>
++  // CHECK-NEXT: return %[[EDGE_1]] : tensor<8x2xi32>
++  %0:2 = sdy.named_computation<"my_func_1">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: tensor<4x2xi32>)  {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, tensor<4x2xi32>
++  } : (tensor<8x2xi32>, tensor<4x2xi32>) -> (tensor<8x2xi32>, tensor<4x2xi32>)
++  return %0#0 : tensor<8x2xi32>
++}
++
++// CHECK-LABEL: func @named_computation_skip_tokens
++func.func @named_computation_skip_tokens(%arg0: tensor<8x2xi32>, %arg1: !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token) {
++  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"foo">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: !stablehlo.token) {
++  // CHECK-NEXT:   %[[EDGE_1:.*]] = sdy.data_flow_edge %arg2 : tensor<8x2xi32>
++  // CHECK-NEXT:   sdy.return %[[EDGE_1]], %arg3 : tensor<8x2xi32>, !stablehlo.token
++  // CHECK-NEXT: } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  // CHECK-NEXT: %[[EDGE_2:.*]] = sdy.data_flow_edge %[[NC]]#0 : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[EDGE_2]], %[[NC]]#1 : tensor<8x2xi32>, !stablehlo.token
++  %0:2 = sdy.named_computation<"foo">(%arg0, %arg1) (%arg2: tensor<8x2xi32>, %arg3: !stablehlo.token) {
++    sdy.return %arg2, %arg3 : tensor<8x2xi32>, !stablehlo.token
++  } : (tensor<8x2xi32>, !stablehlo.token) -> (tensor<8x2xi32>, !stablehlo.token)
++  return %0#0, %0#1 : tensor<8x2xi32>, !stablehlo.token
++}
 diff --git a/shardy/dialect/sdy/transforms/import/test/import_pipeline.mlir b/shardy/dialect/sdy/transforms/import/test/import_pipeline.mlir
 index c3086e7..aa4dcca 100644
 --- a/shardy/dialect/sdy/transforms/import/test/import_pipeline.mlir
@@ -1041,6 +2135,84 @@ index 40ef9ee..b073e19 100644
  }
  
  }  // namespace
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_data_flow_edges.mlir
+index 760e931..603544a 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/basic_propagation_data_flow_edges.mlir
+@@ -587,3 +587,73 @@ func.func @while_func_operand(%arg0: tensor<32x96xf32> {sdy.sharding = #sdy.shar
+   %5 = sdy.data_flow_edge %3#1 : tensor<i32>
+   return %4 : tensor<32x96xf32>
+ }
++
++// Check we can propagate forward from outside into the NC, then back out.
++// CHECK-LABEL: func @named_computation_argument_sharding_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++func.func @named_computation_argument_sharding_propagation(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>}) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   %[[DATA_FLOW_EDGE_1:.*]] = sdy.data_flow_edge %arg1 sharding=<@mesh_a_2_b_2, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   sdy.return %[[DATA_FLOW_EDGE_1]] : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: %[[DATA_FLOW_EDGE_2:.*]] = sdy.data_flow_edge %[[NC]] sharding=<@mesh_a_2_b_2, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[DATA_FLOW_EDGE_2]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    %3 = sdy.data_flow_edge %arg1 : tensor<8x2xi32>
++    sdy.return %3 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  %2 = sdy.data_flow_edge %1 : tensor<8x2xi32>
++  return %2 : tensor<8x2xi32>
++}
++
++
++// Check we can propagate backwards from outside into the NC, then back out.
++// CHECK-LABEL: func @named_computation_result_sharding_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>})
++func.func @named_computation_result_sharding_propagation(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>}) {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%[[ADD]]) (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   %[[DATA_FLOW_EDGE_1:.*]] = sdy.data_flow_edge %arg1 sharding=<@mesh_a_2_b_2, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %3, %3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT:   sdy.return %[[SUB]] : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: %[[DATA_FLOW_EDGE_2:.*]] = sdy.data_flow_edge %[[NC]] sharding=<@mesh_a_2_b_2, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[DATA_FLOW_EDGE_2]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    %3 = sdy.data_flow_edge %arg1 : tensor<8x2xi32>
++    %4 = stablehlo.subtract %3, %3 : tensor<8x2xi32>
++    sdy.return %4 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  %2 = sdy.data_flow_edge %1 : tensor<8x2xi32>
++  return %2 : tensor<8x2xi32>
++}
++
++// Check we can propagate in both directions from inside out.
++// CHECK-LABEL: func @named_computation_inside_out_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"b", ?}, {?}]>})
++func.func @named_computation_inside_out_propagation(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   %[[DATA_FLOW_EDGE_1:.*]] = sdy.data_flow_edge %arg1 sharding=<@mesh_a_2_b_2, [{"a", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[SC_1:.*]] = sdy.sharding_constraint %[[DATA_FLOW_EDGE_1]] <@mesh_a_2_b_2, [{"a"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[SC_2:.*]] = sdy.sharding_constraint %[[SC_1]] <@mesh_a_2_b_2, [{"b"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT:  sdy.return %[[SC_2]] : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: %[[DATA_FLOW_EDGE_2:.*]] = sdy.data_flow_edge %[[NC]] sharding=<@mesh_a_2_b_2, [{"b", ?}, {?}]> : tensor<8x2xi32>
++  // CHECK-NEXT: return %[[DATA_FLOW_EDGE_2]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    %3 = sdy.data_flow_edge %arg1 : tensor<8x2xi32>
++    %4 = sdy.sharding_constraint %3 <@mesh_a_2_b_2, [{"a"}, {}]> : tensor<8x2xi32>
++    %5 = sdy.sharding_constraint %4 <@mesh_a_2_b_2, [{"b"}, {}]> : tensor<8x2xi32>
++    sdy.return %5 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  %2 = sdy.data_flow_edge %1 : tensor<8x2xi32>
++  return %2 : tensor<8x2xi32>
++}
 diff --git a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir b/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
 index 34ac5fc..b6841d3 100644
 --- a/shardy/dialect/sdy/transforms/propagation/test/op_sharding_rule_registry.mlir
@@ -1120,6 +2292,81 @@ index 34ac5fc..b6841d3 100644
    %0:2 = "stablehlo.scatter"(%arg0, %arg1, %arg2, %arg3, %arg4) ({
      ^bb0(%arg5: tensor<i32>, %arg6: tensor<f32>, %arg7: tensor<i32>, %arg8: tensor<f32>):
        %1 = stablehlo.add %arg5, %arg7 : tensor<i32>
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/propagation_pipeline_data_flow_edges.mlir b/shardy/dialect/sdy/transforms/propagation/test/propagation_pipeline_data_flow_edges.mlir
+index ad273f6..beced74 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/propagation_pipeline_data_flow_edges.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/propagation_pipeline_data_flow_edges.mlir
+@@ -491,3 +491,70 @@ func.func @while_func_operand(%arg0: tensor<32x96xf32> {sdy.sharding = #sdy.shar
+   }
+   return %3#0 : tensor<32x96xf32>
+ }
++
++// Check we can propagate forward from outside into the NC, then back out.
++// CHECK-LABEL: func @named_computation_argument_sharding_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++func.func @named_computation_argument_sharding_propagation(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>}) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%[[ADD]])
++  // CHECK-SAME:     in_shardings=[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]
++  // CHECK-SAME:     out_shardings=[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]
++  // CHECK-SAME      (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   sdy.return %arg1 : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: return %[[NC]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    sdy.return %arg1 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  return %1 : tensor<8x2xi32>
++}
++
++
++// Check we can propagate backwards from outside into the NC, then back out.
++// CHECK-LABEL: func @named_computation_result_sharding_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>})
++func.func @named_computation_result_sharding_propagation(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a"}, {}]>}) {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%0)
++  // CHECK-SAME:     in_shardings=[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]
++  // CHECK-SAME:     out_shardings=[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]
++  // CHECK-SAME      (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %arg1, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT:   sdy.return %[[SUB]] : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: return %[[NC]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    %2 = stablehlo.subtract %arg1, %arg1 : tensor<8x2xi32>
++    sdy.return %2 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  return %1 : tensor<8x2xi32>
++}
++
++// Check we can propagate in both directions from inside out.
++// CHECK-LABEL: func @named_computation_inside_out_propagation(
++// CHECK-SAME:      %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"a", ?}, {?}]>})
++// CHECK-SAME:      -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh_a_2_b_2, [{"b", ?}, {?}]>})
++func.func @named_computation_inside_out_propagation(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]>} : tensor<8x2xi32>
++  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"my_func">(%0)
++  // CHECK-SAME:     in_shardings=[<@mesh_a_2_b_2, [{"a", ?}, {?}]>]
++  // CHECK-SAME:     out_shardings=[<@mesh_a_2_b_2, [{"b", ?}, {?}]>]
++  // CHECK-SAME      (%arg1: tensor<8x2xi32>) {
++  // CHECK-NEXT:   %[[SC_1:.*]] = sdy.reshard %arg1 <@mesh_a_2_b_2, [{"a"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT:   %[[SC_2:.*]] = sdy.reshard %[[SC_1]] <@mesh_a_2_b_2, [{"b"}, {}]> : tensor<8x2xi32>
++  // CHECK-NEXT:  sdy.return %[[SC_2]] : tensor<8x2xi32>
++  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
++  // CHECK-NEXT: return %[[NC]] : tensor<8x2xi32>
++  %0 = stablehlo.add %arg0, %arg0 : tensor<8x2xi32>
++  %1 = sdy.named_computation<"my_func">(%0) (%arg1: tensor<8x2xi32>) {
++    %2 = sdy.sharding_constraint %arg1 <@mesh_a_2_b_2, [{"a"}, {}]> : tensor<8x2xi32>
++    %3 = sdy.sharding_constraint %2 <@mesh_a_2_b_2, [{"b"}, {}]> : tensor<8x2xi32>
++    sdy.return %3 : tensor<8x2xi32>
++  } : (tensor<8x2xi32>) -> (tensor<8x2xi32>)
++  return %1 : tensor<8x2xi32>
++}
 diff --git a/shardy/tools/sdy_opt_main.cc b/shardy/tools/sdy_opt_main.cc
 index a9705ce..1e2ad3d 100644
 --- a/shardy/tools/sdy_opt_main.cc
@@ -1143,10 +2390,10 @@ index a9705ce..1e2ad3d 100644
    mlir::func::registerAllExtensions(dialects);
  
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index de92cb4..155d3f2 100644
+index de92cb4..6525f92 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,4095 +1,901 @@
+@@ -1,4095 +1,207 @@
  Auto generated patch. Do not edit or delete it, even if empty.
 -diff -ruN --strip-trailing-cr a/llvm/docs/NVPTXUsage.rst b/llvm/docs/NVPTXUsage.rst
 ---- a/llvm/docs/NVPTXUsage.rst
@@ -1361,73 +2608,11 @@ index de92cb4..155d3f2 100644
 --            Name.starts_with(".to.gen");
 -       else
 -         Expand = false;
-+diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGDeclCXX.cpp b/clang/lib/CodeGen/CGDeclCXX.cpp
-+--- a/clang/lib/CodeGen/CGDeclCXX.cpp
-++++ b/clang/lib/CodeGen/CGDeclCXX.cpp
-+@@ -640,13 +640,13 @@
-+       addUsedGlobal(COMDATKey);
-+     }
-  
+- 
 -@@ -2271,117 +2258,6 @@
 -   }
-+-    // If comdats are in use and supported, place the initializer function into
-+-    // the comdat group of the global. In the MS ABI, initializers are mangled
-+-    // and have their own comdat, so we don't include them in the group for
-+-    // consistency with MSVC.
-++    // If we used a COMDAT key for the global ctor, the init function can be
-++    // discarded if the global ctor entry is discarded.
-++    // FIXME: Do we need to restrict this to ELF and Wasm?
-+     llvm::Comdat *C = Addr->getComdat();
-+-    if (COMDATKey && C && getTriple().supportsCOMDAT() &&
-+-        !getTarget().getCXXABI().isMicrosoft()) {
-++    if (COMDATKey && C &&
-++        (getTarget().getTriple().isOSBinFormatELF() ||
-++         getTarget().getTriple().isOSBinFormatWasm())) {
-+       Fn->setComdat(C);
-+     }
-+   } else {
-+diff -ruN --strip-trailing-cr a/libcxx/docs/Status/Cxx23Issues.csv b/libcxx/docs/Status/Cxx23Issues.csv
-+--- a/libcxx/docs/Status/Cxx23Issues.csv
-++++ b/libcxx/docs/Status/Cxx23Issues.csv
-+@@ -296,7 +296,7 @@
-+ "`LWG3862 <https://wg21.link/LWG3862>`__","``basic_const_iterator``'s ``common_type`` specialization is underconstrained","2023-02 (Issaquah)","","",""
-+ "`LWG3865 <https://wg21.link/LWG3865>`__","Sorting a range of ``pairs``","2023-02 (Issaquah)","|Complete|","17.0",""
-+ "`LWG3869 <https://wg21.link/LWG3869>`__","Deprecate ``std::errc`` constants related to UNIX STREAMS","2023-02 (Issaquah)","|Complete|","19.0",""
-+-"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","|Complete|","20.0",""
-++"`LWG3870 <https://wg21.link/LWG3870>`__","Remove ``voidify``","2023-02 (Issaquah)","","",""
-+ "`LWG3871 <https://wg21.link/LWG3871>`__","Adjust note about ``terminate``","2023-02 (Issaquah)","","",""
-+ "`LWG3872 <https://wg21.link/LWG3872>`__","``basic_const_iterator`` should have custom ``iter_move``","2023-02 (Issaquah)","","",""
-+ "`LWG3875 <https://wg21.link/LWG3875>`__","``std::ranges::repeat_view<T, IntegerClass>::iterator`` may be ill-formed","2023-02 (Issaquah)","|Complete|","17.0",""
-+diff -ruN --strip-trailing-cr a/libcxx/include/CMakeLists.txt b/libcxx/include/CMakeLists.txt
-+--- a/libcxx/include/CMakeLists.txt
-++++ b/libcxx/include/CMakeLists.txt
-+@@ -560,6 +560,7 @@
-+   __memory/unique_temporary_buffer.h
-+   __memory/uses_allocator.h
-+   __memory/uses_allocator_construction.h
-++  __memory/voidify.h
-+   __memory_resource/memory_resource.h
-+   __memory_resource/monotonic_buffer_resource.h
-+   __memory_resource/polymorphic_allocator.h
-+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/construct_at.h b/libcxx/include/__memory/construct_at.h
-+--- a/libcxx/include/__memory/construct_at.h
-++++ b/libcxx/include/__memory/construct_at.h
-+@@ -14,6 +14,7 @@
-+ #include <__config>
-+ #include <__iterator/access.h>
-+ #include <__memory/addressof.h>
-++#include <__memory/voidify.h>
-+ #include <__type_traits/enable_if.h>
-+ #include <__type_traits/is_array.h>
-+ #include <__utility/declval.h>
-+@@ -37,7 +38,7 @@
-+ template <class _Tp, class... _Args, class = decltype(::new(std::declval<void*>()) _Tp(std::declval<_Args>()...))>
-+ _LIBCPP_HIDE_FROM_ABI constexpr _Tp* construct_at(_Tp* __location, _Args&&... __args) {
-+   _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at");
-+-  return ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
-++  return ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
-  }
-  
+- }
+- 
 --static Value *upgradeNVVMIntrinsicCall(StringRef Name, CallBase *CI,
 --                                       Function *F, IRBuilder<> &Builder) {
 --  Value *Rep = nullptr;
@@ -1638,59 +2823,22 @@ index de92cb4..155d3f2 100644
 - static const LLT S512 = LLT::scalar(512);
 --static const LLT S1024 = LLT::scalar(1024);
 - static const LLT MaxScalar = LLT::scalar(MaxRegisterSize);
-+ #endif
-+@@ -48,7 +49,7 @@
-+   return std::construct_at(__location, std::forward<_Args>(__args)...);
-+ #else
-+   return _LIBCPP_ASSERT_NON_NULL(__location != nullptr, "null pointer given to construct_at"),
-+-         ::new (static_cast<void*>(__location)) _Tp(std::forward<_Args>(__args)...);
-++         ::new (std::__voidify(*__location)) _Tp(std::forward<_Args>(__args)...);
-+ #endif
-+ }
-  
+- 
 - static const LLT V2S8 = LLT::fixed_vector(2, 8);
 -@@ -333,8 +332,8 @@
 - static const LLT V2S128 = LLT::fixed_vector(2, 128);
 - static const LLT V4S128 = LLT::fixed_vector(4, 128);
-+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
-+--- a/libcxx/include/__memory/shared_ptr.h
-++++ b/libcxx/include/__memory/shared_ptr.h
-+@@ -248,35 +248,33 @@
-+ 
-+ template <class _Tp, class _Alloc>
-+ struct __shared_ptr_emplace : __shared_weak_count {
-+-  using __value_type = __remove_cv_t<_Tp>;
-+-
-+   template <class... _Args,
-+             class _Allocator                                                                         = _Alloc,
-+             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-+   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&...) : __storage_(std::move(__a)) {
-+     static_assert(
-+         sizeof...(_Args) == 0, "No argument should be provided to the control block when using _for_overwrite");
-+-    ::new (static_cast<void*>(__get_elem())) __value_type;
-++    ::new ((void*)__get_elem()) _Tp;
-+   }
-  
+- 
 --static std::initializer_list<LLT> AllScalarTypes = {
 --    S32, S64, S96, S128, S160, S224, S256, S512, S1024};
 -+static std::initializer_list<LLT> AllScalarTypes = {S32,  S64,  S96,  S128,
 -+                                                    S160, S224, S256, S512};
-+   template <class... _Args,
-+             class _Allocator                                                                          = _Alloc,
-+             __enable_if_t<!is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-+   _LIBCPP_HIDE_FROM_ABI explicit __shared_ptr_emplace(_Alloc __a, _Args&&... __args) : __storage_(std::move(__a)) {
-+-    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __value_type>::type;
-++    using _TpAlloc = typename __allocator_traits_rebind<_Alloc, __remove_cv_t<_Tp> >::type;
-+     _TpAlloc __tmp(*__get_alloc());
-+     allocator_traits<_TpAlloc>::construct(__tmp, __get_elem(), std::forward<_Args>(__args)...);
-+   }
-  
+- 
 - static std::initializer_list<LLT> AllS16Vectors{
 -     V2S16, V4S16, V6S16, V8S16, V10S16, V12S16, V16S16, V2S128, V4S128};
 -@@ -890,11 +889,10 @@
 -     .clampScalar(0, S16, S64);
-+   _LIBCPP_HIDE_FROM_ABI _Alloc* __get_alloc() _NOEXCEPT { return __storage_.__get_alloc(); }
-  
+- 
 -   getActionDefinitionsBuilder({G_IMPLICIT_DEF, G_FREEZE})
 --      .legalIf(isRegisterClassType(0))
 -+      .legalIf(isRegisterType(0))
@@ -1707,160 +2855,22 @@ index de92cb4..155d3f2 100644
 -@@ -174,6 +174,10 @@
 - def hasSHFL : Predicate<"!(Subtarget->getSmVersion() >= 70"
 -                           "&& Subtarget->getPTXVersion() >= 64)">;
-+-  _LIBCPP_HIDE_FROM_ABI __value_type* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
-++  _LIBCPP_HIDE_FROM_ABI _Tp* __get_elem() _NOEXCEPT { return __storage_.__get_elem(); }
-  
+- 
 -+def useShortPtrLocal : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_LOCAL) == 32">;
 -+def useShortPtrShared : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_SHARED) == 32">;
 -+def useShortPtrConst : Predicate<"TM.is64Bit() && TM.getPointerSizeInBits(ADDRESS_SPACE_CONST) == 32">;
 -+
 - def useFP16Math: Predicate<"Subtarget->allowFP16Math()">;
 - def hasBF16Math: Predicate<"Subtarget->hasBF16Math()">;
-+ private:
-+   template <class _Allocator                                                                         = _Alloc,
-+             __enable_if_t<is_same<typename _Allocator::value_type, __for_overwrite_tag>::value, int> = 0>
-+   _LIBCPP_HIDE_FROM_ABI void __on_zero_shared_impl() _NOEXCEPT {
-+-    __get_elem()->~__value_type();
-++    __get_elem()->~_Tp();
-+   }
-  
+- 
 -@@ -1661,6 +1665,167 @@
 -              "brev.b64 \t$dst, $a;",
 -              [(set Int64Regs:$dst, (bitreverse Int64Regs:$a))]>;
-+   template <class _Allocator                                                                          = _Alloc,
-+@@ -302,7 +300,7 @@
-+   // through `std::allocate_shared` and `std::make_shared`.
-+   struct _Storage {
-+     struct _Data {
-+-      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, __value_type, __elem_);
-++      _LIBCPP_COMPRESSED_PAIR(_Alloc, __alloc_, _Tp, __elem_);
-+     };
-+ 
-+     _ALIGNAS_TYPE(_Data) char __buffer_[sizeof(_Data)];
-+@@ -314,7 +312,7 @@
-+       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__alloc_);
-+     }
-  
-+-    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI __value_type* __get_elem() _NOEXCEPT {
-++    _LIBCPP_HIDE_FROM_ABI _LIBCPP_NO_CFI _Tp* __get_elem() _NOEXCEPT {
-+       return std::addressof(reinterpret_cast<_Data*>(__buffer_)->__elem_);
-+     }
-+   };
-+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/uninitialized_algorithms.h b/libcxx/include/__memory/uninitialized_algorithms.h
-+--- a/libcxx/include/__memory/uninitialized_algorithms.h
-++++ b/libcxx/include/__memory/uninitialized_algorithms.h
-+@@ -21,6 +21,7 @@
-+ #include <__memory/allocator_traits.h>
-+ #include <__memory/construct_at.h>
-+ #include <__memory/pointer_traits.h>
-++#include <__memory/voidify.h>
-+ #include <__type_traits/enable_if.h>
-+ #include <__type_traits/extent.h>
-+ #include <__type_traits/is_array.h>
-+@@ -63,7 +64,7 @@
-+   try {
-+ #endif
-+     for (; __ifirst != __ilast && !__stop_copying(__idx); ++__ifirst, (void)++__idx)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
-++      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
-+ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__ofirst, __idx);
-+@@ -93,7 +94,7 @@
-+   try {
-+ #endif
-+     for (; __n > 0 && !__stop_copying(__idx); ++__ifirst, (void)++__idx, (void)--__n)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(*__ifirst);
-++      ::new (std::__voidify(*__idx)) _ValueType(*__ifirst);
-+ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__ofirst, __idx);
-+@@ -123,7 +124,7 @@
-+   try {
-+ #endif
-+     for (; __idx != __last; ++__idx)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
-++      ::new (std::__voidify(*__idx)) _ValueType(__x);
-+ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -151,7 +152,7 @@
-+   try {
-+ #endif
-+     for (; __n > 0; ++__idx, (void)--__n)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__x);
-++      ::new (std::__voidify(*__idx)) _ValueType(__x);
-+ #ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -181,7 +182,7 @@
-+   try {
-+ #  endif
-+     for (; __idx != __last; ++__idx)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
-++      ::new (std::__voidify(*__idx)) _ValueType;
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -207,7 +208,7 @@
-+   try {
-+ #  endif
-+     for (; __n > 0; ++__idx, (void)--__n)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType;
-++      ::new (std::__voidify(*__idx)) _ValueType;
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -234,7 +235,7 @@
-+   try {
-+ #  endif
-+     for (; __idx != __last; ++__idx)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
-++      ::new (std::__voidify(*__idx)) _ValueType();
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -260,7 +261,7 @@
-+   try {
-+ #  endif
-+     for (; __n > 0; ++__idx, (void)--__n)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType();
-++      ::new (std::__voidify(*__idx)) _ValueType();
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__first, __idx);
-+@@ -296,7 +297,7 @@
-+   try {
-+ #  endif
-+     for (; __ifirst != __ilast && !__stop_moving(__idx); ++__idx, (void)++__ifirst) {
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
-++      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
-+     }
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+@@ -334,7 +335,7 @@
-+   try {
-+ #  endif
-+     for (; __n > 0 && !__stop_moving(__idx); ++__idx, (void)++__ifirst, --__n)
-+-      ::new (static_cast<void*>(std::addressof(*__idx))) _ValueType(__iter_move(__ifirst));
-++      ::new (std::__voidify(*__idx)) _ValueType(__iter_move(__ifirst));
-+ #  ifndef _LIBCPP_HAS_NO_EXCEPTIONS
-+   } catch (...) {
-+     std::__destroy(__ofirst, __idx);
-+diff -ruN --strip-trailing-cr a/libcxx/include/__memory/voidify.h b/libcxx/include/__memory/voidify.h
-+--- a/libcxx/include/__memory/voidify.h
-++++ b/libcxx/include/__memory/voidify.h
-+@@ -0,0 +1,30 @@
-++// -*- C++ -*-
-++//===----------------------------------------------------------------------===//
- +//
+- 
+-+//
 -+// Rotate: Use ptx shf instruction if available.
-++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-++// See https://llvm.org/LICENSE.txt for license information.
-++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- +//
-++//===----------------------------------------------------------------------===//
- +
+-+//
+-+
 -+// 32 bit r2 = rotl r1, n
 -+//    =>
 -+//        r2 = shf.l r1, r1, n
@@ -1966,9 +2976,7 @@ index de92cb4..155d3f2 100644
 -+          (ROT64imm_sw Int64Regs:$src, imm:$amt, (SUB_FRM_64 node:$amt))>;
 -+def : Pat<(rotr Int64Regs:$src, (i32 imm:$amt)),
 -+          (ROT64imm_sw Int64Regs:$src, (SUB_FRM_64 node:$amt), imm:$amt)>;
-++#ifndef _LIBCPP___MEMORY_VOIDIFY_H
-++#define _LIBCPP___MEMORY_VOIDIFY_H
- +
+-+
 -+// 64-bit software rotate left by register.
 -+def ROTL64reg_sw :
 -+  NVPTXInst<(outs Int64Regs:$dst), (ins Int64Regs:$src, Int32Regs:$amt),
@@ -1983,9 +2991,7 @@ index de92cb4..155d3f2 100644
 -+            "add.u64 \t$dst, %lhs, %rhs;\n\t"
 -+            "}}",
 -+            [(set Int64Regs:$dst, (rotl Int64Regs:$src, (i32 Int32Regs:$amt)))]>;
-++#include <__config>
-++#include <__memory/addressof.h>
- +
+-+
 -+def ROTR64reg_sw :
 -+  NVPTXInst<(outs Int64Regs:$dst), (ins Int64Regs:$src, Int32Regs:$amt),
 -+            "{{\n\t"
@@ -1999,33 +3005,23 @@ index de92cb4..155d3f2 100644
 -+            "add.u64 \t$dst, %lhs, %rhs;\n\t"
 -+            "}}",
 -+            [(set Int64Regs:$dst, (rotr Int64Regs:$src, (i32 Int32Regs:$amt)))]>;
-++#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
-++#  pragma GCC system_header
-++#endif
- +
+-+
 -+//
 -+// Funnnel shift in clamp mode
 -+//
-++_LIBCPP_BEGIN_NAMESPACE_STD
- +
+-+
 -+// Create SDNodes so they can be used in the DAG code, e.g.
 -+// NVPTXISelLowering (LowerShiftLeftParts and LowerShiftRightParts)
 -+def FUN_SHFL_CLAMP : SDNode<"NVPTXISD::FUN_SHFL_CLAMP", SDTIntShiftDOp, []>;
 -+def FUN_SHFR_CLAMP : SDNode<"NVPTXISD::FUN_SHFR_CLAMP", SDTIntShiftDOp, []>;
-++template <typename _Tp>
-++_LIBCPP_ALWAYS_INLINE _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void* __voidify(_Tp& __from) {
-++  // Cast away cv-qualifiers to allow modifying elements of a range through const iterators.
-++  return const_cast<void*>(static_cast<const volatile void*>(std::addressof(__from)));
-++}
- +
+-+
 -+def FUNSHFLCLAMP :
 -+  NVPTXInst<(outs Int32Regs:$dst),
 -+            (ins Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+            "shf.l.clamp.b32 \t$dst, $lo, $hi, $amt;",
 -+            [(set Int32Regs:$dst,
 -+              (FUN_SHFL_CLAMP (i32 Int32Regs:$lo), (i32 Int32Regs:$hi), (i32 Int32Regs:$amt)))]>;
-++_LIBCPP_END_NAMESPACE_STD
- +
+-+
 -+def FUNSHFRCLAMP :
 -+  NVPTXInst<(outs Int32Regs:$dst),
 -+            (ins Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
@@ -2102,55 +3098,7 @@ index de92cb4..155d3f2 100644
 -+      [(set Int64Regs:$result, (Intrin Int32Regs:$src))]>,
 -+      Requires<[ShortPtr]>;
 - }
-++#endif // _LIBCPP___MEMORY_VOIDIFY_H
-+diff -ruN --strip-trailing-cr a/libcxx/include/module.modulemap b/libcxx/include/module.modulemap
-+--- a/libcxx/include/module.modulemap
-++++ b/libcxx/include/module.modulemap
-+@@ -1528,6 +1528,7 @@
-+     }
-+     module uses_allocator                     { header "__memory/uses_allocator.h" }
-+     module uses_allocator_construction        { header "__memory/uses_allocator_construction.h" }
-++    module voidify                            { header "__memory/voidify.h" }
-+ 
-+     header "memory"
-+     export *
-+diff -ruN --strip-trailing-cr a/libcxx/include/optional b/libcxx/include/optional
-+--- a/libcxx/include/optional
-++++ b/libcxx/include/optional
-+@@ -287,7 +287,7 @@
-+   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
-+   union {
-+     char __null_state_;
-+-    remove_cv_t<value_type> __val_;
-++    value_type __val_;
-+   };
-+   bool __engaged_;
-+ 
-+@@ -323,7 +323,7 @@
-+   static_assert(is_object_v<value_type>, "instantiation of optional with a non-object type is undefined behavior");
-+   union {
-+     char __null_state_;
-+-    remove_cv_t<value_type> __val_;
-++    value_type __val_;
-+   };
-+   bool __engaged_;
-+ 
-+@@ -377,7 +377,7 @@
-+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void __assign_from(_That&& __opt) {
-+     if (this->__engaged_ == __opt.has_value()) {
-+       if (this->__engaged_)
-+-        static_cast<_Tp&>(this->__val_) = std::forward<_That>(__opt).__get();
-++        this->__val_ = std::forward<_That>(__opt).__get();
-+     } else {
-+       if (this->__engaged_)
-+         this->reset();
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/construct_at.pass.cpp
-+@@ -80,6 +80,21 @@
-+         a.deallocate(p, 2);
-+     }
-  
+- 
 --multiclass G_TO_NG<string Str> {
 -+multiclass G_TO_NG<string Str, Intrinsic Intrin, Predicate ShortPtr> {
 -    def "" : NVPTXInst<(outs Int32Regs:$result), (ins Int32Regs:$src),
@@ -2167,24 +3115,8 @@ index de92cb4..155d3f2 100644
 -+          #"  cvt.u32.u64 \t$result, %tmp; }}",
 -+      [(set Int32Regs:$result, (Intrin Int64Regs:$src))]>,
 -+      Requires<[ShortPtr]>;
-++    {
-++        std::allocator<Counted> a;
-++        Counted const* p = a.allocate(2);
-++        int count = 0;
-++        std::construct_at(p, count);
-++        assert(count == 1);
-++        std::construct_at(p+1, count);
-++        assert(count == 2);
-++        (p+1)->~Counted();
-++        assert(count == 1);
-++        p->~Counted();
-++        assert(count == 0);
-++        a.deallocate(const_cast<Counted*>(p), 2);
-++    }
-++
-+     return true;
-  }
-  
+- }
+- 
 --defm cvta_local  : NG_TO_G<"local">;
 --defm cvta_shared : NG_TO_G<"shared">;
 --defm cvta_global : NG_TO_G<"global">;
@@ -2236,18 +3168,8 @@ index de92cb4..155d3f2 100644
 -@@ -2618,6 +2632,24 @@
 -                              [(set Int64Regs:$r,
 -                              (int_nvvm_move_ptr texternalsym:$s))]>;*/
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/specialized.construct/ranges_construct_at.pass.cpp
-+@@ -99,6 +99,16 @@
-+     alloc.deallocate(out, 2);
-+   }
-  
-++  // Works with const pointers.
-++  {
-++    int x = 1;
-++    const int* ptr = &x;
- +
+- 
+-+
 -+// MoveParam        %r1, param
 -+// ptr_local_to_gen %r2, %r1
 -+// ptr_gen_to_local %r3, %r2
@@ -2264,26 +3186,14 @@ index de92cb4..155d3f2 100644
 -+def : Pat<(i32 (int_nvvm_ptr_gen_to_local (int_nvvm_ptr_local_to_gen
 -+                (MoveParam texternalsym:$src)))),
 -+               (nvvm_move_ptr32  texternalsym:$src)>;
-++    const int* result = std::ranges::construct_at(ptr, 42);
-++    assert(result == ptr);
-++    assert(x == 42);
-++  }
- +
+-+
 - def texsurf_handles
 -   : NVPTXInst<(outs Int64Regs:$result), (ins imem:$src),
 -               "mov.u64 \t$result, $src;", []>;
 -@@ -2701,9 +2733,134 @@
 - def : Pat<(int_nvvm_read_ptx_sreg_envreg31), (MOV_SPECIAL ENVREG31)>;
-+   return true;
-+ }
-  
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct_n.pass.cpp
-+@@ -75,5 +75,17 @@
-+   }
-+ #endif  // TEST_HAS_NO_EXCEPTIONS
-  
+- 
+- 
 -+// rotate builtin support
 -+
 -+def ROTATE_B32_HW_IMM
@@ -2352,29 +3262,151 @@ index de92cb4..155d3f2 100644
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+                "shf.l.wrap.b32 \t$dst, $lo, $hi, $amt;",[]>,
 -+      Requires<[hasHWROT32]>;
-++  // Works with const iterators.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
- +
+-+
 -+  def SHF_R_WRAP_B32_IMM
 -+    : NVPTXInst<(outs Int32Regs:$dst),
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, i32imm:$amt),
 -+                "shf.r.wrap.b32 \t$dst, $lo, $hi, $amt;",[]>,
 -+      Requires<[hasHWROT32]>;
-++    std::ranges::uninitialized_default_construct_n(buf.cbegin(), N);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
- +
+-+
 -+  def SHF_R_WRAP_B32_REG
 -+    : NVPTXInst<(outs Int32Regs:$dst),
 -+                (ins  Int32Regs:$lo, Int32Regs:$hi, Int32Regs:$amt),
 -+                "shf.r.wrap.b32 \t$dst, $lo, $hi, $amt;",[]>,
 -+      Requires<[hasHWROT32]>;
--+}
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++@@ -9181,12 +9181,13 @@
++         for (unsigned Cnt : Slices) {
++           ArrayRef<Value *> Slice = VL.slice(Cnt, VF);
++           // If any instruction is vectorized already - do not try again.
++-          if (const TreeEntry *SE = getTreeEntry(Slice.front());
+++          if (TreeEntry *SE = getTreeEntry(Slice.front());
++               SE || getTreeEntry(Slice.back())) {
++             if (!SE)
++               continue;
++             if (VF != SE->getVectorFactor() || !SE->isSame(Slice))
++               continue;
+++            SE->UserTreeIndices.emplace_back(&E, UINT_MAX);
++             AddCombinedNode(SE->Idx, Cnt);
++             continue;
++           }
++@@ -13439,7 +13440,12 @@
++         if (CommonMask[Idx] != PoisonMaskElem)
++           CommonMask[Idx] = Idx;
++       for (auto [E, Idx] : SubVectors) {
++-        Value *V = castToScalarTyElem(E->VectorizedValue);
+++        Value *V = E->VectorizedValue;
+++        if (V->getType()->isIntOrIntVectorTy())
+++          V = castToScalarTyElem(V, any_of(E->Scalars, [&](Value *V) {
+++                                   return !isKnownNonNegative(
+++                                       V, SimplifyQuery(*R.DL));
+++                                 }));
++         Vec = Builder.CreateInsertVector(Vec->getType(), Vec, V,
++                                          Builder.getInt64(Idx));
++         if (!CommonMask.empty()) {
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
++--- a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
+++++ b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
++@@ -0,0 +1,97 @@
+++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
+++
+++define i1 @test(i64 %v1, ptr %v2, i32 %v3, i1 %v4) {
+++; CHECK-LABEL: define i1 @test(
+++; CHECK-SAME: i64 [[V1:%.*]], ptr [[V2:%.*]], i32 [[V3:%.*]], i1 [[V4:%.*]]) {
+++; CHECK-NEXT:  [[NEWFUNCROOT:.*:]]
+++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i64> poison, i64 [[V1]], i32 0
+++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i64> [[TMP0]], <2 x i64> poison, <2 x i32> zeroinitializer
+++; CHECK-NEXT:    [[TMP2:%.*]] = lshr <2 x i64> [[TMP1]], <i64 32, i64 40>
+++; CHECK-NEXT:    [[TMP3:%.*]] = trunc <2 x i64> [[TMP2]] to <2 x i8>
+++; CHECK-NEXT:    [[TMP4:%.*]] = and <2 x i8> [[TMP3]], <i8 1, i8 -1>
+++; CHECK-NEXT:    [[TMP5:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
+++; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq <2 x i32> [[TMP5]], zeroinitializer
+++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <4 x i32> poison, i32 [[V3]], i32 0
+++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x i32> [[TMP7]], <4 x i32> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
+++; CHECK-NEXT:    [[TMP9:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
+++; CHECK-NEXT:    [[TMP10:%.*]] = call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> [[TMP8]], <2 x i32> [[TMP9]], i64 0)
+++; CHECK-NEXT:    [[TMP11:%.*]] = uitofp <4 x i32> [[TMP10]] to <4 x float>
+++; CHECK-NEXT:    [[TMP12:%.*]] = fdiv <4 x float> zeroinitializer, [[TMP11]]
+++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <4 x i1> poison, i1 [[V4]], i32 0
+++; CHECK-NEXT:    [[TMP14:%.*]] = shufflevector <4 x i1> [[TMP13]], <4 x i1> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
+++; CHECK-NEXT:    [[TMP15:%.*]] = call <4 x i1> @llvm.vector.insert.v4i1.v2i1(<4 x i1> [[TMP14]], <2 x i1> [[TMP6]], i64 0)
+++; CHECK-NEXT:    [[TMP16:%.*]] = select <4 x i1> [[TMP15]], <4 x float> zeroinitializer, <4 x float> [[TMP12]]
+++; CHECK-NEXT:    [[TMP17:%.*]] = extractelement <4 x float> [[TMP16]], i32 3
+++; CHECK-NEXT:    [[CONV_I_I1743_3:%.*]] = fptoui float [[TMP17]] to i32
+++; CHECK-NEXT:    [[TMP18:%.*]] = icmp ne i32 [[CONV_I_I1743_3]], 0
+++; CHECK-NEXT:    [[TMP19:%.*]] = bitcast <4 x float> [[TMP16]] to <4 x i32>
+++; CHECK-NEXT:    [[TMP20:%.*]] = icmp ult <4 x i32> [[TMP19]], <i32 1333788672, i32 1333788672, i32 1333788672, i32 1333788672>
+++; CHECK-NEXT:    [[TMP21:%.*]] = extractelement <4 x i1> [[TMP20]], i32 3
+++; CHECK-NEXT:    [[NARROW:%.*]] = select i1 [[TMP21]], i1 [[TMP18]], i1 false
+++; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <4 x float> [[TMP16]], i32 2
+++; CHECK-NEXT:    [[CONV_I_I1743_2:%.*]] = fptoui float [[TMP22]] to i32
+++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <4 x i1> [[TMP20]], i32 2
+++; CHECK-NEXT:    [[NARROW1:%.*]] = select i1 [[TMP23]], i32 [[CONV_I_I1743_2]], i32 0
+++; CHECK-NEXT:    [[TMP24:%.*]] = zext i1 [[NARROW]] to i32
+++; CHECK-NEXT:    [[TMP25:%.*]] = or i32 [[NARROW1]], [[TMP24]]
+++; CHECK-NEXT:    [[TMP26:%.*]] = extractelement <4 x float> [[TMP16]], i32 1
+++; CHECK-NEXT:    [[CONV_I_I1743_1:%.*]] = fptoui float [[TMP26]] to i32
+++; CHECK-NEXT:    [[TMP27:%.*]] = extractelement <4 x i1> [[TMP20]], i32 1
+++; CHECK-NEXT:    [[NARROW2:%.*]] = select i1 [[TMP27]], i32 [[CONV_I_I1743_1]], i32 0
+++; CHECK-NEXT:    [[RV3:%.*]] = or i32 [[TMP25]], [[NARROW2]]
+++; CHECK-NEXT:    [[TMP28:%.*]] = extractelement <4 x float> [[TMP16]], i32 0
+++; CHECK-NEXT:    [[CONV_I_I1743:%.*]] = fptoui float [[TMP28]] to i32
+++; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <4 x i1> [[TMP20]], i32 0
+++; CHECK-NEXT:    [[NARROW4:%.*]] = select i1 [[TMP29]], i32 [[CONV_I_I1743]], i32 0
+++; CHECK-NEXT:    [[RT5:%.*]] = or i32 [[RV3]], [[NARROW4]]
+++; CHECK-NEXT:    [[RT:%.*]] = zext i32 [[RT5]] to i64
+++; CHECK-NEXT:    store i64 [[RT]], ptr [[V2]], align 1
+++; CHECK-NEXT:    ret i1 false
+++;
+++newFuncRoot:
+++  %conv.i147.i1756.3 = uitofp i32 %v3 to float
+++  %div.i.i.i1749.3 = fdiv float 0.000000e+00, %conv.i147.i1756.3
+++  %cond.i.i.i1751.3 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.3
+++  %conv.i147.i1756.2 = uitofp i32 %v3 to float
+++  %div.i.i.i1749.2 = fdiv float 0.000000e+00, %conv.i147.i1756.2
+++  %cond.i.i.i1751.2 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.2
+++  %0 = lshr i64 %v1, 40
+++  %1 = trunc i64 %0 to i32
+++  %tt2 = and i32 %1, 255
+++  %cmp1.i.i.i1746.1 = icmp eq i32 %tt2, 0
+++  %conv.i147.i1756.1 = uitofp i32 %tt2 to float
+++  %div.i.i.i1749.1 = fdiv float 0.000000e+00, %conv.i147.i1756.1
+++  %cond.i.i.i1751.1 = select i1 %cmp1.i.i.i1746.1, float 0.000000e+00, float %div.i.i.i1749.1
+++  %tt3 = lshr i64 %v1, 32
+++  %2 = trunc i64 %tt3 to i32
+++  %tt1 = and i32 %2, 1
+++  %cmp1.i.i.i1746 = icmp eq i32 %tt1, 0
+++  %conv.i147.i1756 = uitofp i32 %tt1 to float
+++  %div.i.i.i1749 = fdiv float 0.000000e+00, %conv.i147.i1756
+++  %cond.i.i.i1751 = select i1 %cmp1.i.i.i1746, float 0.000000e+00, float %div.i.i.i1749
+++  %3 = bitcast float %cond.i.i.i1751.3 to i32
+++  %cmp.i99.i1736.3 = icmp ult i32 %3, 1333788672
+++  %conv.i.i1743.3 = fptoui float %cond.i.i.i1751.3 to i32
+++  %4 = icmp ne i32 %conv.i.i1743.3, 0
+++  %narrow = select i1 %cmp.i99.i1736.3, i1 %4, i1 false
+++  %5 = bitcast float %cond.i.i.i1751.2 to i32
+++  %cmp.i99.i1736.2 = icmp ult i32 %5, 1333788672
+++  %conv.i.i1743.2 = fptoui float %cond.i.i.i1751.2 to i32
+++  %narrow1 = select i1 %cmp.i99.i1736.2, i32 %conv.i.i1743.2, i32 0
+++  %6 = zext i1 %narrow to i32
+++  %7 = or i32 %narrow1, %6
+++  %8 = bitcast float %cond.i.i.i1751.1 to i32
+++  %cmp.i99.i1736.1 = icmp ult i32 %8, 1333788672
+++  %conv.i.i1743.1 = fptoui float %cond.i.i.i1751.1 to i32
+++  %narrow2 = select i1 %cmp.i99.i1736.1, i32 %conv.i.i1743.1, i32 0
+++  %rv3 = or i32 %7, %narrow2
+++  %9 = bitcast float %cond.i.i.i1751 to i32
+++  %cmp.i99.i1736 = icmp ult i32 %9, 1333788672
+++  %conv.i.i1743 = fptoui float %cond.i.i.i1751 to i32
+++  %narrow4 = select i1 %cmp.i99.i1736, i32 %conv.i.i1743, i32 0
+++  %rt5 = or i32 %rv3, %narrow4
+++  %rt = zext i32 %rt5 to i64
+++  store i64 %rt, ptr %v2, align 1
+++  ret i1 false
+ +}
 -+
 -+// HW version of rotate 64
 -+def : Pat<(int_nvvm_rotate_b64 Int64Regs:$src, (i32 imm:$amt)),
@@ -2526,42 +3558,8 @@ index de92cb4..155d3f2 100644
 -+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
 -+                                          Src));
 -     return;
-+   return 0;
-+ }
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.default/ranges_uninitialized_default_construct.pass.cpp
-+@@ -163,5 +163,30 @@
-    }
-+ #endif  // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators, (iter, sentinel) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++
-++    std::ranges::uninitialized_default_construct(buf.cbegin(), buf.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-++  // Works with const iterators, (range) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-++
-++    std::ranges::uninitialized_default_construct(range);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-+   return 0;
-  }
+-   }
+- }
 -diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 ---- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
 -+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
@@ -4627,35 +5625,19 @@ index de92cb4..155d3f2 100644
 -     %1:_(s32) = G_EXTRACT %0, 0
 -@@ -297,6 +296,18 @@
 - ...
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct_n.pass.cpp
-+@@ -94,5 +94,17 @@
-+   }
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-  
+- 
 - ---
 -+name: test_implicit_def_v17s32
 -+body: |
 -+  bb.0:
-++  // Works with const iterators.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
- +
+-+
 -+    ; CHECK-LABEL: name: test_implicit_def_v17s32
 -+    ; CHECK: [[DEF:%[0-9]+]]:_(<17 x s32>) = G_IMPLICIT_DEF
 -+    ; CHECK-NEXT: S_NOP 0, implicit [[DEF]](<17 x s32>)
 -+    %0:_(<17 x s32>) = G_IMPLICIT_DEF
 -+    S_NOP 0, implicit %0
 -+...
-++    std::ranges::uninitialized_value_construct_n(buf.cbegin(), N);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
- +
+-+
 -+---
 - name: test_implicit_def_v32s32
 - body: |
@@ -4902,121 +5884,13 @@ index de92cb4..155d3f2 100644
 -+++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankselect.mir
 -@@ -42,6 +42,8 @@
 -     ret void
-+   return 0;
-+ }
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.construct.value/ranges_uninitialized_value_construct.pass.cpp
-+@@ -183,5 +183,30 @@
-    }
+-   }
 - 
 -+  define void @non_power_of_2() { ret void }
 -+
 -   define amdgpu_kernel void @load_constant_v4i16_from_8_align8(ptr addrspace(4) %ptr0) {
 -     ret void
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators, (iter, sentinel) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++
-++    std::ranges::uninitialized_value_construct(buf.cbegin(), buf.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-++  // Works with const iterators, (range) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++
-++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-++    std::ranges::uninitialized_value_construct(range);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-+   return 0;
-+ }
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy_n.pass.cpp
-+@@ -104,6 +104,22 @@
-+ 
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::uninitialized_copy_n(in, N, out.cbegin(), out.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-+   // Conversions.
-+   {
-+     constexpr int N = 3;
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.copy/ranges_uninitialized_copy.pass.cpp
-+@@ -278,6 +278,39 @@
-+   Counted::reset();
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators, (iter, sentinel) overload.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::uninitialized_copy(in, in + N, out.cbegin(), out.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-++  // Works with const iterators, (range) overload.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::subrange out_range(out.cbegin(), out.cend());
-++    std::ranges::uninitialized_copy(in, out_range);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-+   // Conversions, (iter, sentinel) overload.
-+   {
-+     constexpr int N = 3;
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill/ranges_uninitialized_fill.pass.cpp
-+@@ -198,5 +198,34 @@
-    }
+-   }
 -@@ -185,6 +187,23 @@
 - ...
 - 
@@ -5040,46 +5914,7 @@ index de92cb4..155d3f2 100644
 -+---
 - name: load_constant_v4i16_from_8_align8
 - legalized: true
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators, (iter, sentinel) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++
-++    std::ranges::uninitialized_fill(buf.cbegin(), buf.cend(), x);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::all_of(buf.begin(), buf.end(), pred));
-++
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-++  // Works with const iterators, (range) overload.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
-++
-++    auto range = std::ranges::subrange(buf.cbegin(), buf.cend());
-++    std::ranges::uninitialized_fill(range, x);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::all_of(buf.begin(), buf.end(), pred));
-++
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
-++
-+   return 0;
-+ }
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.fill.n/ranges_uninitialized_fill_n.pass.cpp
-+@@ -101,5 +101,19 @@
-+   }
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-  
+- 
 -diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 ---- a/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
 -+++ b/llvm/test/CodeGen/NVPTX/intrin-nocapture.ll
@@ -5089,22 +5924,11 @@ index de92cb4..155d3f2 100644
 -+; Address space intrinsics were erroneously marked NoCapture, leading to bad
 -+; optimizations (such as the store below being eliminated as dead code). This
 -+; test makes sure we don't regress.
-++  // Works with const iterators.
-++  {
-++    constexpr int N = 5;
-++    Buffer<Counted, N> buf;
- +
+-+
 -+declare void @foo(ptr addrspace(1))
-++    std::ranges::uninitialized_fill_n(buf.cbegin(), N, x);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::all_of(buf.begin(), buf.end(), pred));
- +
+-+
 -+declare ptr addrspace(1) @llvm.nvvm.ptr.gen.to.global.p1.p0(ptr)
-++    std::destroy(buf.begin(), buf.end());
-++    Counted::reset();
-++  }
- +
+-+
 -+; CHECK: @bar
 -+define void @bar() {
 -+  %t1 = alloca i32
@@ -5146,8 +5970,7 @@ index de92cb4..155d3f2 100644
 -+; CHECK: ret
 -   %val = tail call i64 @llvm.nvvm.rotate.b64(i64 %a, i32 3)
 -   ret i64 %val
-+   return 0;
-  }
+- }
 - 
 -+; CHECK: rotateright64
 - define i64 @rotateright64(i64 %a, i32 %b) {
@@ -5309,130 +6132,7 @@ index de92cb4..155d3f2 100644
 -+; SM20-NEXT:    }
 -+; SM20-NEXT:    st.param.b64 [func_retval0+0], %rd2;
 - ; SM20-NEXT:    ret;
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move_n.pass.cpp
-+@@ -105,6 +105,22 @@
-+ 
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::uninitialized_move_n(in, N, out.cbegin(), out.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-+   // Conversions.
-+   {
-+     constexpr int N = 3;
-+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
-+--- a/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
-++++ b/libcxx/test/std/utilities/memory/specialized.algorithms/uninitialized.move/ranges_uninitialized_move.pass.cpp
-+@@ -282,6 +282,39 @@
-+   Counted::reset();
-+ #endif // TEST_HAS_NO_EXCEPTIONS
-+ 
-++  // Works with const iterators, (iter, sentinel) overload.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::uninitialized_move(in, in + N, out.cbegin(), out.cend());
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-++  // Works with const iterators, (range) overload.
-++  {
-++    constexpr int N = 5;
-++    Counted in[N] = {Counted(1), Counted(2), Counted(3), Counted(4), Counted(5)};
-++    Buffer<Counted, N> out;
-++    Counted::reset();
-++
-++    std::ranges::subrange out_range (out.cbegin(), out.cend());
-++    std::ranges::uninitialized_move(in, out_range);
-++    assert(Counted::current_objects == N);
-++    assert(Counted::total_objects == N);
-++    assert(std::equal(in, in + N, out.begin(), out.end()));
-++
-++    std::destroy(out.begin(), out.end());
-++  }
-++  Counted::reset();
-++
-+   // Conversions, (iter, sentinel) overload.
-+   {
-+     constexpr int N = 3;
-+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+--- a/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-++++ b/llvm/lib/CodeGen/SelectionDAG/DAGCombiner.cpp
-+@@ -10287,10 +10287,8 @@
-+   SDValue LeftOp = ShiftOperand.getOperand(0);
-+   SDValue RightOp = ShiftOperand.getOperand(1);
-+ 
-+-  // Treat zext nneg as sext - we might need to support handling these as zext
-+-  // as well in the future, but for now just prefer sext.
-+-  bool IsSignExt = sd_match(LeftOp, m_SExtLike(m_Value()));
-+-  bool IsZeroExt = sd_match(LeftOp, m_ZExt(m_Value()));
-++  bool IsSignExt = LeftOp.getOpcode() == ISD::SIGN_EXTEND;
-++  bool IsZeroExt = LeftOp.getOpcode() == ISD::ZERO_EXTEND;
-+ 
-+   if (!IsSignExt && !IsZeroExt)
-+     return SDValue();
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -9181,12 +9181,13 @@
-+         for (unsigned Cnt : Slices) {
-+           ArrayRef<Value *> Slice = VL.slice(Cnt, VF);
-+           // If any instruction is vectorized already - do not try again.
-+-          if (const TreeEntry *SE = getTreeEntry(Slice.front());
-++          if (TreeEntry *SE = getTreeEntry(Slice.front());
-+               SE || getTreeEntry(Slice.back())) {
-+             if (!SE)
-+               continue;
-+             if (VF != SE->getVectorFactor() || !SE->isSame(Slice))
-+               continue;
-++            SE->UserTreeIndices.emplace_back(&E, UINT_MAX);
-+             AddCombinedNode(SE->Idx, Cnt);
-+             continue;
-+           }
-+@@ -13396,7 +13397,12 @@
-+         if (CommonMask[Idx] != PoisonMaskElem)
-+           CommonMask[Idx] = Idx;
-+       for (auto [E, Idx] : SubVectors) {
-+-        Value *V = castToScalarTyElem(E->VectorizedValue);
-++        Value *V = E->VectorizedValue;
-++        if (V->getType()->isIntOrIntVectorTy())
-++          V = castToScalarTyElem(V, any_of(E->Scalars, [&](Value *V) {
-++                                   return !isKnownNonNegative(
-++                                       V, SimplifyQuery(*R.DL));
-++                                 }));
-+         Vec = Builder.CreateInsertVector(Vec->getType(), Vec, V,
-+                                          Builder.getInt64(Idx));
-+         if (!CommonMask.empty()) {
-+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pmulh.ll b/llvm/test/CodeGen/X86/pmulh.ll
-+--- a/llvm/test/CodeGen/X86/pmulh.ll
-++++ b/llvm/test/CodeGen/X86/pmulh.ll
-+@@ -953,15 +953,39 @@
-+ ; SSE-NEXT:    movdqa %xmm0, 16(%rdi)
-+ ; SSE-NEXT:    retq
-  ;
+- ;
 - ; SM35-LABEL: rotateright64(
 - ; SM35:       {
 --; SM35-NEXT:    .reg .b32 %r<5>;
@@ -5921,187 +6621,81 @@ index de92cb4..155d3f2 100644
 - ; CHECK-NEXT:.b8 1                                   // DW_AT_call_file
 - ; CHECK-NEXT:.b8 6                                   // DW_AT_call_line
 - ; CHECK-NEXT:.b8 37                                  // DW_AT_call_column
-+-; AVX-LABEL: PR109790:
-+-; AVX:       # %bb.0:
-+-; AVX-NEXT:    movq %rdi, %rax
-+-; AVX-NEXT:    vmovdqa (%rsi), %ymm0
-+-; AVX-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-+-; AVX-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
-+-; AVX-NEXT:    vmovdqa %ymm0, (%rdi)
-+-; AVX-NEXT:    vzeroupper
-+-; AVX-NEXT:    retq
-++; AVX2-LABEL: PR109790:
-++; AVX2:       # %bb.0:
-++; AVX2-NEXT:    movq %rdi, %rax
-++; AVX2-NEXT:    vmovdqa (%rsi), %ymm0
-++; AVX2-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-++; AVX2-NEXT:    vpmulhw {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0 # [64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536,64536]
-++; AVX2-NEXT:    vmovdqa %ymm0, (%rdi)
-++; AVX2-NEXT:    vzeroupper
-++; AVX2-NEXT:    retq
-++;
-++; AVX512F-LABEL: PR109790:
-++; AVX512F:       # %bb.0:
-++; AVX512F-NEXT:    movq %rdi, %rax
-++; AVX512F-NEXT:    vmovdqa (%rsi), %ymm0
-++; AVX512F-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-++; AVX512F-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-++; AVX512F-NEXT:    vpmulld {{\.?LCPI[0-9]+_[0-9]+}}(%rip){1to16}, %zmm0, %zmm0
-++; AVX512F-NEXT:    vpsrld $16, %zmm0, %zmm0
-++; AVX512F-NEXT:    vpmovdw %zmm0, (%rdi)
-++; AVX512F-NEXT:    vzeroupper
-++; AVX512F-NEXT:    retq
-++;
-++; AVX512BW-LABEL: PR109790:
-++; AVX512BW:       # %bb.0:
-++; AVX512BW-NEXT:    movq %rdi, %rax
-++; AVX512BW-NEXT:    vmovdqa (%rsi), %ymm0
-++; AVX512BW-NEXT:    vpand {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %ymm0, %ymm0
-++; AVX512BW-NEXT:    vpmovzxwd {{.*#+}} zmm0 = ymm0[0],zero,ymm0[1],zero,ymm0[2],zero,ymm0[3],zero,ymm0[4],zero,ymm0[5],zero,ymm0[6],zero,ymm0[7],zero,ymm0[8],zero,ymm0[9],zero,ymm0[10],zero,ymm0[11],zero,ymm0[12],zero,ymm0[13],zero,ymm0[14],zero,ymm0[15],zero
-++; AVX512BW-NEXT:    vpmaddwd {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %zmm0, %zmm0 # [64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0,64536,0]
-++; AVX512BW-NEXT:    vpsrld $16, %zmm0, %zmm0
-++; AVX512BW-NEXT:    vpmovdw %zmm0, (%rdi)
-++; AVX512BW-NEXT:    vzeroupper
-++; AVX512BW-NEXT:    retq
-+   %load = load <16 x i16>, ptr %a, align 32
-+   %and = and <16 x i16> %load, <i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767, i16 32767>
-+   %ext = zext nneg <16 x i16> %and to <16 x i32>
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/subvector-minbitwidth-unsigned-value.ll
-+@@ -0,0 +1,97 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
-++
-++define i1 @test(i64 %v1, ptr %v2, i32 %v3, i1 %v4) {
-++; CHECK-LABEL: define i1 @test(
-++; CHECK-SAME: i64 [[V1:%.*]], ptr [[V2:%.*]], i32 [[V3:%.*]], i1 [[V4:%.*]]) {
-++; CHECK-NEXT:  [[NEWFUNCROOT:.*:]]
-++; CHECK-NEXT:    [[TMP0:%.*]] = insertelement <2 x i64> poison, i64 [[V1]], i32 0
-++; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i64> [[TMP0]], <2 x i64> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP2:%.*]] = lshr <2 x i64> [[TMP1]], <i64 32, i64 40>
-++; CHECK-NEXT:    [[TMP3:%.*]] = trunc <2 x i64> [[TMP2]] to <2 x i8>
-++; CHECK-NEXT:    [[TMP4:%.*]] = and <2 x i8> [[TMP3]], <i8 1, i8 -1>
-++; CHECK-NEXT:    [[TMP5:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
-++; CHECK-NEXT:    [[TMP6:%.*]] = icmp eq <2 x i32> [[TMP5]], zeroinitializer
-++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <4 x i32> poison, i32 [[V3]], i32 0
-++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x i32> [[TMP7]], <4 x i32> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
-++; CHECK-NEXT:    [[TMP9:%.*]] = zext <2 x i8> [[TMP4]] to <2 x i32>
-++; CHECK-NEXT:    [[TMP10:%.*]] = call <4 x i32> @llvm.vector.insert.v4i32.v2i32(<4 x i32> [[TMP8]], <2 x i32> [[TMP9]], i64 0)
-++; CHECK-NEXT:    [[TMP11:%.*]] = uitofp <4 x i32> [[TMP10]] to <4 x float>
-++; CHECK-NEXT:    [[TMP12:%.*]] = fdiv <4 x float> zeroinitializer, [[TMP11]]
-++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <4 x i1> poison, i1 [[V4]], i32 0
-++; CHECK-NEXT:    [[TMP14:%.*]] = shufflevector <4 x i1> [[TMP13]], <4 x i1> poison, <4 x i32> <i32 poison, i32 poison, i32 0, i32 0>
-++; CHECK-NEXT:    [[TMP15:%.*]] = call <4 x i1> @llvm.vector.insert.v4i1.v2i1(<4 x i1> [[TMP14]], <2 x i1> [[TMP6]], i64 0)
-++; CHECK-NEXT:    [[TMP16:%.*]] = select <4 x i1> [[TMP15]], <4 x float> zeroinitializer, <4 x float> [[TMP12]]
-++; CHECK-NEXT:    [[TMP17:%.*]] = extractelement <4 x float> [[TMP16]], i32 3
-++; CHECK-NEXT:    [[CONV_I_I1743_3:%.*]] = fptoui float [[TMP17]] to i32
-++; CHECK-NEXT:    [[TMP18:%.*]] = icmp ne i32 [[CONV_I_I1743_3]], 0
-++; CHECK-NEXT:    [[TMP19:%.*]] = bitcast <4 x float> [[TMP16]] to <4 x i32>
-++; CHECK-NEXT:    [[TMP20:%.*]] = icmp ult <4 x i32> [[TMP19]], <i32 1333788672, i32 1333788672, i32 1333788672, i32 1333788672>
-++; CHECK-NEXT:    [[TMP21:%.*]] = extractelement <4 x i1> [[TMP20]], i32 3
-++; CHECK-NEXT:    [[NARROW:%.*]] = select i1 [[TMP21]], i1 [[TMP18]], i1 false
-++; CHECK-NEXT:    [[TMP22:%.*]] = extractelement <4 x float> [[TMP16]], i32 2
-++; CHECK-NEXT:    [[CONV_I_I1743_2:%.*]] = fptoui float [[TMP22]] to i32
-++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <4 x i1> [[TMP20]], i32 2
-++; CHECK-NEXT:    [[NARROW1:%.*]] = select i1 [[TMP23]], i32 [[CONV_I_I1743_2]], i32 0
-++; CHECK-NEXT:    [[TMP24:%.*]] = zext i1 [[NARROW]] to i32
-++; CHECK-NEXT:    [[TMP25:%.*]] = or i32 [[NARROW1]], [[TMP24]]
-++; CHECK-NEXT:    [[TMP26:%.*]] = extractelement <4 x float> [[TMP16]], i32 1
-++; CHECK-NEXT:    [[CONV_I_I1743_1:%.*]] = fptoui float [[TMP26]] to i32
-++; CHECK-NEXT:    [[TMP27:%.*]] = extractelement <4 x i1> [[TMP20]], i32 1
-++; CHECK-NEXT:    [[NARROW2:%.*]] = select i1 [[TMP27]], i32 [[CONV_I_I1743_1]], i32 0
-++; CHECK-NEXT:    [[RV3:%.*]] = or i32 [[TMP25]], [[NARROW2]]
-++; CHECK-NEXT:    [[TMP28:%.*]] = extractelement <4 x float> [[TMP16]], i32 0
-++; CHECK-NEXT:    [[CONV_I_I1743:%.*]] = fptoui float [[TMP28]] to i32
-++; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <4 x i1> [[TMP20]], i32 0
-++; CHECK-NEXT:    [[NARROW4:%.*]] = select i1 [[TMP29]], i32 [[CONV_I_I1743]], i32 0
-++; CHECK-NEXT:    [[RT5:%.*]] = or i32 [[RV3]], [[NARROW4]]
-++; CHECK-NEXT:    [[RT:%.*]] = zext i32 [[RT5]] to i64
-++; CHECK-NEXT:    store i64 [[RT]], ptr [[V2]], align 1
-++; CHECK-NEXT:    ret i1 false
-++;
-++newFuncRoot:
-++  %conv.i147.i1756.3 = uitofp i32 %v3 to float
-++  %div.i.i.i1749.3 = fdiv float 0.000000e+00, %conv.i147.i1756.3
-++  %cond.i.i.i1751.3 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.3
-++  %conv.i147.i1756.2 = uitofp i32 %v3 to float
-++  %div.i.i.i1749.2 = fdiv float 0.000000e+00, %conv.i147.i1756.2
-++  %cond.i.i.i1751.2 = select i1 %v4, float 0.000000e+00, float %div.i.i.i1749.2
-++  %0 = lshr i64 %v1, 40
-++  %1 = trunc i64 %0 to i32
-++  %tt2 = and i32 %1, 255
-++  %cmp1.i.i.i1746.1 = icmp eq i32 %tt2, 0
-++  %conv.i147.i1756.1 = uitofp i32 %tt2 to float
-++  %div.i.i.i1749.1 = fdiv float 0.000000e+00, %conv.i147.i1756.1
-++  %cond.i.i.i1751.1 = select i1 %cmp1.i.i.i1746.1, float 0.000000e+00, float %div.i.i.i1749.1
-++  %tt3 = lshr i64 %v1, 32
-++  %2 = trunc i64 %tt3 to i32
-++  %tt1 = and i32 %2, 1
-++  %cmp1.i.i.i1746 = icmp eq i32 %tt1, 0
-++  %conv.i147.i1756 = uitofp i32 %tt1 to float
-++  %div.i.i.i1749 = fdiv float 0.000000e+00, %conv.i147.i1756
-++  %cond.i.i.i1751 = select i1 %cmp1.i.i.i1746, float 0.000000e+00, float %div.i.i.i1749
-++  %3 = bitcast float %cond.i.i.i1751.3 to i32
-++  %cmp.i99.i1736.3 = icmp ult i32 %3, 1333788672
-++  %conv.i.i1743.3 = fptoui float %cond.i.i.i1751.3 to i32
-++  %4 = icmp ne i32 %conv.i.i1743.3, 0
-++  %narrow = select i1 %cmp.i99.i1736.3, i1 %4, i1 false
-++  %5 = bitcast float %cond.i.i.i1751.2 to i32
-++  %cmp.i99.i1736.2 = icmp ult i32 %5, 1333788672
-++  %conv.i.i1743.2 = fptoui float %cond.i.i.i1751.2 to i32
-++  %narrow1 = select i1 %cmp.i99.i1736.2, i32 %conv.i.i1743.2, i32 0
-++  %6 = zext i1 %narrow to i32
-++  %7 = or i32 %narrow1, %6
-++  %8 = bitcast float %cond.i.i.i1751.1 to i32
-++  %cmp.i99.i1736.1 = icmp ult i32 %8, 1333788672
-++  %conv.i.i1743.1 = fptoui float %cond.i.i.i1751.1 to i32
-++  %narrow2 = select i1 %cmp.i99.i1736.1, i32 %conv.i.i1743.1, i32 0
-++  %rv3 = or i32 %7, %narrow2
-++  %9 = bitcast float %cond.i.i.i1751 to i32
-++  %cmp.i99.i1736 = icmp ult i32 %9, 1333788672
-++  %conv.i.i1743 = fptoui float %cond.i.i.i1751 to i32
-++  %narrow4 = select i1 %cmp.i99.i1736, i32 %conv.i.i1743, i32 0
-++  %rt5 = or i32 %rv3, %narrow4
-++  %rt = zext i32 %rt5 to i64
-++  store i64 %rt, ptr %v2, align 1
-++  ret i1 false
-++}
-+diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
-+--- a/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
-++++ b/llvm/utils/gn/secondary/clang/lib/Headers/BUILD.gn
-+@@ -280,6 +280,7 @@
-+     "rdpruintrin.h",
-+     "rdseedintrin.h",
-+     "riscv_bitmanip.h",
-++    "riscv_corev_alu.h",
-+     "riscv_crypto.h",
-+     "riscv_ntlh.h",
-+     "rtmintrin.h",
-+diff -ruN --strip-trailing-cr a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
-+--- a/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
-++++ b/llvm/utils/gn/secondary/libcxx/include/BUILD.gn
-+@@ -632,6 +632,7 @@
-+       "__memory/unique_temporary_buffer.h",
-+       "__memory/uses_allocator.h",
-+       "__memory/uses_allocator_construction.h",
-++      "__memory/voidify.h",
-+       "__memory_resource/memory_resource.h",
-+       "__memory_resource/monotonic_buffer_resource.h",
-+       "__memory_resource/polymorphic_allocator.h",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+@@ -358,6 +358,7 @@
-+     td_file = "include/clang/Basic/BuiltinsRISCV.td",
-+     td_srcs = [
-+         "include/clang/Basic/BuiltinsRISCV.td",
-++        "include/clang/Basic/BuiltinsRISCVXCV.td",
-+         "include/clang/Basic/BuiltinsBase.td",
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Tensor/Utils/Utils.cpp b/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
++--- a/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
+++++ b/mlir/lib/Dialect/Tensor/Utils/Utils.cpp
++@@ -16,7 +16,7 @@
++ #include "mlir/Dialect/Arith/IR/Arith.h"
++ #include "mlir/Dialect/Arith/Utils/Utils.h"
++ #include "mlir/Dialect/Utils/IndexingUtils.h"
++-#include "mlir/Dialect/Vector/IR//VectorOps.h"
+++#include "mlir/Dialect/Vector/IR/VectorOps.h"
++ #include "mlir/Interfaces/ValueBoundsOpInterface.h"
++ 
++ using namespace mlir;
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++@@ -148,6 +148,9 @@
++ libc_support_library(
++     name = "hdr_stdio_macros",
++     hdrs = ["hdr/stdio_macros.h"],
+++    deps = [
+++        ":hdr_stdio_overlay",
+++    ],
++ )
++ 
++ libc_support_library(
++@@ -215,11 +218,17 @@
++ libc_support_library(
++     name = "types_off_t",
++     hdrs = ["hdr/types/off_t.h"],
+++    deps = [
+++        ":hdr_stdio_overlay",
+++    ],
++ )
++ 
++ libc_support_library(
++     name = "types_FILE",
++     hdrs = ["hdr/types/FILE.h"],
+++    deps = [
+++        ":hdr_stdio_overlay",
+++    ],
++ )
++ 
++ libc_support_library(
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel b/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/lldb/source/Plugins/BUILD.bazel
++@@ -1091,6 +1091,7 @@
++         "//lldb:Utility",
++         "//lldb:UtilityPrivateHeaders",
++         "//llvm:Core",
+++        "//llvm:Support",
++         "//llvm:TargetParser",
 +     ],
 + )
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -7694,6 +7694,7 @@
++         ":DialectUtils",
++         ":TensorDialect",
++         ":ValueBoundsOpInterface",
+++        ":VectorDialect",
++     ],
++ )
++ 
++@@ -13902,6 +13903,7 @@
++         ":BufferViewFlowOpInterfaceIncGen",
++         ":BufferizableOpInterfaceIncGen",
++         ":BufferizationEnumsIncGen",
+++        ":FunctionInterfaces",
++         ":IR",
++         ":Support",
++         "//llvm:Support",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index af35fe7..80f07d3 100644
+index af35fe7..6b843a7 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
@@ -6110,8 +6704,8 @@ index af35fe7..80f07d3 100644
      """Imports LLVM."""
 -    LLVM_COMMIT = "9830156f623c56062bf6df1b4c4b4bd8ab5bd57c"
 -    LLVM_SHA256 = "85bb9a61cfdaf0d3386890dc7b4bbaa17eecf4b70b60c314307f2ca3919b9035"
-+    LLVM_COMMIT = "00128a20eec27246719d73ba427bf821883b00b4"
-+    LLVM_SHA256 = "9fff2ccb6c262f3d5e2f98c281a0b99a585daee83742e1599709ff61cfc222af"
++    LLVM_COMMIT = "68c04b0ae62d8431d72d8b47fc13008002ee4387"
++    LLVM_SHA256 = "90b9b631d6670a99d22e022d180f2877bf523cf9c6dc05876a6912dfd1a3e332"
  
      tf_http_archive(
          name = name,

@@ -27,7 +27,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/qnn/qnn_manager.h"
+#include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
 
 using ::qnn::QnnManager;
 
