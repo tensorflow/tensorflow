@@ -205,7 +205,7 @@ cc_library(
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/platform",
+        "//xla/stream_executor/platform:initialize",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
