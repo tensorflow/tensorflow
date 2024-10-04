@@ -49,3 +49,34 @@ ungrte_cc_test_with_qnn(
         "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
     ],
 )
+
+ungrte_cc_library_with_qnn(
+    name = "qnn_op",
+    srcs = ["qnn_op.cc"],
+    hdrs = ["qnn_op.h"],
+    deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_op",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+    ],
+)
+
+ungrte_cc_test_with_qnn(
+    name = "qnn_op_test",
+    srcs = ["qnn_op_test.cc"],
+    deps = [
+        ":qnn_op",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+    ],
+)
