@@ -925,6 +925,12 @@ absl::Status RunCollectiveOptimizationPasses(
       /*enable_reduce_scatter=*/debug_options
           .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
 
+  // Moves collectives' subsequent quantization before the collective to
+  // minimize data transfers.
+  collectives_pipeline.AddPass<CollectiveQuantizer>();
+  // Remove dead computations after collective quantization.
+  collectives_pipeline.AddPass<HloDCE>();
+
   if (!debug_options.xla_gpu_run_post_layout_collective_pipeliner()) {
     TF_RETURN_IF_ERROR(
         AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
@@ -961,12 +967,6 @@ absl::Status RunCollectiveOptimizationPasses(
       {U16, U32}, {S16, S32}};
   collectives_pipeline.AddPass<AllReducePromotion>(ar_promoted_types);
   // Remove dead computations left over after ar/rs promotion.
-  collectives_pipeline.AddPass<HloDCE>();
-
-  // Moves collectives' subsequent quantization before the collective to
-  // minimize data transfers.
-  collectives_pipeline.AddPass<CollectiveQuantizer>();
-  // Remove dead computations after collective quantization.
   collectives_pipeline.AddPass<HloDCE>();
 
   // Run WhileLoopTripCountAnnotator after collective pipelining and before
