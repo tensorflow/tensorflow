@@ -477,14 +477,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                        scaling_factors_size));
     }
 
-    const auto* affine_quantization =
-        reinterpret_cast<TfLiteAffineQuantization*>(
-            weights->quantization.params);
+    auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+        weights->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
-    TF_LITE_ENSURE_EQ(
-        context, affine_quantization->scale->size,
-        weights->dims->data[affine_quantization->quantized_dimension]);
+
+    const int channels_out =
+        weights->dims->data[affine_quantization->quantized_dimension];
+    if (affine_quantization->scale->size != channels_out) {
+      TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, 1);
+      TfLiteFloatArrayFree(affine_quantization->scale);
+      affine_quantization->scale = TfLiteFloatArrayCreate(channels_out);
+      for (int i = 0; i < channels_out; ++i) {
+        affine_quantization->scale->data[i] = weights->params.scale;
+      }
+    } else {
+      TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
+                        channels_out);
+    }
+
     node->temporaries->data[data->input_offset_index] = data->input_offset_id;
     TfLiteTensor* input_offsets;
     TF_LITE_ENSURE_OK(context,
