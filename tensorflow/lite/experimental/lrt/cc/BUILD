@@ -29,4 +29,28 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lite_rt_tensor",
+    srcs = ["lite_rt_tensor.cc"],
+    hdrs = ["lite_rt_tensor.h"],
+    deps = [
+        ":lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "lite_rt_tensor_test",
+    srcs = ["lite_rt_tensor_test.cc"],
+    deps = [
+        ":lite_rt_tensor",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 exports_files(srcs = glob(["lite_rt*.h"]))

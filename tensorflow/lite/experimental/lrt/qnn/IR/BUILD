@@ -16,34 +16,36 @@ load("//tensorflow/lite/experimental/lrt/qnn_sdk:ungrte_qnn.bzl", "ungrte_cc_lib
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt/qnn:__subpackages__"],
 )
 
 ungrte_cc_library_with_qnn(
-    name = "qnn_compiler_plugin",
-    srcs = ["qnn_compiler_plugin.cc"],
-    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
+    name = "qnn_tensor",
+    srcs = ["qnn_tensor.cc"],
+    hdrs = ["qnn_tensor.h"],
     deps = [
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
     ],
 )
 
 ungrte_cc_test_with_qnn(
-    name = "qnn_compiler_plugin_test",
-    srcs = [
-        "qnn_compiler_plugin_test.cc",
-    ],
+    name = "qnn_tensor_test",
+    srcs = ["qnn_tensor_test.cc"],
     deps = [
-        ":qnn_compiler_plugin",  # buildcleaner: keep
-        "@com_google_absl//absl/log:absl_check",
+        ":qnn_tensor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/core:model",
-        "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
         "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
     ],
 )
