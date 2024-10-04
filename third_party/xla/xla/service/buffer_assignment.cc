@@ -128,7 +128,7 @@ absl::Status GatherComputationsByAllocationType(
   // be thread-local.
   std::deque<std::pair<const HloComputation*, bool>> worklist;
   worklist.push_back(std::make_pair(module->entry_computation(),
-                                    /*is_thread_local*/ false));
+                                    /*is_thread_local=*/false));
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
@@ -179,18 +179,9 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kAsyncStart:
           case HloOpcode::kAsyncUpdate:
           case HloOpcode::kAsyncDone:
-            // Call, conditional, while, and async operations must be called
-            // from a computation with global allocations as they may return
-            // references to buffers inside the called computation which cannot
-            // be thread-local.
-            if (is_thread_local) {
-              return InvalidArgument(
-                  "computation %s cannot contain call/while op because it "
-                  "requires thread-local buffer allocations",
-                  computation->name());
-            }
-            worklist.push_back(std::make_pair(subcomputation,
-                                              false));  // Not thread local.
+            // Call, conditional, while, and async operations inherit their
+            // thread-locality from their parent computation.
+            worklist.push_back(std::make_pair(subcomputation, is_thread_local));
             break;
           case HloOpcode::kCustomCall:
           case HloOpcode::kAllReduce:
@@ -204,8 +195,7 @@ absl::Status GatherComputationsByAllocationType(
           case HloOpcode::kSort:
           case HloOpcode::kFusion:
             // Map/reduce etc computations are always thread-local.
-            worklist.push_back(std::make_pair(subcomputation,
-                                              true));  // Thread local.
+            worklist.push_back(std::make_pair(subcomputation, true));
             break;
           default:
             return Internal("Unexpected calling opcode: %s",
