@@ -14,11 +14,9 @@
 
 #include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_tensor.h"
 
-#include <iostream>
 #include <memory>
 
 #include "absl/log/absl_check.h"
-#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
@@ -27,13 +25,37 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor.h"
 
-// NOTE: QNN Tensors must be created with a unique name. This will ensure
-// uniqueness but will want to have more meaningful names in the future.
-#define QNN_TENSOR_NAME absl::StrFormat("Tensor_%lu", __COUNTER__).c_str();
-
 namespace qnn {
 
 using ::lrt::LrtTensorManager;
+
+namespace {
+
+LrtStatus LegalizeElementType(LrtElementType src, Qnn_DataType_t& dest) {
+  switch (src) {
+    case kLrtElementTypeFloat32:
+      dest = QNN_DATATYPE_FLOAT_32;
+      return kLrtStatusOk;
+    default:
+      return kLrtStatusErrorUnsupported;
+      // TODO: Finish legalizing datatypes.
+  }
+}
+
+LrtStatus LegalizeShapeInfo(const LrtTensorManager& src, Qnn_Tensor_t& dest) {
+  dest.v2.rank = src.Rank();
+  dest.v2.dimensions = new uint32_t[dest.v2.rank];
+  for (int i = 0; i < dest.v2.rank; ++i) {
+    const auto src_dim = src.Dims()[i];
+    LRT_ENSURE(src_dim >= 1, kLrtStatusErrorInvalidArgument,
+               "Cannot pass dim < 1 to QNN Tensor.");
+
+    dest.v2.dimensions[i] = src.Dims()[i];
+  }
+  return kLrtStatusOk;
+}
+
+}  // namespace
 
 void SetInputTensorAttrs(Qnn_Tensor_t& tensor) {
   ABSL_DCHECK(tensor.version == QNN_TENSOR_VERSION_2);
@@ -58,12 +80,14 @@ void ResetTensor(Qnn_Tensor_t& tensor) {
   }
 }
 
-Qnn_Tensor_t BuildDefaultTensor() {
+Qnn_Tensor_t BuildDefaultTensor(uint32_t id) {
   Qnn_Tensor_t tensor = QNN_TENSOR_INIT;
   ResetTensor(tensor);
-  tensor.v2.name = QNN_TENSOR_NAME;
+  tensor.v2.id = id;
   return tensor;
 }
+
+Qnn_Tensor_t BuildDefaultTensor() { return BuildDefaultTensor(0); }
 
 Qnn_Tensor_t BuildInputTensor() {
   auto tensor = BuildDefaultTensor();
@@ -77,29 +101,11 @@ Qnn_Tensor_t BuildOutputTensor() {
   return tensor;
 }
 
-LrtStatus LegalizeElementType(LrtElementType src, Qnn_DataType_t& dest) {
-  switch (src) {
-    case kLrtElementTypeFloat32:
-      dest = QNN_DATATYPE_FLOAT_32;
-      return kLrtStatusOk;
-    default:
-      return kLrtStatusErrorUnsupported;
-      // TODO: Finish legalizing datatypes.
-  }
-}
-
-LrtStatus LegalizeShapeInfo(const LrtTensorManager& src, Qnn_Tensor_t& dest) {
-  dest.v2.rank = src.Rank();
-  dest.v2.dimensions = new uint32_t[dest.v2.rank];
-  for (int i = 0; i < dest.v2.rank; ++i) {
-    const auto src_dim = src.Dims()[i];
-    if (src_dim < 1) {
-      std::cerr << "Cannot pass dim < 1 to QNN tensor.\n";
-      return kLrtStatusErrorInvalidArgument;
-    }
-    dest.v2.dimensions[i] = src.Dims()[i];
-  }
-  return kLrtStatusOk;
+uint32_t MoveToId(Qnn_Tensor_t& tensor) {
+  const auto id = tensor.v2.id;
+  ResetTensor(tensor);
+  tensor.v2.id = id;
+  return id;
 }
 
 LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest) {
@@ -113,6 +119,20 @@ LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest) {
       LegalizeElementType(src_tensor->ElementType(), dest.v2.dataType));
 
   LRT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
+
+  const bool is_subgraph_in = src_tensor->IsSubgraphInput();
+  const bool is_subgraph_out = src_tensor->IsSubgraphOutput();
+
+  LRT_ENSURE(!(is_subgraph_in && is_subgraph_out),
+             kLrtStatusErrorInvalidArgument,
+             "Malformed tensor, cannot be both subgraph in and out.");
+
+  if (is_subgraph_in) {
+    SetInputTensorAttrs(dest);
+  }
+  if (is_subgraph_out) {
+    SetOutputTensorAttrs(dest);
+  }
 
   return kLrtStatusOk;
 }

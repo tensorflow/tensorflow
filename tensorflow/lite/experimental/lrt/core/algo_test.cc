@@ -228,7 +228,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
     ASSERT_EQ(sliced_subgraph_outputs.size(), 1);
     ASSERT_TRUE(graph_tools::MatchTensorDefiningOp(
         sliced_subgraph_outputs[0], 0, sliced_subgraph_ops.back()));
-    ASSERT_TRUE(graph_tools::MatchkTensorNoUses(sliced_subgraph_outputs[0]));
+    ASSERT_TRUE(graph_tools::MatchTensorNoUses(sliced_subgraph_outputs[0]));
   }
 }
 

@@ -2202,6 +2202,11 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
         self.skipTest("TPU doesn't support float64")
       if dtype == bfloat16 and self.backend.platform == "tpu":
         self.skipTest("b/371119032: Test fails on TPUs with bfloat16")
+      if pathways_ifrt and dtype == float8_e4m3b11fnuz:
+        # TODO(reedwm): Once the minimum ml_dtypes in JAX is >= 0.5.0 which
+        # allows dtypes float8_e4m3 and float8_e3m4 to be used, also skip test
+        # with these dtypes
+        self.skipTest(f"{dtype.__name__} is not supported in IFRT")
       finfo = ml_dtypes.finfo(dtype)
       eps = finfo.eps
       c = self._NewComputation()

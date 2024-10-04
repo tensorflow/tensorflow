@@ -24,7 +24,7 @@ namespace {
 
 using ::lrt::LrtTensorManager;
 
-TEST(TestLrtTensorManager, SimpleRankedTensor) {
+TEST(TestLrtTensorManager, SimpleRankedTensorSubgraphInput) {
   auto model = LoadTestFileModel("one_mul.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
@@ -39,5 +39,45 @@ TEST(TestLrtTensorManager, SimpleRankedTensor) {
   EXPECT_EQ(tensor->Dims(), absl::MakeConstSpan({2, 2}));
   EXPECT_EQ(tensor->ElementType(), kLrtElementTypeFloat32);
   EXPECT_EQ(tensor->Tensor(), inputs[0]);
+  EXPECT_TRUE(tensor->IsSubgraphInput());
+  EXPECT_FALSE(tensor->IsSubgraphOutput());
+}
+
+TEST(TestLrtTensorManager, SimpleRankedTensorSubgraphOutput) {
+  auto model = LoadTestFileModel("one_mul.tflite");
+
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          ::graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto outputs,
+                          ::graph_tools::GetSubgraphOutputs(subgraph));
+
+  LrtTensorManager::Unique tensor;
+  ASSERT_STATUS_OK(LrtTensorManager::MakeFromTensor(outputs[0], tensor));
+
+  ASSERT_EQ(tensor->Rank(), 2);
+  EXPECT_EQ(tensor->Dims(), absl::MakeConstSpan({2, 2}));
+  EXPECT_EQ(tensor->ElementType(), kLrtElementTypeFloat32);
+  EXPECT_EQ(tensor->Tensor(), outputs[0]);
+  EXPECT_TRUE(tensor->IsSubgraphOutput());
+  EXPECT_FALSE(tensor->IsSubgraphInput());
+}
+
+TEST(TestLrtTensorManager, SimpleRankedTensor) {
+  auto model = LoadTestFileModel("simple_multi_op.tflite");
+
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          ::graph_tools::GetSubgraph(model.get()));
+  ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
+  ASSERT_RESULT_OK_ASSIGN(auto op_outs, ::graph_tools::GetOpOuts(ops[1]));
+
+  LrtTensorManager::Unique tensor;
+  ASSERT_STATUS_OK(LrtTensorManager::MakeFromTensor(op_outs[0], tensor));
+
+  ASSERT_EQ(tensor->Rank(), 2);
+  EXPECT_EQ(tensor->Dims(), absl::MakeConstSpan({2, 2}));
+  EXPECT_EQ(tensor->ElementType(), kLrtElementTypeFloat32);
+  EXPECT_EQ(tensor->Tensor(), op_outs[0]);
+  EXPECT_FALSE(tensor->IsSubgraphOutput());
+  EXPECT_FALSE(tensor->IsSubgraphInput());
 }
 }  // namespace

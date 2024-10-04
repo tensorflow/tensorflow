@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
+#include "tensorflow/lite/experimental/lrt/qnn/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
 
 using ::qnn::QnnManager;
@@ -144,62 +146,25 @@ LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
   return kLrtStatusOk;
 }
 
-// Composes a QNN graph with the context inside qnn from subgraph. On success,
-// will write the QNN graph name (entry point) to output param.
-LrtStatus ComposeGraph(QnnManager& qnn, LrtSubgraph subgraph,
-                       std::string& qnn_graph_name) {
-  // TODO: Implement this.
-  qnn_graph_name = "Unimplemented_QNN_Graph";
-  return kLrtStatusOk;
-}
-
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
                            LrtSubgraphArray partitions,
                            lrt_param_index_t num_partitions,
                            LrtCompiledResult* compiled_result) {
-  // NOTE: Currently we are demoing by just handling a simple case where
-  // there is one partitions and the partitions is as follows:
+  auto result = std::make_unique<LrtCompiledResultT>();
 
-  // func(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>)
-  //   %0 = tfl.mul(%arg0, %arg1)
-  //   return %0
-
-  if (num_partitions != 1) {
-    std::cerr << "Only 1 partition currently supported.\n";
-    return kLrtStatusErrorUnsupported;
+  // TODO: Support multiple partitions in QCC plugin compile.
+  LRT_ENSURE_SUPPORTED(num_partitions, 1);
+  {
+    std::string& entry_point_name = result->graph_names.emplace_back();
+    entry_point_name = "qnn_partition_0";
+    LRT_RETURN_STATUS_IF_NOT_OK(
+        ComposeGraph(compiler_plugin->qnn, partitions[0], entry_point_name));
   }
-  auto subgraph = partitions[0];
-
-  LRT_ASSIGN_OR_RETURN_STATUS(auto inputs,
-                              graph_tools::GetSubgraphInputs(subgraph));
-  if (inputs.size() != 2) {
-    std::cerr << "Only 2 inputs currently supported\n";
-    return kLrtStatusErrorUnsupported;
-  }
-
-  LRT_ASSIGN_OR_RETURN_STATUS(auto outputs,
-                              graph_tools::GetSubgraphOutputs(subgraph));
-  if (outputs.size() != 1) {
-    std::cerr << "Only 1 output currently supported\n";
-    return kLrtStatusErrorUnsupported;
-  }
-
-  LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(subgraph));
-  if (ops.size() != 1) {
-    std::cerr << "Only one op subgraphs supported\n";
-    return kLrtStatusErrorUnsupported;
-  }
-
-  LrtCompiledResult result = new LrtCompiledResultT;
-  result->graph_names.reserve(num_partitions);
-
-  LRT_RETURN_STATUS_IF_NOT_OK(ComposeGraph(compiler_plugin->qnn, subgraph,
-                                           result->graph_names.emplace_back()));
 
   LRT_RETURN_STATUS_IF_NOT_OK(
       compiler_plugin->qnn.GenerateContextBin(result->context_bin));
 
-  *compiled_result = result;
+  *compiled_result = result.release();
 
   return kLrtStatusOk;
 }

@@ -2751,8 +2751,8 @@ func.func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
   func.return %0 : tensor<2xf32>
 }
 
-// CHECK-NOT: tfl
-
+// CHECK: %0 = "tfl.complex_abs"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+// CHECK: return %0 : tensor<2xf32>
 // -----
 
 func.func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {

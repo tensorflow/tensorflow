@@ -1519,7 +1519,43 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
       }  // Mul: "output"
     };
 
-  // Pattern 2:
+  // Pattern 2: Erfc
+  //             Const: 1/sqrt(2)       Const: 1/2
+  //                            \                \
+  //  * --> BiasAdd --> Neg --> Mul --> Erfc --> Mul --> Mul
+  //        /       \____________________________________/
+  //  MatMul
+  static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"Mul", "one_half_x_erfc", NodeStatus::kRemove,
+          {
+            {"Const", "one_half", NodeStatus::kRemain},
+            {"Erfc", "erfc", NodeStatus::kRemove,
+              {
+                {"Mul", "neg_bias_add_x_sqrt_one_half", NodeStatus::kRemove,
+                  {
+                    {"Const", "sqrt_one_half", NodeStatus::kRemain},
+                    {"Neg", "neg", NodeStatus::kRemove,
+                      {{"BiasAdd", "bias_add", NodeStatus::kRemove}}
+                    },  // Neg: "neg"
+                  }
+                }  // Mul: "neg_bias_add_x_sqrt_one_half"
+              }  // Erfc: "erfc"
+            }
+          }  // Mul: "one_half_x_erfc"
+        },
+        {"BiasAdd", "bias_add", NodeStatus::kRemove,
+          {
+            {"MatMul", "matmul", NodeStatus::kRemove},
+            {"*", "bias", NodeStatus::kRemain}
+          }
+        }  // BiasAdd: "bias_add"
+      }
+    };  // Mul: "output"
+
+
+  // Pattern 3:
   //  Cast|Const: 1/sqrt(2)    Cast|Const: 1
   //                  \               \
   //  * --> BiasAdd --> Mul --> Erf --> Add|AddV2 --> Mul
@@ -1527,7 +1563,7 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   // MatMul           ----------------------------> Mul
   //                                                /
   //                                  Cast|Const: 1/2
-  static utils::OpTypePattern* gelu_exact_pattern2 = new utils::OpTypePattern
+  static utils::OpTypePattern* gelu_exact_pattern3 = new utils::OpTypePattern
     {"Mul", "output", NodeStatus::kReplace,
       {
         {"Add|AddV2", "erf_plus_one", NodeStatus::kRemove,
@@ -1567,17 +1603,18 @@ bool IsMatchedMatMulBiasAddAndGeluExact(
   std::set<int> dummy_remove_node_indices;
   if (!matched_nodes_map) matched_nodes_map = &dummy_matched_nodes_map;
   if (!remove_node_indices) remove_node_indices = &dummy_remove_node_indices;
-  if (graph_matcher.GetMatchedNodes(*gelu_exact_pattern, ctx.nodes_to_preserve,
-                                    node_view, matched_nodes_map,
-                                    remove_node_indices)) {
-    return true;
+  auto patterns = {gelu_exact_pattern, gelu_exact_pattern2,
+                   gelu_exact_pattern3};
+  for (auto& pattern : patterns) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    if (graph_matcher.GetMatchedNodes(*pattern, ctx.nodes_to_preserve,
+                                      node_view, matched_nodes_map,
+                                      remove_node_indices)) {
+      return true;
+    }
   }
-  // Pattern 1 not matched, check for pattern 2
-  matched_nodes_map->clear();
-  remove_node_indices->clear();
-  return graph_matcher.GetMatchedNodes(*gelu_exact_pattern2,
-                                       ctx.nodes_to_preserve, node_view,
-                                       matched_nodes_map, remove_node_indices);
+  return false;
 }
 
 // Gelu in python api generates a number of nodes in the graph. Depending on the
@@ -1742,8 +1779,12 @@ bool FindMatMulBiasAddAndGelu(RemapperContext* ctx, int node_index,
     }
 
     // Check if the matched constants have desired values.
-    std::map<string, float> values_map = {
-        {"sqrt_one_half", 0.707106}, {"one", 1.0}, {"one_half", 0.5}};
+    std::map<string, float> values_map = {{"sqrt_one_half", 0.707106},
+                                          {"one_half", 0.5}};
+    // GeluExact Pattern 2 (Erfc) does not have constant "one".
+    if (matched_nodes_map->find("one") != matched_nodes_map->end()) {
+      values_map["one"] = 1.0;
+    }
     if (!VerifyConstants(ctx, matched_nodes_map, &values_map)) return false;
   } else if (found_gelu_approximate) {
     NodeDef* matmul_node =
