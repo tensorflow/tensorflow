@@ -4114,6 +4114,82 @@ TEST_F(HostOffloaderTest, RemoveRedundantCopiesBackToHostOutputIsNonTuple) {
   TestShapeHasMemorySpace(ShapeUtil::GetSubshape(output_tuple->shape(), {1}),
                           Layout::kHostMemorySpace);
 }
+
+// Test to ensure that redundant "MoveToHost" instructions do not produce
+// redundant copy to host instructions after running the host offloader pass.
+TEST_F(HostOffloaderTest, AvoidRedundantCopiesToHost) {
+  const absl::string_view hlo_string = R"(
+    HloModule AvoidRedundantCopiesToHost, entry_computation_layout={(bf16[65536,1024]{1,0:T(8,128)(2,1)})->bf16[65536,1024]{1,0:T(8,128)(2,1)S(5)}}, num_partitions=8
+
+    body {
+      param.1 = (s32[]{:T(128)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}) parameter(0)
+      get-tuple-element.3 = s32[]{:T(128)} get-tuple-element(param.1), index=0
+      constant.22 = s32[]{:T(128)} constant(1)
+      add.1 = s32[]{:T(128)} add(get-tuple-element.3, constant.22)
+      get-tuple-element.4 = bf16[65536,1024]{1,0:T(8,128)(2,1)} get-tuple-element(param.1), index=1
+      get-tuple-element.5 = bf16[65536,1024]{1,0:T(8,128)(2,1)} get-tuple-element(param.1), index=2
+      constant.23 = s32[]{:T(128)} constant(8)
+      multiply.1 = s32[]{:T(128)} multiply(get-tuple-element.3, constant.23)
+      constant.24 = s32[]{:T(128)} constant(0)
+      compare.3 = pred[]{:T(512)} compare(multiply.1, constant.24), direction=LT
+      constant.25 = s32[]{:T(128)} constant(65536)
+      add.2 = s32[]{:T(128)} add(multiply.1, constant.25)
+      select.1 = s32[]{:T(128)} select(compare.3, add.2, multiply.1)
+      dynamic-slice.1 = bf16[8,1024]{1,0:T(8,128)(2,1)} dynamic-slice(get-tuple-element.5, select.1, constant.24), dynamic_slice_sizes={8,1024}
+      custom-call.4 = bf16[8,1024]{1,0:T(8,128)(2,1)} custom-call(dynamic-slice.1), custom_call_target="MoveToHost"
+      dynamic-update-slice.0 = bf16[65536,1024]{1,0:T(8,128)(2,1)} dynamic-update-slice(get-tuple-element.4, custom-call.4, select.1, constant.24)
+      ROOT tuple.1 = (s32[]{:T(128)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}) tuple(add.1, dynamic-update-slice.0, get-tuple-element.5)
+    }
+
+    or_comp {
+      Arg_0.27 = pred[]{:T(512)} parameter(0)
+      Arg_1.28 = pred[]{:T(512)} parameter(1)
+      ROOT or.29 = pred[]{:T(512)} or(Arg_0.27, Arg_1.28)
+    }
+
+    condition {
+      param = (s32[]{:T(128)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}) parameter(0)
+      get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(param), index=0
+      constant.15 = s32[]{:T(128)} constant(8)
+      multiply.0 = s32[]{:T(128)} multiply(get-tuple-element.1, constant.15)
+      constant.16 = s32[]{:T(128)} constant(65536)
+      compare.0 = pred[]{:T(512)} compare(multiply.0, constant.16), direction=LT
+      get-tuple-element.2 = bf16[65536,1024]{1,0:T(8,128)(2,1)} get-tuple-element(param), index=2
+      constant.17 = s32[]{:T(128)} constant(0)
+      compare.1 = pred[]{:T(512)} compare(multiply.0, constant.17), direction=LT
+      add.0 = s32[]{:T(128)} add(multiply.0, constant.16)
+      select.0 = s32[]{:T(128)} select(compare.1, add.0, multiply.0)
+      dynamic-slice.0 = bf16[8,1024]{1,0:T(8,128)(2,1)} dynamic-slice(get-tuple-element.2, select.0, constant.17), dynamic_slice_sizes={8,1024}
+      constant.20 = bf16[]{:T(256)} constant(0)
+      broadcast.3 = bf16[8,1024]{1,0:T(8,128)(2,1)} broadcast(constant.20), dimensions={}
+      compare.2 = pred[8,1024]{1,0:T(8,128)(4,1)} compare(dynamic-slice.0, broadcast.3), direction=GT
+      constant.21 = pred[]{:T(512)} constant(false)
+      reduce.0 = pred[]{:T(512)} reduce(compare.2, constant.21), dimensions={0,1}, to_apply=or_comp
+      ROOT and.0 = pred[]{:T(512)} and(compare.0, reduce.0)
+    }
+
+    ENTRY main {
+      constant.28 = s32[]{:T(128)} constant(0)
+      constant.29 = bf16[]{:T(256)} constant(0)
+      broadcast.4 = bf16[65536,1024]{1,0:T(8,128)(2,1)} broadcast(constant.29), dimensions={}
+      param.2 = bf16[65536,1024]{1,0:T(8,128)(2,1)} parameter(0), sharding={devices=[8,1]<=[4,2]T(1,0)}
+      tuple.2 = (s32[]{:T(128)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}) tuple(constant.28, broadcast.4, param.2)
+      while.1 = (s32[]{:T(128)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}, bf16[65536,1024]{1,0:T(8,128)(2,1)}) while(tuple.2), condition=condition, body=body
+      get-tuple-element.9 = bf16[65536,1024]{1,0:T(8,128)(2,1)} get-tuple-element(while.1), index=1
+      ROOT custom-call.5 = bf16[65536,1024]{1,0:T(8,128)(2,1)} custom-call(get-tuple-element.9), custom_call_target="MoveToHost"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    ASSERT_NE(instr->opcode(), HloOpcode::kCopy);
+  }
+}
+
 }  // namespace
 
 }  // namespace xla
