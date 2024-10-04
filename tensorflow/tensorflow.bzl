@@ -141,7 +141,7 @@ def if_not_v2(a):
 
 def if_nvcc(a):
     return select({
-        "@local_config_cuda//cuda:using_nvcc": a,
+        clean_dep("//tensorflow:is_cuda_nvcc"): a,
         "//conditions:default": [],
     })
 
