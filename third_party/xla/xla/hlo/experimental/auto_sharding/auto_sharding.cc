@@ -4118,6 +4118,7 @@ absl::StatusOr<bool> AutoSharding::Run(
   double min_objective_value = std::numeric_limits<double>::max();
   int min_mesh_shape_index = -1;
   std::unique_ptr<HloModule> min_mesh_shape_module;
+  std::vector<std::string> mesh_shape_error_messages(mesh_shapes.size());
   for (size_t i = 0; i < mesh_shapes.size(); ++i) {
     VLOG(1) << "Trying mesh shape " << spmd::ToString(mesh_shapes[i]);
     AutoShardingOption this_option = option_;
@@ -4138,6 +4139,7 @@ absl::StatusOr<bool> AutoSharding::Run(
         pass->RunAutoSharding(module_clone.get(), replicated_small_tensors,
                               execution_threads, sharding_propagation_solution);
     if (!pass_result.ok()) {
+      mesh_shape_error_messages[i] = pass_result.status().message();
       VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
               << " led to the following error: "
               << pass_result.status().message();
@@ -4157,17 +4159,19 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  std::string trying_to_find =
-      option_.try_multiple_mesh_shapes
-          ? "a device mesh (and the corresponding shardings)"
-          : "shardings";
-  CHECK_GE(min_mesh_shape_index, 0)
-      << "The auto-sharding pass could not find " << trying_to_find
-      << " that works for this input. This could be the result of a low memory "
-         "budget (please refer to the "
-         "`--xla_tpu_auto_spmd_partitioning_memory_budget_ratio` flag to set a "
-         "higher budget). If you think you have set a reasonably large memory "
-         "budget, please report this as a bug.";
+  if (min_mesh_shape_index < 0) {
+    std::string error_message =
+        "The auto-sharding pass could not find a solution for any of the mesh "
+        "shapes tried. Below, we list the errors encountered for each of the "
+        "mesh shapes:\n";
+    for (size_t i = 0; i < mesh_shapes.size(); ++i) {
+      LOG(INFO) << mesh_shape_error_messages[i];
+      absl::StrAppend(&error_message, "Mesh shape ",
+                      spmd::ToString(mesh_shapes[i]), ": ",
+                      mesh_shape_error_messages[i], "\n");
+    }
+    return absl::InternalError(error_message);
+  }
 
   solver_optimal_objective_value_ = min_objective_value;
   if (module_is_changed) {
