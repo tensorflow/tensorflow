@@ -314,7 +314,6 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
@@ -322,6 +321,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -333,7 +333,7 @@ cc_library(
     hdrs = ["status_to_from_proto.h"],
     deps = [
         ":status",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ] + tf_platform_deps("status"),
 )
@@ -347,7 +347,7 @@ cc_library(
         ":status",
         ":statusor",
         ":test",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -1359,10 +1359,10 @@ tsl_cc_test(
         ":status_to_from_proto",
         ":test",
         ":test_main",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ],
 )
@@ -1393,7 +1393,7 @@ tsl_cc_test(
         ":statusor",
         ":test",
         ":test_main",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

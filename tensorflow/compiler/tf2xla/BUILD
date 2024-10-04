@@ -1047,9 +1047,9 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

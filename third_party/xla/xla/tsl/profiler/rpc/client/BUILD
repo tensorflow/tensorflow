@@ -121,6 +121,7 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     deps = [
+        "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -130,7 +131,6 @@ cc_library(
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ] + tsl_grpc_cc_dependencies(),
     alwayslink = True,
 )

@@ -129,8 +129,8 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
-    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
