@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOAD_SDK_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOAD_SDK_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOAD_SDK_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOAD_SDK_H_
 
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -24,14 +24,6 @@
 #include "third_party/qairt/include/QNN/QnnCommon.h"
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 
-#ifndef QNN_SDK_LIB_HTP
-
-// If path not provided, check current directory.
-constexpr absl::string_view kLibQnnHtpSo = "libQnnHtp.so";
-#else
-
-constexpr absl::string_view kLibQnnHtpSo = QNN_SDK_LIB_HTP;
-#endif
 
 namespace qnn::load {
 
@@ -73,4 +65,4 @@ inline static SymbolT ResolveQnnSymbol(void* lib_handle,
 
 }  // namespace qnn::load
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_LOAD_SDK_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOAD_SDK_H_
