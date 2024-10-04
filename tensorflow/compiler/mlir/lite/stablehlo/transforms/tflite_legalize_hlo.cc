@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -292,6 +293,14 @@ bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
 
+bool IsAbsOpLegal(mhlo::AbsOp op) {
+  return !llvm::cast<ShapedType>(op.getOperand().getType())
+              .getElementType()
+              .isIntOrFloat() &&
+         !llvm::cast<mlir::ComplexType>(
+             op.getOperand().getType().getElementType());
+}
+
 void SetUnaryOpLegal(ConversionTarget& target) {
   auto is_legal = [](Operation* op) {
     return !llvm::cast<ShapedType>(op->getOperand(0).getType())
@@ -301,7 +310,6 @@ void SetUnaryOpLegal(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::AbsOp,
       mhlo::BitcastConvertOp,
       mhlo::CeilOp,
       mhlo::ConvertOp,
@@ -378,6 +386,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
 
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
+  target.addDynamicallyLegalOp<mhlo::AbsOp>(IsAbsOpLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
   target.addDynamicallyLegalOp<mhlo::TupleOp>(

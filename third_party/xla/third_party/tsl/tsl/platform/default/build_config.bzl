@@ -778,7 +778,7 @@ def tsl_cc_test(
                 clean_dep("@com_google_protobuf//:protobuf"),
                 # TODO(ddunleavy) remove these and add proto deps to tests
                 # granularly
-                clean_dep("//tsl/protobuf:error_codes_proto_impl_cc_impl"),
+                clean_dep("@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc_impl"),
                 clean_dep("@local_xla//xla/tsl/protobuf:histogram_proto_cc_impl"),
                 clean_dep("@local_xla//xla/tsl/protobuf:status_proto_cc_impl"),
                 clean_dep("//tsl/profiler/protobuf:xplane_proto_cc_impl"),
