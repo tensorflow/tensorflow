@@ -85,7 +85,7 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
                              op_data_size);
-  ASSERT_EQ("Unimplemented_QNN_Graph", op_data_string);
+  ASSERT_EQ("qnn_partition_0", op_data_string);
 
   LrtCompiledResultDestroy(compiled);
 }

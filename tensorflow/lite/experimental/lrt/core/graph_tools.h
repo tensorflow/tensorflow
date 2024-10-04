@@ -246,7 +246,7 @@ inline bool MatchTensorHasUses(LrtTensor tensor,
 }
 
 // Matches a tensor with no uses.
-inline bool MatchkTensorNoUses(LrtTensor tensor) {
+inline bool MatchTensorNoUses(LrtTensor tensor) {
   lrt_param_index_t num_uses;
   lrt_param_index_t* use_user_arg_ind;
   LrtOpArray users = nullptr;

@@ -265,7 +265,7 @@ cc_library(
         "//xla/service:local_service",
         "//xla/service:local_service_utils",
         "//xla/service/gpu:executable_proto_cc",
-        "//xla/stream_executor/platform",
+        "//xla/stream_executor/platform:initialize",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:casts",

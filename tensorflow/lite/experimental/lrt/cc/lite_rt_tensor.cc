@@ -21,6 +21,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 
 namespace lrt {
 
@@ -51,6 +52,15 @@ LrtStatus LrtTensorManager::MakeFromTensor(LrtTensor tensor, Unique& result) {
   result->tensor_ = tensor;
 
   return kLrtStatusOk;
+}
+
+bool LrtTensorManager::IsSubgraphOutput() const {
+  return ::graph_tools::MatchTensorNoUses(tensor_);
+}
+
+bool LrtTensorManager::IsSubgraphInput() const {
+  return ::graph_tools::MatchTensorNoDefiningOp(tensor_) &&
+         ::graph_tools::MatchNoWeights(tensor_);
 }
 
 }  // namespace lrt

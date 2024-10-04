@@ -43,7 +43,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "//xla/stream_executor",  # buildcleaner: keep
         "//xla/stream_executor:executor_cache",
-        "//xla/stream_executor/platform",
+        "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
