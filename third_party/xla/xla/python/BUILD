@@ -92,6 +92,7 @@ py_strict_library(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "@ml_dtypes",
     ] + if_google(["//third_party/py/numpy"]),
 )
 
@@ -114,6 +115,7 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "@ml_dtypes",
     ] + if_google(["//third_party/py/numpy"]) + xla_py_test_deps(),
 )
 
@@ -150,6 +152,7 @@ py_strict_test(
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
+        "@ml_dtypes",
     ] + if_google(
         [
             ":xla_gpu_extension",
