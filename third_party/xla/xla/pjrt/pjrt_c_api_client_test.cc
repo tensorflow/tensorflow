@@ -24,7 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/pjrt_api.h"
