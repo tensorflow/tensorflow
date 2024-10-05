@@ -17,40 +17,23 @@ package(
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
-cc_library(
-    name = "lite_rt_c_api",
-    hdrs = [
-        "lite_rt_common.h",
-        "lite_rt_compiler_plugin.h",
-        "lite_rt_model.h",
-        "lite_rt_op_code.h",
-        "lite_rt_support.h",
+cc_test(
+    name = "tensor_buffer_test",
+    srcs = [
+        "tensor_buffer_test.cc",
     ],
+    linkopts = select({
+        "//tools/cc_target_os:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
     deps = [
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/experimental/lrt/c:event",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/core:event",
+        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_googletest//:gtest_main",
     ],
 )
-
-cc_library(
-    name = "tensor_buffer",
-    hdrs = [
-        "lite_rt_tensor_buffer.h",
-    ],
-    deps = [
-        ":event",
-        ":lite_rt_c_api",
-    ],
-)
-
-cc_library(
-    name = "event",
-    hdrs = [
-        "lite_rt_event.h",
-    ],
-    deps = [
-        ":lite_rt_c_api",
-    ],
-)
-
-exports_files(srcs = glob(["lite_rt*.h"]))

@@ -121,3 +121,79 @@ cc_library(
         "@llvm-project//llvm:Support",
     ],
 )
+
+cc_library(
+    name = "tensor_buffer",
+    srcs = [
+        "dmabuf_buffer.cc",
+        "fastrpc_buffer.cc",
+        "ion_buffer.cc",
+        "lite_rt_tensor_buffer.cc",
+        "tensor_buffer.cc",
+    ],
+    hdrs = [
+        "dmabuf_buffer.h",
+        "fastrpc_buffer.h",
+        "ion_buffer.h",
+        "tensor_buffer.h",
+    ],
+    deps = [
+        ":logging",
+        ":utils",
+        "//tensorflow/lite/experimental/lrt/c:event",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "event",
+    srcs = [
+        "lite_rt_event.cc",
+    ],
+    hdrs = [
+    ],
+    deps = [
+        ":logging",
+        "//tensorflow/lite/experimental/lrt/c:event",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+    ],
+)
+
+cc_library(
+    name = "utils",
+    srcs = [
+        "utils.cc",
+    ],
+    hdrs = [
+        "utils.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "logging",
+    srcs = [
+        "logging.cc",
+    ],
+    hdrs = [
+        "logging.h",
+    ],
+    deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:framework_stable",
+    ],
+)

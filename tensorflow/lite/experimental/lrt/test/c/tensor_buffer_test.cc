@@ -1,0 +1,297 @@
+// Copyright 2024 Google LLC.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <cstdint>
+#include <cstring>
+
+#include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
+#include "absl/log/absl_log.h"
+#include "absl/log/log.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"
+
+TEST(TensorBuffer, HostMemory) {
+  float kTensorData[] = {10, 20, 30, 40};
+
+  const int32_t dimensions[] = {sizeof(kTensorData) / sizeof(kTensorData[0])};
+  LrtRankedTensorType tensor_type = {/*.element_type=*/kLrtElementTypeFloat32,
+                                     /*.layout=*/{
+                                         /*.rank=*/1,
+                                         /*.dimensions=*/dimensions,
+                                     }};
+
+  LrtTensorBuffer buffer;
+  ASSERT_EQ(
+      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeHostMemory, tensor_type,
+                                   sizeof(kTensorData), &buffer),
+      kLrtStatusOk);
+
+  LrtTensorBufferType buffer_type;
+  ASSERT_EQ(LrtGetTensorBufferType(buffer, &buffer_type), kLrtStatusOk);
+  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeHostMemory);
+
+  LrtRankedTensorType tensor_type_;
+  ASSERT_EQ(LrtGetTensorBufferTensorType(buffer, &tensor_type_), kLrtStatusOk);
+  ASSERT_EQ(tensor_type_.element_type, kLrtElementTypeFloat32);
+  ASSERT_EQ(tensor_type_.layout.rank, 1);
+  ASSERT_EQ(tensor_type_.layout.dimensions[0],
+            tensor_type.layout.dimensions[0]);
+
+  size_t size;
+  ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LrtGetTensorBufferOffset(buffer, &offset), kLrtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  LrtDestroyTensorBuffer(buffer);
+}
+
+#if LRT_HAS_AHWB_SUPPORT
+TEST(TensorBuffer, Ahwb) {
+  float kTensorData[] = {10, 20, 30, 40};
+
+  const int32_t dimensions[] = {sizeof(kTensorData) / sizeof(kTensorData[0])};
+  LrtRankedTensorType tensor_type = {/*.element_type=*/kLrtElementTypeFloat32,
+                                     /*.layout=*/{
+                                         /*.rank=*/1,
+                                         /*.dimensions=*/dimensions,
+                                     }};
+
+  LrtTensorBuffer buffer;
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeAhwb, tensor_type,
+                                         sizeof(kTensorData), &buffer),
+            kLrtStatusOk);
+
+  LrtTensorBufferType buffer_type;
+  ASSERT_EQ(LrtGetTensorBufferType(buffer, &buffer_type), kLrtStatusOk);
+  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeAhwb);
+
+  LrtRankedTensorType tensor_type_;
+  ASSERT_EQ(LrtGetTensorBufferTensorType(buffer, &tensor_type_), kLrtStatusOk);
+  ASSERT_EQ(tensor_type_.element_type, kLrtElementTypeFloat32);
+  ASSERT_EQ(tensor_type_.layout.rank, 1);
+  ASSERT_EQ(tensor_type_.layout.dimensions[0],
+            tensor_type.layout.dimensions[0]);
+
+  size_t size;
+  ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LrtGetTensorBufferOffset(buffer, &offset), kLrtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  LrtDestroyTensorBuffer(buffer);
+}
+#endif  // LRT_HAS_AHWB_SUPPORT
+
+#if LRT_HAS_ION_SUPPORT
+TEST(TensorBuffer, Ion) {
+  if (!lrt::internal::IonBuffer::IsSupported()) {
+    ABSL_LOG(INFO)
+        << "ION buffers are not supported on this platform; skipping the test";
+    return;
+  }
+
+  float kTensorData[] = {10, 20, 30, 40};
+
+  const int32_t dimensions[] = {sizeof(kTensorData) / sizeof(kTensorData[0])};
+  LrtRankedTensorType tensor_type = {/*.element_type=*/kLrtElementTypeFloat32,
+                                     /*.layout=*/{
+                                         /*.rank=*/1,
+                                         /*.dimensions=*/dimensions,
+                                     }};
+
+  LrtTensorBuffer buffer;
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeIon, tensor_type,
+                                         sizeof(kTensorData), &buffer),
+            kLrtStatusOk);
+
+  LrtTensorBufferType buffer_type;
+  ASSERT_EQ(LrtGetTensorBufferType(buffer, &buffer_type), kLrtStatusOk);
+  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeIon);
+
+  LrtRankedTensorType tensor_type_;
+  ASSERT_EQ(LrtGetTensorBufferTensorType(buffer, &tensor_type_), kLrtStatusOk);
+  ASSERT_EQ(tensor_type_.element_type, kLrtElementTypeFloat32);
+  ASSERT_EQ(tensor_type_.layout.rank, 1);
+  ASSERT_EQ(tensor_type_.layout.dimensions[0],
+            tensor_type.layout.dimensions[0]);
+
+  size_t size;
+  ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LrtGetTensorBufferOffset(buffer, &offset), kLrtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  LrtDestroyTensorBuffer(buffer);
+}
+#endif  // LRT_HAS_ION_SUPPORT
+
+#if LRT_HAS_DMABUF_SUPPORT
+TEST(TensorBuffer, DmaBuf) {
+  if (!lrt::internal::DmaBufBuffer::IsSupported()) {
+    ABSL_LOG(INFO)
+        << "DMA-BUF buffers are not supported on this platform; skipping "
+           "the test";
+    return;
+  }
+
+  float kTensorData[] = {10, 20, 30, 40};
+
+  const int32_t dimensions[] = {sizeof(kTensorData) / sizeof(kTensorData[0])};
+  LrtRankedTensorType tensor_type = {/*.element_type=*/kLrtElementTypeFloat32,
+                                     /*.layout=*/{
+                                         /*.rank=*/1,
+                                         /*.dimensions=*/dimensions,
+                                     }};
+
+  LrtTensorBuffer buffer;
+  ASSERT_EQ(
+      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeDmaBuf, tensor_type,
+                                   sizeof(kTensorData), &buffer),
+      kLrtStatusOk);
+
+  LrtTensorBufferType buffer_type;
+  ASSERT_EQ(LrtGetTensorBufferType(buffer, &buffer_type), kLrtStatusOk);
+  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeDmaBuf);
+
+  LrtRankedTensorType tensor_type_;
+  ASSERT_EQ(LrtGetTensorBufferTensorType(buffer, &tensor_type_), kLrtStatusOk);
+  ASSERT_EQ(tensor_type_.element_type, kLrtElementTypeFloat32);
+  ASSERT_EQ(tensor_type_.layout.rank, 1);
+  ASSERT_EQ(tensor_type_.layout.dimensions[0],
+            tensor_type.layout.dimensions[0]);
+
+  size_t size;
+  ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LrtGetTensorBufferOffset(buffer, &offset), kLrtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  LrtDestroyTensorBuffer(buffer);
+}
+#endif  // LRT_HAS_DMABUF_SUPPORT
+
+#if LRT_HAS_FASTRPC_SUPPORT
+TEST(TensorBuffer, FastRpc) {
+  if (!lrt::internal::FastRpcBuffer::IsSupported()) {
+    ABSL_LOG(INFO)
+        << "FastRPC buffers are not supported on this platform; skipping "
+           "the test";
+    return;
+  }
+
+  float kTensorData[] = {10, 20, 30, 40};
+
+  const int32_t dimensions[] = {sizeof(kTensorData) / sizeof(kTensorData[0])};
+  LrtRankedTensorType tensor_type = {/*.element_type=*/kLrtElementTypeFloat32,
+                                     /*.layout=*/{
+                                         /*.rank=*/1,
+                                         /*.dimensions=*/dimensions,
+                                     }};
+
+  LrtTensorBuffer buffer;
+  ASSERT_EQ(
+      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeFastRpc, tensor_type,
+                                   sizeof(kTensorData), &buffer),
+      kLrtStatusOk);
+
+  LrtTensorBufferType buffer_type;
+  ASSERT_EQ(LrtGetTensorBufferType(buffer, &buffer_type), kLrtStatusOk);
+  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeFastRpc);
+
+  LrtRankedTensorType tensor_type_;
+  ASSERT_EQ(LrtGetTensorBufferTensorType(buffer, &tensor_type_), kLrtStatusOk);
+  ASSERT_EQ(tensor_type_.element_type, kLrtElementTypeFloat32);
+  ASSERT_EQ(tensor_type_.layout.rank, 1);
+  ASSERT_EQ(tensor_type_.layout.dimensions[0],
+            tensor_type.layout.dimensions[0]);
+
+  size_t size;
+  ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
+  ASSERT_EQ(size, sizeof(kTensorData));
+
+  size_t offset;
+  ASSERT_EQ(LrtGetTensorBufferOffset(buffer, &offset), kLrtStatusOk);
+  ASSERT_EQ(offset, 0);
+
+  void* host_mem_addr;
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  std::memcpy(host_mem_addr, kTensorData, sizeof(kTensorData));
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  ASSERT_EQ(LrtLockTensorBuffer(buffer, &host_mem_addr, /*event=*/nullptr),
+            kLrtStatusOk);
+  ASSERT_EQ(std::memcmp(host_mem_addr, kTensorData, sizeof(kTensorData)), 0);
+  ASSERT_EQ(LrtUnlockTensorBuffer(buffer), kLrtStatusOk);
+
+  LrtDestroyTensorBuffer(buffer);
+}
+#endif  // LRT_HAS_FASTRPC_SUPPORT
