@@ -123,6 +123,14 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_loading",
+    srcs = ["dynamic_loading.cc"],
+    hdrs = ["dynamic_loading.h"],
+    linkopts = ["-ldl"],
+    deps = ["@com_google_absl//absl/strings:string_view"],
+)
+
+cc_library(
     name = "tensor_buffer",
     srcs = [
         "dmabuf_buffer.cc",

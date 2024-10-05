@@ -20,16 +20,6 @@ package(
 )
 
 ungrte_cc_library_with_qnn(
-    name = "load_sdk",
-    srcs = ["load_sdk.cc"],
-    hdrs = ["load_sdk.h"],
-    deps = [
-        "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
-    ],
-)
-
-ungrte_cc_library_with_qnn(
     name = "log",
     srcs = ["log.cc"],
     hdrs = ["log.h"],
@@ -43,12 +33,12 @@ ungrte_cc_library_with_qnn(
     srcs = ["qnn_manager.cc"],
     hdrs = ["qnn_manager.h"],
     deps = [
-        ":load_sdk",
         ":log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
     ],
 )
 

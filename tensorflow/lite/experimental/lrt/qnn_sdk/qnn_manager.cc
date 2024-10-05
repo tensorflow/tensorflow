@@ -25,19 +25,25 @@
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/qnn_sdk/load_sdk.h"
+#include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/lrt/qnn_sdk/log.h"
-
-using ::qnn::load::QnnInterfaceGetProvidersFn_t;
 
 namespace qnn {
 
 namespace {
 
+// This is one of two qnns symbol that needs resolution. It is used to populate
+// pointers to related available qnn functions.
+constexpr char kLibQnnGetProvidersSymbol[] = "QnnInterface_getProviders";
+
+// Type definition for the QnnInterface_getProviders symbol.
+typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(
+    const QnnInterface_t*** provider_list, uint32_t* num_providers);
+
 absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
-  load::QnnInterfaceGetProvidersFn_t get_providers = nullptr;
-  get_providers = load::ResolveQnnSymbol<QnnInterfaceGetProvidersFn_t>(
-      lib_so, load::kLibQnnGetProvidersSymbol);
+  QnnInterfaceGetProvidersFn_t get_providers = nullptr;
+  get_providers = lrt::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
+      lib_so, kLibQnnGetProvidersSymbol);
   if (get_providers == nullptr) {
     std::cerr << "Failed to resolve get providers symbol\n";
     return {};
@@ -56,7 +62,7 @@ absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
 }  // namespace
 
 LrtStatus QnnManager::LoadLibSO(absl::string_view path) {
-  lib_so_ = load::LoadSO(path);
+  lib_so_ = lrt::OpenLib(path);
   if (lib_so_ == nullptr) {
     return kLrtStatusDynamicLoadErr;
   }
@@ -67,7 +73,7 @@ void QnnManager::DumpLibSODetails() const {
   if (lib_so_ == nullptr) {
     return;
   }
-  load::DumpDlInfo(lib_so_);
+  lrt::DumpLibInfo(lib_so_);
 }
 
 // TODO: Repace QnnManager::Funcs with indirection access operator.
