@@ -69,6 +69,7 @@ struct JsonTraceOptions {
 
   bool generate_stack_frames = true;
   bool use_new_backend = false;
+  std::string code_link;
 };
 
 // Counts generated JSON events by type.
@@ -515,7 +516,8 @@ void TraceEventsToJson(const JsonTraceOptions& options,
   // uses higher-precision when manipulating event times. Note that the
   // timestamps of trace events are always given in microseconds.
   output->Append(
-      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
+      R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true}, "codeLink":")",
+      options.code_link, R"(",)");
 
   output->Append(absl::StrFormat(R"("useNewBackend": %s,)",
                                  options.use_new_backend ? "true" : "false"));
