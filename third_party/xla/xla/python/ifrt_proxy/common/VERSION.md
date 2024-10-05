@@ -35,3 +35,9 @@
 *   Added date: 2024-09-30.
 *   Changes:
     *   Added `ExecuteOptions::fill_status`.
+
+## Version 7
+
+*   Added date: 2024-10-01.
+*   Changes:
+    *   Added support for `Client::GetAllDevices()`.

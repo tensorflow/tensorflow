@@ -83,7 +83,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             platform_id: 42
             process_index: 1
             runtime_type: "ifrt-service"
-            devices {
+            all_devices {
               id: 0
               local_hardware_id: 1234
               device_kind: "mock"
@@ -94,7 +94,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
                 value { string_value: "device0" }
               }
             }
-            devices {
+            all_devices {
               id: 1
               local_hardware_id: 1234
               device_kind: "mock"
@@ -120,7 +120,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             }
           )pb",
           &response));
-    } else {
+    } else if (Version().protocol_version() < 7) {
       ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
           R"pb(
             platform_name: "ifrt-service"
@@ -128,7 +128,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             platform_id: 42
             process_index: 1
             runtime_type: "ifrt-service"
-            devices {
+            all_devices {
               id: 0
               local_hardware_id: 1234
               device_kind: "mock"
@@ -141,7 +141,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
                 }
               }
             }
-            devices {
+            all_devices {
               id: 1
               local_hardware_id: 1234
               device_kind: "mock"
@@ -154,6 +154,56 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
                 }
               }
             }
+            addressable_device_ids: 1
+            memories {
+              id: 0
+              memory_space_kind: "mock"
+              kind_id: 0
+              device_ids: [ 0 ]
+            }
+            memories {
+              id: 1
+              memory_space_kind: "mock"
+              kind_id: 1
+              device_ids: [ 1 ]
+            }
+          )pb",
+          &response));
+    } else {
+      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+          R"pb(
+            platform_name: "ifrt-service"
+            platform_version: "n/a"
+            platform_id: 42
+            process_index: 1
+            runtime_type: "ifrt-service"
+            all_devices {
+              id: 0
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 0
+              memory_ids: [ 0 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device0" }
+                }
+              }
+            }
+            all_devices {
+              id: 1
+              local_hardware_id: 1234
+              device_kind: "mock"
+              default_memory_id: 1
+              memory_ids: [ 1 ]
+              attributes {
+                attributes {
+                  key: "name"
+                  value { string_value: "device1" }
+                }
+              }
+            }
+            primary_device_ids: [ 0, 1 ]
             addressable_device_ids: 1
             memories {
               id: 0

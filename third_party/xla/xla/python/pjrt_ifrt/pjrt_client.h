@@ -206,6 +206,12 @@ class PjRtClient final
     return addressable_devices_;
   }
   int process_index() const override { return pjrt_client_->process_index(); }
+
+  absl::Span<Device* const> GetAllDevices() const override {
+    DCHECK(this);
+    return devices_;
+  }
+
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     DCHECK(this);

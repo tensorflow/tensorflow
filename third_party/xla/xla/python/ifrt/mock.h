@@ -145,6 +145,8 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(int, process_index, (), (const, final));
+  MOCK_METHOD(absl::Span<xla::ifrt::Device* const>, GetAllDevices, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<DeviceAssignment>, GetDefaultDeviceAssignment,
               (int num_replicas, int num_partitions), (const, final));
   MOCK_METHOD(absl::StatusOr<Device*>, LookupDevice, (DeviceId device_id),

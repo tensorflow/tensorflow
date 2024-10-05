@@ -205,6 +205,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::Span<Device* const> addressable_devices() const = 0;
   virtual int process_index() const = 0;
 
+  // Returns all devices. The result includes primary devices that are included
+  // in `devices()` as well as any other devices that are associated with
+  // the primary devices.
+  virtual absl::Span<xla::ifrt::Device* const> GetAllDevices() const = 0;
+
   // TODO(hyeontaek): Consider removing this API. This API is potentially not
   // being used by JAX or will be replaced with explicit device assignment.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(

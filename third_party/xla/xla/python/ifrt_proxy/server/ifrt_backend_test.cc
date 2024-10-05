@@ -250,6 +250,8 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
 
     ON_CALL(*mock_client, devices()).WillByDefault(Return(raw_device_ptrs));
+    ON_CALL(*mock_client, GetAllDevices())
+        .WillByDefault(Return(raw_device_ptrs));
     ON_CALL(*mock_client, LookupDevice(_))
         .WillByDefault(
             Invoke([this](DeviceId id) -> absl::StatusOr<xla::ifrt::Device*> {
@@ -434,7 +436,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                         platform_id: 42
                         process_index: 1
                         runtime_type: "ifrt-service"
-                        devices {
+                        all_devices {
                           id: 0
                           device_kind: "mock"
                           default_memory_id: 0
@@ -444,7 +446,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                             value { string_value: "device0" }
                           }
                         }
-                        devices {
+                        all_devices {
                           id: 1
                           device_kind: "mock"
                           default_memory_id: 1
@@ -452,6 +454,53 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                           deprecated_attributes {
                             key: "name"
                             value { string_value: "device1" }
+                          }
+                        }
+                        memories {
+                          id: 0
+                          memory_space_kind: "mock"
+                          device_ids: [ 0 ]
+                        }
+                        memories {
+                          id: 1
+                          memory_space_kind: "mock"
+                          device_ids: [ 1 ]
+                        }
+                      }
+                    )pb"))))));
+  } else if (Version().protocol_version() < 7) {
+    EXPECT_THAT(CallBackend(std::move(request)),
+                IsOkAndHolds(Pointee(
+                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
+                      init_response {
+                        session_id: 12345
+                        platform_name: "ifrt_backend"
+                        platform_version: "n/a"
+                        platform_id: 42
+                        process_index: 1
+                        runtime_type: "ifrt-service"
+                        all_devices {
+                          id: 0
+                          device_kind: "mock"
+                          default_memory_id: 0
+                          memory_ids: [ 0 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device0" }
+                            }
+                          }
+                        }
+                        all_devices {
+                          id: 1
+                          device_kind: "mock"
+                          default_memory_id: 1
+                          memory_ids: [ 1 ]
+                          attributes {
+                            attributes {
+                              key: "name"
+                              value { string_value: "device1" }
+                            }
                           }
                         }
                         memories {
@@ -477,7 +526,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                         platform_id: 42
                         process_index: 1
                         runtime_type: "ifrt-service"
-                        devices {
+                        all_devices {
                           id: 0
                           device_kind: "mock"
                           default_memory_id: 0
@@ -489,7 +538,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                             }
                           }
                         }
-                        devices {
+                        all_devices {
                           id: 1
                           device_kind: "mock"
                           default_memory_id: 1
@@ -501,6 +550,7 @@ TEST_P(IfrtBackendHandlerTest, Init) {
                             }
                           }
                         }
+                        primary_device_ids: [ 0, 1 ]
                         memories {
                           id: 0
                           memory_space_kind: "mock"
