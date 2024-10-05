@@ -404,6 +404,23 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":layout_mode",
+        ":mlir_to_hlo",
+        ":utils",
+        "//xla:shape_util",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/parser:hlo_parser",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "pjrt_layout",
     hdrs = ["pjrt_layout.h"],

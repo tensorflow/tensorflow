@@ -55,6 +55,11 @@ struct LayoutMode {
   explicit LayoutMode(const Shape& shape_with_layout)
       : LayoutMode(Mode::kUserSpecified, shape_with_layout.layout()) {}
 
+  bool operator==(const LayoutMode& other) const {
+    return mode == other.mode && user_layout == other.user_layout;
+  }
+  bool operator!=(const LayoutMode& other) const { return !(*this == other); }
+
   // Produces a human-readable string representing this LayoutMode. Is also in
   // the correct format for the "mhlo.layout_mode" attribute.
   std::string ToString() const;

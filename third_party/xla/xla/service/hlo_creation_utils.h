@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
@@ -256,6 +257,11 @@ absl::StatusOr<HloInstruction*> MakeSelectHlo(
 // Forwards the first operand if operands.size() == 1, or creates a tuple
 // instruction with all the operands. Crashes if `operands` is empty.
 HloInstruction* MaybeMakeTuple(absl::Span<HloInstruction* const> operands);
+
+// Creates a HloComputation in the destination module from a builder's
+// XlaComputation.
+absl::StatusOr<HloComputation*> XlaComputationToHloComputation(
+    XlaComputation& src_comp, HloModule* dest_module);
 
 // Creates a Sort HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation. Also creates a

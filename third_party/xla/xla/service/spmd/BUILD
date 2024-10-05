@@ -61,6 +61,7 @@ cc_library(
         "//xla/service:custom_call_sharding_helper",
         "//xla/service:dot_as_convolution_util",
         "//xla/service:flatten_call_graph",
+        "//xla/service:hlo_creation_utils",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_lexer",

@@ -3551,26 +3551,18 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
     return Compile(xla_computation, options);
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
-  TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+  TF_ASSIGN_OR_RETURN(auto module_layout_properties,
+                      GetModuleLayoutProperties(module));
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
   // according to the attributes we parsed from MLIR.
-  auto layout_callback = [local_client = client(), &arg_layout_modes,
-                          &out_layout_modes, &arg_memory_spaces,
-                          &out_memory_spaces](const HloModule& module)
+  auto layout_callback = [local_client = client(),
+                          &module_layout_properties](const HloModule& module)
       -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
     XlaComputation xla_computation(XlaComputation(module.ToProto()));
     return LayoutModesToXlaShapes(
-        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
-        out_memory_spaces,
+        xla_computation, module_layout_properties,
         [local_client](Shape shape) -> absl::StatusOr<Shape> {
           return local_client->backend()
               .transfer_manager()
@@ -3581,8 +3573,7 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   // This call will update result_layout in options.executable_build_options.
   TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
                       LayoutModesToXla(
-                          xla_computation, arg_layout_modes, out_layout_modes,
-                          arg_memory_spaces, out_memory_spaces,
+                          xla_computation, module_layout_properties,
                           [this](Shape shape) -> absl::StatusOr<Shape> {
                             return this->client()
                                 ->backend()
