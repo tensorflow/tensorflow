@@ -1493,6 +1493,38 @@ TEST_F(HloCostAnalysisTest, Gather) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 3);
 }
 
+TEST_F(HloCostAnalysisTest, GatherBatchingDims) {
+  // Test the analysis on a gather.
+  XlaBuilder builder("gather");
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {5, 3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {5});
+
+  auto operand = Parameter(&builder, 0, operand_shape, "operand");
+  auto indices = Parameter(&builder, 1, indices_shape, "indices");
+  GatherDimensionNumbers dim_numbers;
+  dim_numbers.add_offset_dims(1);
+  dim_numbers.add_collapsed_slice_dims(1);
+  dim_numbers.add_operand_batching_dims(0);
+  dim_numbers.add_start_indices_batching_dims(0);
+  dim_numbers.add_start_index_map(1);
+  dim_numbers.set_index_vector_dim(1);
+  Gather(operand, indices, dim_numbers, {1, 1, 3});
+
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 140);
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 5 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(int32_t) * 5);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 5 * 3);
+}
+
 TEST_F(HloCostAnalysisTest, Scatter) {
   // Test the analysis on a scatter.
   XlaBuilder builder("scatter");
@@ -1524,6 +1556,41 @@ TEST_F(HloCostAnalysisTest, Scatter) {
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(int32_t) * 2);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 2), sizeof(float) * 2 * 3);
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 3);
+}
+
+TEST_F(HloCostAnalysisTest, ScatterBatchingDims) {
+  // Test the analysis on a scatter.
+  XlaBuilder builder("scatter");
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {5, 3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {5});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {5, 3});
+
+  auto operand = Parameter(&builder, 0, operand_shape, "operand");
+  auto indices = Parameter(&builder, 1, indices_shape, "indices");
+  auto values = Parameter(&builder, 2, values_shape, "values");
+  ScatterDimensionNumbers dim_numbers;
+  dim_numbers.set_index_vector_dim(1);
+  dim_numbers.add_update_window_dims(1);
+  dim_numbers.add_inserted_window_dims(1);
+  dim_numbers.add_input_batching_dims(0);
+  dim_numbers.add_scatter_indices_batching_dims(0);
+  dim_numbers.add_scatter_dims_to_operand_dims(1);
+  Scatter(operand, indices, values, add_, dim_numbers);
+
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 4 * (5 + 3 * (5 * 3)));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 5 * 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(int32_t) * 5);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 2), sizeof(float) * 5 * 3);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 5 * 3);
 }
 
 TEST_F(HloCostAnalysisTest, MultioutputScatter) {
