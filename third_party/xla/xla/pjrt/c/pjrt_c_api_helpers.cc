@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -602,19 +603,44 @@ absl::Status ValidateCreateOptions(
   return absl::OkStatus();
 }
 
-const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
-  constexpr absl::string_view kXlaVersion = "xla_version";
+static PJRT_NamedValue XlaVersion(absl::string_view name) {
   PJRT_NamedValue c_value;
   c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
   c_value.extension_start = nullptr;
-  c_value.name = kXlaVersion.data();
-  c_value.name_size = kXlaVersion.size();
+  c_value.name = name.data();
+  c_value.name_size = name.size();
   c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64;
   // TODO(b/327203806): figure out where to keep the xla_version.
   c_value.int64_value = 2;
   c_value.value_size = 1;
+  return c_value;
+}
+
+template <int storage_slot>
+static PJRT_NamedValue StableHloVersion(absl::string_view name,
+                                        mlir::vhlo::Version version) {
+  PJRT_NamedValue c_value;
+  c_value.struct_size = PJRT_NamedValue_STRUCT_SIZE;
+  c_value.extension_start = nullptr;
+  c_value.name = name.data();
+  c_value.name_size = name.size();
+  c_value.type = PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List;
+  static int64_t triple[3] = {version.getMajor(), version.getMinor(),
+                              version.getPatch()};
+  c_value.int64_array_value = triple;
+  c_value.value_size = 3;
+  return c_value;
+}
+
+const std::vector<PJRT_NamedValue>& GetXlaPluginCAttributes() {
   static const std::vector<PJRT_NamedValue>* c_values =
-      new std::vector<PJRT_NamedValue>({c_value});
+      new std::vector<PJRT_NamedValue>({
+          XlaVersion("xla_version"),
+          StableHloVersion<0>("stablehlo_current_version",
+                              mlir::vhlo::Version::getCurrentVersion()),
+          StableHloVersion<1>("stablehlo_minimum_version",
+                              mlir::vhlo::Version::getMinimumVersion()),
+      });
   return *c_values;
 }
 

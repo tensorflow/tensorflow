@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -480,6 +481,22 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   EXPECT_EQ(status.message(), "Unknown program format 'invalid'.");
   destroy_executable(args.executable, api_);
   ::pjrt::MakeErrorDeleter(api_)(error);
+}
+
+TEST_F(PjrtCApiTest, PluginAttributes) {
+  PJRT_Plugin_Attributes_Args args;
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  PJRT_Error* error = api_->PJRT_Plugin_Attributes(&args);
+  ASSERT_EQ(error, nullptr);
+  std::set<std::string> names;
+  for (int i = 0; i < args.num_attributes; i++) {
+    auto [_, did_not_exist_yet] = names.insert(args.attributes[i].name);
+    EXPECT_TRUE(did_not_exist_yet);
+  }
+  EXPECT_TRUE(names.find("xla_version") != names.end());
+  EXPECT_TRUE(names.find("stablehlo_current_version") != names.end());
+  EXPECT_TRUE(names.find("stablehlo_minimum_version") != names.end());
 }
 
 // --------------------------------- Devices -----------------------------------
