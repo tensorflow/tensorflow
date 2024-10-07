@@ -18,19 +18,23 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace xla::gpu {
 
 // In some cases we need to know what exact kernel was used. It happens when we
 // have no direct way to get this information from the HLO. For example, when we
 // have a fusion with a custom call to cuBLAS or another third party library.
-// This class allows to get the name of the kernel that was used.
+// This class allows to get the names of the kernels that were used.
 class KernelNameTracer {
  public:
   static std::unique_ptr<KernelNameTracer> Create();
 
   virtual void start() = 0;
-  virtual std::string stop() = 0;
+
+  // It should return the names of the kernels that were executed on GPU:0.
+  virtual std::vector<std::string> stop() = 0;
+
   virtual ~KernelNameTracer() = default;
 };
 
