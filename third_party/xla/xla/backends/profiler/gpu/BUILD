@@ -134,7 +134,7 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart_static",
+        "@local_config_cuda//cuda:cuda_runtime",
         "@local_tsl//tsl/platform:test",
     ],
 )

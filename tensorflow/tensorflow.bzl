@@ -2274,7 +2274,7 @@ def tf_custom_op_library(
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart_static",
+        "@local_config_cuda//cuda:cuda_runtime",
     ]) + if_windows([
         clean_dep("//tensorflow/python:pywrap_tensorflow_import_lib"),
     ]) + tf_custom_op_library_additional_deps()

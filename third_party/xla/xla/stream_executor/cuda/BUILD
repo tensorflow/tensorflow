@@ -1087,7 +1087,7 @@ cc_library(
             # "//tools/cc_target_os:gce": [],
             # copybara:uncomment_end_and_comment_begin
             "//conditions:default": [
-                "@local_config_cuda//cuda:cudart_static",  # buildcleaner: keep
+                "@local_config_cuda//cuda:cuda_runtime",  # buildcleaner: keep
                 ":cuda_platform",
             ],
         }),
