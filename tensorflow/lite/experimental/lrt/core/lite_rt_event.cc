@@ -26,8 +26,6 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 
-using lrt::internal::LogSeverity;
-
 struct LrtEventT {
 #if LRT_HAS_SYNC_FENCE_SUPPORT
   int fd;
@@ -63,22 +61,20 @@ LrtStatus LrtEventWait(LrtEvent event, int64_t timeout_in_ms) {
     if (ret == 1) {
       break;
     } else if (ret == 0) {
-      LITE_RT_LOG(LogSeverity::WARNING, "Timeout expired: %d", timeout_in_ms);
+      LITE_RT_LOG(WARNING, "Timeout expired: %d", timeout_in_ms);
       return kLrtStatusErrorTimeoutExpired;
     }
   } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
 
   if (ret < 0) {
-    LITE_RT_LOG(LogSeverity::ERROR, "Error waiting for fence: %s",
-                ::strerror(errno));
+    LITE_RT_LOG(ERROR, "Error waiting for fence: %s", ::strerror(errno));
     return kLrtStatusErrorRuntimeFailure;
   }
 
   return kLrtStatusOk;
 
 #else
-  LITE_RT_LOG(LogSeverity::ERROR,
-              "LrtEventWait not implemented for this platform");
+  LITE_RT_LOG(ERROR, "LrtEventWait not implemented for this platform");
   return kLrtStatusErrorUnsupported;
 #endif
 }
@@ -97,8 +93,7 @@ LrtStatus LrtEventDestroy(LrtEvent event) {
   delete event;
   return kLrtStatusOk;
 #else
-  LITE_RT_LOG(LogSeverity::ERROR,
-              "LrtEventDestroy not implemented for this platform");
+  LITE_RT_LOG(ERROR, "LrtEventDestroy not implemented for this platform");
   return kLrtStatusErrorUnsupported;
 #endif
 }

@@ -26,8 +26,6 @@
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/core/tensor_buffer.h"
 
-using lrt::internal::LogSeverity;
-
 LrtStatus LrtCreateTensorBufferFromHostMemory(
     LrtRankedTensorType tensor_type, void* host_buffer_addr, size_t size,
     LrtHostMemoryDeallocator deallocator, LrtTensorBuffer* buffer) {
@@ -36,7 +34,7 @@ LrtStatus LrtCreateTensorBufferFromHostMemory(
       absl::MakeSpan(static_cast<uint8_t*>(host_buffer_addr), size),
       deallocator);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -55,7 +53,7 @@ LrtStatus LrtCreateTensorBufferFromAhwb(LrtRankedTensorType tensor_type,
   auto tensor_buffer = LrtTensorBufferT::CreateFromAhwb(
       tensor_type, ahwb, ahwb_offset, deallocator);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -70,7 +68,7 @@ LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer buffer,
 
   auto ahwb_buffer = buffer->GetAhwbBuffer();
   if (!ahwb_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", ahwb_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", ahwb_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -91,7 +89,7 @@ LrtStatus LrtCreateTensorBufferFromIonBuffer(
       tensor_type, ion_buffer_addr, ion_buffer_fd, ion_buffer_size,
       ion_buffer_offset, deallocator);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -107,7 +105,7 @@ LrtStatus LrtGetTensorBufferIonBuffer(LrtTensorBuffer buffer,
 
   auto ion_buffer = buffer->GetIonBuffer();
   if (!ion_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", ion_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", ion_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -130,7 +128,7 @@ LrtStatus LrtCreateTensorBufferFromDmaBufBuffer(
       tensor_type, dmabuf_buffer_addr, dmabuf_buffer_fd, dmabuf_buffer_size,
       dmabuf_buffer_offset, deallocator);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -146,7 +144,7 @@ LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer buffer,
 
   auto dmabuf_buffer = buffer->GetDmaBufBuffer();
   if (!dmabuf_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", dmabuf_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", dmabuf_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -169,7 +167,7 @@ LrtStatus LrtCreateTensorBufferFromFastRpcBuffer(
       tensor_type, fastrpc_buffer_addr, fastrpc_buffer_fd, fastrpc_buffer_size,
       fastrpc_buffer_offset, deallocator);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -185,7 +183,7 @@ LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer buffer,
 
   auto fastrpc_buffer = buffer->GetFastRpcBuffer();
   if (!fastrpc_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", fastrpc_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", fastrpc_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -202,7 +200,7 @@ LrtStatus LrtCreateManagedTensorBuffer(LrtTensorBufferType buffer_type,
   auto tensor_buffer =
       LrtTensorBufferT::CreateManaged(buffer_type, tensor_type, buffer_size);
   if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", tensor_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
   *buffer = tensor_buffer->release();
@@ -252,7 +250,7 @@ LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer buffer,
 
   auto host_buffer = buffer->GetHostBuffer();
   if (!host_buffer.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", host_buffer.status().message());
+    LITE_RT_LOG(ERROR, "%s", host_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -268,7 +266,7 @@ LrtStatus LrtLockTensorBuffer(LrtTensorBuffer buffer, void** host_mem_addr,
 
   auto mapped_addr = buffer->Lock(event);
   if (!mapped_addr.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", mapped_addr.status().message());
+    LITE_RT_LOG(ERROR, "%s", mapped_addr.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
 
@@ -282,7 +280,7 @@ LrtStatus LrtUnlockTensorBuffer(LrtTensorBuffer buffer) {
   }
 
   if (auto status = buffer->Unlock(); !status.ok()) {
-    LITE_RT_LOG(LogSeverity::ERROR, "%s", status.message());
+    LITE_RT_LOG(ERROR, "%s", status.message());
     return kLrtStatusErrorRuntimeFailure;
   }
 

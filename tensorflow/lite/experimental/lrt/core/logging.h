@@ -21,12 +21,18 @@ namespace lrt {
 namespace internal {
 
 enum class LogSeverity {
-  VERBOSE = 0,
-  INFO = 1,
-  WARNING = 2,
-  ERROR = 3,
-  SILENT = 4
+  kVerbose = 0,
+  kInfo = 1,
+  kWarning = 2,
+  kError = 3,
+  kSilent = 4
 };
+
+#define VERBOSE ::lrt::internal::LogSeverity::kVerbose
+#define INFO ::lrt::internal::LogSeverity::kInfo
+#define WARNING ::lrt::internal::LogSeverity::kWarning
+#define ERROR ::lrt::internal::LogSeverity::kError
+#define SILENT ::lrt::internal::LogSeverity::kSilent
 
 class Logger {
  public:

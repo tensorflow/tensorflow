@@ -128,6 +128,7 @@ cc_library(
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
+        ":logging",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -220,8 +221,5 @@ cc_library(
     hdrs = [
         "logging.h",
     ],
-    deps = [
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core:framework_stable",
-    ],
+    deps = ["//tensorflow/lite:minimal_logging"],
 )

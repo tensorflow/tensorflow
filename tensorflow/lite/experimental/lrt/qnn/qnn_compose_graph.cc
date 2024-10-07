@@ -182,7 +182,7 @@ LrtStatus GraphMapper::LegalizeAndRegister(LrtTensor lrt_tensor,
   LRT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(lrt_tensor, qnn_tensor));
   LRT_RETURN_STATUS_IF_NOT_OK(AssignName(qnn_tensor));
   LRT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().API()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
+      Qnn().Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
 
   return kLrtStatusOk;
 }
@@ -221,14 +221,14 @@ LrtStatus GraphMapper::IsLrtSubgraphSupported() {
 
 LrtStatus GraphMapper::InitQnnGraph(absl::string_view qnn_graph_name) {
   LRT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().API()->graphCreate(Qnn().ContextHandle(), qnn_graph_name.data(),
+      Qnn().Api()->graphCreate(Qnn().ContextHandle(), qnn_graph_name.data(),
                                GetDefaultGraphConfigs().data(), &QnnGraph()));
   return kLrtStatusOk;
 }
 
 LrtStatus GraphMapper::Finalize() {
   LRT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().API()->graphFinalize(QnnGraph(), nullptr, nullptr));
+      Qnn().Api()->graphFinalize(QnnGraph(), nullptr, nullptr));
   return kLrtStatusOk;
 }
 
@@ -300,7 +300,7 @@ LrtStatus GraphMapper::MapGraph(QnnManager& qnn, LrtSubgraph subgraph,
     qnn_op.v1.numOfOutputs = op_outs.size();
     qnn_op.v1.outputTensors = qnn_op_outs;
 
-    LRT_RETURN_STATUS_IF_QNN_NOT_OK(graph_mapper.Qnn().API()->graphAddNode(
+    LRT_RETURN_STATUS_IF_QNN_NOT_OK(graph_mapper.Qnn().Api()->graphAddNode(
         graph_mapper.QnnGraph(), qnn_op));
   }
 
