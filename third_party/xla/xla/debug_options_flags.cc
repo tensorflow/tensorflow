@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_parsers.h"
 #include "xla/parse_flags_from_env.h"
+#include "xla/service/collective_utils.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -128,10 +129,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
-  constexpr int64_t kDefaultThreshold = 30 * 1024 * 1024;
-  opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
-  opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
-  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
+  opts.set_xla_gpu_all_reduce_combine_threshold_bytes(
+      kDefaultAllReduceCombineThreshold);
+  opts.set_xla_gpu_all_gather_combine_threshold_bytes(
+      kDefaultAllGatherCombineThreshold);
+  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(
+      kDefaultReduceScatterCombineThreshold);
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
   opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
   opts.set_xla_gpu_enable_approx_costly_collectives(false);
