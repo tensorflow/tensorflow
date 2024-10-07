@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/acceleration_test_util_internal.h"
@@ -155,7 +154,6 @@ int main(int argc, char** argv) {
   tflite::LogToStderr();
   if (tflite::InitKernelTest(&argc, argv)) {
     testing::InitGoogleTest(&argc, argv);
-    benchmark::RunSpecifiedBenchmarks();
     int ret = RUN_ALL_TESTS();
     tflite::DestroyKernelTest();
     return ret;
