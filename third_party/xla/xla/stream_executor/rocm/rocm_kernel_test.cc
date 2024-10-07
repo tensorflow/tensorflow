@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 
 #include <gtest/gtest.h>
-#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"

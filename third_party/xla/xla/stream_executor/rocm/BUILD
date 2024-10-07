@@ -220,7 +220,10 @@ xla_test(
     srcs = ["rocm_executor_test.cc"],
     backends = ["gpu_amd_any"],
     tags = ["rocm-only"],
-    deps = [":rocm_executor"],
+    deps = [
+        ":rocm_executor",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
