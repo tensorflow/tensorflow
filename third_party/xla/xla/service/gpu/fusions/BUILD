@@ -356,6 +356,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
+        "//xla/service/gpu/fusions/triton:triton_fusion_emitter_legacy_matmul",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/llvm_ir:ir_array",

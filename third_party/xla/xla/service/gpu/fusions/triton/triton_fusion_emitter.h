@@ -65,11 +65,6 @@ struct TritonWrapperResult {
   std::optional<se::ClusterDim> cluster_dim;
 };
 
-// Compute the launch dimensions for the given Triton MatMul.
-absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config);
-
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 
