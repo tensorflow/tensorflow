@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 
-#include "xla/stream_executor/platform/platform.h"
+#include "tsl/platform/platform.h"
 
 // Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
