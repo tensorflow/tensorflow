@@ -187,6 +187,10 @@ class CudaCompiler(ArgparseableEnum):
   NVCC = enum.auto()
 
 
+class RocmCompiler(ArgparseableEnum):
+  HIPCC = enum.auto()
+
+
 class OS(ArgparseableEnum):
   LINUX = enum.auto()
   MACOS = enum.auto()
@@ -262,6 +266,9 @@ class XLAConfigOptions:
   # CUDA specific
   cuda_compiler: CudaCompiler
   using_nccl: bool
+
+  # ROCM specific
+  rocm_compiler: RocmCompiler
 
   def to_bazelrc_lines(
       self,
@@ -352,6 +359,17 @@ class XLAConfigOptions:
     elif self.backend == Backend.ROCM:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-sycl-only")
+
+      compiler_pair = self.rocm_compiler, self.host_compiler
+
+      if compiler_pair == (RocmCompiler.HIPCC, HostCompiler.CLANG):
+        rc.append("build --config rocm")
+        # This is demanded by rocm_configure.bzl.
+        rc.append(f"build --action_env CLANG_COMPILER_PATH={dpav.clang_path}")
+      elif compiler_pair == (RocmCompiler.HIPCC, HostCompiler.GCC):
+        rc.append("build --config rocm")
+      else:
+        raise NotImplementedError("ROCm clang with host compiler not supported")
     elif self.backend == Backend.SYCL:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-rocm-only")
