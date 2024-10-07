@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
@@ -58,6 +59,13 @@ void removeFrontendAttribute(mlir::Operation* op,
 // of `funcOp`.
 void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
+
+// Checkes if "frontend_attributes" `DictionaryAttr` from `op` contains
+// `key`.
+bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
+
+// Checkes if `dictAttr` exists and contains `key`.
+bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 

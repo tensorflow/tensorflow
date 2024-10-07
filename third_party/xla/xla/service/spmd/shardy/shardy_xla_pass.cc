@@ -338,7 +338,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                                "sdy_module_before_xla_import"));
   bool useTupleArgs = false;
   mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(*mlirModule);
-  if (moduleFrontendAttrs && moduleFrontendAttrs.get(kUseTupleArgs)) {
+  if (hasKey(moduleFrontendAttrs, kUseTupleArgs)) {
     useTupleArgs = true;
     removeFrontendAttribute(*mlirModule, kUseTupleArgs);
   }
@@ -346,8 +346,7 @@ absl::StatusOr<bool> ShardyXLA::Run(
   // integration is complete. Need to branch on `kPythonIntegrationComplete`
   // since partir.jit lowers to SDY (so call addSdyRoundTripImportPipeline) but
   // jax.jit doesn't yet (so call addMhloImportPipeline).
-  if (moduleFrontendAttrs &&
-      moduleFrontendAttrs.get(kPythonIntegrationComplete)) {
+  if (hasKey(moduleFrontendAttrs, kPythonIntegrationComplete)) {
     removeFrontendAttribute(*mlirModule, kPythonIntegrationComplete);
     addSdyRoundTripImportPipeline(pm);
   } else {
