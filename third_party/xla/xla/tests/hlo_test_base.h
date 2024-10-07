@@ -508,9 +508,10 @@ class HloTestBase : public ::testing::Test {
   [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
                                                const HloModule& module_1);
 
- private:
   // Creates or retrieves the allocator.
   se::DeviceMemoryAllocator* GetAllocator();
+
+ private:
   // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
