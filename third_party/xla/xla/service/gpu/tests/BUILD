@@ -224,7 +224,7 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",

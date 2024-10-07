@@ -489,7 +489,7 @@ cc_library(
     deps = [
         ":status_macros",
         ":util",
-        "//xla/service:hlo_lexer",
+        "//xla/hlo/parser:hlo_lexer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -912,7 +912,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/lib/io:buffered_inputstream",
         "//xla/tsl/lib/io:random_inputstream",
         "@com_google_absl//absl/log:check",
