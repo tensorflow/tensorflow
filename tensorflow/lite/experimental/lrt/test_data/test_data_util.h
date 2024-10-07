@@ -17,10 +17,11 @@
 
 // NOLINTNEXTLINE
 #include <filesystem>
+#include <fstream>
 #include <string>
-#include <string_view>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
@@ -42,8 +43,8 @@
 
 #define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLrtStatusOk);
 
-inline std::string GetTestFilePath(std::string_view filename) {
-  static constexpr std::string_view kTestDataDir =
+inline std::string GetTestFilePath(absl::string_view filename) {
+  static constexpr absl::string_view kTestDataDir =
       "tensorflow/lite/experimental/lrt/"
       "test_data/";
 
@@ -58,12 +59,18 @@ inline std::string GetTestFilePath(std::string_view filename) {
   return result_path.generic_string();
 }
 
-inline UniqueLrtModel LoadTestFileModel(std::string_view filename) {
+inline UniqueLrtModel LoadTestFileModel(absl::string_view filename) {
   LrtModel model = nullptr;
   LRT_CHECK_STATUS_OK(
       LoadModelFromFile(GetTestFilePath(filename).c_str(), &model));
   CHECK_NE(model, nullptr);
   return UniqueLrtModel(model);
+}
+
+inline void TouchTestFile(absl::string_view name, absl::string_view dir) {
+  std::filesystem::path fake_so(dir);
+  fake_so.append(name);
+  std::ofstream output(fake_so.string());
 }
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_DATA_TEST_DATA_UTIL_H_

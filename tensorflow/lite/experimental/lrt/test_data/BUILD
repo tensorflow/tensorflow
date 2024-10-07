@@ -49,8 +49,8 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
-        "//tensorflow/lite/experimental/lrt/core:model",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform",
     ],
 )

@@ -28,11 +28,11 @@ enum class LogSeverity {
   kSilent = 4
 };
 
-#define VERBOSE ::lrt::internal::LogSeverity::kVerbose
-#define INFO ::lrt::internal::LogSeverity::kInfo
-#define WARNING ::lrt::internal::LogSeverity::kWarning
-#define ERROR ::lrt::internal::LogSeverity::kError
-#define SILENT ::lrt::internal::LogSeverity::kSilent
+#define LRT_VERBOSE ::lrt::internal::LogSeverity::kVerbose
+#define LRT_INFO ::lrt::internal::LogSeverity::kInfo
+#define LRT_WARNING ::lrt::internal::LogSeverity::kWarning
+#define LRT_ERROR ::lrt::internal::LogSeverity::kError
+#define LRT_SILENT ::lrt::internal::LogSeverity::kSilent
 
 class Logger {
  public:
