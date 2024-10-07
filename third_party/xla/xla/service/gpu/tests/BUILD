@@ -399,7 +399,6 @@ xla_test(
         "gpu_p100",
         "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
-    tags = ["no_rocm"], # TODO(rocm): weekly sync 24-08-20
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
