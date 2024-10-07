@@ -115,10 +115,19 @@ FLAGS = flags.FLAGS
 _CUSTOM_CALLS_REGISTERED = False
 
 
+# XLA' alignment is 16 bytes at the moment, but it should match what Eigen
+# supports, and that can go up to 128 bytes on hardware with HVX.
+_XLA_CPU_MAX_ALIGNMENT = 128
+
+
+# Minimum possible alignment for XLA.
+_XLA_CPU_MIN_ALIGNMENT = 16
+
+
 # Return a copy of `x` with the given alignment. Does nothing if `x` is already
 # aligned. We do this manually, because numpy doesn't support custom alignment
 # value.
-def _Aligned(x, alignment=128):
+def _Aligned(x, alignment=_XLA_CPU_MAX_ALIGNMENT):
   if (x.ctypes.data % alignment) == 0:
     return x
 
@@ -131,6 +140,31 @@ def _Aligned(x, alignment=128):
   # buffer is aligned.
   offset = (-buf.ctypes.data % alignment) // x.itemsize
   result = buf[offset : offset + x.size].reshape(x.shape)
+
+  # Copy the data to the result buffer and return it.
+  np.copyto(result, x)
+  return result
+
+
+# Return an unaligned copy of `x`. The result buffer's memory address is
+# guaranteed to not be aligned to `alignment`. This function is useful for
+# testing failiures.
+def _Unaligned(x, alignment=_XLA_CPU_MIN_ALIGNMENT):
+  if (x.ctypes.data % alignment) != 0:
+    return x
+
+  # Create temporary buffer with extra space.
+  assert (x.itemsize % alignment) != 0
+  offset = 1
+  buf = np.empty(x.size + offset, dtype=x.dtype)
+
+  if (buf.ctypes.data % alignment) != 0:
+    # If the temporary buffer is already unaligned, return it.
+    result = buf
+  else:
+    # Otherwise, create a view of the temporary buffer with an offset.
+    result = buf[offset : offset + x.size].reshape(x.shape)
+    assert (result.ctypes.data % alignment) != 0
 
   # Copy the data to the result buffer and return it.
   np.copyto(result, x)
@@ -2870,6 +2904,17 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       del self.cpu_backend
       del self.gpu_backend
 
+    def _DLPackManagedTensorToBuffer(self, tensor, use_legacy_api):
+      if use_legacy_api:
+        return xla_client._xla.dlpack_managed_tensor_to_buffer(
+            tensor, self.cpu_backend, self.gpu_backend
+        )
+      else:
+        device = self.backend.local_devices()[0]
+        return xla_client._xla.dlpack_managed_tensor_to_buffer(
+            tensor, device, None
+        )
+
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
@@ -2928,6 +2973,86 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       np.testing.assert_array_equal(x, np.asarray(y))
       np.testing.assert_array_equal(x, np.asarray(z))
 
+    @parameterized.parameters(False, True)
+    def testZeroCopyOnAlignedDlpackTensor(self, use_legacy_api):
+      # Using CPU only, since this test is about CPU memory alignment.
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires CPU")
+
+      # Create a numpy array that is aligned to XLA requirements.
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      x = _Aligned(x)
+
+      # Convert it to a DLPack tensor, and then to an XLA buffer.
+      dlpack_tensor = x.__dlpack__()
+      buffer = self._DLPackManagedTensorToBuffer(dlpack_tensor, use_legacy_api)
+      y = np.array(buffer, copy=False)
+
+      # The input was sufficiently aligned, so input and output should alias.
+      x_ptr = x.__array_interface__["data"][0]
+      y_ptr = y.__array_interface__["data"][0]
+      self.assertEqual(
+          x_ptr,
+          y_ptr,
+          msg=f"Buffers are not aliased ({hex(x_ptr)} != {hex(y_ptr)}).",
+      )
+
+    @parameterized.named_parameters(
+        {
+            "testcase_name": "{}{}".format(
+                "_legacy" if use_legacy_api else "",
+                "_transpose" if transpose else "",
+            ),
+            "use_legacy_api": use_legacy_api,
+            "transpose": transpose,
+        }
+        for use_legacy_api in [False, True]
+        for transpose in [False, True]
+    )
+    def testReturnCopyOnUnalignedDlpackTensor(self, use_legacy_api, transpose):
+      # Using CPU only, since this test is about CPU memory alignment.
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires CPU")
+
+      if transpose and use_legacy_api:
+        self.skipTest("Non-default layout is not supported in legacy API")
+
+      # Create a numpy array that is not aligned to XLA requirements. XLA's
+      # alignment requirements differ for different hardware, so we use the
+      # smallest possible value. If we make sure the buffer is not aligned to
+      # this value (16 bytes), then it is also not aligned to its multiples (32,
+      # 64 etc.)
+      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
+      x = _Unaligned(x, alignment=_XLA_CPU_MIN_ALIGNMENT)
+
+      # Transpose the array to test non-default layout with trivial striding.
+      if transpose:
+        x = x.transpose((0, 2, 1, 3))
+
+      # Convert it to a DLPack tensor, and then to an XLA buffer.
+      dlpack_tensor = x.__dlpack__()
+      buffer = self._DLPackManagedTensorToBuffer(dlpack_tensor, use_legacy_api)
+      y = np.array(buffer, copy=False)
+
+      # The input was not sufficiently aligned, so input and output should not
+      # alias (output should be a copy of input, and it should be aligned).
+      x_ptr = x.__array_interface__["data"][0]
+      y_ptr = y.__array_interface__["data"][0]
+      self.assertNotEqual(
+          x_ptr,
+          y_ptr,
+          msg=(
+              f"Buffers aliased, but should not be ({hex(x_ptr)} =="
+              f" {hex(y_ptr)})"
+          ),
+      )
+      self.assertEqual(
+          y_ptr % _XLA_CPU_MIN_ALIGNMENT,
+          0,
+          msg="Output buffer not aligned: {hex(y_ptr)}",
+      )
+      np.testing.assert_array_equal(y, x)
+
   tests.append(DLPackTest)
 
   class BufferProtocolTest(parameterized.TestCase):
@@ -2948,10 +3073,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
 
-      # XLA' alignment is 16 bytes at the moment, but it should match what Eigen
-      # supports, and that can go up to 128 bytes on hardware with HVX. Align
-      # the input buffer to 128 bytes to be safe.
-      x = _Aligned(x, alignment=128)
+      x = _Aligned(x)
       x_ptr = x.__array_interface__["data"][0]
       buffer = self.backend.buffer_from_pyval(
           x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
