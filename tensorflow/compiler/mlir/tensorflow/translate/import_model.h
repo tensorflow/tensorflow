@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_IMPORT_MODEL_H_
 
+#include <cstddef>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -48,7 +49,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context);
+    mlir::MLIRContext* context,
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name =
+        nullptr);
 
 // [Experimental]
 // Given a Function, returns a MLIR module containing the graph, expressed with

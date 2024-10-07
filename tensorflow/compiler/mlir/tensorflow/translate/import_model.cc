@@ -2386,7 +2386,7 @@ class GraphDefImporter : public ImporterBase {
       mlir::MLIRContext* context, const Graph& graph,
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-      std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
+      std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
       bool disable_crash_analysis = false);
 
  private:
@@ -2429,7 +2429,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
-    std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
     bool disable_crash_analysis) {
   LoadImporterDialects(*context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
@@ -2468,7 +2468,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
                                            &flib_def);
 
   GraphDefImporter importer(flib_def, debug_info, specs, module.get(),
-                            &tf_name_to_mlir_name, &function_name_uniquifier);
+                            tf_name_to_mlir_name, &function_name_uniquifier);
 
   TF_RETURN_IF_ERROR(importer.PrepareConvert(graph, std::move(graph_def)));
 
@@ -3808,7 +3808,7 @@ class SavedModelSignatureDefImporterLite {
       const std::vector<std::pair<std::string, TensorInfo>>& inputs,
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
       std::vector<std::string> control_outputs,
-      std::unordered_map<std::string, std::string>& tf_name_to_mlir_name);
+      std::unordered_map<std::string, std::string>* tf_name_to_mlir_name);
 
   // Moves the functions in `sub_module` to `module_` and skips the duplicate
   // functions.
@@ -3917,7 +3917,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
   TF_ASSIGN_OR_RETURN(auto sub_module,
                       ConvertGraph(target_node_name, inputs, {},
-                                   {target_node_name}, tf_name_to_mlir_name));
+                                   {target_node_name}, &tf_name_to_mlir_name));
 
   mlir::SymbolTable sub_symbol_table(*sub_module);
 
@@ -3956,7 +3956,7 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
     const std::vector<std::pair<std::string, TensorInfo>>& inputs,
     const std::vector<std::pair<std::string, TensorInfo>>& outputs,
     const std::vector<std::string> control_outputs,
-    std::unordered_map<std::string, std::string>& tf_name_to_mlir_name) {
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
   VLOG(1) << "Importing Signature: " << name;
 
   GraphImportConfig specs;
@@ -3976,10 +3976,9 @@ SavedModelSignatureDefImporterLite::ConvertGraph(
   TF_ASSIGN_OR_RETURN(const auto* subgraph, input_.GetSubGraph(name, specs));
 
   // Convert sub-graph to MLIR module.
-  return GraphDefImporter::Convert(module_->getContext(), *subgraph,
-                                   input_.debug_info(), subgraph->flib_def(),
-                                   specs, tf_name_to_mlir_name,
-                                   /*disable_crash_analysis=*/true);
+  return ConvertGraphToMlir(*subgraph, input_.debug_info(),
+                            subgraph->flib_def(), specs, module_->getContext(),
+                            tf_name_to_mlir_name);
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertSignature(
@@ -4006,7 +4005,7 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
   // Convert sub-graph to MLIR module.
   TF_ASSIGN_OR_RETURN(
       auto sub_module,
-      ConvertGraph(sig_def_key, inputs, outputs, {}, tf_name_to_mlir_name));
+      ConvertGraph(sig_def_key, inputs, outputs, {}, &tf_name_to_mlir_name));
   mlir::OpBuilder builder(sub_module->getBodyRegion());
 
   // Find the FuncOp which corresponds to current SignatureDef.
@@ -4305,7 +4304,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphdefToMlir(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
     const Graph& graph, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
-    mlir::MLIRContext* context) {
+    mlir::MLIRContext* context,
+    std::unordered_map<std::string, std::string>* tf_name_to_mlir_name) {
   // TODO(jpienaar): Remove need to const_cast.
   if (specs.upgrade_legacy) {
     TF_RETURN_IF_ERROR(
@@ -4314,16 +4314,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToMlir(
                            specs.restrict_functionalization_to_compiled_nodes));
   }
 
-  std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
-  TF_ASSIGN_OR_RETURN(auto module, GraphDefImporter::Convert(
-                                       context, graph, debug_info, flib_def,
-                                       specs, tf_name_to_mlir_name));
+  std::unordered_map<std::string, std::string> local_tf_name_to_mlir_name;
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
+                                tf_name_to_mlir_name == nullptr
+                                    ? &local_tf_name_to_mlir_name
+                                    : tf_name_to_mlir_name));
 
   if (specs.set_original_tf_func_name) {
     // Set up the original function names in the imported TF MLIR.
     mlir::Builder builder(module->getContext());
     mlir::SymbolTable symbol_table(*module);
-    for (const auto& [tf_name, mlir_name] : tf_name_to_mlir_name) {
+    for (const auto& [tf_name, mlir_name] :
+         (tf_name_to_mlir_name == nullptr ? local_tf_name_to_mlir_name
+                                          : *tf_name_to_mlir_name)) {
       auto func_op = symbol_table.lookup<mlir::func::FuncOp>(mlir_name);
       TF_RET_CHECK(func_op)
           << "Graphdef importer should have created a function named "
