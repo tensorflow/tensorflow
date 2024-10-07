@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_STATE_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_STATE_H_
 
+#include <memory>
 #include <queue>
 #include <string>
 #include <utility>
@@ -125,7 +126,7 @@ class RPCState : public GrpcClientCQTag {
   }
 
   void StartCall() {
-    context_.reset(new ::grpc::ClientContext());
+    context_ = std::make_unique<::grpc::ClientContext>();
     context_->set_wait_for_ready(!fail_fast_);
     if (timeout_in_ms_ > 0) {
       context_->set_deadline(

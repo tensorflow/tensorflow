@@ -86,7 +86,7 @@ class GrpcCallTag {
 template <class Service>
 class UntypedCall : public core::RefCounted {
  public:
-  virtual ~UntypedCall() {}
+  ~UntypedCall() override {}
 
   // The implementation of this method should use `service` to handle
   // an incoming request, and (perhaps asynchronously) send the
@@ -162,7 +162,7 @@ class Call : public UntypedCall<Service> {
   Call(HandleRequestFunction handle_request_function)
       : handle_request_function_(handle_request_function), responder_(&ctx_) {}
 
-  virtual ~Call() {}
+  ~Call() override {}
 
   void RequestReceived(Service* service, bool ok) override {
     if (ok) {
