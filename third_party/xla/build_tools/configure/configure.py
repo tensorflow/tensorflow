@@ -430,6 +430,12 @@ def _parse_args():
       default="nvcc",
   )
   parser.add_argument(
+      "--rocm_compiler",
+      type=RocmCompiler.from_str,
+      choices=list(RocmCompiler),
+      default="hipcc",
+  )
+  parser.add_argument(
       "--cuda_compute_capabilities",
       type=comma_separated_list,
       default=None,
@@ -504,6 +510,7 @@ def main():
       python_bin_path=args.python_bin_path,
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
+      rocm_compiler=args.rocm_compiler,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(
