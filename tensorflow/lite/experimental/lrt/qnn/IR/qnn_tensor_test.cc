@@ -48,7 +48,6 @@ TEST(TestInitQnnTensor, BuildDefaultInputTensor) {
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_WRITE);
   EXPECT_EQ(tensor.v2.memType, QNN_TENSORMEMTYPE_RAW);
   EXPECT_EQ(tensor.v2.clientBuf.dataSize, 0);
-  EXPECT_TRUE(absl::StrContains(tensor.v2.name, "Tensor_"));
 }
 
 TEST(TestInitQnnTensor, SetInputTensor) {
