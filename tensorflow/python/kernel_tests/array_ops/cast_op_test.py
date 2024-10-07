@@ -113,7 +113,8 @@ class CastOpTest(test.TestCase):
 
   def testFloat8(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
-    for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2):
+    for float8 in (dtypes.float8_e4m3fn, dtypes.float8_e5m2,
+                   dtypes.float8_e4m3fnuz, dtypes.float8_e5m2fnuz):
       # Including float8_e4m3fn should cover the float8 combinations without
       # loss of precision.
       for dtype in (dtypes.float64, dtypes.float32, dtypes.bfloat16,

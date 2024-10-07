@@ -161,6 +161,10 @@ absl::Status CpuCastOp::Prepare() {
     work_ = GetCpuCastFromFloat8e5m2(dst_dtype_);
   } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
     work_ = GetCpuCastFromFloat8e4m3fn(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT8_E5M2FNUZ) {
+    work_ = GetCpuCastFromFloat8e5m2fnuz(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT8_E4M3FNUZ) {
+    work_ = GetCpuCastFromFloat8e4m3fnuz(dst_dtype_);
   } else if (src_dtype_ == DT_INT4) {
     work_ = GetCpuCastFromInt4(dst_dtype_);
   } else if (src_dtype_ == DT_UINT4) {
@@ -223,6 +227,10 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromFloat8e5m2(dst_dtype_);
     } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
       work_ = GetGpuCastFromFloat8e4m3fn(dst_dtype_);
+    } else if (src_dtype_ == DT_FLOAT8_E5M2FNUZ) {
+      work_ = GetGpuCastFromFloat8e5m2fnuz(dst_dtype_);
+    } else if (src_dtype_ == DT_FLOAT8_E4M3FNUZ) {
+      work_ = GetGpuCastFromFloat8e4m3fnuz(dst_dtype_);
     } else if (src_dtype_ == DT_INT4) {
       work_ = GetGpuCastFromInt4(dst_dtype_);
     } else if (src_dtype_ == DT_UINT4) {
@@ -299,6 +307,27 @@ REGISTER_CAST_GPU(float8_e4m3fn, bfloat16);
 REGISTER_CAST_GPU(float8_e4m3fn, Eigen::half);
 REGISTER_CAST_GPU(float8_e4m3fn, float8_e5m2);
 REGISTER_CAST_GPU(float8_e4m3fn, float8_e4m3fn);
+
+REGISTER_CAST_GPU(float, float8_e5m2fnuz);
+REGISTER_CAST_GPU(float, float8_e4m3fnuz);
+
+REGISTER_CAST_GPU(bfloat16, float8_e5m2fnuz);
+REGISTER_CAST_GPU(bfloat16, float8_e4m3fnuz);
+
+REGISTER_CAST_GPU(Eigen::half, float8_e5m2fnuz);
+REGISTER_CAST_GPU(Eigen::half, float8_e4m3fnuz);
+
+REGISTER_CAST_GPU(float8_e5m2fnuz, float);
+REGISTER_CAST_GPU(float8_e5m2fnuz, bfloat16);
+REGISTER_CAST_GPU(float8_e5m2fnuz, Eigen::half);
+REGISTER_CAST_GPU(float8_e5m2fnuz, float8_e5m2fnuz);
+REGISTER_CAST_GPU(float8_e5m2fnuz, float8_e4m3fnuz);
+
+REGISTER_CAST_GPU(float8_e4m3fnuz, float);
+REGISTER_CAST_GPU(float8_e4m3fnuz, bfloat16);
+REGISTER_CAST_GPU(float8_e4m3fnuz, Eigen::half);
+REGISTER_CAST_GPU(float8_e4m3fnuz, float8_e5m2fnuz);
+REGISTER_CAST_GPU(float8_e4m3fnuz, float8_e4m3fnuz);
 
 REGISTER_CAST_GPU(int4, int4);
 REGISTER_CAST_GPU(int4, int8);
