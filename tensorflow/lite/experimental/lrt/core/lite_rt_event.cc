@@ -61,20 +61,20 @@ LrtStatus LrtEventWait(LrtEvent event, int64_t timeout_in_ms) {
     if (ret == 1) {
       break;
     } else if (ret == 0) {
-      LITE_RT_LOG(WARNING, "Timeout expired: %d", timeout_in_ms);
+      LITE_RT_LOG(LRT_WARNING, "Timeout expired: %d", timeout_in_ms);
       return kLrtStatusErrorTimeoutExpired;
     }
   } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
 
   if (ret < 0) {
-    LITE_RT_LOG(ERROR, "Error waiting for fence: %s", ::strerror(errno));
+    LITE_RT_LOG(LRT_ERROR, "Error waiting for fence: %s", ::strerror(errno));
     return kLrtStatusErrorRuntimeFailure;
   }
 
   return kLrtStatusOk;
 
 #else
-  LITE_RT_LOG(ERROR, "LrtEventWait not implemented for this platform");
+  LITE_RT_LOG(LRT_ERROR, "LrtEventWait not implemented for this platform");
   return kLrtStatusErrorUnsupported;
 #endif
 }
@@ -93,7 +93,7 @@ LrtStatus LrtEventDestroy(LrtEvent event) {
   delete event;
   return kLrtStatusOk;
 #else
-  LITE_RT_LOG(ERROR, "LrtEventDestroy not implemented for this platform");
+  LITE_RT_LOG(LRT_ERROR, "LrtEventDestroy not implemented for this platform");
   return kLrtStatusErrorUnsupported;
 #endif
 }

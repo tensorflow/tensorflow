@@ -37,8 +37,8 @@ inline static LrtStatus ResolveLibSymbol(void* lib_handle,
                                          Sym* sym_handle) {
   Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
   if (ptr == nullptr) {
-    LITE_RT_LOG(ERROR, "Faild to resolve symbol: %s, with err: %s\n", sym_name,
-                ::dlerror());
+    LITE_RT_LOG(LRT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
+                sym_name, ::dlerror());
     return kLrtStatusDynamicLoadErr;
   }
   *sym_handle = ptr;

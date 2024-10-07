@@ -31,7 +31,7 @@ namespace lrt {
 LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
   void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
   if (res == nullptr) {
-    LITE_RT_LOG(ERROR, "Failed to load .so at path: %s, with error: %s",
+    LITE_RT_LOG(LRT_ERROR, "Failed to load .so at path: %s, with error: %s",
                 so_path, ::dlerror());
 
     return kLrtStatusDynamicLoadErr;
@@ -80,7 +80,7 @@ void DumpLibInfo(void* lib_handle) {
     backward = backward->l_prev;
   }
 
-  LITE_RT_LOG(INFO, "%s", dump.str().c_str());
+  LITE_RT_LOG(LRT_INFO, "%s", dump.str().c_str());
 }
 
 }  // namespace lrt

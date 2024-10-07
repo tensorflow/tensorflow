@@ -52,7 +52,7 @@ absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
   const QnnInterface_t** interface_providers = nullptr;
   uint32_t num_providers = 0;
   if (QNN_SUCCESS != get_providers(&interface_providers, &num_providers)) {
-    LITE_RT_LOG(ERROR, "%s", "Failed to get providers\n");
+    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to get providers\n");
     return {};
   }
 
@@ -83,7 +83,7 @@ const QnnApi* QnnManager::Api() const {
 
 LrtStatus QnnManager::ResolveApi() {
   if (lib_so_ == nullptr) {
-    LITE_RT_LOG(ERROR, "%s",
+    LITE_RT_LOG(LRT_ERROR, "%s",
                 "Cannot resolve functions: libQnn*.so has not been loaded.\n");
     return kLrtStatusDynamicLoadErr;
   }
@@ -106,7 +106,7 @@ LrtStatus QnnManager::ResolveApi() {
   }
 
   if (interface_ == nullptr) {
-    LITE_RT_LOG(ERROR, "%s", "No valid interface was provided\n");
+    LITE_RT_LOG(LRT_ERROR, "%s", "No valid interface was provided\n");
     return kLrtStatusDynamicLoadErr;
   }
 
@@ -116,7 +116,7 @@ LrtStatus QnnManager::ResolveApi() {
 LrtStatus QnnManager::FreeLogging() {
   if (log_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->logFree(log_handle_)) {
-      LITE_RT_LOG(ERROR, "%s", "Failed to free logging\n");
+      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free logging\n");
       return kLrtStatusErrorNotFound;
     }
   }
@@ -127,7 +127,7 @@ LrtStatus QnnManager::FreeLogging() {
 LrtStatus QnnManager::FreeBackend() {
   if (backend_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->backendFree(backend_handle_)) {
-      LITE_RT_LOG(ERROR, "%s", "Failed to free backend\n");
+      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free backend\n");
       return kLrtStatusErrorNotFound;
     }
   }
@@ -138,7 +138,7 @@ LrtStatus QnnManager::FreeBackend() {
 LrtStatus QnnManager::FreeContext() {
   if (context_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->contextFree(context_handle_, nullptr)) {
-      LITE_RT_LOG(ERROR, "%s", "Failed to free context\n");
+      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free context\n");
       return kLrtStatusErrorNotFound;
     }
   }
@@ -149,7 +149,7 @@ LrtStatus QnnManager::FreeContext() {
 LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
   Qnn_ContextBinarySize_t bin_size = 0;
   if (QNN_SUCCESS != Api()->contextGetBinarySize(ContextHandle(), &bin_size)) {
-    LITE_RT_LOG(ERROR, "%s", "Failed to get context bin size\n");
+    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to get context bin size\n");
     return kLrtStatusErrorNotFound;
   }
   buffer.clear();
@@ -159,11 +159,11 @@ LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
   if (QNN_SUCCESS != Api()->contextGetBinary(ContextHandle(), buffer.data(),
                                              buffer.size(),
                                              &written_bin_size)) {
-    LITE_RT_LOG(ERROR, "%s", "Failed to generated context binary \n");
+    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to generated context binary \n");
     return kLrtStatusErrorNotFound;
   }
 
-  LITE_RT_LOG(INFO, "Serialized a context bin of size (bytes): %lu\n",
+  LITE_RT_LOG(LRT_INFO, "Serialized a context bin of size (bytes): %lu\n",
               written_bin_size);
 
   return kLrtStatusOk;
