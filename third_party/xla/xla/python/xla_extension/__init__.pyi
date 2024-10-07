@@ -42,7 +42,6 @@ from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
-from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree

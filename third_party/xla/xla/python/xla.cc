@@ -97,7 +97,6 @@ limitations under the License.
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/ops.h"
-#include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -591,7 +590,6 @@ NB_MODULE(xla_extension, m_nb) {
   BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
-  BuildOutfeedReceiverSubmodule(m_nb);
   BuildPytreeSubmodule(m_nb);
   jax::BuildJaxjitSubmodule(m_nb);
   jax::BuildPmapSubmodule(m_nb);

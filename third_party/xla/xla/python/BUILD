@@ -696,40 +696,6 @@ cc_library(
 )
 
 cc_library(
-    name = "outfeed_receiver",
-    srcs = ["outfeed_receiver.cc"],
-    hdrs = ["outfeed_receiver.h"],
-    deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/client:executable_build_options",
-        "//xla/client:sharding_builder",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_executable",
-        "//xla/python/pjrt_ifrt",
-        "//xla/service:computation_placer_hdr",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
     name = "pjit",
     srcs = ["pjit.cc"],
     hdrs = ["pjit.h"],
@@ -822,60 +788,6 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
-xla_cc_test(
-    name = "outfeed_receiver_test_cpu",
-    size = "small",
-    srcs = ["outfeed_receiver_test.cc"],
-    deps = [
-        ":outfeed_receiver",
-        "//xla:test",
-        "//xla/client:client_library",
-        "//xla/client:executable_build_options",
-        "//xla/client:xla_builder",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_stream_executor_client",
-        "//xla/pjrt/cpu:cpu_client",
-        "//xla/service:platform_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "outfeed_receiver_py",
-    srcs = ["outfeed_receiver_py.cc"],
-    hdrs = ["outfeed_receiver_py.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":nb_class_ptr",
-        ":outfeed_receiver",
-        ":py_client",
-        ":types",
-        # placeholder for index annotation deps
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@llvm-project//llvm:Support",
-        "@nanobind",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla/client:executable_build_options",
-        "//xla/client:xla_builder",
-        "//xla/pjrt:status_casters",
-        "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -1298,7 +1210,6 @@ tsl_pybind_extension(
         ":nb_absl_span",
         ":nb_class_ptr",
         ":ops",
-        ":outfeed_receiver_py",
         ":pjit",
         ":pmap_lib",
         ":pprof_profile_builder",
