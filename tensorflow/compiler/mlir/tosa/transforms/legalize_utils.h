@@ -233,8 +233,10 @@ void CreateReplaceOpAndInfer(PatternRewriter& rewriter, Operation* op,
   rewriter.replaceOp(op, result->getResults());
 }
 
+// Nan propagation mode is only applied to maximum and mininum.
 template <typename TOSA_OP>
-LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter) {
+LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter,
+                              StringRef nan_mode = "") {
   TensorType output_type = dyn_cast<TensorType>(op->getResults()[0].getType());
   if (!output_type) return failure();
 
@@ -245,7 +247,16 @@ LogicalResult ConvertBinaryOp(Operation* op, PatternRewriter& rewriter) {
   RankedTensorType y_type = dyn_cast<RankedTensorType>(y.getType());
   if (!x_type || !y_type) return failure();
 
-  CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y);
+  if constexpr (std::is_same_v<tosa::ReduceMaxOp, TOSA_OP> ||
+                std::is_same_v<tosa::ReduceMinOp, TOSA_OP>) {
+    if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+      (void)rewriter.notifyMatchFailure(op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
+      return failure();
+    }
+    CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y, nan_mode);
+  } else
+    CreateReplaceOpAndInfer<TOSA_OP>(rewriter, op, output_type, x, y);
+
   return success();
 }
 

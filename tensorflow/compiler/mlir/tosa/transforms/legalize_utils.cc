@@ -1004,9 +1004,8 @@ tosa::MulOp CreateMulOpAndInfer(PatternRewriter& rewriter, Operation* op,
     // uncompatible broadcast shapes, no reshape is inserted
     // ResultsBroadcastableShape verify will handle this
   }
-  return CreateOpAndInfer<tosa::MulOp>(
-      rewriter, op->getLoc(), result_ty, input1, input2,
-      rewriter.getI8IntegerAttr(shift));
+   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_ty, input1,
+      input2, getConstTensor<int8_t>(rewriter, op, shift, {1}).value());
 }
 
 }  // namespace tosa

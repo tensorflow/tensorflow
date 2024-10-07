@@ -1596,7 +1596,8 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI32IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1),
+          rewriter.getStringAttr("PROPAGATE"));
 
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), int32_logits_type, op1_rescale_in,
@@ -1794,7 +1795,8 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
 
       auto op2_reducemax_op1 = CreateOpAndInfer<tosa::ReduceMaxOp>(
           rewriter, op->getLoc(), int32_rsum_type, op1_rescale_in,
-          rewriter.getI32IntegerAttr(input_rank - 1));
+          rewriter.getI32IntegerAttr(input_rank - 1),
+          rewriter.getStringAttr("PROPAGATE"));
 
       // output range is [-65535, 0]
       auto op3_sub_op1_op2 = CreateOpAndInfer<tosa::SubOp>(
@@ -1938,7 +1940,8 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // Step 1. get x - max(x)
     auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
         rewriter, op->getLoc(), rsum_type, logits_value,
-        rewriter.getI32IntegerAttr(input_rank - 1));
+        rewriter.getI32IntegerAttr(input_rank - 1),
+        rewriter.getStringAttr("PROPAGATE"));
     auto normalized_logits =
         CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
                                       logits_value, max_logits.getResult());
@@ -2909,6 +2912,7 @@ static Value convertGenericReduceOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Common function for lowering reduce operations to TOSA ops.
+// Nan propagation mode is only applied to reduce_max and reduce_min.
 template <typename T>
 std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
@@ -2916,7 +2920,7 @@ std::optional<Value> convertReduceOpCommon(
     bool is_quantized, int32_t input_scale_multiplier,
     int32_t input_scale_shift, int64_t input_zp,
     int32_t output_scale_multiplier, int32_t output_scale_shift,
-    int64_t output_zp) {
+    int64_t output_zp, StringRef nan_mode = "") {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
@@ -2972,10 +2976,21 @@ std::optional<Value> convertReduceOpCommon(
       RankedTensorType reduce_type =
           tensorflow::GetTypeFromTFTensorShape(shape_vec, reduce_element_type);
 
-      auto reduce_op = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type,
-                                           val, axis_attr);
-
-      val = reduce_op.getResult();
+      if constexpr (std::is_same_v<tosa::ReduceMaxOp, T> ||
+                    std::is_same_v<tosa::ReduceMinOp, T>) {
+        if (nan_mode != "PROPAGATE" && nan_mode != "IGNORE") {
+          (void)rewriter.notifyMatchFailure(
+              op, "invalid NaN mode: must be either 'PROPAGATE' or 'IGNORE'");
+          return std::nullopt;
+        }
+        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                  axis_attr, rewriter.getStringAttr(nan_mode))
+                  .getResult();
+      } else {
+        val = CreateOpAndInfer<T>(rewriter, op->getLoc(), reduce_type, val,
+                                  axis_attr)
+                  .getResult();
+      }
     }
   }
 
@@ -3002,7 +3017,7 @@ std::optional<Value> convertReduceOpCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, Type reduce_element_type,
     bool is_quantized, double input_scale, int64_t input_zp,
-    double output_scale, int64_t output_zp) {
+    double output_scale, int64_t output_zp, StringRef nan_mode = "") {
   const int32_t scale_width = 32;
 
   int32_t input_scale_multiplier;
@@ -3018,7 +3033,7 @@ std::optional<Value> convertReduceOpCommon(
   return convertReduceOpCommon<T>(
       rewriter, op, output_type, input_value, axes_elems, reduce_element_type,
       is_quantized, input_scale_multiplier, input_scale_shift, input_zp,
-      output_scale_multiplier, output_scale_shift, output_zp);
+      output_scale_multiplier, output_scale_shift, output_zp, nan_mode);
 }
 
 // Lowers ReduceAll to a sequence of TOSA ops.
@@ -3056,14 +3071,15 @@ std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems) {
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceMinOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, nan_mode);
 }
 
 // Lowers ReduceMax to a sequence of TOSA ops.
@@ -3071,14 +3087,15 @@ std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
                                         Operation* op,
                                         RankedTensorType output_type,
                                         Value input_value,
-                                        ElementsAttr axes_elems) {
+                                        ElementsAttr axes_elems,
+                                        StringRef nan_mode) {
   RankedTensorType input_type =
       dyn_cast<RankedTensorType>(input_value.getType());
   if (!input_type) return std::nullopt;
 
   return convertReduceOpCommon<tosa::ReduceMaxOp>(
       rewriter, op, output_type, input_value, axes_elems,
-      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0);
+      output_type.getElementType(), false, 1.0f, 0, 1.0f, 0, nan_mode);
 }
 
 // Lowers ReduceProd to a sequence of TOSA ops.

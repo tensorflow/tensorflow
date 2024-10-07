@@ -4369,9 +4369,9 @@ LogicalResult ConvertTFLArgMaxOp::matchAndRewrite(
     dim += input_type.getRank();
   }
 
-  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
-                                          arg_max_op.getInput(),
-                                          rewriter.getI32IntegerAttr(dim));
+  CreateReplaceOpAndInfer<tosa::ArgMaxOp>(
+      rewriter, op, arg_max_op.getType(), arg_max_op.getInput(),
+      rewriter.getI32IntegerAttr(dim), rewriter.getStringAttr("PROPAGATE"));
 
   return success();
 }
@@ -4414,7 +4414,8 @@ LogicalResult ConvertTFLArgMinOp::matchAndRewrite(
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, arg_max_op.getType(),
                                           input,
-                                          rewriter.getI32IntegerAttr(dim));
+                                          rewriter.getI32IntegerAttr(dim),
+                                          rewriter.getStringAttr("PROPAGATE"));
 
   return success();
 }

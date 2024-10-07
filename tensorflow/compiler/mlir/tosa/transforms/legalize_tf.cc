@@ -500,7 +500,8 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
   IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
 
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
-                                          tf_argmax_op.getInput(), axis_attr);
+                                          tf_argmax_op.getInput(), axis_attr,
+                                          rewriter.getStringAttr("PROPAGATE"));
 
   return success();
 }
@@ -1371,7 +1372,7 @@ LogicalResult ConvertTFFusedBatchNormOp::matchAndRewrite(
 
   Value op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), variance_val.getType(), variance_val,
-      epsilon_const.getResult());
+      epsilon_const);
 
   Value op3_rsqrt_op2 = CreateOpAndInfer<tosa::RsqrtOp>(
       rewriter, op->getLoc(), variance_val.getType(), op2_add_var_epsilon);
