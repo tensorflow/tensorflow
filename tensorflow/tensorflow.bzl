@@ -2027,7 +2027,7 @@ def tf_kernel_library(
             [prefix + "*impl.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h"],
         )
-    cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
+    cuda_or_rocm_deps = [clean_dep("//tensorflow/core:gpu_lib")]
     if gpu_srcs:
         for gpu_src in gpu_srcs:
             if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -2040,7 +2040,7 @@ def tf_kernel_library(
             copts = gpu_copts,
             **kwargs
         )
-        cuda_deps.extend([":" + name + "_gpu"])
+        cuda_or_rocm_deps.extend([":" + name + "_gpu"])
     kwargs["tags"] = kwargs.get("tags", []) + [
         "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
         "req_dep=@local_config_cuda//cuda:cuda_headers",
@@ -2051,10 +2051,9 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        cuda_deps = cuda_deps + gpu_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
-        deps = deps,
+        deps = deps + gpu_deps + cuda_or_rocm_deps,
         compatible_with = compatible_with,
         **kwargs
     )
