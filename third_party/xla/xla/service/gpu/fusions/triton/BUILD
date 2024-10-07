@@ -415,6 +415,7 @@ cc_library(
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
         "//xla/tsl/profiler/utils:time_utils",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

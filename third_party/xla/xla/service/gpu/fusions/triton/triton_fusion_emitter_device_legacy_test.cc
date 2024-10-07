@@ -179,17 +179,22 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
           rhs_contracting_dims={0}
     }
   )";
-  const std::string pattern = R"(CHECK: "algorithm":"ALG_DOT_BF16_BF16_F32")";
+  const std::string pattern = R"(
+    CHECK:  %convert.2.0 = bf16[
+    CHECK:  %convert.3.0 = bf16[
+    CHECK: "algorithm":"ALG_UNSET"
+  )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
   ASSERT_TRUE(ok);
 
   auto tracer = KernelNameTracer::Create();
+  if (tracer == nullptr) {
+    GTEST_SKIP() << "KernelNameTracer is not implemented.";
+  }
   tracer->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_name = tracer->stop();
-
-  if (kernel_name == "kernel_name_tracer_not_implemented") return;
+  auto kernel_names = tracer->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -197,19 +202,25 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   switch (cc.major) {
     case CudaComputeCapabilities::BLACKWELL:
       GTEST_SKIP() << "CudaComputeCapabilities::BLACKWELL has the kernel name: "
-                   << kernel_name;
+                   << kernel_names[0];
       break;
     case CudaComputeCapabilities::AMPERE:
-      EXPECT_THAT(kernel_name, ::testing::HasSubstr("bf16gemm_"));
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::Eq("wrapped_convert"),
+                                    ::testing::Eq("wrapped_convert_1"),
+                                    ::testing::HasSubstr("gemm_bf16_")));
       break;
     case CudaComputeCapabilities::HOPPER:
-      // Hopper does not have bf16 kernels for ALG_DOT_BF16_BF16_F32 algorithm.
-      // As a result it uses TF32.
-      EXPECT_THAT(kernel_name, ::testing::HasSubstr("gemm_f32f32_tf32f32_f32"));
+      // Convert to bf16+cublas works faster than dot with algorithm.
+      EXPECT_THAT(kernel_names,
+                  ::testing::UnorderedElementsAre(
+                      ::testing::Eq("wrapped_convert"),
+                      ::testing::Eq("wrapped_convert_1"),
+                      ::testing::HasSubstr("gemm_bf16f32_bf16f32")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
-                   << " has the kernel name: " << kernel_name;
+                   << " has the kernel name: " << kernel_names[0];
   }
 }
 
@@ -236,11 +247,12 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
   ASSERT_TRUE(ok);
 
   auto tracer = KernelNameTracer::Create();
+  if (tracer == nullptr) {
+    GTEST_SKIP() << "KernelNameTracer is not implemented.";
+  }
   tracer->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_name = tracer->stop();
-
-  if (kernel_name == "kernel_name_tracer_not_implemented") return;
+  auto kernel_names = tracer->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -248,19 +260,23 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
   switch (cc.major) {
     case CudaComputeCapabilities::BLACKWELL:
       GTEST_SKIP() << "CudaComputeCapabilities::BLACKWELL has the kernel name: "
-                   << kernel_name;
+                   << kernel_names[0];
       break;
     case CudaComputeCapabilities::AMPERE:
       // There is no support for TF32_TF32_F32_X3 on Ampere. We use F32_F32_F32.
-      EXPECT_THAT(kernel_name, ::testing::HasSubstr("ampere_sgemm_128x64_nn"));
+      EXPECT_THAT(
+          kernel_names,
+          ::testing::Contains(::testing::HasSubstr("ampere_sgemm_128x64_nn")));
       break;
     case CudaComputeCapabilities::HOPPER:
       // There is no support for TF32_TF32_F32_X3 on Hopper. We use F32_F32_F32.
-      EXPECT_THAT(kernel_name, ::testing::HasSubstr("gemm_f32f32_f32f32_f32"));
+      EXPECT_THAT(
+          kernel_names,
+          ::testing::Contains(::testing::HasSubstr("gemm_f32f32_f32f32_f32")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
-                   << " has the kernel name: " << kernel_name;
+                   << " has the kernel name: " << kernel_names[0];
   }
 }
 
