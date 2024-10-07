@@ -123,11 +123,36 @@ cc_library(
 )
 
 cc_library(
+    name = "compiler_plugin_api",
+    srcs = ["compiler_plugin_api.cc"],
+    hdrs = ["compiler_plugin_api.h"],
+    deps = [
+        ":api_internal",
+        ":dynamic_loading",
+        ":logging",
+    ],
+)
+
+cc_test(
+    name = "compiler_plugin_api_test",
+    srcs = ["compiler_plugin_api_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/examples:mul_op_plugin_so"],
+    deps = [
+        ":compiler_plugin_api",
+        ":dynamic_loading",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dynamic_loading",
     srcs = ["dynamic_loading.cc"],
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
+        ":logging",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -149,13 +174,11 @@ cc_library(
         "tensor_buffer.h",
     ],
     deps = [
-        ":event",
         ":logging",
         ":utils",
         "//tensorflow/lite/experimental/lrt/c:event",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
@@ -220,8 +243,5 @@ cc_library(
     hdrs = [
         "logging.h",
     ],
-    deps = [
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/core:framework_stable",
-    ],
+    deps = ["//tensorflow/lite:minimal_logging"],
 )

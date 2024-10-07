@@ -39,6 +39,7 @@ ungrte_cc_library_with_qnn(
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
+        "//tensorflow/lite/experimental/lrt/core:logging",
     ],
 )
 

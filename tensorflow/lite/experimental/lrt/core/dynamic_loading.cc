@@ -18,24 +18,31 @@
 #include <link.h>
 
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/core/logging.h"
 
 namespace lrt {
 
-void* OpenLib(absl::string_view so_path) {
-  void* lib_handle =
-      ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
-  if (lib_handle == nullptr) {
-    std::cerr << "Failed to load so at path: " << so_path
-              << " with err: " << ::dlerror() << "\n";
+// TODO make this return a status and have handle be output param.
+LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
+  void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
+  if (res == nullptr) {
+    LITE_RT_LOG(ERROR, "Failed to load .so at path: %s, with error: %s",
+                so_path, ::dlerror());
+
+    return kLrtStatusDynamicLoadErr;
   }
-  return lib_handle;
+  *lib_handle = res;
+  return kLrtStatusOk;
 }
 
 void DumpLibInfo(void* lib_handle) {
-  std::cerr << "--- Lib Info ---\n";
+  std::stringstream dump;
+  dump << "--- Lib Info ---\n";
 
   Lmid_t dl_ns_idx;
   if (0 != ::dlinfo(lib_handle, RTLD_DI_LMID, &dl_ns_idx)) {
@@ -53,25 +60,27 @@ void DumpLibInfo(void* lib_handle) {
     return;
   }
 
-  std::cerr << "Lib Namespace: " << dl_ns_idx << "\n";
-  std::cerr << "Lib Origin: " << dl_origin << "\n";
+  dump << "Lib Namespace: " << dl_ns_idx << "\n";
+  dump << "Lib Origin: " << dl_origin << "\n";
 
-  std::cerr << "loaded objects:\n";
+  dump << "loaded objects:\n";
 
   auto* forward = lm->l_next;
   auto* backward = lm->l_prev;
 
   while (forward != nullptr) {
-    std::cerr << "  " << forward->l_name << "\n";
+    dump << "  " << forward->l_name << "\n";
     forward = forward->l_next;
   }
 
-  std::cerr << "***" << lm->l_name << "\n";
+  dump << "***" << lm->l_name << "\n";
 
   while (backward != nullptr) {
-    std::cerr << "  " << backward->l_name << "\n";
+    dump << "  " << backward->l_name << "\n";
     backward = backward->l_prev;
   }
+
+  LITE_RT_LOG(INFO, "%s", dump.str().c_str());
 }
 
 }  // namespace lrt

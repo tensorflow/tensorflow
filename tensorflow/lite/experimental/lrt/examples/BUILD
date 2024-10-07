@@ -29,7 +29,7 @@ cc_library(
 
 cc_shared_library(
     name = "mul_op_plugin_so",
-    shared_lib_name = "mul_op_plugin.so",
+    shared_lib_name = "libLrtPlugin_Test_MulOp.so",
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [":mul_op_plugin"],
 )

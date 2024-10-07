@@ -33,7 +33,7 @@ constexpr absl::string_view kLibQnnHtpSo = "libQnnHtp.so";
 constexpr absl::string_view kLibQnnHtpSo = QNN_SDK_LIB_HTP;
 #endif
 
-typedef QNN_INTERFACE_VER_TYPE QnnFunctionPointers;
+typedef QNN_INTERFACE_VER_TYPE QnnApi;
 
 // Wrapper to manage dynamic loading and lifetimes of QNN SDK objects.
 class QnnManager {
@@ -45,11 +45,12 @@ class QnnManager {
   //
 
   // Loads the libQnn*.so at given path.
-  LrtStatus LoadLibSO(absl::string_view path);
+  LrtStatus LoadLib(absl::string_view path);
 
   // Dumps dynamic loading info about the loaded libQnn*.so. Does
   // nothing if it has not been loaded yet.
-  void DumpLibSODetails() const;
+  // TODO: rename DumpLibInfo
+  void DumpLibDetails() const;
 
   //
   // Resolve and Access QNN SDK Functions
@@ -58,11 +59,11 @@ class QnnManager {
   // Resolve all available QNN SDK functions from (already) loaded so. If
   // multiple providers are found, selects the first one with a suitable
   // version. Fails if none can be found.
-  LrtStatus ResolveFuncs();
+  LrtStatus ResolveApi();
 
   // Get resolved function pointers for qnn sdk calls. Nullptr if functions
   // have not been resolved yet.
-  const QnnFunctionPointers* API() const;
+  const QnnApi* Api() const;
 
   // Dumps information relevant to the loaded api provider. Does nothing if
   // a successful ResolveFuncs hasn't occurred.
