@@ -16,14 +16,12 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
-#include "absl/log/absl_log.h"
-#include "absl/log/log.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"
-#include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"
-#include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"  // IWYU pragma: keep
 
 TEST(TensorBuffer, HostMemory) {
   float kTensorData[] = {10, 20, 30, 40};
@@ -127,9 +125,8 @@ TEST(TensorBuffer, Ahwb) {
 #if LRT_HAS_ION_SUPPORT
 TEST(TensorBuffer, Ion) {
   if (!lrt::internal::IonBuffer::IsSupported()) {
-    ABSL_LOG(INFO)
+    GTEST_SKIP()
         << "ION buffers are not supported on this platform; skipping the test";
-    return;
   }
 
   float kTensorData[] = {10, 20, 30, 40};
@@ -183,10 +180,9 @@ TEST(TensorBuffer, Ion) {
 #if LRT_HAS_DMABUF_SUPPORT
 TEST(TensorBuffer, DmaBuf) {
   if (!lrt::internal::DmaBufBuffer::IsSupported()) {
-    ABSL_LOG(INFO)
+    GTEST_SKIP()
         << "DMA-BUF buffers are not supported on this platform; skipping "
            "the test";
-    return;
   }
 
   float kTensorData[] = {10, 20, 30, 40};
@@ -241,10 +237,9 @@ TEST(TensorBuffer, DmaBuf) {
 #if LRT_HAS_FASTRPC_SUPPORT
 TEST(TensorBuffer, FastRpc) {
   if (!lrt::internal::FastRpcBuffer::IsSupported()) {
-    ABSL_LOG(INFO)
+    GTEST_SKIP()
         << "FastRPC buffers are not supported on this platform; skipping "
            "the test";
-    return;
   }
 
   float kTensorData[] = {10, 20, 30, 40};

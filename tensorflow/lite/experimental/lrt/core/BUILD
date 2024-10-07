@@ -127,7 +127,10 @@ cc_library(
     srcs = ["dynamic_loading.cc"],
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
-    deps = ["@com_google_absl//absl/strings:string_view"],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -146,6 +149,7 @@ cc_library(
         "tensor_buffer.h",
     ],
     deps = [
+        ":event",
         ":logging",
         ":utils",
         "//tensorflow/lite/experimental/lrt/c:event",
@@ -161,12 +165,28 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "tensor_buffer_test",
+    srcs = [
+        "tensor_buffer_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    tags = ["manual"],
+    deps = [
+        ":tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "event",
     srcs = [
         "lite_rt_event.cc",
-    ],
-    hdrs = [
     ],
     deps = [
         ":logging",
