@@ -1062,11 +1062,12 @@ class GeluTest(test_lib.TestCase):
         from scipy.stats import norm  # pylint: disable=g-import-not-at-top
         return x * norm.cdf(x)
 
-    np.random.seed(1)  # Make it reproducible.
-    x = np.random.randn(3, 4).astype(np.float32)
+    # Make sure we test for negative arguments where GeLU is difficult to
+    # evaluate accurately.
+    x = np.linspace(-12, 5, 1000).astype(np.float32)
     y = gelu(x)
     z = self.evaluate(nn_ops.gelu(x))
-    self.assertAllClose(y, z)
+    self.assertAllClose(y, z, atol=0, rtol=2e-5)
 
     y = gelu(x, True)
     z = self.evaluate(nn_ops.gelu(x, True))
