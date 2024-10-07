@@ -10,6 +10,7 @@ load(
 )
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
     "if_cuda_newer_than",
 )
 load(
@@ -17,7 +18,12 @@ load(
     "xla_cc_test",
 )
 load(
+    "//xla/service/gpu:build_defs.bzl",
+    "gpu_kernel_library",
+)
+load(
     "//xla/stream_executor:build_defs.bzl",
+    "cuda_only_cc_library",
     "stream_executor_friends",
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_copts",
@@ -81,7 +87,7 @@ cc_library(
     deps = ["//xla/stream_executor:platform"],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_platform",
     srcs = ["cuda_platform.cc"],
     hdrs = ["cuda_platform.h"],
@@ -121,7 +127,7 @@ cc_library(
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_diagnostics",
     srcs = ["cuda_diagnostics.cc"],
     hdrs = ["cuda_diagnostics.h"],
@@ -159,7 +165,7 @@ cc_library(
     ),
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     hdrs = ["cuda_driver.h"],
@@ -204,7 +210,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_status",
     srcs = ["cuda_status.cc"],
     hdrs = ["cuda_status.h"],
@@ -220,7 +226,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_runtime",
     srcs = ["cuda_runtime.cc"],
     hdrs = ["cuda_runtime.h"],
@@ -239,7 +245,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_collectives",
     hdrs = ["cuda_collectives.h"],
     tags = [
@@ -339,7 +345,7 @@ xla_test(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cublas_lt_header",
     hdrs = [
         "cuda_blas_lt.h",
@@ -365,7 +371,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cublas_plugin",
     srcs = [
         "cuda_blas.cc",
@@ -431,7 +437,7 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_blas_utils",
     srcs = ["cuda_blas_utils.cc"],
     hdrs = ["cuda_blas_utils.h"],
@@ -451,7 +457,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cufft_plugin",
     srcs = ["cuda_fft.cc"],
     hdrs = ["cuda_fft.h"],
@@ -484,7 +490,7 @@ cc_library(
     alwayslink = True,
 )
 
-cuda_library(
+gpu_kernel_library(
     name = "delay_kernel_cuda",
     srcs = [
         "delay_kernel.h",
@@ -508,7 +514,7 @@ cuda_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
     hdrs = ["cuda_dnn.h"],
@@ -569,7 +575,7 @@ cc_library(
     alwayslink = True,
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
     hdrs = ["cuda_kernel.h"],
@@ -637,7 +643,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_event",
     srcs = ["cuda_event.cc"],
     hdrs = ["cuda_event.h"],
@@ -880,7 +886,7 @@ xla_cc_test(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_asm_compiler",
     srcs = ["cuda_asm_compiler.cc"],
     hdrs = ["cuda_asm_compiler.h"],
@@ -948,7 +954,7 @@ cc_library(
     ],
 )
 
-cc_library(
+cuda_only_cc_library(
     name = "cuda_executor",
     srcs = [
         "cuda_executor.cc",
