@@ -22,6 +22,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -3869,5 +3872,135 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 0);
 }
 
+TEST_F(CopyInsertionTest, PipelinedLoop) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+body {
+  input_tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  arg.0 = get-tuple-element(input_tuple.0), index=0
+  arg.1 = get-tuple-element(input_tuple.0), index=1
+  arg.2 = get-tuple-element(input_tuple.0), index=2
+  arg.3 = get-tuple-element(input_tuple.0), index=3
+
+  one.0 = s32[] constant(1)
+  out.0 = add(arg.0, one.0)
+
+  ROOT output_tuple.0 = tuple(arg.1, arg.2, out.0, arg.3)
+}
+
+condition {
+  input_tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  arg.3 = get-tuple-element(input_tuple.0), index=3
+  three.0 = s32[] constant(3)
+  ROOT pred.0 = compare(arg.3, three.0), direction=LT
+}
+
+ENTRY main {
+  while_tuple.0 = (s32[], s32[], s32[], s32[]) parameter(0)
+  ROOT while.0 = (s32[], s32[], s32[], s32[]) while(while_tuple.0), body=body, condition=condition
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1,
+                               /*unroll_pipelined_loops=*/true);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+
+  const HloInstruction* original_loop =
+      FindInstruction(module.get(), "while.0");
+  // The original loop should have 3 copies.
+  // arg.1 moves to index 0.
+  // arg.2 moves to index 1.
+  // out.0 moves to index 2.
+  EXPECT_EQ(CountCopies(*original_loop->while_body()), 3);
+
+  const HloInstruction* unrolled_loop = original_loop->operand(0);
+  EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
+  // There should be no copies inserted into the unrolled loop.
+  EXPECT_EQ(CountCopies(*unrolled_loop->while_body()), 0);
+}
+
+TEST_F(CopyInsertionTest, PipelinedLoopWithInfeed) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+body {
+  input_tuple.0 = (s32[], s32[], s32[], token[], s32[]) parameter(0)
+  arg.0 = get-tuple-element(input_tuple.0), index=0
+  arg.1 = get-tuple-element(input_tuple.0), index=1
+  arg.2 = get-tuple-element(input_tuple.0), index=2
+  arg.3 = get-tuple-element(input_tuple.0), index=3
+  arg.4 = get-tuple-element(input_tuple.0), index=4
+
+  infeed.0 = (s32[], token[]) infeed(arg.3)
+  infeed_value.0 = get-tuple-element(infeed.0), index=0
+  infeed_output_token.0 = get-tuple-element(infeed.0), index=1
+
+  out.0 = add(arg.0, arg.1)
+
+  ROOT output_tuple.0 = tuple(out.0, arg.2, infeed_value.0, infeed_output_token.0, arg.4)
+}
+
+condition {
+  input_tuple.0 = (s32[], s32[], s32[], token[], s32[]) parameter(0)
+  arg.4 = get-tuple-element(input_tuple.0), index=4
+  three.0 = s32[] constant(3)
+  ROOT pred.0 = compare(arg.4, three.0), direction=LT
+}
+
+ENTRY main {
+  infeed_input_token.0 = after-all()
+  infeed.0 = (s32[], token[]) infeed(infeed_input_token.0)
+  infeed_value.0 = s32[] get-tuple-element(infeed.0), index=0
+  infeed_output_token.0 = token[] get-tuple-element(infeed.0), index=1
+
+  infeed.1 = (s32[], token[]) infeed(infeed_output_token.0)
+  infeed_value.1 = s32[] get-tuple-element(infeed.1), index=0
+  infeed_output_token.1 = token[] get-tuple-element(infeed.1), index=1
+
+  zero.0 = s32[] constant(0)
+  while_tuple.0 = tuple(zero.0, infeed_value.0, infeed_value.1, infeed_output_token.1, zero.0)
+  while.0 = (s32[], s32[], s32[], token[], s32[]) while(while_tuple.0), body=body, condition=condition
+
+  ROOT root.0 = get-tuple-element(while.0), index=0
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1,
+                               /*unroll_pipelined_loops=*/true);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+
+  const HloInstruction* original_loop =
+      FindInstruction(module.get(), "while.0");
+  // The original loop should have 1 copy.
+  // arg.2 moves to index 1.
+  EXPECT_EQ(CountCopies(*original_loop->while_body()), 1);
+
+  const HloInstruction* unrolled_loop = original_loop->operand(0);
+  EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
+  // There should be no copies inserted into the unrolled loop.
+  EXPECT_EQ(CountCopies(*unrolled_loop->while_body()), 0);
+
+  // All infeeds in the unrolled body need to be ordered with respect to each
+  // other.
+  absl::InlinedVector<HloInstruction*, 3> unrolled_infeeds;
+  for (HloInstruction* instruction :
+       unrolled_loop->while_body()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kInfeed) {
+      unrolled_infeeds.push_back(instruction);
+    }
+  }
+  DependencyHloOrdering dlo(module.get());
+  for (HloInstruction* lhs : unrolled_infeeds) {
+    for (HloInstruction* rhs : unrolled_infeeds) {
+      if (lhs != rhs) {
+        EXPECT_TRUE(dlo.ExecutesBefore(lhs, rhs) ||
+                    dlo.ExecutesBefore(rhs, lhs));
+      }
+    }
+  }
+}
 }  // namespace
 }  // namespace xla

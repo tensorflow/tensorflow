@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <numeric>
+#include <stack>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -27,6 +29,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -363,6 +367,105 @@ WhileUtil::GetGTEsMapForWhileConditional(
     }
   }
   return result;
+}
+
+/*static*/
+absl::Status WhileUtil::IncrementWhileLoopTripCount(
+    HloComputation* while_conditional, int32_t increment) {
+  HloInstruction* compare = while_conditional->root_instruction();
+  if (compare->opcode() != HloOpcode::kCompare) {
+    return absl::InvalidArgumentError("While condition root is not a compare");
+  }
+  HloInstruction* trip_count;
+  if ((compare->comparison_direction() == ComparisonDirection::kGt) ||
+      (compare->comparison_direction() == ComparisonDirection::kGe)) {
+    trip_count = compare->mutable_operand(0);
+  } else if ((compare->comparison_direction() == ComparisonDirection::kLt) ||
+             (compare->comparison_direction() == ComparisonDirection::kLe)) {
+    trip_count = compare->mutable_operand(1);
+  } else {
+    return absl::InvalidArgumentError("Unhandled comparison direction");
+  }
+  if (trip_count->user_count() > 1) {
+    return absl::InvalidArgumentError(
+        "Not able to handle trip count with multiple users");
+  }
+  HloInstruction* increment_constant =
+      while_conditional->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0<int32_t>(increment)));
+  HloInstruction* incremented_trip_count = while_conditional->AddInstruction(
+      HloInstruction::CreateBinary(trip_count->shape(), HloOpcode::kAdd,
+                                   trip_count, increment_constant));
+  return trip_count->ReplaceAllUsesWith(incremented_trip_count);
+}
+
+/*static*/
+int64_t WhileUtil::ComputeWhileLoopPipelineDepth(
+    const HloComputation& while_body) {
+  CHECK(while_body.IsWhileBodyComputation());
+
+  // Look for pattern param -> gte -> root, where indices in the param and
+  // root tuples are missmatching.
+  absl::flat_hash_map<int64_t, int64_t> loop_permutations;
+  HloInstruction* while_param = while_body.parameter_instruction(0);
+  HloInstruction* while_root = while_body.root_instruction();
+  for (int64_t output_index = 0; output_index < while_root->operand_count();
+       output_index++) {
+    const HloInstruction* operand = while_root->operand(output_index);
+    if (operand->opcode() == HloOpcode::kGetTupleElement &&
+        operand->operand(0) == while_param) {
+      int64_t input_index = operand->tuple_index();
+      if (input_index != output_index) {
+        // Don't try to analyze loops with complicated permutation patterns.
+        if (loop_permutations.contains(input_index)) {
+          return 1;
+        }
+        loop_permutations.emplace(input_index, output_index);
+      }
+    }
+  }
+
+  // Find all indices at which the pipelined chains start from.
+  std::vector<int64_t> start_indices;
+  for (auto&& [input_index, _] : loop_permutations) {
+    bool is_chain_start = true;
+    for (auto&& [_, output_index] : loop_permutations) {
+      if (input_index == output_index) {
+        is_chain_start = false;
+      }
+    }
+    if (is_chain_start) {
+      start_indices.push_back(input_index);
+    }
+  }
+
+  // Find all pipelining chains.
+  std::vector<std::vector<int64_t>> pipelined_chains;
+  for (int64_t start_index : start_indices) {
+    std::stack<std::pair<int64_t, std::vector<int64_t>>> stack;
+    stack.push({start_index, {start_index}});
+    while (!stack.empty()) {
+      auto [current_index, current_chain] = stack.top();
+      stack.pop();
+      if (!loop_permutations.contains(current_index)) {
+        pipelined_chains.push_back(std::move(current_chain));
+      } else {
+        int64_t next_index = loop_permutations[current_index];
+        current_chain.push_back(next_index);
+        stack.emplace(next_index, std::move(current_chain));
+      }
+    }
+  }
+
+  // Compute the pipeline depth of the loop body.
+  // https://en.wikipedia.org/wiki/Permutation#Order_of_a_permutation
+  int64_t pipeline_depth = 1;
+  for (auto&& pipelined_chain : pipelined_chains) {
+    pipeline_depth =
+        std::lcm<int64_t>(pipelined_chain.size() + 1, pipeline_depth);
+  }
+
+  return pipeline_depth;
 }
 
 }  // namespace xla

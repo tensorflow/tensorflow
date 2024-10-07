@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_COPY_INSERTION_H_
 #define XLA_SERVICE_COPY_INSERTION_H_
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -61,10 +63,12 @@ class CopyInsertion : public HloModulePass {
   // buffer.
   explicit CopyInsertion(
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
+      bool unroll_pipelined_loops = false)
       : can_share_buffer_(can_share_buffer),
         use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {}
+            use_region_based_live_range_analysis),
+        unroll_pipelined_loops_(unroll_pipelined_loops) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -112,10 +116,16 @@ class CopyInsertion : public HloModulePass {
   HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
 
  private:
+  // Unrolling pipelined loops removes the need of inserting copies to resolve
+  // interference at the cost of compile times.
+  absl::Status UnrollPipelinedLoopsToResolveInterference(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
   absl::Status AddCopiesToResolveInterference(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;
+  bool unroll_pipelined_loops_;
 };
 
 }  // namespace xla

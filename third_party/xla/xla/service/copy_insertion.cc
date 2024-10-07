@@ -20,6 +20,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -31,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -43,8 +48,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/dump.h"
+#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_dataflow_analysis.h"
@@ -52,6 +59,7 @@ limitations under the License.
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -2340,6 +2348,103 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   return absl::OkStatus();
 }
 
+absl::Status CopyInsertion::UnrollPipelinedLoopsToResolveInterference(
+    HloModule* module,
+    const absl::flat_hash_set<std::string_view>& execution_threads) {
+  std::vector<std::pair<HloInstruction*, int64_t>> while_instructions;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsWhileBodyComputation()) {
+      int64_t pipeline_depth =
+          WhileUtil::ComputeWhileLoopPipelineDepth(*computation);
+      if (pipeline_depth > 1) {
+        while_instructions.emplace_back(computation->WhileCallInstruction(),
+                                        pipeline_depth);
+      }
+    }
+  }
+
+  std::vector<HloInstruction*> original_roots;
+  for (auto&& [while_instruction, pipeline_depth] : while_instructions) {
+    // The pipeline depth already accounts for the original loop iteration.
+    int64_t unroll_count = pipeline_depth - 1;
+    HloComputation* body = while_instruction->while_body();
+    HloComputation* condition = while_instruction->while_condition();
+
+    // Generate the unrolled loop body. This will call the original body
+    // unroll_count times.
+    HloComputation::Builder b(
+        absl::StrFormat("%s.unrolled_%dx", body->name(), unroll_count));
+    HloInstruction* input_tuple =
+        b.AddInstruction(HloInstruction::CreateParameter(
+            0, while_instruction->shape(), "input_tuple"));
+    HloComputation* unrolled_body = module->AddEmbeddedComputation(b.Build());
+    for (int64_t step = 0; step < unroll_count + 1; ++step) {
+      HloComputation* loop_step = module->AddEmbeddedComputation(body->Clone(
+          absl::StrFormat("unrolled_%dx_step_%d", unroll_count, step)));
+      input_tuple = unrolled_body->AddInstruction(HloInstruction::CreateCall(
+          while_instruction->shape(), {input_tuple}, loop_step));
+      TF_ASSIGN_OR_RETURN(auto inline_map, CallInliner::Inline(input_tuple));
+      // Find the original bodies root after inlining. This is the inputs for
+      // the next (unrolled) loop iteration.
+      input_tuple = inline_map[loop_step->root_instruction()];
+      original_roots.push_back(input_tuple);
+    }
+    // The final original root is now the root of the unrolled loop.
+    HloInstruction* unrolled_root = original_roots.back();
+    original_roots.pop_back();
+    unrolled_body->set_root_instruction(unrolled_root);
+
+    // We need the unrolled loop and the remainder (original) loop to execute
+    // a combined number of steps equal to unroll_count. Since the unrolled
+    // loop on each iteration executes (1 + unroll_count) steps, we split the
+    // work by having the unrolled loop execute num_steps // (1 + unroll_count)
+    // times, and then the remainder loop will execute
+    // num_steps % (1 + unroll_count) times. This can be guaranteed by using
+    // the original condition for the unrolled loop, but reducing its trip
+    // count by unroll_count.
+    HloComputation* unrolled_condition = module->AddEmbeddedComputation(
+        condition->Clone(absl::StrFormat("unrolled_%dx", unroll_count)));
+    TF_RETURN_IF_ERROR(WhileUtil::IncrementWhileLoopTripCount(
+        unrolled_condition, -unroll_count));
+
+    HloInstruction* unrolled_while_instruction =
+        while_instruction->parent()->AddInstruction(HloInstruction::CreateWhile(
+            while_instruction->shape(), unrolled_condition, unrolled_body,
+            while_instruction->mutable_operand(0)));
+    TF_RETURN_IF_ERROR(
+        while_instruction->ReplaceOperandWith(0, unrolled_while_instruction));
+  }
+
+  if (!while_instructions.empty()) {
+    // We're unrolling the loop to remove aliasing copies, not to find better
+    // scheduling opportunities.
+    // Create a global barrier at the boundary of steps, so sideffecting ops
+    // don't get moved to neighbouring steps during scheduling.
+    // This creates a soft guarantee that the unrolled loop steps will have
+    // an identical schedule to their original counterpart.
+    for (HloInstruction* original_root : original_roots) {
+      HloInstruction* sideeffect_barrier = original_root->AddInstruction(
+          HloInstruction::CreateAfterAll(original_root->operands()));
+      for (HloInstruction* user : original_root->users()) {
+        if (user->shape().IsToken()) {
+          TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(sideeffect_barrier));
+        }
+      }
+    }
+
+    // When we cloned the loop body for each unrolled step, we didn't
+    // recursively clone all the nested computations. FCG will take care of this
+    // for us.
+    FlattenCallGraph fcg;
+    TF_RETURN_IF_ERROR(fcg.Run(module).status());
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> CopyInsertion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2367,6 +2472,15 @@ absl::StatusOr<bool> CopyInsertion::Run(
   // interference. If all copies were added in step (1) then copy removal would
   // also have to reason about things like constants and parameters live out of
   // the computation.
+
+  if (unroll_pipelined_loops_) {
+    TF_RETURN_IF_ERROR(
+        UnrollPipelinedLoopsToResolveInterference(module, execution_threads));
+    DumpHloModuleDuringPassIfEnabled(
+        name(), "after removing interference from pipelined while loops",
+        *module);
+  }
+
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   if (!call_graph->IsFlattened()) {
     return FailedPrecondition(
