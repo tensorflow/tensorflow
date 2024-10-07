@@ -36,9 +36,11 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_computation.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -47,10 +49,10 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -60,10 +62,13 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -990,6 +995,94 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
     auto host_index = device->process_index();
     EXPECT_EQ(slice_index, host_index);
   }
+}
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
+  GpuClientOptions options;
+  options.enable_mock_nccl = true;
+  options.num_nodes = 8;
+  options.mock_gpu_topology = "2x4x2";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2) << "This test requires 2 local GPUs.";
+
+  TF_ASSERT_OK_AND_ASSIGN(const xla::PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  const StreamExecutorGpuTopologyDescription& gpu_topology =
+      tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
+          *topology);
+
+  EXPECT_EQ(gpu_topology.gpu_topology().num_slices(), 2);
+  EXPECT_EQ(gpu_topology.gpu_topology().num_hosts_per_slice(), 4);
+  EXPECT_EQ(gpu_topology.gpu_topology().num_devices_per_host(), 2);
+}
+
+constexpr char kMlirDistributedSum[] = R"(
+module @jit_f attributes {mhlo.num_partitions = 8 : i32,
+                          mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%arg0: tensor<8xi32> {
+      mhlo.layout_mode = "default",
+      mhlo.sharding = "{devices=[8]0,1,2,3,4,5,6,7}"}) -> (tensor<i32> {
+          jax.result_info = "",
+          mhlo.layout_mode = "default"}) {
+    %c = stablehlo.constant dense<0> : tensor<i32>
+    %0 = stablehlo.reduce(%arg0 init: %c)
+        applies stablehlo.add across dimensions = [0]
+            : (tensor<8xi32>, tensor<i32>) -> tensor<i32>
+    return %0 : tensor<i32>
+  }
+})";
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
+  GpuClientOptions client_options;
+  client_options.enable_mock_nccl = true;
+  client_options.num_nodes = 4;
+  client_options.mock_gpu_topology = "2x2x2";
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(client_options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2) << "This test requires 2 local GPUs.";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, xla::ParseMlirModuleString(kMlirDistributedSum, context));
+
+  xla::CompileOptions options;
+  options.executable_build_options.set_num_partitions(8)
+      .set_use_spmd_partitioning(true)
+      .set_allow_spmd_sharding_propagation_to_output({true});
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
+
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1}, {0});
+  std::vector<std::unique_ptr<PjRtBuffer>> inputs;
+  std::vector<std::vector<PjRtBuffer*>> input_ptrs;
+  for (int i = 0; i < devices_per_host; i++) {
+    auto device = client->addressable_devices()[i];
+    std::vector<int32_t> data{i};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto input,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr, device));
+    input_ptrs.push_back({input.get()});
+    inputs.push_back(std::move(input));
+  }
+
+  // Test that running the program does not crash/hang.
+  TF_ASSERT_OK(
+      executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+}
+
+TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyMismatchTest) {
+  GpuClientOptions options;
+  options.enable_mock_nccl = true;
+  options.num_nodes = 16;
+  options.mock_gpu_topology = "2x4";
+  EXPECT_FALSE(GetStreamExecutorGpuClient(options).ok());
 }
 
 TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
