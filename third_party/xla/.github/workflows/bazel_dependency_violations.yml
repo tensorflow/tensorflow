@@ -47,7 +47,11 @@ jobs:
           set -euo pipefail
           TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
           TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-          OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1)
+          if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
+            echo "Failed to run bazel cquery. Output:"
+            echo "$OUTPUT"
+            exit 1
+          fi
           if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
             echo "The following dependency violations were found:"
             echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'
