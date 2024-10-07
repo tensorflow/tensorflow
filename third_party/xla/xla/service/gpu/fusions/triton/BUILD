@@ -204,6 +204,56 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "triton_fusion_emitter_stub_for_testing",
+    srcs = [
+        "triton_fusion_emitter_legacy_matmul_stub.cc",
+        "triton_fusion_emitter_stub.cc",
+    ],
+    hdrs = [
+        "triton_fusion_emitter.h",
+        "triton_fusion_emitter_legacy_matmul.h",
+    ],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:hlo_traversal",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@triton//:TritonDialects",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_fusion_emitter_stub_test",
+    srcs = ["triton_fusion_emitter_stub_test.cc"],
+    deps = [
+        ":triton_fusion_emitter_stub_for_testing",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_traversal",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 gentbl_cc_library(
     name = "passes_inc_gen",
     tbl_outs = [
