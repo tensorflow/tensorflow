@@ -899,12 +899,17 @@ Status BatchResourceBase::SplitOutputTensors(
       return errors::FailedPrecondition(
           "Batched output tensor has 0 dimensions");
     }
-    if (output_tensor.shape().dim_size(0) !=
+    int64_t zeroth_dim_output_tensor_size = output_tensor.shape().dim_size(0);
+    if (zeroth_dim_output_tensor_size !=
         static_cast<int64_t>(batch->size() + unbatched_tasks_size +
                              padding_size)) {
       return errors::FailedPrecondition(
           "Batched output tensor's 0th dimension does not equal the sum of "
-          "the 0th dimension sizes of the input tensors");
+          "the 0th dimension sizes of the input tensors. "
+          "0th dimension size: ",
+          zeroth_dim_output_tensor_size, "; batch size: ", batch->size(),
+          "; unbatched tasks size: ", unbatched_tasks_size,
+          "; padding size: ", padding_size);
     }
 
     std::vector<Tensor> split_tensor;
