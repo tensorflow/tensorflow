@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/MLIRContext.h"
@@ -109,6 +110,16 @@ bool IndicesAreEqualAndInjective(int64_t iv_count, mv::InsertOp insert,
   return llvm::all_of(matched_indices, [](bool matched) { return matched; });
 }
 
+bool LoopDominatesLoop(LoopOp dominator /*lastloop*/, LoopOp dominatee) {
+  mlir::DominanceInfo dom;
+  return llvm::all_of(dominatee.getResults(), [&](Value result) {
+    return llvm::all_of(result.getUsers(), [&](Operation* user) {
+      return dom.properlyDominates(dominator, user,
+                                   /*enclosingOpOk*/ false);
+    });
+  });
+}
+
 // Fuse insert_loop and extract_loop into a single loop, and remove the
 // vector.insert and vector.extract ops.
 void FuseExtractInsertLoopPair(MLIRContext* mlir_context, LoopOp insert_loop,
@@ -176,6 +187,68 @@ void FuseExtractInsertLoopPair(MLIRContext* mlir_context, LoopOp insert_loop,
   rewriter.eraseOp(extract_loop);
 }
 
+// Fuse loops that have the same map, same dim variables, & can be rewritten as
+// a single loop, each stacked on top of the next.
+void FuseIndependentLoops(MLIRContext* mlir_context,
+                          SmallVector<LoopOp>& loops) {
+  auto last_loop = loops.back();
+  auto map = last_loop.getIndexingMap();
+  mlir::IRRewriter rewriter(mlir_context);
+  rewriter.setInsertionPointAfter(last_loop);
+
+  SmallVector<Value> inits;
+  SmallVector<Value> results;
+  for (auto loop : loops) {
+    inits.append(loop.getInits().begin(), loop.getInits().end());
+    auto yield_op = loop.getBody()->getTerminator();
+    auto yields = yield_op->getOperands();
+    results.append(yields.begin(), yields.end());
+    yield_op->erase();
+  }
+  auto new_loop = rewriter.create<LoopOp>(last_loop.getLoc(), map,
+                                          last_loop.getDims(), inits);
+
+  auto new_args = new_loop.getRegion().front().getArguments();
+  int common_args_count = map.GetRangeVarsCount() + map.GetNumResults();
+  auto common_args = new_args.take_front(common_args_count);
+  auto init_args = new_args.drop_front(common_args_count);
+  auto new_results = new_loop.getResults();
+
+  for (auto loop : loops) {
+    int num_results = loop.getNumResults();
+    loop->replaceAllUsesWith(new_results.take_front(num_results));
+    new_results = new_results.drop_front(num_results);
+    SmallVector<Value> old_args(common_args);
+    auto old_inits = init_args.take_front(num_results);
+    old_args.append(old_inits.begin(), old_inits.end());
+    init_args = init_args.drop_front(num_results);
+
+    rewriter.mergeBlocks(&loop.getRegion().front(),
+                         &new_loop.getRegion().front(), old_args);
+    rewriter.eraseOp(loop);
+  }
+  rewriter.setInsertionPointToEnd(new_loop.getBody());
+  rewriter.create<YieldOp>(new_loop.getLoc(), results);
+}
+
+void FuseSameMapLoopsIfPossible(MLIRContext* mlir_context,
+                                SmallVector<LoopOp>& loops) {
+  if (loops.size() < 2) return;
+  auto last_loop = loops.back();
+  loops.pop_back();
+  SmallVector<LoopOp> eligible_loops;
+  for (auto loop : loops) {
+    if (LoopDominatesLoop(/*dominator=*/last_loop, /*dominatee=*/loop) &&
+        LoopsUseSameDimOps(last_loop, loop)) {
+      eligible_loops.push_back(loop);
+    }
+  }
+  eligible_loops.push_back(last_loop);
+
+  if (eligible_loops.size() < 2) return;
+  FuseIndependentLoops(mlir_context, eligible_loops);
+}
+
 void FuseExtractIfPossible(MLIRContext* mlir_context, mv::ExtractOp extract) {
   // Check that it has the following pattern:
   // %insert_loop = { %insert = vector.insert ... }
@@ -227,6 +300,17 @@ struct FuseLoopsPass : public impl::FuseLoopsPassBase<FuseLoopsPass> {
     });
     for (auto extract : extracts) {
       FuseExtractIfPossible(mlir_context, extract);
+    }
+
+    // Fuse loops with the same map & that do not affect each other.
+    mlir::DenseMap<mlir::Attribute, SmallVector<LoopOp>> loops_by_map;
+    getOperation()->walk([&](Operation* op) -> void {
+      if (auto loop = mlir::dyn_cast<LoopOp>(op)) {
+        loops_by_map[loop.getIndexingMapAttr()].push_back(loop);
+      }
+    });
+    for (auto [_, loops] : loops_by_map) {
+      FuseSameMapLoopsIfPossible(mlir_context, loops);
     }
   }
 };

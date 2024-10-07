@@ -290,3 +290,96 @@ func.func @do_not_fuse_unused_loop_iv(%arg0: tensor<20x160x170xf32>) -> tensor<1
 // CHECK: vector.insert
 // CHECK: xla_gpu.loop
 // CHECK: vector.extract
+
+// -----
+
+#indexing_map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
+"   ((d0 floordiv 32) * 8192 + d1 * 8 + s0 * 32768 + (d0 floordiv 4) mod 8,"
+"   d0 mod 4),"
+" domain:"
+"   d0 in [0, 127], d1 in [0, 1023],"
+"   s0 in [0, 2], s1 in [0, 0]">
+#indexing_map1 = #xla_gpu.indexing_map<"(d0) -> "
+"   ((d0 floordiv 4) mod 8192,"
+"   d0 mod 4),"
+" domain:"
+"   d0 in [0, 98303]">
+func.func @fuse_identical_independent_loops(%arg0: tensor<8192x4xf64>,
+ %arg1: tensor<98304x4xf64>, %arg2: tensor<98304x4xf64>) ->
+ tensor<98304x4xf64> {
+  %tid = gpu.thread_id  x {xla.range = [0 : index, 127 : index]}
+  %bid = gpu.block_id  x {xla.range = [0 : index, 1023 : index]}
+  %cst_2 = arith.constant 0.50000000000000089 : f64
+  %cst = arith.constant 0 : index
+  %xla_loop = xla_gpu.loop (%tid, %bid)[%i, %j] -> (%ra, %rb) in #indexing_map
+   iter_args(%iter = %arg1) -> (tensor<98304x4xf64>) {
+    %0:2 = xla_gpu.apply_indexing #indexing_map1(%ra)
+    %extracted = tensor.extract %arg0[%0#0, %0#1] : tensor<8192x4xf64>
+    %3 = arith.mulf %extracted, %cst_2 : f64
+    %inserted = tensor.insert %3 into %iter[%ra, %rb] : tensor<98304x4xf64>
+    xla_gpu.yield %inserted : tensor<98304x4xf64>
+  }
+  %xla_loop_1 = xla_gpu.loop (%tid, %bid)[%i, %j] -> (%ra, %rb) in #indexing_map
+   iter_args(%iter = %arg2) -> (tensor<98304x4xf64>) {
+    %0:2 = xla_gpu.apply_indexing #indexing_map1(%ra)
+    %extracted = tensor.extract %arg0[%0#0, %0#1] : tensor<8192x4xf64>
+    %inserted = tensor.insert %extracted into %iter[%ra, %rb] :
+     tensor<98304x4xf64>
+    xla_gpu.yield %inserted : tensor<98304x4xf64>
+  }
+  return %xla_loop_1 : tensor<98304x4xf64>
+}
+
+// CHECK-LABEL: @fuse_identical_independent_loops
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<8192x4xf64>,
+// CHECK-SAME: %[[ARG1:.*]]: tensor<98304x4xf64>,
+// CHECK-SAME: %[[ARG2:.*]]: tensor<98304x4xf64>)
+// CHECK: %[[LOOP0:.*]], %[[LOOP1:.*]] = xla_gpu.loop
+// CHECK-SAME: -> (%[[RA:.*]], %[[RB:.*]]) in
+// CHECK-SAME: iter_args(%[[ITER0:.*]] = %[[ARG1]], %[[ITER1:.*]] = %[[ARG2]])
+// CHECK: tensor.insert {{.*}} into %[[ITER0]][%[[RA]], %[[RB]]]
+// CHECK: tensor.insert {{.*}} into %[[ITER1]][%[[RA]], %[[RB]]]
+// CHECK: xla_gpu.yield {{.*}} : tensor<98304x4xf64>, tensor<98304x4xf64>
+
+// -----
+
+#indexing_map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] ->"
+"   ((d0 floordiv 32) * 8192 + d1 * 8 + s0 * 32768 + (d0 floordiv 4) mod 8,"
+"   d0 mod 4),"
+" domain:"
+"   d0 in [0, 127], d1 in [0, 1023],"
+"   s0 in [0, 2], s1 in [0, 0]">
+#indexing_map1 = #xla_gpu.indexing_map<"(d0) -> "
+"   ((d0 floordiv 4) mod 8192,"
+"   d0 mod 4),"
+" domain:"
+"   d0 in [0, 98303]">
+func.func @do_not_fuse_dependent_loops(%arg0: tensor<8192x4xf64>,
+   %arg1: tensor<98304x4xf64>) -> tensor<98304x4xf64> {
+  %tid = gpu.thread_id  x {xla.range = [0 : index, 127 : index]}
+  %bid = gpu.block_id  x {xla.range = [0 : index, 1023 : index]}
+  %cst_2 = arith.constant 0.50000000000000089 : f64
+  %cst = arith.constant 0 : index
+  %xla_loop = xla_gpu.loop (%tid, %bid)[%i, %j] -> (%ra, %rb) in #indexing_map
+     iter_args(%iter = %arg1) -> (tensor<98304x4xf64>) {
+    %0:2 = xla_gpu.apply_indexing #indexing_map1(%ra)
+    %extracted = tensor.extract %arg0[%0#0, %0#1] : tensor<8192x4xf64>
+    %3 = arith.mulf %extracted, %cst_2 : f64
+    %inserted = tensor.insert %3 into %iter[%ra, %rb] : tensor<98304x4xf64>
+    xla_gpu.yield %inserted : tensor<98304x4xf64>
+  }
+  %dependency = tensor.insert %cst_2 into %xla_loop[%cst, %cst] :
+    tensor<98304x4xf64>
+  %xla_loop_1 = xla_gpu.loop (%tid, %bid)[%i, %j] -> (%ra, %rb) in #indexing_map
+   iter_args(%iter = %dependency) -> (tensor<98304x4xf64>) {
+    %0:2 = xla_gpu.apply_indexing #indexing_map1(%ra)
+    %extracted = tensor.extract %arg0[%0#0, %0#1] : tensor<8192x4xf64>
+    %inserted = tensor.insert %extracted into %iter[%ra, %rb] :
+      tensor<98304x4xf64>
+    xla_gpu.yield %inserted : tensor<98304x4xf64>
+  }
+  return %xla_loop_1 : tensor<98304x4xf64>
+}
+
+// CHECK-LABEL: @do_not_fuse_dependent_loops
+// CHECK-COUNT-2: xla_gpu.loop
