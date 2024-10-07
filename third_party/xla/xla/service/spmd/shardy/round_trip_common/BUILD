@@ -32,6 +32,21 @@ cc_library(
 )
 
 cc_library(
+    name = "export_named_computations",
+    srcs = ["export_named_computations.cc"],
+    hdrs = ["export_named_computations.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+    ],
+)
+
+cc_library(
     name = "import_backend_func_calls",
     srcs = ["import_backend_func_calls.cc"],
     hdrs = ["import_backend_func_calls.h"],
