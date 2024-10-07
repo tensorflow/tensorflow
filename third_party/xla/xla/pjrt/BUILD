@@ -242,6 +242,8 @@ cc_library(
     hdrs = ["pjrt_client_test.h"],
     deps = [
         ":pjrt_client",
+        ":pjrt_compiler",
+        "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",

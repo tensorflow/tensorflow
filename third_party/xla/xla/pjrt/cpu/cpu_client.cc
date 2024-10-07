@@ -31,6 +31,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -867,6 +869,11 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
   return Compile(xla_computation, options);
 }
 
+static bool IsAlignedData(void* ptr) {
+  return (absl::bit_cast<std::uintptr_t>(ptr) &
+          (cpu_function_runtime::MinAlign() - 1)) == 0;
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,
@@ -876,6 +883,13 @@ TfrtCpuClient::CreateViewOfDeviceBuffer(
     return Unimplemented(
         "TfrtCpuClient::CreateViewOfDeviceBuffer does not support `stream` "
         "argument.");
+  }
+  if (!IsAlignedData(device_ptr)) {
+    return InvalidArgument(
+        "Can't create a view of buffer with unaligned data, ptr: %#x is not "
+        "aligned to %d bytes. ",
+        reinterpret_cast<std::uintptr_t>(device_ptr),
+        cpu_function_runtime::MinAlign());
   }
   absl::InlinedVector<tsl::AsyncValueRef<MaybeOwningCpuMemory>, 4> buffers;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
