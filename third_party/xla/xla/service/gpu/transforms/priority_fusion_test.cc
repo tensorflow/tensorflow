@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
@@ -72,16 +74,16 @@ class PriorityFusionTest : public HloTestBase {
     for (auto computation : module->computations()) {
       if (!computation->FusionInstruction()) continue;
 
-      auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
       auto analysis = HloFusionAnalysis::Create(
-          *computation->FusionInstruction(), device_info);
+          *computation->FusionInstruction(), device_info_);
       kinds.push_back(analysis.GetEmitterFusionKind());
     }
     return kinds;
   }
 
+  se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   PriorityFusion priority_fusion_{
-      /*thread_pool=*/nullptr, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+      /*thread_pool=*/nullptr, device_info_,
       GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
                                   /*per_second_rates=*/{},
                                   /*min_latencies_seconds=*/{},
@@ -846,6 +848,40 @@ ENTRY main {
   ASSERT_THAT(root, GmockMatch(m::Fusion(m::Parameter())));
   EXPECT_THAT(root->fused_expression_root(),
               GmockMatch(m::Reduce(m::Parameter(), m::Constant())));
+}
+
+// Triton emitter doesn't support constants that are not scalars of rank 0.
+TEST_F(PriorityFusionTest,
+       CheckThatSmallConstantIsSupportedByTritonBeforeFusion) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_computation {
+  param_0 = f32[32,64] parameter(0)
+  param_1 = f32[1] parameter(1)
+  bitcast = f32[] bitcast(param_1)
+  ROOT reduce = f32[32] reduce(param_0, bitcast), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[32,64] parameter(0)
+  c_0 = f32[1] constant({0})
+  ROOT triton_softmax = f32[32] fusion(param_0, c_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1"],"num_warps":"1"}}}
+})");
+
+  const HloInstruction* constant =
+      module->entry_computation()->root_instruction()->operand(1);
+
+  ASSERT_FALSE(IsTritonSupportedInstruction(
+                   *constant, device_info_.gpu_compute_capability())
+                   .CanFuse());
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {

@@ -1027,8 +1027,10 @@ absl::StatusOr<bool> PriorityFusion::Run(
     for (auto* constant : constants) {
       auto users = constant->users();
       for (auto* user : users) {
-        if ((IsFusible(*user) || IsGenericTritonFusion(*user)) &&
-            CanEmitInputFusedScatter(*constant, *user)) {
+        if ((IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) ||
+            (IsTritonSupportedInstruction(
+                 *constant, device_info_.gpu_compute_capability()) &&
+             IsGenericTritonFusion(*user))) {
           Fuse(constant, user);
           changed = true;
         }
