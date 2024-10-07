@@ -18,42 +18,37 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_c_api",
+    name = "common",
+    testonly = 1,
+    srcs = [
+        "common.cc",
+    ],
     hdrs = [
-        "lite_rt_common.h",
-        "lite_rt_compiler_plugin.h",
-        "lite_rt_model.h",
-        "lite_rt_op_code.h",
-        "lite_rt_support.h",
+        "common.h",
     ],
     deps = [
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform",
     ],
 )
 
 cc_library(
-    name = "lite_rt_tensor_buffer_c_api",
+    name = "simple_model",
+    testonly = 1,
+    srcs = [],
     hdrs = [
-        "lite_rt_event.h",
-        "lite_rt_tensor_buffer.h",
-        "lite_rt_tensor_buffer_requirements.h",
+        "testdata/simple_model_test_vectors.h",
+    ],
+    data = [
+        "testdata/simple_model.tflite",
+        "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        ":lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
     ],
 )
-
-cc_library(
-    name = "lite_rt_dispatch_c_api",
-    hdrs = [
-        "lite_rt_dispatch.h",
-        "lite_rt_dispatch_api.h",
-    ],
-    deps = [
-        ":lite_rt_c_api",
-        ":lite_rt_tensor_buffer_c_api",
-    ],
-)
-
-exports_files(srcs = glob(["lite_rt*.h"]))
