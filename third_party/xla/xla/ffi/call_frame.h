@@ -58,8 +58,8 @@ class CallFrameBuilder {
   CallFrameBuilder(size_t num_args, size_t num_rets);
   ~CallFrameBuilder();
 
-  CallFrameBuilder(CallFrameBuilder&&);
-  CallFrameBuilder& operator=(CallFrameBuilder&&);
+  CallFrameBuilder(CallFrameBuilder&&) noexcept;
+  CallFrameBuilder& operator=(CallFrameBuilder&&) noexcept;
 
   using Scalar = std::variant<bool, int8_t, int16_t, int32_t, int64_t, uint8_t,
                               uint16_t, uint32_t, uint64_t, float, double>;
@@ -138,8 +138,8 @@ class CallFrameBuilder {
 
 class CallFrame {
  public:
-  CallFrame(CallFrame&&);
-  CallFrame& operator=(CallFrame&&);
+  CallFrame(CallFrame&&) noexcept;
+  CallFrame& operator=(CallFrame&&) noexcept;
 
   ~CallFrame();
 
