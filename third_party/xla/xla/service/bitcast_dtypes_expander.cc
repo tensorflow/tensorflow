@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -104,14 +105,8 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
     BitcastConvertType(input, to_shape.element_type());
 
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, b.Build());
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        xla_computation.GetProgramShape());
-    HloModuleConfig config(program_shape);
-    TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                             xla_computation.proto(), config));
-    HloCloneContext context(module);
-    computation =
-        module->DeepCloneComputation(new_module->entry_computation(), &context);
+    TF_ASSIGN_OR_RETURN(
+        computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
   return instruction->parent()->AddInstruction(HloInstruction::CreateCall(
