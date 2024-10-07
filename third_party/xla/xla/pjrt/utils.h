@@ -70,18 +70,6 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
     mlir::ModuleOp module);
 
-// Populates the frontend attributes "arg_layout_mode" and "out_layout_mode" in
-// xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
-absl::Status AddLayoutModesToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation);
-
-// Populates the frontend attributes "arg_memory_kinds" and "out_memory_kinds"
-// in xla_computation based on `module`. This function must be called before the
-// LayoutMode getters below work correctly on `computation`.
-absl::Status AddMemoryKindsToFrontendAttrs(mlir::ModuleOp module,
-                                           XlaComputation& xla_computation);
-
 // Returns the LayoutMode for each argument of the computations. Checks for the
 // "arg_layout_mode" frontend attribute, and if not present, assumes
 // LayoutMode::Mode::kDefault.

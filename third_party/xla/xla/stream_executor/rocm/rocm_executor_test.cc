@@ -17,22 +17,17 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace stream_executor::gpu {
 namespace {
-using testing::Field;
 using testing::Ge;
 using testing::IsEmpty;
 using testing::Not;
-using testing::VariantWith;
 
 TEST(RocmExecutorTest, CreateDeviceDescription) {
-  TF_ASSERT_OK(GpuDriver::Init());
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
-                          CudaExecutor::CreateDeviceDescription(0));
+                          RocmExecutor::CreateDeviceDescription(0));
 
   constexpr SemanticVersion kNullVersion{0, 0, 0};
   EXPECT_NE(result->runtime_version(), kNullVersion);
@@ -44,10 +39,10 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
   EXPECT_THAT(result->device_vendor(), "Advanced Micro Devices, Inc");
 
-  EXPECT_THAT(result->gpu_compute_capability(),
-              VariantWith<RocmComputeCapability>(
-                  Field("gcn_arch_name", &RocmComputeCapability::gcn_arch_name,
-                        Not(IsEmpty()))));
+  EXPECT_THAT(
+      std::get_if<RocmComputeCapability>(&result->gpu_compute_capability())
+          ->gcn_arch_name(),
+      Not(IsEmpty()));
 }
 
 }  // namespace
