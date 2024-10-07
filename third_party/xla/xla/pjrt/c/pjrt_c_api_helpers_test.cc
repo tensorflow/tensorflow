@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "stablehlo/dialect/Version.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
@@ -201,6 +203,28 @@ TEST(PjRtCApiHelperTest, ConvertFromCLayoutToLayoutNoTile) {
   TF_ASSERT_OK_AND_ASSIGN(xla::Layout layout, ConvertToLayout(c_layout.tiled));
 
   EXPECT_EQ(layout.ToString(), "{1,0}");
+}
+
+TEST(PjRtCApiHelperTest, GetXlaPluginCAttributes) {
+  auto result = GetXlaPluginCAttributes();
+  std::unordered_map<std::string, PJRT_NamedValue *> map;
+  for (PJRT_NamedValue &nv : result) {
+    auto [_, did_not_exist_yet] = map.insert({nv.name, &nv});
+    EXPECT_TRUE(did_not_exist_yet);
+  }
+  EXPECT_TRUE(map.find("xla_version") != map.end());
+  PJRT_NamedValue *current = map["stablehlo_current_version"];
+  mlir::vhlo::Version current_version =
+      mlir::vhlo::Version::getCurrentVersion();
+  EXPECT_TRUE(current->int64_array_value[0] == current_version.getMajor());
+  EXPECT_TRUE(current->int64_array_value[1] == current_version.getMinor());
+  EXPECT_TRUE(current->int64_array_value[2] == current_version.getPatch());
+  PJRT_NamedValue *minimum = map["stablehlo_minimum_version"];
+  mlir::vhlo::Version minimum_version =
+      mlir::vhlo::Version::getMinimumVersion();
+  EXPECT_TRUE(minimum->int64_array_value[0] == minimum_version.getMajor());
+  EXPECT_TRUE(minimum->int64_array_value[1] == minimum_version.getMinor());
+  EXPECT_TRUE(minimum->int64_array_value[2] == minimum_version.getPatch());
 }
 
 }  // namespace

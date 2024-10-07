@@ -285,8 +285,6 @@ tf_xla_py_strict_test(
     # #TODO(b/286470564): Remove once the bug is fixed.
     # disable_tpu_tfrt = True,
     # copybara:uncomment_end
-    # TensorList ops are not implemented in the on-demand compilation model yet.
-    disabled_backends = ["cpu_ondemand"],
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -329,7 +327,6 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 5,
     tags = [
-        "no_oss",  # TODO(b/148108508): Re-enable this test in OSS.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -588,7 +585,6 @@ tf_xla_py_strict_test(
     srcs = ["matrix_triangular_solve_op_test.py"],
     python_version = "PY3",
     tags = [
-        "no_oss",  # TODO(b/295649328): fix failed nightly tests
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1019,7 +1015,6 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_oss",  # TODO(b/282033702): Re-enable this test in OSS.
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",  # Times out frequently in fastbuild mode.
     ],
@@ -2492,7 +2487,6 @@ tpu_py_strict_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
     disable_experimental = False,
-    tags = ["no_oss"],
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
@@ -3007,7 +3001,6 @@ tpu_py_strict_test(
     # TODO(b/188995810): Add an optimization in MLIR importer to not
     # materialize giant splat constants.
     python_version = "PY3",
-    tags = ["no_oss"],
     deps = [
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",

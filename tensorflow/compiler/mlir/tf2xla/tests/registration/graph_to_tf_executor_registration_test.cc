@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,14 +19,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 
-namespace mlir {
-namespace {
+namespace tensorflow {
+namespace tf2xla {
+namespace v2 {
+namespace testing {
+
+using mlir::LogicalResult;
+using mlir::StringRef;
+using mlir::Translation;
+using mlir::TranslationParser;
 
 class MlirTranslationTest : public ::testing::Test {
  private:
@@ -52,17 +62,15 @@ class MlirTranslationTest : public ::testing::Test {
   }
 
  private:
-  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>*
+  llvm::cl::opt<const Translation*, false, TranslationParser>*
   RegisterTranslation() {
     // Can only register once per process.
     static const auto requested_translation =
-        new llvm::cl::opt<const mlir::Translation*, false,
-                          mlir::TranslationParser>(
+        new llvm::cl::opt<const Translation*, false, TranslationParser>(
             llvm::cl::desc("Translation to perform"));
     return requested_translation;
   }
-  llvm::cl::opt<const mlir::Translation*, false, mlir::TranslationParser>*
-      translation_;
+  llvm::cl::opt<const Translation*, false, TranslationParser>* translation_;
 };
 
 TEST_F(MlirTranslationTest, TranslatesMlirToGraph) {
@@ -83,5 +91,7 @@ func.func @main() -> (tensor<1x2xf16>, tensor<2xf16>) {
   EXPECT_TRUE(absl::StrContains(result, "node {"));
 }
 
-}  // namespace
-}  // namespace mlir
+}  // namespace testing
+}  // namespace v2
+}  // namespace tf2xla
+}  // namespace tensorflow

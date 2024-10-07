@@ -235,6 +235,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
+        "//tensorflow/compiler/mlir/tf2xla/tests/registration:graph_to_tf_executor_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/strings",

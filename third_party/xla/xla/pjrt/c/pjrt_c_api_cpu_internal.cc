@@ -64,7 +64,8 @@ const PJRT_Api* GetCpuPjrtApi() {
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension),
+      pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }
