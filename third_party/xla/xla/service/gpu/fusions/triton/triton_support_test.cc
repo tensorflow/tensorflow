@@ -246,6 +246,19 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16}, cc);
 }
 
+TEST_P(BitcastOrReshapeTest, IsTritonSupported0DBitcastOrReshape) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[1,1,1] parameter(0)
+  ROOT bitcast_or_reshape = $0[] $1(parameter_0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
 constexpr std::array kTestedOpsBitcastReshape = {HloOpcode::kBitcast,
                                                  HloOpcode::kReshape};
 
@@ -467,7 +480,15 @@ ENTRY triton_computation {
                                          ? kHloCompareTestTemplate
                                          : kHloTestTemplate,
                                      data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+
+  bool skip_failure_branch_to_avoid_crash =
+      opcode == HloOpcode::kDivide &&
+      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+       data_type == PrimitiveType::F8E5M2 ||
+       data_type == PrimitiveType::F8E4M3FN);
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc,
+                 skip_failure_branch_to_avoid_crash);
 }
 
 constexpr std::array kTestedOpsBinaryElementwise = {

@@ -222,8 +222,7 @@ bool IsTritonSupportedElementwise(HloOpcode opcode, PrimitiveType element_type,
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version,
-    bool is_within_reduction_computation);
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
 
 // Filters Reduces which can be handled using Triton.
 CodegenDecision CanTritonHandleReduce(
@@ -237,10 +236,7 @@ CodegenDecision CanTritonHandleReduce(
 
   bool is_triton_supported_reduction_computation = absl::c_all_of(
       reduce.to_apply()->instructions(), [&](const HloInstruction* instr) {
-        return IsTritonSupportedInstructionImpl(
-                   *instr, gpu_version,
-                   /*is_within_reduction_computation=*/true)
-            .CanFuse();
+        return IsTritonSupportedInstructionImpl(*instr, gpu_version).CanFuse();
       });
   if (!is_triton_supported_reduction_computation) {
     return CodegenDecision::Forbid(
@@ -255,14 +251,9 @@ CodegenDecision CanTritonHandleReduce(
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version,
-    bool is_within_reduction_computation) {
+    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
     return CodegenDecision::Forbid("Unsupported opcode.");
-  }
-
-  if (IsUnsupported0DTensor(instr, is_within_reduction_computation)) {
-    return CodegenDecision::Forbid("Unsupported 0D tensor");
   }
 
   // Special handling for the kConvert instruction, which has a non-standard
@@ -331,9 +322,13 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kTranspose:
     case HloOpcode::kParameter:
     case HloOpcode::kBroadcast:
-    case HloOpcode::kBitcast:
-    case HloOpcode::kReshape:
       return CodegenDecision::Allow();
+    case HloOpcode::kBitcast:
+
+    case HloOpcode::kReshape:
+      return (instr.shape().rank() == 0 && instr.operand(0)->shape().rank() > 0)
+                 ? CodegenDecision::Forbid("0D reshapes are not yet supported.")
+                 : CodegenDecision::Allow();
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();
       break;
@@ -430,8 +425,8 @@ absl::Status EnsureTritonSupportsComputeCapability(
 
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
-  CodegenDecision decision = IsTritonSupportedInstructionImpl(
-      instr, gpu_version, /*is_within_reduction_computation=*/false);
+  CodegenDecision decision =
+      IsTritonSupportedInstructionImpl(instr, gpu_version);
   VLOG(2) << "IsTritonSupportedInstruction: " << instr.ToString() << " "
           << bool(decision);
   return decision;
@@ -459,38 +454,6 @@ bool IsTritonFusedComputation(const HloComputation& computation) {
          fusion->backend_config<gpu::GpuBackendConfig>()
                  ->fusion_backend_config()
                  .kind() == kTritonGemmFusionKind;
-}
-
-bool IsUnsupported0DTensor(const HloInstruction& instr,
-                           bool is_within_reduction_computation) {
-  if (!instr.shape().IsArray() || instr.shape().rank() != 0 ||
-      is_within_reduction_computation ||
-      instr.opcode() == HloOpcode::kConstant) {
-    return false;
-  }
-
-  // At this point we know that the output shape is a 0D tensor.
-
-  // Broadcast has special handling logic to support 0D tensors.
-  if (instr.user_count() > 0 &&
-      absl::c_all_of(instr.users(), [&](const HloInstruction* user) {
-        return user->opcode() == HloOpcode::kBroadcast;
-      })) {
-    return false;
-  }
-
-  // Elementwise ops with both 0D operands and 0D outputs are OK, because
-  // there is no mixing of blocked and non-blocked encodings. The ROOT
-  // still doesn't support 0D outputs, however.
-  if (instr.IsElementwise() && !instr.IsRoot() &&
-      absl::c_all_of(instr.operands(), [&](const HloInstruction* operand) {
-        return operand->shape().IsArray() && operand->shape().rank() == 0;
-      })) {
-    return false;
-  }
-
-  // Nothing else is supported.
-  return true;
 }
 
 }  // namespace gpu

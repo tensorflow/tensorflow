@@ -64,6 +64,15 @@ namespace ma = ::mlir::arith;
 namespace mm = ::mlir::math;
 namespace mt = ::mlir::triton;
 
+ScalarOrTensor::ScalarOrTensor(mlir::Value value) {
+  if (auto tt = mlir::dyn_cast<mlir::RankedTensorType>(value.getType())) {
+    CHECK_GT(tt.getRank(), 0);
+    value_ = TensorValue{value};
+  } else {
+    value_ = ScalarValue{value};
+  }
+}
+
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   SmallVector<int64_t> result;
   result.reserve(tile_sizes.size());
@@ -113,22 +122,6 @@ Type StorageType(mlir::OpBuilder b, Type t) {
     return b.getI8Type();
   }
   return t;
-}
-
-Value ZerosLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 0, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 0);
-}
-
-Value OnesLike(ImplicitLocOpBuilder& b, Value x) {
-  if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(x.getType())) {
-    Type src_ty = src_shaped_ty.getElementType();
-    return CreateConst(b, src_ty, 1, src_shaped_ty.getShape());
-  }
-  return CreateConst(b, x.getType(), 1);
 }
 
 bool IsFp8Type(Type t) {
@@ -216,16 +209,18 @@ Value Cast(ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     // is needed for unsigned integer types.
     auto cst_int = [&](int64_t x) {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
+        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape())
+            .UnwrapUnsafe();
       } else {
-        return CreateConst(b, dst_element_ty, x);
+        return CreateConst(b, dst_element_ty, x).UnwrapUnsafe();
       }
     };
     auto cst_float = [&](int64_t x) {
       if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
+        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape())
+            .UnwrapUnsafe();
       } else {
-        return CreateConst(b, src_fp_element_ty, x);
+        return CreateConst(b, src_fp_element_ty, x).UnwrapUnsafe();
       }
     };
     auto fptosi = b.create<ma::FPToSIOp>(dst_ty, value);
@@ -323,9 +318,11 @@ Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
       values[0], values[1]);
 }
 
-Value Splat(ImplicitLocOpBuilder& b, Value value, ArrayRef<int64_t> shape) {
-  auto type = mlir::RankedTensorType::get(shape, value.getType());
-  return b.create<mt::SplatOp>(type, value);
+ScalarOrTensor Splat(ImplicitLocOpBuilder& b, ScalarOrTensor value,
+                     ArrayRef<int64_t> shape) {
+  CHECK(!shape.empty());
+  auto type = mlir::RankedTensorType::get(shape, value.Type());
+  return ScalarOrTensor(b.create<mt::SplatOp>(type, value.UnwrapUnsafe()));
 }
 
 absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
@@ -427,8 +424,8 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
   }
 }
 
-absl::StatusOr<Value> EmitConstant(ImplicitLocOpBuilder& b,
-                                   const HloInstruction& constant) {
+absl::StatusOr<ScalarOrTensor> EmitConstant(ImplicitLocOpBuilder& b,
+                                            const HloInstruction& constant) {
   TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
   if (constant.shape().IsInteger()) {
     if (constant.shape().element_type() == U64) {
@@ -443,7 +440,7 @@ absl::StatusOr<Value> EmitConstant(ImplicitLocOpBuilder& b,
 // Emit sequence of operations for unpacking 2xi4 -> i8.
 absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
                                      const HloInstruction* hlo,
-                                     int64_t unpack_dim_idx, Value& value) {
+                                     int64_t unpack_dim_idx, Value value) {
   VLOG(6) << "EmitUnpackInt4: " << hlo->ToString();
   auto input_type = mlir::cast<mlir::RankedTensorType>(value.getType());
   if (input_type.getShape().size() != 2) {
@@ -452,7 +449,8 @@ absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
   }
   // We use shifts instead the mask because we need to keep the sign bit.
   Value shift4 =
-      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape());
+      Splat(b, CreateConst(b, b.getI8Type(), 4), input_type.getShape())
+          .UnwrapUnsafe();
   Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
   Value hi = b.create<ma::ShRSIOp>(value, shift4);
   Value result = b.create<mt::JoinOp>(hi, lo);

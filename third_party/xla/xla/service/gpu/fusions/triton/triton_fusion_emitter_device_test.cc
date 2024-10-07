@@ -1053,15 +1053,12 @@ CHECK:     tt.store
 TEST_F(TritonEmitterTest, GenericEmitterLowersBroadcastFrom0dOperandCorrectly) {
   constexpr std::string_view kHloText = R"(
 triton_computation {
-  // TODO(b/348565795): make this a 0D scalar directly once this is known to be
-  // supported.
-  param_0 = f32[1] parameter(0)
-  reshape = f32[] reshape(param_0)
-  ROOT broadcast = f32[127,125]{1,0} broadcast(reshape), dimensions={}
+  param_0 = f32[] parameter(0)
+  ROOT broadcast = f32[127,125]{1,0} broadcast(param_0), dimensions={}
 }
 
 ENTRY main {
-  param_0 = f32[1] parameter(0)
+  param_0 = f32[] parameter(0)
   ROOT triton_fusion = f32[127,125]{1,0} fusion(param_0), kind=kCustom,
     calls=triton_computation,
     backend_config={"fusion_backend_config":
@@ -1071,8 +1068,7 @@ ENTRY main {
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:       tt.broadcast
-CHECK-SAME:    tensor<1x1xf32> -> tensor<8x4xf32>
+CHECK:       tt.splat {{.*}} f32 -> tensor<8x4xf32>
 )"));
 }
 
@@ -1303,24 +1299,32 @@ triton_computation {
   div = f32[] divide(mul, p0)
   conv = bf16[] convert(div)
   const = bf16[] constant(0.5)
-  sub = bf16[] subtract(conv, const)
-
-  // We still don't support 0D outputs, so we need to broadcast.
-  ROOT broadcast = bf16[1] broadcast(sub), dimensions={}
+  ROOT sub = bf16[] subtract(conv, const)
 }
 
 ENTRY entry_computation {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)
-  ROOT fusion = bf16[1] fusion(p0, p1), kind=kCustom, calls=triton_computation,
+  ROOT fusion = bf16[] fusion(p0, p1), kind=kCustom, calls=triton_computation,
     backend_config={
       "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
-          "output_tile_sizes":["1"], "num_warps":"1"}}
+          "output_tile_sizes":[], "num_warps":"1"}}
     }
 })";
   TF_EXPECT_OK(
       CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
-CHECK:     tt.load
+CHECK:     tt.load {{.*}} !tt.ptr<f32>
+CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
+CHECK:     arith.subf {{.*}} f32
+CHECK:     tt.load {{.*}} !tt.ptr<f32>
+CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
+CHECK:     arith.subf {{.*}} f32
+CHECK:     arith.addf {{.*}} f32
+CHECK:     arith.mulf {{.*}} f32
+CHECK:     arith.divf {{.*}} f32
+CHECK:     arith.truncf {{.*}} f32 to bf16
+CHECK:     arith.subf {{.*}} bf16
+CHECK:     tt.store {{.*}} !tt.ptr<bf16>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
@@ -1329,21 +1333,30 @@ CHECK:     tt.load
 
 TEST_F(TritonEmitterTest, Multiple0DBroadcastsAreSupported) {
   const std::string kHloText = R"(
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
 triton_computation {
   p = f32[] parameter(0)
   exp = f32[] exponential(p)
   b1 = f32[10] broadcast(exp), dimensions={}
   b2 = f32[10,10] broadcast(exp), dimensions={}
   b3 = f32[10,10] broadcast(b1), dimensions={0}
-  ROOT add = f32[10,10] add(b2,b3)
+  add = f32[10,10] add(b2,b3)
+  c = f32[] constant(0)
+  reduce1 = f32[10] reduce(add, c), dimensions={0}, to_apply=add
+  ROOT reduce2 = f32[] reduce(reduce1, c), dimensions={0}, to_apply=add
 }
 
 ENTRY entry_computation {
   p = f32[] parameter(0)
-  ROOT fusion = f32[10,10] fusion(p), kind=kCustom, calls=triton_computation,
+  ROOT fusion = f32[] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
       "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
-          "output_tile_sizes":["4","4"], "num_warps":"1"}}
+          "output_tile_sizes":[], "num_warps":"1"}}
     }
 })";
   TF_EXPECT_OK(
@@ -1351,6 +1364,8 @@ ENTRY entry_computation {
 CHECK:     tt.load
 CHECK:     tt.splat
 CHECK:     arith.addf
+CHECK:     tt.reduce
+CHECK:     tt.store {{.*}} !tt.ptr<f32>
 )"));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
