@@ -18,7 +18,6 @@ cc_library(
     name = "platform",
     textual_hdrs = [
         "initialize.h",
-        "port.h",
     ],
     deps = [
         "@local_tsl//tsl/platform",
