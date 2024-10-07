@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -93,11 +92,11 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
     }
   }
 
-  for (mlir::OpOperand& returnOperand :
-       mlir::sdy::getBodyTerminatorOpOperands(funcOp)) {
-    int64_t resultNum = returnOperand.getOperandNumber();
+  Operation* terminatorOp = mlir::sdy::getBodyTerminator(funcOp);
+  builder.setInsertionPoint(terminatorOp);
+  for (mlir::OpOperand& returnOperand : terminatorOp->getOpOperands()) {
     if (auto sharding = funcOp.getResultAttrOfType<TensorShardingAttr>(
-            resultNum, kShardingAttr)) {
+            returnOperand.getOperandNumber(), kShardingAttr)) {
       // We cannot save the result shardings as frontend attributes. MHLO->HLO
       // conversion converts `mhlo.sharding`s on the results to a tuple
       // sharding on the ROOT instruction, but it discards the frontend
@@ -107,7 +106,6 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
       // Op's sharding to the FuncOp's result and delete te temporary custom
       // call.
       Value returnValue = returnOperand.get();
-      builder.setInsertionPoint(returnOperand.getOwner());
       auto customCallOp = builder.create<CustomCallOp>(
           returnValue.getLoc(), returnValue.getType(), returnValue);
       customCallOp.setCallTargetName(kFuncResultShardingTargetName);
@@ -160,8 +158,10 @@ class SdyRoundTripExportShardyAttrsPass
     for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
       mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
     }
-    addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
-                         DictionaryAttr::get(context, mhloMeshes));
+    if (!mhloMeshes.empty()) {
+      addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
+                           DictionaryAttr::get(context, mhloMeshes));
+    }
   }
 
   StringRef getArgument() const override {

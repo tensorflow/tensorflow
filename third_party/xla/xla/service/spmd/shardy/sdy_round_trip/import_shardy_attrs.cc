@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
-#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -56,13 +56,13 @@ namespace {
 
 using ::mlir::Attribute;
 using ::mlir::DictionaryAttr;
+using ::mlir::IRRewriter;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
 using ::mlir::Operation;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
-using ::mlir::SymbolTableCollection;
 using ::mlir::func::FuncOp;
 
 using ::mlir::mhlo::CustomCallOp;
@@ -78,7 +78,7 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
 // (see `SdyRoundTripImportShardyAttrsPass`).
-void convertShardyAttrs(FuncOp funcOp) {
+void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
   // Copy over the argument shardings, but not the result shardings yet.
   // We need to wait until after we've converted all the Operations before
   // copying the result shardings.
@@ -104,49 +104,54 @@ void convertShardyAttrs(FuncOp funcOp) {
   // Extract the round-tripped SDY shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
     op->removeAttr(kXlaShardingAttr);
-    if (DictionaryAttr dictAttr = getFrontendAttrs(op)) {
-      // NOTE: we are only setting the sharding on known custom-calls. For any
-      // other op that has a `kShardingRoundTripAttr` we discard it. XLA
-      // sometimes creates new instructions, copying over the operand's frontend
-      // attrs, which may mean the shapes are wrong when the new instruction is
-      // a reshape for example. This does mean we can't fully round-trip b/w HLO
-      // and MLIR after SDY propagation.
-      if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
-        StringRef targetName = customCallOp.getCallTargetName();
-        if (targetName == kFuncResultShardingTargetName) {
-          // This is a temporary CustomCallOp that holds the sharding from a
-          // func result. When importing we want to move that sharding to the
-          // func result and delete the CustomCallOp.
-          auto shardingPerValueAttr =
-              parseStringAttr<TensorShardingPerValueAttr>(
-                  dictAttr, kShardingRoundTripAttr);
-          for (mlir::OpOperand& use :
-               llvm::make_early_inc_range(customCallOp->getUses())) {
-            int64_t resNum = use.getOperandNumber();
-            funcOp.setResultAttr(resNum, kShardingAttr,
+    DictionaryAttr dictAttr = getFrontendAttrs(op);
+    if (!dictAttr) {
+      return;
+    }
+    // NOTE: we are only setting the sharding on known custom-calls. For any
+    // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes
+    // creates new instructions, copying over the operand's frontend attrs,
+    // which may mean the shapes are wrong when the new instruction is a reshape
+    // for example. This does mean we can't fully round-trip b/w HLO and MLIR
+    // after SDY propagation.
+    if (auto customCallOp = mlir::dyn_cast<CustomCallOp>(op)) {
+      StringRef targetName = customCallOp.getCallTargetName();
+      if (targetName == kFuncResultShardingTargetName) {
+        // This is a temporary CustomCallOp that holds the sharding from a
+        // func result. When importing we want to move that sharding to the
+        // func result and delete the CustomCallOp.
+        auto shardingPerValueAttr = parseStringAttr<TensorShardingPerValueAttr>(
+            dictAttr, kShardingRoundTripAttr);
+        for (mlir::OpOperand& use :
+             llvm::make_early_inc_range(customCallOp->getUses())) {
+          // We currently ignore users that are not the func return op.
+          // This might happen due to inlined func ops that originally had
+          // result shardings.
+          // TODO(b/370984308): explore if we need to support this properly.
+          if (mlir::isa<mlir::func::ReturnOp>(use.getOwner())) {
+            funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr,
                                  shardingPerValueAttr.getSharding(0));
-            mlir::sdy::getBodyTerminator(funcOp)->setOperand(
-                resNum, customCallOp.getOperand(0));
+            use.set(customCallOp.getOperand(0));
           }
-          customCallOp.erase();
-          return;
         }
-        if (targetName == kShardingCustomCallTargetName ||
-            targetName == kSPMDFullToShardShapeCallTargetName ||
-            targetName == kSPMDShardToFullShapeCallTargetName) {
-          customCallOp->setAttr(kShardingAttr,
-                                parseStringAttr<TensorShardingPerValueAttr>(
-                                    dictAttr, kShardingRoundTripAttr));
-        }
+        rewriter.replaceOp(customCallOp, customCallOp.getOperand(0));
+        return;
       }
-      removeFrontendAttribute(op, kShardingRoundTripAttr);
+      if (targetName == kShardingCustomCallTargetName ||
+          targetName == kSPMDFullToShardShapeCallTargetName ||
+          targetName == kSPMDShardToFullShapeCallTargetName) {
+        customCallOp->setAttr(kShardingAttr,
+                              parseStringAttr<TensorShardingPerValueAttr>(
+                                  dictAttr, kShardingRoundTripAttr));
+      }
+    }
+    removeFrontendAttribute(op, kShardingRoundTripAttr);
 
-      // Import sharding rules.
-      if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
-              dictAttr, kShardingRuleRoundTripAttr)) {
-        op->setAttr(kShardingRuleAttr, shardingRuleAttr);
-        removeFrontendAttribute(op, kShardingRuleRoundTripAttr);
-      }
+    // Import sharding rules.
+    if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
+            dictAttr, kShardingRuleRoundTripAttr)) {
+      op->setAttr(kShardingRuleAttr, shardingRuleAttr);
+      removeFrontendAttribute(op, kShardingRuleRoundTripAttr);
     }
   });
 }
@@ -160,37 +165,30 @@ class SdyRoundTripImportShardyAttrsPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    SymbolTableCollection symbolTableCollection;
-    SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
-    // If there is a dictionary attribute `kFrontendAttributesAttr` and it
-    // contains `kMeshesRoundTripAttr`, it means that the function was a
-    // Shardy function and we are roundtripping back to Shardy. In that
-    // case, we can use the saved string attributes to restore the original mesh
-    // and value shardings with the original mesh axis names and priorities on
-    // the sharding.
+    // We can use the saved string attributes to restore the original mesh and
+    // value shardings with the original mesh axis names and priorities on the
+    // sharding.
     DictionaryAttr moduleDictAttr = getFrontendAttrs(moduleOp);
-    if (!moduleDictAttr) {
-      moduleOp.emitError(
-          "Expected an attribute `kFrontendAttributesAttr` on the module that "
-          "contains the Shardy meshes.");
-      signalPassFailure();
-      return;
-    }
-
-    auto sdyMeshes =
-        parseStringAttr<DictionaryAttr>(moduleDictAttr, kMeshesRoundTripAttr);
-    mlir::OpBuilder builder(moduleOp);
+    // If there is no `kMeshesRoundTripAttr, there were no meshes in the
+    // original Shardy model.
+    mlir::ArrayRef<NamedAttribute> sdyMeshes =
+        moduleDictAttr ? parseStringAttr<DictionaryAttr>(moduleDictAttr,
+                                                         kMeshesRoundTripAttr)
+                             .getValue()
+                       : mlir::ArrayRef<NamedAttribute>();
+    IRRewriter rewriter(moduleOp);
     // Insert the meshes before any functions.
-    builder.setInsertionPointToStart(moduleOp.getBody());
+    rewriter.setInsertionPointToStart(moduleOp.getBody());
+    SymbolTable symbolTable(moduleOp);
     for (NamedAttribute mesh : sdyMeshes) {
       auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
-      symbolTable.insert(builder.create<mlir::sdy::MeshOp>(
+      symbolTable.insert(rewriter.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
     }
     removeFrontendAttribute(moduleOp, kMeshesRoundTripAttr);
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      convertShardyAttrs(funcOp);
+      convertShardyAttrs(funcOp, rewriter);
     }
   }
 
