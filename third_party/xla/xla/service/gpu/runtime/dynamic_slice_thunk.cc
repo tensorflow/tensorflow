@@ -204,13 +204,6 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
                 << "]: constant offset = " << *const_offset;
         offset_value(argument_idx, offset_idx) = *const_offset;
 
-      } else if (std::holds_alternative<LoopIter>(offset)) {
-        // Get slice offset from the current loop iteration.
-        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
-        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
-                << "]: loop iteration offset = " << iter;
-        offset_value(argument_idx, offset_idx) = iter;
-
       } else if (OffsetArray* offset_array =
                      std::get_if<OffsetArray>(&offset)) {
         TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
