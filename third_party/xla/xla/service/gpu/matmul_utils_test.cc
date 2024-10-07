@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
