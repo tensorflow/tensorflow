@@ -472,9 +472,7 @@ gpu_only_cc_library(
     ]) + if_sycl_is_configured([
         "TENSORFLOW_USE_SYCL=1",
     ]),
-    deps = [
-        "//xla/stream_executor/platform",
-    ] + if_cuda_is_configured([
+    deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

@@ -104,7 +104,6 @@ cc_library(
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
-        "//xla/stream_executor/platform",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_type",
         "//xla/tsl/lib/gtl:int_type",
@@ -413,7 +412,6 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
-        "//xla/stream_executor/platform",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -435,7 +433,6 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
-        "//xla/stream_executor/platform",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -460,7 +457,6 @@ cc_library(
     name = "fft",
     hdrs = ["fft.h"],
     deps = [
-        "//xla/stream_executor/platform",
     ],
 )
 
