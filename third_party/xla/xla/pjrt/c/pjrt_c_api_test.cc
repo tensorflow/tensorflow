@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -311,8 +311,6 @@ TEST_F(PjrtCApiTest, LookupDeviceOutOfRangeId) {
   absl::Status status = ::pjrt::PjrtErrorToStatus(error.get(), api_);
   ASSERT_EQ(status, expected);
 }
-
-static constexpr std::string_view kExecutableName = "operation";
 
 void destroy_executable(PJRT_LoadedExecutable* executable,
                         const PJRT_Api* api) {
