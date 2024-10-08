@@ -206,7 +206,7 @@ py_strict_test(
     tags = [
         "gpu",
         "no_pip",
-	"no_rocm",  # Disabling due to excessive test length
+	    "cuda-only",  # Disabling due to excessive test length
         "requires-gpu-nvidia",
     ],
     deps = [

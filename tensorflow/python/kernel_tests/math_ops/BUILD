@@ -263,7 +263,7 @@ cuda_py_strict_test(
     name = "cwise_ops_binary_test",
     size = "medium",
     srcs = ["cwise_ops_binary_test.py"],
-    tags = ["no_rocm"], #TODO(rocm): weekly sync 240919
+    tags = ["cuda-only"], #TODO(rocm): weekly sync 240919
     shard_count = 50,
     # b/140155647: Error just outside of tolerance
     xla_enable_strict_auto_jit = False,

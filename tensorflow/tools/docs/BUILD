@@ -55,7 +55,7 @@ py_strict_test(
     tags = [
         "no_oss",  # b/275546007
         "no_pip",
-        "no_rocm",  # No need to rerun this test for ROCm config.
+        "cuda-only",  # No need to rerun this test for ROCm config.
         "no_windows",  # numpy prints differently on windows.
         "noasan",
     ],
@@ -103,7 +103,7 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
+        "cuda-only",
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",

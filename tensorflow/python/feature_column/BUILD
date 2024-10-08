@@ -169,7 +169,7 @@ tf_py_strict_test(
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/206860622): Broken with numpy 1.20+
         "no_pip",
-        "no_rocm",
+        "cuda-only",
         "no_windows",
     ],
     deps = [
@@ -215,7 +215,7 @@ tf_py_strict_test(
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/206860622): Broken with numpy 1.20+
         "no_pip",
-        "no_rocm",
+        "cuda-only",
         "no_windows",
     ],
     deps = [":feature_column_v2_test_main_lib"],

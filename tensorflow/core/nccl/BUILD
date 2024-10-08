@@ -62,7 +62,7 @@ tf_cuda_cc_test(
         "multi_gpu",
         "no_oss",
         "notap",
-        "no_rocm", # flaky on CI as of 2022-05-30
+        "cuda-only", # flaky on CI as of 2022-05-30
     ],
     deps = [
         "//tensorflow/core:test",

@@ -224,7 +224,7 @@ tf_kernel_library(
         "dtensor_tpu_kernels.cc",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "tpu",
     ],  # Disable building of TPU kernels on non-TPU platforms.
     deps = [

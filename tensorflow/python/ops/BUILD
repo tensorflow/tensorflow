@@ -1017,7 +1017,7 @@ tf_py_strict_test(
     srcs = ["collective_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":array_ops",
@@ -1048,7 +1048,7 @@ tf_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",
-        "no_rocm",
+        "cuda-only",
         "no_windows",
         "nomac",
     ],
@@ -3630,7 +3630,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "no_rocm", #TODO(rocm): weekly sync 240919
+        "cuda-only", #TODO(rocm): weekly sync 240919
     ],
     deps = [
         ":array_ops",
@@ -3715,7 +3715,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":nn_grad",
@@ -3740,7 +3740,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     shard_count = 24,
     tags = [
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":array_ops",
@@ -3891,7 +3891,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "no_windows_gpu",
     ],
     deps = [
@@ -4702,7 +4702,6 @@ cuda_py_strict_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
-        "no_rocm",
         "no_windows_gpu",
     ],
     deps = [

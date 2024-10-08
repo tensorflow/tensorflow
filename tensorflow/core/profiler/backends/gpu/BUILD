@@ -18,7 +18,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "gpu_cupti",
         "nomac",
-        "no_rocm", # flaky on CI
+        "cuda-only", # flaky on CI
     ],
     deps = [
         "//tensorflow/cc:cc_ops",
