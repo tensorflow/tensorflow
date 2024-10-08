@@ -44,7 +44,6 @@ cc_library(
 tf_cc_test(
     name = "debug_test",
     srcs = ["debug_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":debug",
         ":debug_options_proto_cc",

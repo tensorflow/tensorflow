@@ -555,7 +555,6 @@ dtensor_test(
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
     },
     tags = [
-        "no_rocm",
         "no_windows",
         "nosan",  # b/195537906
     ],
@@ -749,7 +748,7 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND: 32,
     },
     tags = [
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":test_util",
@@ -804,7 +803,7 @@ dtensor_test(
     },
     tags = [
         "no_oss_py38",  # TODO(b/267017937)
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":test_util",

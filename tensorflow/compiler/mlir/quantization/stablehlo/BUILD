@@ -381,7 +381,7 @@ tf_cc_test(
     srcs = [
         "passes/bridge/convert_tf_quant_to_mhlo_int_test.cc",
     ],
-    tags = ["nomac", "no_rocm"],  # TODO(b/297362678): re-enable mac test.
+    tags = ["nomac"],  # TODO(b/297362678): re-enable mac test.
     deps = [
         ":bridge_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",

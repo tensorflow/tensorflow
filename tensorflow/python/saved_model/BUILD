@@ -597,7 +597,6 @@ cuda_py_strict_test(
     tags = [
         "no_gpu",  # TODO(b/136560979): flaky
         "no_mac",  # TODO(b/124822121): Re-enable this test.
-        "no_rocm",
     ],
     deps = [
         ":load",

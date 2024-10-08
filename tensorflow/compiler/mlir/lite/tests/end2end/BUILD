@@ -15,10 +15,6 @@ glob_lit_tests(
     size_override = {
         "quant_stats.pbtxt": "medium",
     },
-    tags_override = {
-        "add.pbtxt": ["no_rocm"],
-        "fake_quant_per_channel.pbtxt": ["no_rocm"],
-    },
     test_file_exts = [
         "pbtxt",
     ],
