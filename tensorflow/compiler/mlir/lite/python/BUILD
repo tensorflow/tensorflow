@@ -123,8 +123,8 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla/hlo/parser:hlo_parser",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_xla//xla/service:hlo_parser",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
