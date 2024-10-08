@@ -279,7 +279,8 @@ std::string PinnedAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat((is_scoped_allocation() ? "Scoped " : ""),
                       "PinnedAllocation in ", memory_space_str, " defined at ",
@@ -332,6 +333,15 @@ absl::Status CopyAllocation::Process() {
                             sync_instruction_, {ShapeUtil::MakeShape(S32, {})},
                             HloInstruction::kMainExecutionThread, false));
     copy_start_ = copy_done_->mutable_operand(0);
+    // If the shape of the copy start operand is not compatible with the
+    // shape of the producing instruction, we insert a bitcast to make them
+    // compatible.
+    if (!ShapeUtil::CompatibleIgnoringFpPrecision(
+            producing_instruction->shape(), copy_start_->operand(0)->shape())) {
+      producing_instruction =
+          computation->AddInstruction(HloInstruction::CreateBitcast(
+              copy_start_->operand(0)->shape(), producing_instruction));
+    }
     TF_RETURN_IF_ERROR(
         copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
@@ -367,7 +377,8 @@ std::string CopyAllocation::ToString() const {
       memory_space() == MemorySpace::kDefault ? "def" : "alt";
   std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
   if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset, ")");
+    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
+                    ", size: ", chunk->size, ")");
   }
   return absl::StrCat("Copy Allocation in ", memory_space_str,
                       ", start_time:", start_time(), ", end_time:", end_time(),
