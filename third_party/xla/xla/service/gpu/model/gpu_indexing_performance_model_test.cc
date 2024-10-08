@@ -477,10 +477,6 @@ ENTRY main {
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
-
   TF_ASSERT_OK_AND_ASSIGN(auto res1,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{16, 32},
@@ -513,10 +509,6 @@ ENTRY main {
 )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto res, indexing_cost_model_.EstimateRunTimeForTiledFusion(
@@ -554,10 +546,6 @@ ENTRY main {
 )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->root_instruction());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto tiling_result,
-      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto res_coalesced,
