@@ -126,6 +126,11 @@ class PyClient {
 
   std::vector<nb_class_ptr<PyDevice>> Devices();
   std::vector<nb_class_ptr<PyDevice>> LocalDevices();
+  // Returns all devices in the client. Private API; only use this method for
+  // implementing backend._get_all_devices().
+  // TODO(hyeontaek): Remove this method once we have a unified API for
+  // enumerating devices with different criteria.
+  std::vector<nb_class_ptr<PyDevice>> GetAllDevices();
   absl::StatusOr<nb_class_ptr<PyDevice>> DeviceFromLocalHardwareId(
       int local_hardware_id);
 

@@ -2726,6 +2726,17 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
   class DeviceTest(ComputationTest):
 
+    def testDevices(self):
+      self.assertNotEmpty(self.backend.devices())
+
+    def testLocalDevices(self):
+      self.assertNotEmpty(self.backend.local_devices())
+
+    def testGetAllDevices(self):
+      # TODO(hyeontaek): Remove this method once we have a unified API for
+      # enumerating devices with different criteria.
+      self.assertNotEmpty(self.backend._get_all_devices())  # pylint: disable=protected-access
+
     def testPlatform(self):
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)

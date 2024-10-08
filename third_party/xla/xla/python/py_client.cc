@@ -179,6 +179,15 @@ std::vector<nb_class_ptr<PyDevice>> PyClient::LocalDevices() {
   return devices;
 }
 
+std::vector<nb_class_ptr<PyDevice>> PyClient::GetAllDevices() {
+  std::vector<nb_class_ptr<PyDevice>> devices;
+  devices.reserve(ifrt_client_->GetAllDevices().size());
+  for (ifrt::Device* device : ifrt_client_->GetAllDevices()) {
+    devices.push_back(GetPyDevice(device));
+  }
+  return devices;
+}
+
 absl::StatusOr<nb_class_ptr<PyDevice>> PyClient::DeviceFromLocalHardwareId(
     int local_hardware_id) {
   TF_ASSIGN_OR_RETURN(ifrt::Device * device,
@@ -693,6 +702,9 @@ PyType_Slot PyClient::slots_[] = {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      // TODO(hyeontaek): Remove this method once we have a unified API for
+      // enumerating devices with different criteria.
+      .def("_get_all_devices", &PyClient::GetAllDevices)
       .def("device_from_local_hardware_id",
            xla::ValueOrThrowWrapper(&PyClient::DeviceFromLocalHardwareId))
       .def("live_executables", &PyClient::LiveExecutables)
