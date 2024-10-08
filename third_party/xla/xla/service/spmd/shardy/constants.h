@@ -68,12 +68,10 @@ inline constexpr llvm::StringRef kFuncResultShardingTargetName =
 inline constexpr llvm::StringRef kFrontendAttributesAttr =
     "mhlo.frontend_attributes";
 
-// Attribute name for determining whether the frontend Python framework has
-// lowered to SDY collectives and has exported them using
-// `SdyRoundTripExportPipeline`.
-// TODO(bartchr): remove this when JAX & PartIR integration is complete.
-inline constexpr llvm::StringRef kPythonIntegrationComplete =
-    "xla.sdy.python_integration_complete";
+// Attribute name for determining whether we need to import MHLO shardings,
+// i.e., the input module doesn't contain SDY shardings as frontend attributes.
+inline constexpr llvm::StringRef kImportMhloShardings =
+    "xla.sdy.import_mhlo_shardings";
 
 // Attribute name for determining whether tuple parameters should be used for
 // the rest of the XLA pipeline.

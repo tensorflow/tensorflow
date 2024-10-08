@@ -99,6 +99,7 @@ xla_cc_test(
     name = "shardy_xla_pass_test",
     srcs = ["shardy_xla_pass_test.cc"],
     deps = [
+        ":constants",
         ":shardy_xla_pass",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",

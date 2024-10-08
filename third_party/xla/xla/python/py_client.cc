@@ -459,11 +459,6 @@ PyClient::CompileIfrtProgram(
     // SDY ops and sharding attributes for when we come back from HLO to MLIR
     // when Shardy propagation is run.
     xla::sdy::addSdyRoundTripExportPipeline(pm);
-    // TODO(bartchr): remove setting `kPythonIntegrationComplete` in follow-up
-    // now that both JAX and PartIR are integrated with Shardy.
-    xla::sdy::addFrontendAttribute(*module,
-                                   xla::sdy::kPythonIntegrationComplete,
-                                   mlir::StringAttr::get(&context, "t"));
     TF_RETURN_IF_ERROR(
         tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
             pm.run(*module)));

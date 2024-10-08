@@ -2235,6 +2235,7 @@ xla_cc_test(
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:algebraic_simplifier",
         "//xla/service:hlo_module_config",
+        "//xla/service/spmd/shardy:constants",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

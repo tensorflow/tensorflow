@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
@@ -32,7 +33,20 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace sdy {
 
+namespace {
+
 using ShardyXLATest = xla::HloTestBase;
+
+void runShardy(VerifiedHloModule* module) {
+  FrontendAttributes attrs;
+  attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
+  module->add_frontend_attributes(attrs);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module));
+  VLOG(1) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+}  // namespace
 
 TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
   const char* const hloString = R"(
@@ -47,9 +61,7 @@ TEST_F(ShardyXLATest, AllowSpmdShardingPropagationParametersOutputRespected) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{replicated}"));
@@ -76,9 +88,7 @@ TEST_F(ShardyXLATest, ElementWise) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   HloInstruction* add = FindInstruction(module.get(), xla::HloOpcode::kAdd);
   EXPECT_NE(add, nullptr);
@@ -113,9 +123,7 @@ TEST_F(ShardyXLATest, CostantSplitter) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   HloInstruction* dot = FindInstruction(module.get(), xla::HloOpcode::kDot);
 
@@ -163,9 +171,7 @@ TEST_F(ShardyXLATest, Dot) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
@@ -200,9 +206,7 @@ TEST_F(ShardyXLATest, DotTiledBatchDim) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1]<=[4]}"));
@@ -228,9 +232,7 @@ TEST_F(ShardyXLATest, DotMergeOperands1) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,1,2]<=[8] last_tile_dim_replicate}"));
@@ -256,9 +258,7 @@ TEST_F(ShardyXLATest, DotMergeOperands2) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
@@ -281,9 +281,7 @@ TEST_F(ShardyXLATest, DotMergeOperands3) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,4]<=[8]}"));
@@ -309,9 +307,7 @@ TEST_F(ShardyXLATest, BackwardDotFromContracting) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,2,2]<=[8]}"));
@@ -336,9 +332,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(
       module->entry_computation_layout().ToString(),
@@ -357,9 +351,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "(f32[4,2]{0,1:T(2,128)}, f32[4,2]{0,1:T(2,128)}, "
@@ -383,9 +375,7 @@ TEST_F(ShardyXLATest, EntryComputationLayoutMissingLayout) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->entry_computation_layout().ToString(),
             "(f32[3,8,32,4]{2,1,3,0:T(8,128)}, "
@@ -404,9 +394,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{}: (1, {}, may-alias)");
@@ -425,9 +413,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigSingleResultNestedParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{}: (1, {}, may-alias)");
@@ -444,9 +430,7 @@ TEST_F(ShardyXLATest, InputOutputAliasConfigNestedResultAndParams) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
             "{1}: (1, {}, may-alias), {3}: (3, {}, may-alias)");
@@ -464,9 +448,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigSingleResult) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(1, {})");
 }
@@ -482,9 +464,7 @@ TEST_F(ShardyXLATest, BufferDonorConfigNestedTuple) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {}), (2, {})");
 }
@@ -500,9 +480,7 @@ TEST_F(ShardyXLATest, ShardingCustomCall) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0),
               op::Sharding("{devices=[2,1]<=[2]}"));
@@ -525,9 +503,7 @@ TEST_F(ShardyXLATest, RngBitGenerator) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Sharding("{{devices=[16,2]<=[32]}, {devices=[8,4]<=[32]}}"));
@@ -574,9 +550,7 @@ TEST_F(ShardyXLATest, WhileWithFreeVariables) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   HloInstruction* whileInst =
       FindInstruction(module.get(), xla::HloOpcode::kWhile);
@@ -622,9 +596,7 @@ TEST_F(ShardyXLATest, ShardMap) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
 
   // The entry computation and the region_add for the all-reduce. shmap_body is
   // inlined.
@@ -653,9 +625,8 @@ TEST_F(ShardyXLATest, EmptyModule) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
+
   EXPECT_EQ(module->entry_computation_layout().ToString(), "()->()");
   EXPECT_EQ(module->input_output_alias_config().ToShortString(), "");
 }
@@ -679,9 +650,8 @@ TEST_F(ShardyXLATest, TestUseTuplesTrue) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardyXLA().Run(module.get()));
-  VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
+  runShardy(module.get());
+
   EXPECT_EQ(module->entry_computation()->parameter_instructions().size(), 1);
   EXPECT_EQ(module->buffer_donor_config().ToShortString(), "(0, {1})");
   EXPECT_EQ(module->input_output_alias_config().ToShortString(),
