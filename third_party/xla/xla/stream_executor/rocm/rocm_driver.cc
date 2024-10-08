@@ -209,6 +209,13 @@ void GpuContext::SetActive() {
 
 bool GpuContext::IsActive() const { return CurrentContext() == context_; }
 
+absl::Status GpuContext::Synchronize() {
+  ScopedActivateContext activation(this);
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceSynchronize(),
+                       "could not synchronize on ROCM device");
+  return absl::OkStatus();
+}
+
 namespace {
 
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
@@ -1147,13 +1154,6 @@ absl::Status GpuDriver::WaitStreamOnEvent(Context* context,
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
                        "could not wait stream on event");
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::SynchronizeContext(Context* context) {
-  ScopedActivateContext activation{context};
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceSynchronize(),
-                       "could not synchronize on ROCM device");
   return absl::OkStatus();
 }
 

@@ -483,7 +483,7 @@ void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
 }
 
 bool RocmExecutor::SynchronizeAllActivity() {
-  return GpuDriver::SynchronizeContext(gpu_context()).ok();
+  return gpu_context()->Synchronize().ok();
 }
 
 absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,

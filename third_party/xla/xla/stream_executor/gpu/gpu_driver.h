@@ -530,12 +530,6 @@ class GpuDriver {
   static absl::Status SynchronizeStream(Context* context,
                                         GpuStreamHandle stream);
 
-  // Blocks the calling thread until the operations associated with the context
-  // have been completed, via cuCtxSynchronize.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g7a54725f28d34b8c6299f0c6ca579616
-  static absl::Status SynchronizeContext(Context* context);
-
   // Returns whether code in the from context can access memory in the to
   // context via cuDeviceCanAccessPeer.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e

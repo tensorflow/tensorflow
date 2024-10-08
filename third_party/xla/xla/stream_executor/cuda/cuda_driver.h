@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
@@ -46,6 +47,7 @@ class GpuContext : public Context {
   bool IsActive() const override;
   CUcontext context() const { return context_; }
   int device_ordinal() const override { return device_ordinal_; }
+  absl::Status Synchronize() override;
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;

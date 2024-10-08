@@ -624,7 +624,7 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
 }
 
 bool CudaExecutor::SynchronizeAllActivity() {
-  return GpuDriver::SynchronizeContext(gpu_context()).ok();
+  return gpu_context()->Synchronize().ok();
 }
 
 bool CudaExecutor::HostMemoryRegister(void* location, uint64_t size) {

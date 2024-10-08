@@ -127,6 +127,11 @@ void GpuContext::SetActive() {
 
 bool GpuContext::IsActive() const { return CurrentContext() == context_; }
 
+absl::Status GpuContext::Synchronize() {
+  ScopedActivateContext activation(this);
+  return cuda::ToStatus(cuCtxSynchronize());
+}
+
 namespace {
 
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
@@ -1206,11 +1211,6 @@ absl::Status GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,
                                           CUevent event) {
   ScopedActivateContext activation(context);
   return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
-}
-
-absl::Status GpuDriver::SynchronizeContext(Context* context) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuCtxSynchronize());
 }
 
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {

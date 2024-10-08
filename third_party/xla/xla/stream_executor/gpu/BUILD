@@ -74,6 +74,9 @@ cc_library(
 cc_library(
     name = "context",
     hdrs = ["context.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(

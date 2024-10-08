@@ -43,6 +43,7 @@ class GpuContext : public Context {
   void SetActive() override;
   bool IsActive() const override;
   int device_ordinal() const override { return device_ordinal_; }
+  absl::Status Synchronize() override;
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;
