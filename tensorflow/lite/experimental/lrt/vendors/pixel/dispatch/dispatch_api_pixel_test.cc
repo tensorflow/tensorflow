@@ -14,7 +14,6 @@
 
 #include <cstddef>
 #include <cstring>
-#include <string>
 
 #include <gtest/gtest.h>
 #include "absl/log/absl_log.h"
@@ -26,11 +25,11 @@
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/test/testdata/simple_model_test_vectors.h"
 
-TEST(DispatchApi, Qualcomm) {
+TEST(DispatchApi, Pixel) {
 #if !defined(__ANDROID__)
-  GTEST_SKIP()
-      << "This test is specific to Android devices with a Qualcomm NPU";
+  GTEST_SKIP() << "This test is specific to Android devices with a Pixel eTPU";
 #endif
+
   EXPECT_EQ(LrtDispatchInitialize(/*shared_lib_path=*/nullptr), kLrtStatusOk);
 
   const char* vendor_id;
@@ -54,7 +53,7 @@ TEST(DispatchApi, Qualcomm) {
   EXPECT_EQ(LrtDispatchDeviceContextCreate(&device_context), kLrtStatusOk);
   ABSL_LOG(INFO) << "device_context: " << device_context;
 
-  auto model_file_name = kQualcommModelFileName;
+  auto model_file_name = kPixelModelFileName;
   auto model = lrt::testing::LoadBinaryFile(model_file_name);
   EXPECT_TRUE(model.ok());
   ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->size()
@@ -67,7 +66,7 @@ TEST(DispatchApi, Qualcomm) {
   LrtDispatchInvocationContext invocation_context = nullptr;
   EXPECT_EQ(LrtDispatchInvocationContextCreate(
                 device_context, kLrtDispatchExecutableTypeMlModel,
-                model->data(), model->size(), /*function_name=*/"simple",
+                model->data(), model->size(), /*function_name=*/nullptr,
                 /*num_inputs=*/2, /*num_outputs=*/1, &invocation_context),
             kLrtStatusOk);
   ABSL_LOG(INFO) << "Invocation context: " << invocation_context;
@@ -91,7 +90,7 @@ TEST(DispatchApi, Qualcomm) {
                 input_0_tensor_buffer_requirements, /*type_index=*/0,
                 &input_0_tensor_buffer_type),
             kLrtStatusOk);
-  EXPECT_EQ(input_0_tensor_buffer_type, kLrtTensorBufferTypeFastRpc);
+  EXPECT_EQ(input_0_tensor_buffer_type, kLrtTensorBufferTypeAhwb);
   size_t input_0_tensor_buffer_size;
   EXPECT_EQ(
       LrtGetTensorBufferRequirementsBufferSize(
@@ -113,7 +112,7 @@ TEST(DispatchApi, Qualcomm) {
                 input_1_tensor_buffer_requirements, /*type_index=*/0,
                 &input_1_tensor_buffer_type),
             kLrtStatusOk);
-  EXPECT_EQ(input_1_tensor_buffer_type, kLrtTensorBufferTypeFastRpc);
+  EXPECT_EQ(input_1_tensor_buffer_type, kLrtTensorBufferTypeAhwb);
   size_t input_1_tensor_buffer_size;
   EXPECT_EQ(
       LrtGetTensorBufferRequirementsBufferSize(
@@ -135,7 +134,7 @@ TEST(DispatchApi, Qualcomm) {
                 output_tensor_buffer_requirements, /*type_index=*/0,
                 &output_tensor_buffer_type),
             kLrtStatusOk);
-  EXPECT_EQ(output_tensor_buffer_type, kLrtTensorBufferTypeFastRpc);
+  EXPECT_EQ(output_tensor_buffer_type, kLrtTensorBufferTypeAhwb);
   size_t output_tensor_buffer_size;
   EXPECT_EQ(LrtGetTensorBufferRequirementsBufferSize(
                 output_tensor_buffer_requirements, &output_tensor_buffer_size),
