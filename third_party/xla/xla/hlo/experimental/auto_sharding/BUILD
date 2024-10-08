@@ -383,7 +383,6 @@ xla_cc_test(
         ":auto_sharding_strategy",
         ":auto_sharding_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:buffer_value",

@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/buffer_value.h"
