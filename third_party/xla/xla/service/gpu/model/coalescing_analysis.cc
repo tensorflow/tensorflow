@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -96,6 +97,48 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
     return false;
   }
   return true;
+}
+
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info) {
+  const HloInstruction* hlo = hbm_access_instr.hlo();
+  const Shape& shape = hlo->shape();
+
+  // Compute the number of elements in the contiguous part of the tile.
+  int64_t contiguous_elements = 1;
+  for (const auto dim_idx : shape.layout().minor_to_major()) {
+    // This dimension is strided, so it's not contiguous.
+    if (hbm_access_instr.tile_stride(dim_idx) != 1) {
+      break;
+    }
+
+    int64_t tile_size = hbm_access_instr.tile_size(dim_idx);
+    int64_t dim_size = shape.dimensions(dim_idx);
+
+    // Make sure to ignore the mask if there is one.
+    contiguous_elements *= std::min(tile_size, dim_size);
+
+    // This dimension is only partially captured, so more major dimensions are
+    // necessarily not captured contiguously.
+    if (tile_size < dim_size) {
+      break;
+    }
+  }
+
+  // Compute the size of the contiguous part of the tile in bytes.
+  int64_t contiguous_bytes_accessed =
+      contiguous_elements *
+      ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
+
+  // Memory accesses are fully coalesced if the memory access uses exactly a
+  // multiple of the DRAM->L2 cache line size contiguously.
+  int64_t transaction_size_bytes =
+      device_info.dram_to_l2_transaction_size_bytes();
+  int64_t effective_bytes_accessed =
+      transaction_size_bytes *
+      CeilOfRatio(contiguous_bytes_accessed, transaction_size_bytes);
+  return 1.0 * contiguous_bytes_accessed / effective_bytes_accessed;
 }
 
 bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,

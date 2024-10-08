@@ -796,6 +796,7 @@ cc_library(
         ":indexing_analysis",
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",

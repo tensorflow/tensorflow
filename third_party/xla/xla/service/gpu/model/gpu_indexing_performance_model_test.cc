@@ -380,9 +380,9 @@ ENTRY main {
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 1}));
 
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2931, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 2932, 2);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 19, 1);
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
 // TODO(b/351342921): Remove this test once there is no special filter for
@@ -578,6 +578,52 @@ ENTRY main {
 
   EXPECT_NEAR(absl::ToDoubleMicroseconds(res_coalesced.read_time), 11, 1);
   EXPECT_NEAR(absl::ToDoubleMicroseconds(res_uncoalesced.read_time), 175, 1);
+}
+
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_UncoalescedWritesAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  param_0 = s8[2048,512] parameter(0)
+  param_1 = s8[2048,512] parameter(1)
+  ROOT add = s8[2048,512] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = s8[2048,512] parameter(0)
+  param_1 = s8[2048,512] parameter(1)
+  ROOT fusion = s8[2048,512] fusion(param_0, param_1),
+    kind=kCustom, calls=add,
+    backend_config={"fusion_backend_config": {"kind":"__triton"}}
+})"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res_coalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, /*launch_dimensions=*/{512, WarpSize()},
+          /*output_tile_sizes=*/{16, 128}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res_uncoalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, /*launch_dimensions=*/{512, WarpSize()},
+          /*output_tile_sizes=*/{128, 16}));
+
+  // The number of bytes read is the same for coalesced and uncoalesced reads.
+  constexpr int64_t kParamSizeBytes = 2048 * 512;
+  EXPECT_EQ(res_coalesced.bytes_read, 2 * kParamSizeBytes);
+  EXPECT_EQ(res_uncoalesced.bytes_read, 2 * kParamSizeBytes);
+
+  // But we expect to waste 3/4th of write transaction time in the
+  // uncoalesced case, making the write time 4 times slower.
+  EXPECT_NEAR(
+      absl::FDivDuration(res_uncoalesced.write_time, res_coalesced.write_time),
+      4, 0.001);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

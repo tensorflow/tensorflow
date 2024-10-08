@@ -449,6 +449,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     int64_t n_bytes_net =
         std::min(operand_size, operand_read_info.total_bytes_read);
 
+    // TODO(b/332714755): use
+    // `BandwidthUtilizationRateHeuristicForTiledMemoryAccess` to compute read
+    // time as well.
     read_time +=
         ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
                                   operand_read_info.total_bytes_read,
@@ -462,7 +465,13 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   absl::Duration compute_time =
       ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
                   launch_dimensions.num_threads_per_block());
-  absl::Duration write_time = WriteTime(*device_info_, bytes_written);
+
+  int64_t effective_bandwidth =
+      BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+          *tiled_hlo_computation.GetRoot(), *device_info_) *
+      device_info_->memory_bandwidth();
+  absl::Duration write_time =
+      absl::Seconds(1.0 * bytes_written / effective_bandwidth);
   absl::Duration memory_access_time = read_time + write_time;
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
       compute_time, memory_access_time,
