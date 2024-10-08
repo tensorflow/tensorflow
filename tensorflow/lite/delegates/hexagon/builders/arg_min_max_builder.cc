@@ -17,6 +17,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
