@@ -1662,6 +1662,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
