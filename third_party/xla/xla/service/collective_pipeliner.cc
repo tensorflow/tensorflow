@@ -2958,7 +2958,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           tuple_points_to_analysis.get(), call_graph.get());
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
-          loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 0) {
+          loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 1) {
         loop_analyses.push_back(
             std::make_pair(instruction, std::move(loop_analysis)));
       }
