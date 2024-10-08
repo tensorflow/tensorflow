@@ -59,6 +59,8 @@ class TargetMachineFeatures {
   // this functionality).
   virtual int vector_register_count(const llvm::Function& function) const = 0;
 
+  virtual std::string get_target_feature_string() const = 0;
+
   // Returns the minimum alignment for a buffer of size size_bytes.
   virtual int64_t minimum_alignment_for_allocation(
       int64_t size_bytes) const = 0;
@@ -101,6 +103,8 @@ class LLVMTargetMachineFeatures : public TargetMachineFeatures {
   }
 
   int64_t minimum_alignment_for_allocation(int64_t size_bytes) const override;
+
+  std::string get_target_feature_string() const override;
 
  private:
   llvm::TargetTransformInfo* GetTargetTransformInfoFor(
