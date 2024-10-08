@@ -4,8 +4,6 @@ package tensorflow.proto_splitter;
 
 import "tensorflow/tools/proto_splitter/versions.proto";
 
-option cc_enable_arenas = true;
-
 // The ChunkMetadata is generated and saved as the last chunk when exported with
 // Splitter.write(prefix). This metadata is always located in the {prefix}.cpb
 // file.
@@ -13,8 +11,10 @@ message ChunkMetadata {
   // The version of the Splitter was used (for information purposes only), and
   // what versions of the Merger can be used to read the chunked proto.
   VersionDef version = 1;
+
   // Metadata about how/where to read the chunk data.
   repeated ChunkInfo chunks = 2;
+
   // Recursive structural information of the proto that was passed to the
   // Splitter. Used to merge the chunked data into a single proto.
   ChunkedMessage message = 3;
@@ -27,6 +27,7 @@ message ChunkInfo {
     MESSAGE = 1;
     BYTES = 2;
   }
+
   Type type = 1;
   uint64 size = 2;    // Size of this chunk in bytes.
   uint64 offset = 3;  // Byte offset of this chunk.
@@ -64,9 +65,11 @@ message FieldIndex {
       uint64 ui64 = 4;
       int32 i32 = 5;
       int64 i64 = 6;
+
       // TODO(278326592): Add sfixed key types if needed.
     }
   }
+
   oneof kind {
     // uint32 is the maximum represent field tags:
     // https://stackoverflow.com/a/63666587
