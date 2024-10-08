@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -113,6 +114,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   backend_config.mutable_fusion_backend_config()->set_kind(
       std::string(kTritonFusionKind));
   TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
+  fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return true;
 }
 

@@ -370,8 +370,6 @@ xla_cc_test(
         ":fusion_block_level_rewriter",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:ir_emission_utils",
