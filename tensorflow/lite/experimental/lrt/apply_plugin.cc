@@ -96,7 +96,7 @@ bool IsSocModelSupported(LrtCompilerPlugin plugin,
 // TODO: b/366821557 - Replace loading pre-compiled plugin.
 UniqueLrtCompilerPlugin LoadPlugin() {
   if (soc_manufacturer != LrtPluginSocManufacturer()) {
-    std::cerr << "Only ExampleSocManufacturer currently supported";
+    std::cerr << "Only Test currently supported";
     return nullptr;
   }
 
