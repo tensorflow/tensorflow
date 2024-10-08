@@ -39,11 +39,3 @@ cc_library(
         "@local_tsl//tsl/platform:types",
     ] + tf_stream_executor_deps("platform", "//xla/stream_executor/platform/"),
 )
-
-cc_library(
-    name = "dso_loader",
-    hdrs = ["dso_loader.h"],
-    deps = [
-        "@local_tsl//tsl/platform",
-    ] + tf_stream_executor_deps("dso_loader", "//xla/stream_executor/platform/"),
-)
