@@ -1997,8 +1997,9 @@ ENTRY %entry {
   option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0, 1.0};
+  option.memory_budget_per_device = (1000 * 128 + 8 * 128) / 8 + 8;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
-  VLOG(10) << module->ToString();
+  VLOG(5) << module->ToString();
   EXPECT_TRUE(changed);
   const HloInstruction* gather = FindInstruction(module.get(), "gather");
   const HloInstruction* data = FindInstruction(module.get(), "data");

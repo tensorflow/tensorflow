@@ -449,12 +449,10 @@ BuildStrategyAndCost(
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,
-                            /* may_combine_partial_sharding */ true,
-                            /* allow_aggressive_resharding */ false)) {
+                            /*may_combine_partial_sharding=*/true,
+                            /*allow_aggressive_resharding=*/false)) {
                   output_spec = *improved_spec;
                   add_sharding_strategy(data_spec, indices_spec, output_spec);
-                } else {
-                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
               // Infer output sharding from scatter indices sharding.
@@ -468,12 +466,10 @@ BuildStrategyAndCost(
                 if (std::optional<HloSharding> improved_spec =
                         ConstructImprovedSharding(
                             to_merge, output_spec, gather_shape,
-                            /* may_combine_partial_sharding */ true,
-                            /* allow_aggressive_resharding */ false)) {
+                            /*may_combine_partial_sharding=*/true,
+                            /*allow_aggressive_resharding=*/false)) {
                   output_spec = *improved_spec;
                   add_sharding_strategy(data_spec, indices_spec, output_spec);
-                } else {
-                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
             }
@@ -497,17 +493,15 @@ BuildStrategyAndCost(
             if (std::optional<HloSharding> improved_spec =
                     ConstructImprovedSharding(
                         *maybe_from_data, output_spec, gather_shape,
-                        /* may_combine_partial_sharding */ true,
-                        /* allow_aggressive_resharding */ false)) {
+                        /*may_combine_partial_sharding=*/true,
+                        /*allow_aggressive_resharding=*/false)) {
               output_spec = *improved_spec;
               add_sharding_strategy(data_spec, indices_spec, output_spec);
-            } else {
-              add_sharding_strategy(data_spec, indices_spec, *maybe_from_data);
             }
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map, 0,
-                              /* operands_to_consider_all_strategies_for */ {0},
+                              /*operands_to_consider_all_strategies_for=*/{0},
                               *strategy_group);
         break;
       }
