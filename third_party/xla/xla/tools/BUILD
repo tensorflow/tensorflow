@@ -409,7 +409,6 @@ tf_proto_library(
 
 xla_py_proto_library(
     name = "run_hlo_module_pb2",
-    api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":run_hlo_module_proto"],
 )

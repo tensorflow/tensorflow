@@ -98,7 +98,6 @@ tf_proto_library(
 xla_py_proto_library(
     name = "tf2xla_py",
     has_services = False,
-    api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":tf2xla_proto"],
 )

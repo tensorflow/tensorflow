@@ -87,7 +87,6 @@ tf_proto_library(
 
 xla_py_proto_library(
     name = "metrics_pb2",
-    api_version = 2,
     deps = [":metrics_proto"],
 )
 
@@ -7806,7 +7805,6 @@ xla_cc_test(
 
 xla_py_proto_library(
     name = "hlo_pb2",
-    api_version = 2,
     visibility = ["//visibility:public"],
     deps = [":hlo_proto"],
 )

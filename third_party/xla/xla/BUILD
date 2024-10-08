@@ -1241,7 +1241,6 @@ tf_proto_library(
 
 xla_py_proto_library(
     name = "autotune_results_py_pb2",
-    api_version = 2,
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_results_proto",
