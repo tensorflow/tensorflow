@@ -62,7 +62,7 @@ TEST_F(CudaDriverTest, ScopedActivateContextTest) {
   CUcontext context0, context1;
   CHECK_CUDA(cuCtxCreate(&context0, 0, device));
   CHECK_CUDA(cuCtxCreate(&context1, 0, device));
-  gpu::GpuContext se_context1(context1, /*device_ordinal=*/101);
+  gpu::CudaContext se_context1(context1, /*device_ordinal=*/101);
   {
     gpu::ScopedActivateContext scope(&se_context1);
     CUcontext c;

@@ -86,9 +86,9 @@ CUcontext CurrentContextOrDie() {
 }
 
 // Returns the singleton ContextMap.
-ContextMap<CUcontext, GpuContext>* GetContextMap() {
-  static ContextMap<CUcontext, GpuContext>* context_map =
-      new ContextMap<CUcontext, GpuContext>([](void* ptr) {
+ContextMap<CUcontext, CudaContext>* GetContextMap() {
+  static ContextMap<CUcontext, CudaContext>* context_map =
+      new ContextMap<CUcontext, CudaContext>([](void* ptr) {
         int device_ordinal;
         absl::Status status = cuda::ToStatus(
             cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
@@ -120,14 +120,14 @@ CUcontext CurrentContext() {
 
 }  // namespace
 
-void GpuContext::SetActive() {
+void CudaContext::SetActive() {
   TF_CHECK_OK(
       cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
 }
 
-bool GpuContext::IsActive() const { return CurrentContext() == context_; }
+bool CudaContext::IsActive() const { return CurrentContext() == context_; }
 
-absl::Status GpuContext::Synchronize() {
+absl::Status CudaContext::Synchronize() {
   ScopedActivateContext activation(this);
   return cuda::ToStatus(cuCtxSynchronize());
 }
@@ -271,7 +271,7 @@ void GpuDriver::DestroyContext(Context* context) {
   if (context == nullptr) {
     return;
   }
-  GpuContext* cuda_context = tensorflow::down_cast<GpuContext*>(context);
+  CudaContext* cuda_context = tensorflow::down_cast<CudaContext*>(context);
   auto status = cuda::ToStatus(cuCtxPushCurrent(cuda_context->context()));
   if (!status.ok()) {
     LOG(ERROR) << "failed to Push CUDA context; leaking: " << status;
@@ -547,7 +547,8 @@ absl::Status GpuDriver::GraphConditionalHandleCreate(
 #if CUDA_VERSION >= 12030
   return cuda::ToStatus(
       cuGraphConditionalHandleCreate(
-          handle, graph, tensorflow::down_cast<GpuContext*>(context)->context(),
+          handle, graph,
+          tensorflow::down_cast<CudaContext*>(context)->context(),
           default_launch_value, flags),
       "Failed to create conditional handle for a CUDA graph");
 #else
@@ -578,8 +579,8 @@ absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
 
     CUgraphNodeParams cu_params;
     memset(&cu_params, 0, sizeof(cu_params));
-    GpuContext* gpu_context =
-        tensorflow::down_cast<GpuContext*>(conditional->context);
+    CudaContext* gpu_context =
+        tensorflow::down_cast<CudaContext*>(conditional->context);
 
     cu_params.type = CU_GRAPH_NODE_TYPE_CONDITIONAL;
     cu_params.conditional.handle = conditional->handle;
@@ -707,7 +708,7 @@ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
     Context* context, CUgraphNode* node, CUgraph graph,
     absl::Span<const CUgraphNode> deps, CUdeviceptr gpu_dst,
     CUdeviceptr gpu_src, uint64_t size) {
-  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
+  CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
   VLOG(2) << "Add memcpy d2d node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
@@ -734,7 +735,7 @@ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
 absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
     Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
     GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
-  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
+  CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
   VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
@@ -793,7 +794,7 @@ absl::Status GpuDriver::GraphAddMemsetNode(
     absl::Span<const CUgraphNode> deps, CUdeviceptr dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
-  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
+  CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
   VLOG(2) << "Add memset node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(dst)
           << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
@@ -823,7 +824,7 @@ absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
     Context* context, CUgraphExec exec, CUgraphNode node, CUdeviceptr dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
-  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
+  CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
   VLOG(2) << "Set memset node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(dst)
           << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
@@ -1576,7 +1577,7 @@ absl::Status GpuDriver::EnablePeerAccess(Context* from, Context* to) {
 
   ScopedActivateContext activated{from};
   CUresult result = cuCtxEnablePeerAccess(
-      tensorflow::down_cast<GpuContext*>(to)->context(), 0 /* = flags */);
+      tensorflow::down_cast<CudaContext*>(to)->context(), 0 /* = flags */);
   if (result != CUDA_SUCCESS &&
       result != CUDA_ERROR_PEER_ACCESS_ALREADY_ENABLED) {
     return absl::InternalError(
