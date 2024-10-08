@@ -2265,11 +2265,20 @@ xla_cc_test(
     ],
 )
 
-cuda_library(
+cc_library(
+    name = "stream_executor_util_kernel_stub",
+    srcs = ["stream_executor_util_kernel_stub.cc"],
+)
+
+gpu_kernel_library(
     name = "stream_executor_util_kernel",
     srcs = ["stream_executor_util_kernel.cu.cc"],
-    tags = ["cuda-only"],
-    deps = ["@local_config_cuda//cuda:cuda_headers"],
+    tags = ["gpu"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
@@ -2277,7 +2286,6 @@ cc_library(
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
     copts = tsl_copts(),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":cublas_cudnn",
         ":launch_dimensions",
@@ -2310,9 +2318,10 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        ":stream_executor_util_kernel",
-    ]),
+    ] + if_gpu_is_configured(
+        if_false = [":stream_executor_util_kernel_stub"],
+        if_true = [":stream_executor_util_kernel"],
+    ),
 )
 
 xla_cc_test(
