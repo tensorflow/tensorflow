@@ -21,9 +21,9 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
-#include "xla/client/lib/constants.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
-#include "xla/client/lib/math.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
-#include "xla/client/xla_builder.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/lib/constants.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/lib/math.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
+#include "xla/hlo/builder/xla_builder.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_op_test.h"  // IWYU pragma: keep, exhaustive_unary_test_ops.inc
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
