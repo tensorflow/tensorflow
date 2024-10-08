@@ -140,7 +140,9 @@ cc_library(
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
         "ion_buffer.cc",
+        "lite_rt_event.cc",
         "lite_rt_tensor_buffer.cc",
+        "lite_rt_tensor_buffer_requirements.cc",
         "tensor_buffer.cc",
     ],
     hdrs = [
@@ -150,12 +152,10 @@ cc_library(
         "tensor_buffer.h",
     ],
     deps = [
-        ":event",
         ":logging",
         ":utils",
-        "//tensorflow/lite/experimental/lrt/c:event",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
@@ -179,20 +179,32 @@ cc_test(
     deps = [
         ":tensor_buffer",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_library(
-    name = "event",
+    name = "dispatch",
     srcs = [
-        "lite_rt_event.cc",
+        "lite_rt_dispatch.cc",
+    ],
+    hdrs = [
     ],
     deps = [
         ":logging",
-        "//tensorflow/lite/experimental/lrt/c:event",
+        ":tensor_buffer",
+        ":utils",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

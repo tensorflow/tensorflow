@@ -18,42 +18,26 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_c_api",
+    name = "qnn",
+    srcs = [
+        "context_binary_info.cc",
+        "qnn.cc",
+        "qnn_tensor.cc",
+    ],
     hdrs = [
-        "lite_rt_common.h",
-        "lite_rt_compiler_plugin.h",
-        "lite_rt_model.h",
-        "lite_rt_op_code.h",
-        "lite_rt_support.h",
+        "context_binary_info.h",
+        "qnn.h",
+        "qnn_tensor.h",
     ],
     deps = [
-        "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/core:logging",
     ],
 )
-
-cc_library(
-    name = "lite_rt_tensor_buffer_c_api",
-    hdrs = [
-        "lite_rt_event.h",
-        "lite_rt_tensor_buffer.h",
-        "lite_rt_tensor_buffer_requirements.h",
-    ],
-    deps = [
-        ":lite_rt_c_api",
-    ],
-)
-
-cc_library(
-    name = "lite_rt_dispatch_c_api",
-    hdrs = [
-        "lite_rt_dispatch.h",
-        "lite_rt_dispatch_api.h",
-    ],
-    deps = [
-        ":lite_rt_c_api",
-        ":lite_rt_tensor_buffer_c_api",
-    ],
-)
-
-exports_files(srcs = glob(["lite_rt*.h"]))
