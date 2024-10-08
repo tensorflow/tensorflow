@@ -455,7 +455,6 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "no_cuda",  # TODO(b/196608406): re-enable
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
-        "no_rocm", # fail on CI
     ],
     deps = [
         ":base_ops_test",
@@ -545,7 +544,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "no_cuda",  # TODO(b/196608406): re-enable
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":base_binary_ops_test",
