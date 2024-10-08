@@ -307,6 +307,12 @@ class AlgebraicSimplifierOptions {
     return disable_dynamic_slice_to_slice_conversion_;
   }
 
+  // Option to set finite math.
+  void set_enable_fast_math(bool enable_fast_math) {
+    enable_fast_math_ = enable_fast_math;
+  }
+  bool enable_fast_math() const { return enable_fast_math_; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -347,6 +353,7 @@ class AlgebraicSimplifierOptions {
   double raise_slice_and_reduce_through_dot_threshold_{2.0};
   bool use_convert_constant_folding_{false};
   bool disable_dynamic_slice_to_slice_conversion_{false};
+  bool enable_fast_math_{false};
   Metadata metadata_;
 };
 

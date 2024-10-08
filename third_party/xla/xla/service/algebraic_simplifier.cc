@@ -2073,6 +2073,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleConstant(
 absl::Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(sub, m::Subtract(m::Op(&lhs), m::Op(&rhs))));
+  // A - A => 0
+  if (options_.enable_fast_math() ||
+      ShapeUtil::ElementIsIntegral(sub->shape())) {
+    if (lhs == rhs) {
+      return ReplaceInstruction(sub, MakeScalarLike(sub, 0));
+    }
+  }
   // A - 0 => A
   VLOG(10) << "trying transform [A - 0 => A]: " << sub->ToString();
   if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(sub, lhs)) {

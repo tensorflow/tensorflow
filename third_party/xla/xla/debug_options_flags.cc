@@ -296,6 +296,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   opts.set_xla_experimental_ignore_channel_id(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(32);
+  opts.set_xla_enable_fast_math(false);
   return opts;
 }
 
@@ -2003,6 +2004,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),
       debug_options->xla_gpu_dot_merger_threshold_mb(),
       "Dot merger pass threshold to be set in MB."));
+
+  flag_list->push_back(
+      tsl::Flag("xla_enable_fast_math",
+                bool_setter_for(&DebugOptions::set_xla_enable_fast_math),
+                debug_options->xla_enable_fast_math(),
+                "Enable optimizations that assume finite math, i.e., no NaN."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

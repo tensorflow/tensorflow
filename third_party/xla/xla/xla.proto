@@ -98,6 +98,9 @@ message DebugOptions {
   // When true, XLA:CPU uses the thunk runtime to execute compiled program.
   bool xla_cpu_use_thunk_runtime = 298;
 
+  // Enabling this will enable optimizations that ignore the possibility of NaN.
+  bool xla_enable_fast_math = 335;
+
   // The number of parts to split the LLVM module into before codegen. This
   // allows XLA to compile all parts in parallel, and resolve kernel symbols
   // from different dynamic libraries.
@@ -1002,7 +1005,7 @@ message DebugOptions {
   // loop by a factor of two if a collective op is present.
   bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
-  // Next id: 335
+  // Next id: 336
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
