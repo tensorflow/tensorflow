@@ -999,15 +999,6 @@ absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
   return cuda::ToStatus(cuLaunchHostFunc(stream, callback, data));
 }
 
-void GpuDriver::UnloadModule(Context* context, CUmodule module) {
-  ScopedActivateContext activated{context};
-  auto status = cuda::ToStatus(cuModuleUnload(module));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to unload module " << module
-               << "; leaking: " << status;
-  }
-}
-
 absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
                                                         int priority) {
   ScopedActivateContext activated(context);

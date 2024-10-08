@@ -208,14 +208,24 @@ absl::Status GetModuleSymbol(Context* context, hipModule_t module,
       absl::StrCat("Failed to get symbol '", symbol_name, "'"));
   return absl::OkStatus();
 }
+
+// Unloads module from the current context via cuModuleUnload.
+void UnloadRocmModule(Context* context, hipModule_t module) {
+  ScopedActivateContext activated{context};
+  hipError_t res = wrap::hipModuleUnload(module);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to unload module " << module
+               << "; leaking: " << ToString(res);
+  }
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
   for (auto& it : disk_modules_) {
-    GpuDriver::UnloadModule(gpu_context(), it.second);
+    UnloadRocmModule(gpu_context(), it.second);
   }
   for (auto& it : in_memory_modules_) {
-    GpuDriver::UnloadModule(gpu_context(), it.second);
+    UnloadRocmModule(gpu_context(), it.second);
   }
   if (gpu_context() != nullptr) {
     GpuDriver::DestroyContext(gpu_context());
@@ -304,7 +314,7 @@ bool RocmExecutor::UnloadGpuBinary(const void* gpu_binary) {
   VLOG(3) << "Found HSACO module " << module << " with refcount " << refcount;
   if (--refcount == 0) {
     VLOG(3) << "Unloading  HSACO module " << module;
-    GpuDriver::UnloadModule(gpu_context(), module);
+    UnloadRocmModule(gpu_context(), module);
     gpu_binary_to_module_.erase(module_it);
     const char* mem_it = nullptr;
     for (auto x : in_memory_modules_) {

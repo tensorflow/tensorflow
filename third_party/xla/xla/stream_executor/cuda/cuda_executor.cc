@@ -241,6 +241,16 @@ absl::Status GetModuleSymbol(Context* context, CUmodule module,
       cuModuleGetGlobal(dptr, bytes, module, symbol_name),
       absl::StrCat("Failed to get symbol '", symbol_name, "'"));
 }
+
+// Unloads module from the current context via cuModuleUnload.
+void UnloadCudaModule(Context* context, CUmodule module) {
+  ScopedActivateContext activated{context};
+  auto status = cuda::ToStatus(cuModuleUnload(module));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to unload module " << module
+               << "; leaking: " << status;
+  }
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -433,7 +443,7 @@ bool CudaExecutor::UnloadGpuBinary(const void* gpu_binary) {
   VLOG(3) << "Found CUDA module " << module << " with refcount " << refcount;
   if (--refcount == 0) {
     VLOG(3) << "Unloading CUDA module " << module;
-    GpuDriver::UnloadModule(gpu_context(), module);
+    UnloadCudaModule(gpu_context(), module);
     gpu_binary_to_module_.erase(module_it);
   }
   return true;

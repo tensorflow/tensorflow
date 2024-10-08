@@ -938,15 +938,6 @@ absl::Status GpuDriver::AddStreamCallback(Context* context,
   return absl::OkStatus();
 }
 
-void GpuDriver::UnloadModule(Context* context, hipModule_t module) {
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipModuleUnload(module);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to unload module " << module
-               << "; leaking: " << ToString(res);
-  }
-}
-
 absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
                                                         int priority) {
   ScopedActivateContext activated(context);

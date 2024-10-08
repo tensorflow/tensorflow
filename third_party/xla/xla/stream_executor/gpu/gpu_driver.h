@@ -440,12 +440,6 @@ class GpuDriver {
                                                   GpuGraphNodeHandle node,
                                                   GpuGraphHandle child);
 
-  // Unloads module from the current context via cuModuleUnload.
-  // TODO(leary) the documentation doesn't say what kind of disasters happen
-  // if you try to unload a module while its GpuFunctionHandles are in use.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MODULE.html#group__CUDA__MODULE_1g8ea3d716524369de3763104ced4ea57b
-  static void UnloadModule(Context* context, GpuModuleHandle module);
-
   // Performs a synchronous memset of the device memory segment via cuMemsetD8.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g6e582bf866e9e2fb014297bfaf354d7b
   static absl::Status SynchronousMemsetUint8(Context* context,
