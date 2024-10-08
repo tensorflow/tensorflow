@@ -17,12 +17,14 @@ package(
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
+# TEST
+
 cc_binary(
     name = "apply_plugin",
     srcs = [
         "apply_plugin.cc",
         # TODO: b/366821557 - Support pre-compiled plugins as data dependencies.
-        "//tensorflow/lite/experimental/lrt/examples:mul_op_plugin_so",
+        "//tensorflow/lite/experimental/lrt/vendors/examples:mul_op_plugin_so",
     ],
     deps = [
         "//tensorflow/lite/experimental/lrt/core:algo",
