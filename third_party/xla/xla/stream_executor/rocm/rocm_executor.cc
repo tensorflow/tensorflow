@@ -178,6 +178,36 @@ absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
 
   return returned_status;
 }
+
+// Retrieves a named kernel from a loaded module, and places the resulting
+// handle into function (outparam) on success. Neither kernel_name nor
+// function may be null. No ownership is taken of kernel_name.
+absl::Status GetModuleFunction(Context* context, hipModule_t module,
+                               const char* kernel_name,
+                               hipFunction_t* function) {
+  ScopedActivateContext activated{context};
+  CHECK(module != nullptr && kernel_name != nullptr);
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleGetFunction(function, module, kernel_name),
+      "Failed to get kernel");
+  return absl::OkStatus();
+}
+
+// Retrieves a named global/constant symbol from a loaded module, and returns
+// a device pointer and size of the symbol on success. symbol_name may not be
+// null. At least one of dptr or bytes should not be null. No ownership is
+// taken of symbol_name.
+absl::Status GetModuleSymbol(Context* context, hipModule_t module,
+                             const char* symbol_name, hipDeviceptr_t* dptr,
+                             size_t* bytes) {
+  ScopedActivateContext activated{context};
+  CHECK(module != nullptr && symbol_name != nullptr &&
+        (dptr != nullptr || bytes != nullptr));
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
+      absl::StrCat("Failed to get symbol '", symbol_name, "'"));
+  return absl::OkStatus();
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -357,8 +387,8 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   if (!spec.has_in_process_symbol()) {
     VLOG(2) << "getting function " << *kernel_name << " from module " << module;
     GpuFunctionHandle function;
-    TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-        gpu_context(), module, kernel_name->c_str(), &function));
+    TF_RETURN_IF_ERROR(GetModuleFunction(gpu_context(), module,
+                                         kernel_name->c_str(), &function));
     rocm_kernel->set_gpu_function(function);
   }
 
@@ -572,16 +602,16 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
   if (static_cast<bool>(module_handle)) {
     auto it = gpu_binary_to_module_.find(module_handle.id());
     CHECK(it != gpu_binary_to_module_.end());
-    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
-        gpu_context(), it->second.first, symbol_name.c_str(),
-        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    TF_RETURN_IF_ERROR(
+        GetModuleSymbol(gpu_context(), it->second.first, symbol_name.c_str(),
+                        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
     return DeviceMemoryBase(mem, bytes);
   }
 
   for (auto& it : gpu_binary_to_module_) {
-    TF_RETURN_IF_ERROR(GpuDriver::GetModuleSymbol(
-        gpu_context(), it.second.first, symbol_name.c_str(),
-        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
+    TF_RETURN_IF_ERROR(
+        GetModuleSymbol(gpu_context(), it.second.first, symbol_name.c_str(),
+                        reinterpret_cast<hipDeviceptr_t*>(&mem), &bytes));
     return DeviceMemoryBase(mem, bytes);
   }
 

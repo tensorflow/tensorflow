@@ -93,7 +93,6 @@ ContextMap<hipCtx_t, GpuContext>* GetContextMap() {
       });
   return context_map;
 }
-
 }  // namespace
 
 // Formats hipError_t to output prettified values into a log stream.
@@ -936,29 +935,6 @@ absl::Status GpuDriver::AddStreamCallback(Context* context,
   RETURN_IF_ROCM_ERROR(
       wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data),
       "unable to add host callback");
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::GetModuleFunction(Context* context, hipModule_t module,
-                                          const char* kernel_name,
-                                          hipFunction_t* function) {
-  ScopedActivateContext activated{context};
-  CHECK(module != nullptr && kernel_name != nullptr);
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipModuleGetFunction(function, module, kernel_name),
-      "Failed to get kernel");
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::GetModuleSymbol(Context* context, hipModule_t module,
-                                        const char* symbol_name,
-                                        hipDeviceptr_t* dptr, size_t* bytes) {
-  ScopedActivateContext activated{context};
-  CHECK(module != nullptr && symbol_name != nullptr &&
-        (dptr != nullptr || bytes != nullptr));
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
-      absl::StrCat("Failed to get symbol '", symbol_name, "'"));
   return absl::OkStatus();
 }
 

@@ -440,22 +440,6 @@ class GpuDriver {
                                                   GpuGraphNodeHandle node,
                                                   GpuGraphHandle child);
 
-  // Retrieves a named kernel from a loaded module, and places the resulting
-  // handle into function (outparam) on success. Neither kernel_name nor
-  // function may be null. No ownership is taken of kernel_name.
-  static absl::Status GetModuleFunction(Context* context,
-                                        GpuModuleHandle module,
-                                        const char* kernel_name,
-                                        GpuFunctionHandle* function);
-
-  // Retrieves a named global/constant symbol from a loaded module, and returns
-  // a device pointer and size of the symbol on success. symbol_name may not be
-  // null. At least one of dptr or bytes should not be null. No ownership is
-  // taken of symbol_name.
-  static absl::Status GetModuleSymbol(Context* context, GpuModuleHandle module,
-                                      const char* symbol_name,
-                                      GpuDevicePtr* dptr, size_t* bytes);
-
   // Unloads module from the current context via cuModuleUnload.
   // TODO(leary) the documentation doesn't say what kind of disasters happen
   // if you try to unload a module while its GpuFunctionHandles are in use.
