@@ -2609,6 +2609,36 @@ ENTRY %entry {
   EXPECT_THAT(reshape, op::Sharding("{devices=[1,32,1,1]<=[32]}"));
 }
 
+TEST_F(AutoShardingTest, ShardingCustomCallInvalidUserSharding) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %entry {
+  concatenate.824 = bf16[256,4096,4,256]{3,2,1,0} parameter(0)
+  custom-call.5828 = bf16[256,4096,4,256]{3,2,1,0} custom-call(concatenate.824), custom_call_target="Sharding", sharding={devices=[32,1,4,1,2]<=[8,4,8]T(1,0,2) last_tile_dim_replicate}
+  ROOT copy = copy(custom-call.5828)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.device_mesh_shape = {8, 4, 8};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  const HloInstruction* sharding_call_copy =
+      FindInstruction(module.get(), "copy")->operand(0);
+  EXPECT_THAT(
+      sharding_call_copy,
+      op::Sharding(
+          "{devices=[32,1,4,1,2]<=[8,4,8]T(1,0,2) last_tile_dim_replicate}"));
+}
+
 TEST_F(AutoShardingTest, Broadcast) {
   constexpr absl::string_view kHloString = R"(
 HloModule module

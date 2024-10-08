@@ -1020,11 +1020,6 @@ BuildStrategyAndCost(
     }
     CHECK(strategy_group != nullptr);
     RemoveDuplicatedStrategy(*strategy_group);
-    if (!option.allow_shardings_small_dims_across_many_devices) {
-      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
-          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
-          *strategy_group);
-    }
     if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
@@ -1032,6 +1027,11 @@ BuildStrategyAndCost(
           ins->shape(), strategy_map, instructions, ins->sharding(),
           cluster_env, pretrimmed_strategy_map, call_graph,
           option.nd_sharding_iteratively_strict_search_space, *strategy_group);
+    }
+    if (!option.allow_shardings_small_dims_across_many_devices) {
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
+          *strategy_group);
     }
     if (!strategy_group->is_tuple && strategy_group->following) {
       if (!LeafVectorsAreConsistent(

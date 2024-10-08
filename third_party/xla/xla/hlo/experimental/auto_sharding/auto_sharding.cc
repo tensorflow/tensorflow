@@ -1551,24 +1551,26 @@ void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
 
 void ScaleCostsWithExecutionCounts(const int64_t execution_count,
                                    StrategyGroup& strategy_group) {
-  if (strategy_group.is_tuple) {
-    for (const auto& child : strategy_group.GetChildren()) {
-      ScaleCostsWithExecutionCounts(execution_count, *child);
+  auto scale_cost = [&execution_count](double& cost) {
+    if (cost < kInfinityCost - 1) {
+      cost *= execution_count;
     }
-  } else {
-    for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
-      ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
-      strategy.compute_cost *= execution_count;
-      strategy.communication_cost *= execution_count;
-      for (auto i = 0; i < strategy.communication_resharding_costs.size();
-           ++i) {
-        for (auto j = 0; j < strategy.communication_resharding_costs[i].size();
+  };
+  auto scale_for_leaf = [&](StrategyGroup& leaf_strategy_group) {
+    for (int sid = 0; sid < leaf_strategy_group.GetStrategies().size(); ++sid) {
+      ShardingStrategy& strategy = leaf_strategy_group.GetStrategy(sid);
+      scale_cost(strategy.compute_cost);
+      scale_cost(strategy.communication_cost);
+      for (int i = 0; i < strategy.communication_resharding_costs.size(); ++i) {
+        for (int j = 0; j < strategy.communication_resharding_costs[i].size();
              ++j) {
-          strategy.communication_resharding_costs[i][j] *= execution_count;
+          scale_cost(strategy.communication_resharding_costs[i][j]);
         }
       }
     }
-  }
+  };
+
+  strategy_group.ForEachLeafStrategyGroup(scale_for_leaf);
 }
 
 std::unique_ptr<StrategyGroup> CreateElementwiseOperatorStrategies(
