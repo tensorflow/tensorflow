@@ -12,6 +12,6 @@ fusion {
   ROOT %reduce = f32[10240,32] reduce(%cvt, %c0), dimensions={1}, to_apply=%add
 }
 
-// CHECK: vector<4xf32>
-// CHECK: allocate_shared : tensor<16x33xf32>
-// CHECK: shuffle_reduce(%{{.*}}) to 8 combiner=@add_add
+// CHECK: vector<8xf32>
+// CHECK: allocate_shared : tensor<32x33xf32>
+// CHECK: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add
