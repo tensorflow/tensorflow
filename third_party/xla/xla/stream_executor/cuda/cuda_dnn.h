@@ -732,6 +732,16 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const dnn::FMHAMaskKind mask_type, bool force_deterministic,
     const int sliding_window_length);
 
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardF8OperationGraph(
+    dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
+    const dnn::MatmulTensorDescriptor& k_desc,
+    const dnn::MatmulTensorDescriptor& p_desc,
+    const dnn::MatmulTensorDescriptor& v_desc,
+    const dnn::MatmulTensorDescriptor& do_desc,
+    const dnn::TensorDescriptor& dq_desc, const dnn::TensorDescriptor& dk_desc,
+    const dnn::TensorDescriptor& dv_desc, double scale,
+    dnn::FMHAMaskKind mask_type);
+
 }  // namespace gpu
 }  // namespace stream_executor
 
