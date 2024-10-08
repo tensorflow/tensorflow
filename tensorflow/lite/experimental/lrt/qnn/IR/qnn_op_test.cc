@@ -49,7 +49,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
 }
 
 TEST(TestLegalizeOp, UnsupportedOp) {
-  auto model = LoadTestFileModel("add_simple.tflite");
+  auto model = LoadTestFileModel("simple_floor_mod_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
