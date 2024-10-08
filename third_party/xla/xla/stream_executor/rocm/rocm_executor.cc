@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_runtime.h"
+#include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/rocm/rocm_stream.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
 #include "xla/stream_executor/semantic_version.h"

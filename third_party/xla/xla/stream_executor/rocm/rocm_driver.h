@@ -29,10 +29,6 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
-// Formats hipError_t to output prettified values into a log stream.
-// Error summaries taken from:
-std::string ToString(hipError_t result);
-
 // GpuContext implements the Context class for ROCm GPUs.
 class GpuContext : public Context {
  public:

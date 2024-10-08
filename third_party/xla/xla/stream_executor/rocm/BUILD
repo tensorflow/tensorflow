@@ -68,6 +68,7 @@ cc_library(
     ]),
     deps = [
         ":rocm_diagnostics",
+        ":rocm_status",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:context_map",
@@ -88,6 +89,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
     ],
@@ -106,6 +108,7 @@ cc_library(
     ]),
     deps = [
         ":rocm_driver",
+        ":rocm_status",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -137,6 +140,7 @@ cc_library(
     ]),
     deps = [
         ":rocm_driver",
+        ":rocm_status",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_event_header",
@@ -163,6 +167,7 @@ cc_library(
         ":rocm_kernel",
         ":rocm_platform_id",
         ":rocm_runtime",
+        ":rocm_status",
         ":rocm_stream",
         ":rocm_version_parser",
         "//xla/stream_executor",
@@ -922,4 +927,44 @@ cc_library(
         "manual",
     ]),
     deps = ["//xla/stream_executor/gpu:gpu_stream"],
+)
+
+cc_library(
+    name = "rocm_status",
+    srcs = ["rocm_status.cc"],
+    hdrs = ["rocm_status.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+cc_test(
+    name = "rocm_status_test",
+    srcs = ["rocm_status_test.cc"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        ":rocm_status",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
