@@ -6,8 +6,6 @@ import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/protobuf/meta_graph.proto";
 import "tensorflow/core/protobuf/saver.proto";
 
-option cc_enable_arenas = true;
-
 // Represents an exported TensorFlow model. It consists of a GraphDef and extra
 // metadata required for building a SavedModel. This message is primarily used
 // to "export" the model produced from various quantization passes in c++ to
@@ -15,10 +13,11 @@ option cc_enable_arenas = true;
 // Next ID: 11
 message ExportedModel {
   reserved 3, 4, 7, 9;
-  reserved 'variable_shared_names';
-  reserved 'restore_node_name';
-  reserved 'save_node_name';
-  reserved 'file_prefix_tensor_name';
+
+  reserved "variable_shared_names";
+  reserved "restore_node_name";
+  reserved "save_node_name";
+  reserved "file_prefix_tensor_name";
 
   GraphDef graph_def = 1;
 
