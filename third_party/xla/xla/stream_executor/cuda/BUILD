@@ -971,6 +971,7 @@ cc_library(
         ":cuda_platform_id",
         ":cuda_runtime",
         ":cuda_status",
+        ":cuda_stream",
         ":cuda_version_parser",
         ":delay_kernel_cuda",
         "//xla/stream_executor",
@@ -1137,4 +1138,15 @@ cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
     ],
+)
+
+cc_library(
+    name = "cuda_stream",
+    srcs = ["cuda_stream.cc"],
+    hdrs = ["cuda_stream.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = ["//xla/stream_executor/gpu:gpu_stream"],
 )

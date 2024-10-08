@@ -163,6 +163,7 @@ cc_library(
         ":rocm_kernel",
         ":rocm_platform_id",
         ":rocm_runtime",
+        ":rocm_stream",
         ":rocm_version_parser",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
@@ -907,4 +908,18 @@ cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
     ],
+)
+
+cc_library(
+    name = "rocm_stream",
+    srcs = ["rocm_stream.cc"],
+    hdrs = ["rocm_stream.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = ["//xla/stream_executor/gpu:gpu_stream"],
 )

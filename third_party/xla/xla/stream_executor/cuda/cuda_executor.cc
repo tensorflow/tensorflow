@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/device_description.h"
@@ -810,7 +811,7 @@ absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
-  auto stream = std::make_unique<GpuStream>(this, std::move(event), priority);
+  auto stream = std::make_unique<CudaStream>(this, std::move(event), priority);
   absl::MutexLock l(&alive_gpu_streams_mu_);
   TF_RETURN_IF_ERROR(stream->Init());
   auto gpu_stream = stream->gpu_stream();

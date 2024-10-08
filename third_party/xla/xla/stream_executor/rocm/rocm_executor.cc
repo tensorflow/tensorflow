@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_runtime.h"
+#include "xla/stream_executor/rocm/rocm_stream.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -661,7 +662,7 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
-  auto stream = std::make_unique<GpuStream>(this, std::move(event), priority);
+  auto stream = std::make_unique<RocmStream>(this, std::move(event), priority);
   absl::MutexLock l(&alive_gpu_streams_mu_);
   TF_RETURN_IF_ERROR(stream->Init());
   auto gpu_stream = stream->gpu_stream();
