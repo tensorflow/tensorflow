@@ -26,15 +26,20 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/blas.h"
@@ -63,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -72,10 +78,13 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -98,6 +107,106 @@ absl::Status FuncGetAttribute(CUfunction_attribute attribute, CUfunction func,
       absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
+// CUDA driver routines may require a large amount of stack (particularly
+// cuModuleLoadDataEx, in our experience). To avoid stack overflow when using
+// stack-limited threads (such as those spawned by a default-argument
+// thread::ThreadPool on some platforms), we run certain routines in this pool
+// and wait for completion.
+tsl::thread::ThreadPool* GetDriverExecutor() {
+  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), tsl::ThreadOptions(), "cuda_driver", 1);
+  return thread_pool;
+}
+
+// Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
+// handle in "module". Any error logs that are produced are logged internally.
+absl::Status LoadPtx(Context* context, const char* ptx_contents,
+                     CUmodule* module) {
+  absl::Notification notification;
+  absl::Status returned_status = absl::OkStatus();
+  GetDriverExecutor()->Schedule(
+      [context, ptx_contents, module, &returned_status, &notification]() {
+        ScopedActivateContext activation(context);
+        void* ptx_data = const_cast<char*>(ptx_contents);
+        static const unsigned int kLogBufferBytesLimit = 1024;
+        unsigned int error_log_buffer_bytes = kLogBufferBytesLimit;
+        unsigned int info_log_buffer_bytes = kLogBufferBytesLimit;
+        absl::InlinedVector<char, 4> error_log_buffer(error_log_buffer_bytes);
+        absl::InlinedVector<char, 4> info_log_buffer(info_log_buffer_bytes);
+        bool log_verbose = true;
+        CUjit_option options[] = {CU_JIT_ERROR_LOG_BUFFER_SIZE_BYTES,
+                                  CU_JIT_ERROR_LOG_BUFFER,
+                                  CU_JIT_INFO_LOG_BUFFER_SIZE_BYTES,
+                                  CU_JIT_INFO_LOG_BUFFER, CU_JIT_LOG_VERBOSE};
+        // Note that the driver API wants the contents of this values to be
+        // stored in an array of void*s, so we coerce them accordingly.
+        void* option_values[] = {
+            absl::bit_cast<void*>(uintptr_t(error_log_buffer_bytes)),
+            absl::bit_cast<void*>(error_log_buffer.data()),
+            absl::bit_cast<void*>(uintptr_t(info_log_buffer_bytes)),
+            absl::bit_cast<void*>(info_log_buffer.data()),
+            absl::bit_cast<void*>(uintptr_t(log_verbose))};
+        CHECK(TF_ARRAYSIZE(options) == TF_ARRAYSIZE(option_values));
+
+        absl::Status status;
+        {
+          // TODO(leary) Need to see if NVIDIA can expunge the leakiness in
+          // their module loading: see http://b/13248943
+          absl::LeakCheckDisabler disabler;
+          status = cuda::ToStatus(cuModuleLoadDataEx(
+              module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
+        }
+
+        // The PTX JIT mutates the values in the option values array to reflect
+        // the size of the logs it output; now that we've made the call, read
+        // the values back out.
+        error_log_buffer_bytes = reinterpret_cast<uintptr_t>(option_values[0]);
+        info_log_buffer_bytes = reinterpret_cast<uintptr_t>(option_values[2]);
+        CHECK_LE(error_log_buffer_bytes, kLogBufferBytesLimit);
+        CHECK_LE(info_log_buffer_bytes, kLogBufferBytesLimit);
+
+        if (!status.ok()) {
+          LOG(ERROR) << "failed to load PTX text as a module: " << status;
+          // As a precaution for null termination of the API-provided value,
+          // ensure that at least the last byte is null.
+          error_log_buffer[error_log_buffer_bytes ? error_log_buffer_bytes - 1
+                                                  : 0] = '\0';
+          LOG(ERROR) << "error log buffer (" << error_log_buffer_bytes
+                     << " bytes): " << error_log_buffer.data();
+          if (absl::StrContains(error_log_buffer.data(),
+                                "Register allocation failed")) {
+            returned_status = absl::ResourceExhaustedError(
+                absl::StrFormat("Failed to load PTX text as a module (register "
+                                "allocation failed): %s",
+                                status.ToString()));
+          } else {
+            returned_status = status;
+          }
+          notification.Notify();
+          return;
+        }
+
+        VLOG(3) << "PTX compilation info log (" << info_log_buffer_bytes
+                << " bytes): " << info_log_buffer.data();
+        VLOG(3) << "PTX compilation error log (" << error_log_buffer_bytes
+                << " bytes): " << error_log_buffer.data();
+        CHECK(module != nullptr);
+        notification.Notify();
+      });
+  notification.WaitForNotification();
+
+  return returned_status;
+}
+
+// Loads cubin_bytes with the CUDA driver's blob loading interface and stores
+// the resulting handle in "module".
+absl::Status LoadCubin(Context* context, const char* cubin_bytes,
+                       CUmodule* module) {
+  ScopedActivateContext activation(context);
+  return cuda::ToStatus(
+      cuModuleLoadFatBinary(module, cubin_bytes),
+      "Failed to load in-memory CUBIN (compiled for a different GPU?).");
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -152,7 +261,7 @@ absl::Status CudaExecutor::LoadModuleFromCuBin(const char* cubin,
   std::tie(*module, module_refcount) = gpu_binary_to_module_[cubin];
 
   if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(GpuDriver::LoadCubin(gpu_context(), cubin, module));
+    TF_RETURN_IF_ERROR(LoadCubin(gpu_context(), cubin, module));
     module_refcount = 1;
     VLOG(3) << "Loaded CUBIN " << static_cast<const void*>(cubin)
             << " as module " << *module;
@@ -171,7 +280,7 @@ absl::Status CudaExecutor::LoadModuleFromPtx(const char* ptx,
   std::tie(*module, module_refcount) = gpu_binary_to_module_[ptx];
 
   if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(GpuDriver::LoadPtx(gpu_context(), ptx, module));
+    TF_RETURN_IF_ERROR(LoadPtx(gpu_context(), ptx, module));
     VLOG(3) << "Loaded PTX " << static_cast<const void*>(ptx) << " as module "
             << *module;
     module_refcount = 1;

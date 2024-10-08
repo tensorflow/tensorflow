@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hip/hip_version.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -82,6 +84,7 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 #define RETURN_IF_ROCM_ERROR(expr, ...)                                  \
   do {                                                                   \
@@ -99,41 +102,22 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
+namespace {
 // Given const GPU memory, returns a librocm device pointer datatype, suitable
 // for passing directly to librocm APIs.
 //
 // N.B. we must lose constness in order to pass a suitable type to the existing
 // librocm APIs, so the caller should take care to only pass the result of const
 // GPU memory conversions to librocm functions which will honor constness.
-static hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
   return const_cast<hipDeviceptr_t>(gpu_mem.opaque());
 }
 
 // See description on const version above.
-static hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
+hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
 }
 
-RocmExecutor::~RocmExecutor() {
-  for (auto& it : disk_modules_) {
-    GpuDriver::UnloadModule(gpu_context(), it.second);
-  }
-  for (auto& it : in_memory_modules_) {
-    GpuDriver::UnloadModule(gpu_context(), it.second);
-  }
-  if (gpu_context() != nullptr) {
-    GpuDriver::DestroyContext(gpu_context());
-  }
-  CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
-  CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
-}
-bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
-  const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
-  absl::MutexLock lock{&in_memory_modules_mu_};
-  return UnloadGpuBinary(gpu_binary);
-}
-
-namespace {
 absl::uint128 Fingerprint128(const absl::string_view s) {
   auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
@@ -156,7 +140,65 @@ absl::Status FuncGetAttribute(hipFunction_attribute attribute,
       "Failed to query kernel attribute: ", attribute);
   return absl::OkStatus();
 }
+
+// ROCM driver routines may require a large amount of stack (particularly
+// hipModuleLoadDataEx, in our experience). To avoid stack overflow when using
+// stack-limited threads (such as those spawned by a default-argument
+// thread::ThreadPool on some platforms), we run certain routines in this pool
+// and wait for completion.
+tsl::thread::ThreadPool* GetDriverExecutor() {
+  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
+      tsl::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
+  return thread_pool;
+}
+
+// Loads HSACO with the ROCM runtime and stores the resulting handle in
+// "module". Any error logs that are produced are logged internally.
+absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
+                       hipModule_t* module) {
+  absl::Notification notification;
+  absl::Status returned_status = absl::OkStatus();
+  GetDriverExecutor()->Schedule(
+      [context, hsaco_contents, module, &returned_status, &notification]() {
+        ScopedActivateContext activation{context};
+        void* hsaco_data = const_cast<char*>(hsaco_contents);
+
+        hipError_t res = wrap::hipModuleLoadData(module, hsaco_data);
+
+        if (res != hipSuccess) {
+          returned_status = absl::InternalError(
+              absl::StrCat("Failed to load HSACO: ", ToString(res)));
+          notification.Notify();
+        }
+
+        CHECK(module != nullptr);
+        notification.Notify();
+      });
+  notification.WaitForNotification();
+
+  return returned_status;
+}
 }  // namespace
+
+RocmExecutor::~RocmExecutor() {
+  for (auto& it : disk_modules_) {
+    GpuDriver::UnloadModule(gpu_context(), it.second);
+  }
+  for (auto& it : in_memory_modules_) {
+    GpuDriver::UnloadModule(gpu_context(), it.second);
+  }
+  if (gpu_context() != nullptr) {
+    GpuDriver::DestroyContext(gpu_context());
+  }
+  CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
+  CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
+}
+
+bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
+  const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
+  absl::MutexLock lock{&in_memory_modules_mu_};
+  return UnloadGpuBinary(gpu_binary);
+}
 
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 RocmExecutor::CreateOrShareConstant(Stream* stream,
@@ -286,7 +328,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(gpu_context(), hsaco, &module));
+      TF_RETURN_IF_ERROR(LoadHsaco(gpu_context(), hsaco, &module));
     }
     kernel_to_gpu_binary_[rocm_kernel.get()] = hsaco;
   } else if (spec.has_in_process_symbol()) {
@@ -373,7 +415,7 @@ absl::Status RocmExecutor::LoadModuleFromHsaco(const char* hsaco,
   std::tie(*module, module_refcount) = gpu_binary_to_module_[hsaco];
 
   if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(GpuDriver::LoadHsaco(gpu_context(), hsaco, module));
+    TF_RETURN_IF_ERROR(LoadHsaco(gpu_context(), hsaco, module));
     module_refcount = 1;
     in_memory_modules_[hsaco] = *module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)

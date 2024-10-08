@@ -189,6 +189,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:read_numa_node",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "//xla/stream_executor/platform:initialize",
         "@com_google_absl//absl/base",

@@ -440,24 +440,6 @@ class GpuDriver {
                                                   GpuGraphNodeHandle node,
                                                   GpuGraphHandle child);
 
-  // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
-  // handle in "module". Any error logs that are produced are logged internally.
-  // (supported on CUDA only)
-  static absl::Status LoadPtx(Context* context, const char* ptx_contents,
-                              GpuModuleHandle* module);
-
-  // Loads cubin_bytes with the CUDA driver's blob loading interface and stores
-  // the resulting handle in "module".
-  // (supported on CUDA only)
-  static absl::Status LoadCubin(Context* context, const char* cubin_bytes,
-                                GpuModuleHandle* module);
-
-  // Loads HSACO with the ROCM runtime and stores the resulting handle in
-  // "module". Any error logs that are produced are logged internally.
-  // (supported on ROCm only)
-  static absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
-                                GpuModuleHandle* module);
-
   // Retrieves a named kernel from a loaded module, and places the resulting
   // handle into function (outparam) on success. Neither kernel_name nor
   // function may be null. No ownership is taken of kernel_name.

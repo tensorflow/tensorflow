@@ -188,17 +188,6 @@ absl::StatusOr<hipDevice_t> DeviceFromContext(Context* context) {
       absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
-// ROCM driver routines may require a large amount of stack (particularly
-// hipModuleLoadDataEx, in our experience). To avoid stack overflow when using
-// stack-limited threads (such as those spawned by a default-argument
-// thread::ThreadPool on some platforms), we run certain routines in this pool
-// and wait for completion.
-tsl::thread::ThreadPool* GetDriverExecutor() {
-  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
-  return thread_pool;
-}
-
 }  // namespace
 
 namespace {
@@ -893,43 +882,6 @@ absl::Status GpuDriver::LaunchKernel(
   return LaunchKernel(context, kernel_name, function, grid_dim_x, grid_dim_y,
                       grid_dim_z, block_dim_x, block_dim_y, block_dim_z,
                       shared_mem_bytes, stream, kernel_params, extra);
-}
-
-absl::Status GpuDriver::LoadPtx(Context* context, const char* ptx_contents,
-                                hipModule_t* module) {
-  return absl::InternalError(
-      "Feature not supported on ROCm platform (LoadPtx)");
-}
-
-absl::Status GpuDriver::LoadCubin(Context* context, const char* cubin_bytes,
-                                  hipModule_t* module) {
-  return absl::InternalError(
-      "Feature not supported on ROCm platform (LoadCubin)");
-}
-
-absl::Status GpuDriver::LoadHsaco(Context* context, const char* hsaco_contents,
-                                  hipModule_t* module) {
-  absl::Notification notification;
-  absl::Status ret = absl::OkStatus();
-  GetDriverExecutor()->Schedule(
-      [context, hsaco_contents, module, &ret, &notification]() {
-        ScopedActivateContext activation{context};
-        void* hsaco_data = const_cast<char*>(hsaco_contents);
-
-        hipError_t res = wrap::hipModuleLoadData(module, hsaco_data);
-
-        if (res != hipSuccess) {
-          ret = absl::InternalError(
-              absl::StrCat("Failed to load HSACO: ", ToString(res)));
-          notification.Notify();
-        }
-
-        CHECK(module != nullptr);
-        notification.Notify();
-      });
-  notification.WaitForNotification();
-
-  return ret;
 }
 
 absl::Status GpuDriver::SynchronousMemsetUint8(Context* context,
