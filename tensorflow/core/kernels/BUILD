@@ -467,14 +467,12 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["ops_testutil.cc"],
     hdrs = ["ops_testutil.h"],
-    cuda_deps = [
-        "//tensorflow/core:gpu_lib",
-        "//tensorflow/core:gpu_runtime",
-    ],
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:gpu_lib",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
