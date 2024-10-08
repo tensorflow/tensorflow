@@ -2357,6 +2357,34 @@ TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
   TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
+TEST_F(HloVerifierTest, SingleUserExceptionForWrappedSendRecv) {
+  const char* const kModuleStr = R"(
+  wrapped_send {
+    data = f32[] parameter(0)
+    after-all = token[] parameter(1)
+    ROOT send = (f32[], u32[], token[]) send(data, after-all), channel_id=1,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}
+  }
+  wrapped_recv {
+    after-all = token[] parameter(0)
+    ROOT recv = (f32[], u32[], token[]) recv(after-all), channel_id=1,
+      frontend_attributes={_xla_send_recv_source_target_pairs={{1,0}}}
+  }
+  ENTRY main () -> f32[] {
+    data = f32[] constant(5)
+    after-all = token[] after-all()
+    async-recv-start = ((token[]), (f32[], u32[], token[]), s32[]) async-start(after-all), calls=wrapped_recv
+    async-send-start = ((f32[], token[]), (f32[], u32[], token[]), s32[]) async-start(data, after-all), calls=wrapped_send
+    async-recv-done = (f32[], u32[], token[]) async-done(async-recv-start), calls=wrapped_recv
+    async-send-done = (f32[], u32[], token[]) async-done(async-send-start), calls=wrapped_send
+    ROOT out = f32[] get-tuple-element((f32[], u32[], token[]) async-recv-done), index=0
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
 TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
   const char* const kModuleStr = R"(
     HloModule test
