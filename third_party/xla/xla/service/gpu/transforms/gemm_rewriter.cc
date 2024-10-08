@@ -692,20 +692,50 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         break;
       }
       case GemmRewriterOptions::DType::kNonFp8Only: {
-        // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
-        TF_ASSIGN_OR_RETURN(
-            absl::string_view gemm_custom_call_target,
-            GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
-        const Shape &output_shape = instr->shape();
-        HloInstruction *gemm_call =
-            instr->AddInstruction(HloInstruction::CreateCustomCall(
-                output_shape,
-                {instr->mutable_operand(0), instr->mutable_operand(1)},
-                gemm_custom_call_target));
-        TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
-        TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+        if (gemm_backend_config.precision_config().algorithm() ==
+            PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+          TF_RETURN_IF_ERROR(TurnDotIntoConvertAndDotForBF16BF16F32(
+              instr, gemm_backend_config, gpu_backend_config));
+        } else {
+          // Rewrite non-FP8 GEMMs into a cublas or cublasLT Custom Call.
+          TF_ASSIGN_OR_RETURN(
+              absl::string_view gemm_custom_call_target,
+              GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
+          const Shape &output_shape = instr->shape();
+          HloInstruction *gemm_call =
+              instr->AddInstruction(HloInstruction::CreateCustomCall(
+                  output_shape,
+                  {instr->mutable_operand(0), instr->mutable_operand(1)},
+                  gemm_custom_call_target));
+          TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
+          TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
+        }
       } break;
     };
+    return absl::OkStatus();
+  }
+
+  absl::Status TurnDotIntoConvertAndDotForBF16BF16F32(
+      HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
+      GpuBackendConfig &gpu_backend_config) {
+    auto lhs_shape = instr->operand(0)->shape();
+    lhs_shape.set_element_type(BF16);
+    auto lhs_convert = instr->mutable_operand(0)->AddInstruction(
+        HloInstruction::CreateConvert(lhs_shape, instr->mutable_operand(0)));
+    auto rhs_shape = instr->operand(1)->shape();
+    rhs_shape.set_element_type(BF16);
+    auto rhs_convert = instr->mutable_operand(1)->AddInstruction(
+        HloInstruction::CreateConvert(rhs_shape, instr->mutable_operand(1)));
+    gemm_backend_config.mutable_precision_config()->clear_algorithm();
+    TF_ASSIGN_OR_RETURN(
+        absl::string_view gemm_custom_call_target,
+        GetNonFp8GemmCustomCallTarget(*instr, gemm_backend_config));
+    const Shape &output_shape = instr->shape();
+    HloInstruction *gemm_call =
+        instr->AddInstruction(HloInstruction::CreateCustomCall(
+            output_shape, {lhs_convert, rhs_convert}, gemm_custom_call_target));
+    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
     return absl::OkStatus();
   }
 

@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
@@ -31,9 +34,7 @@ class KernelNameTracerCuda : public KernelNameTracer {
 
   void start() override;
 
-  // As of now it returns the name of the first kernel that was executed on
-  // GPU:0.
-  std::string stop() override;
+  std::vector<std::string> stop() override;
 
  private:
   profiler::CuptiTracer* cupti_tracer_;  // Not owned.
@@ -56,17 +57,21 @@ void KernelNameTracerCuda::start() {
   cupti_tracer_->Enable(options, cupti_collector_.get());
 }
 
-std::string KernelNameTracerCuda::stop() {
+std::vector<std::string> KernelNameTracerCuda::stop() {
   cupti_tracer_->Disable();
   uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
   auto space = std::make_unique<tensorflow::profiler::XSpace>();
   cupti_collector_->Export(space.get(), end_gpu_ns);
   for (const auto& plane : space->planes()) {
+    std::vector<std::string> names;
     if (plane.name() == "/device:GPU:0") {
-      return plane.event_metadata().at(1).name();
+      for (const auto& metadata : plane.event_metadata()) {
+        names.push_back(metadata.second.name());
+      }
+      return names;
     }
   }
-  return "";
+  return {};
 }
 
 }  // namespace xla::gpu
