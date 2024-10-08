@@ -15,10 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
 
+#include <optional>
+
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/qairt/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/include/QNN/QnnBackend.h"
 #include "third_party/qairt/include/QNN/QnnCommon.h"
+#include "third_party/qairt/include/QNN/QnnDevice.h"
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 
@@ -38,7 +42,7 @@ typedef QNN_INTERFACE_VER_TYPE QnnApi;
 // Wrapper to manage dynamic loading and lifetimes of QNN SDK objects.
 class QnnManager {
  public:
-  explicit QnnManager() = default;
+  QnnManager() = default;
 
   //
   // Manage libQnn*.so Loading
@@ -88,6 +92,14 @@ class QnnManager {
   // if backendCreate has not been called.
   LrtStatus FreeBackend();
 
+  // Get qnn device handle. Nullptr if deviceCreate has not been successfully
+  // called.
+  Qnn_DeviceHandle_t& DeviceHandle() { return device_handle_; }
+
+  // Signal QNN SDK to free any memory related to the device. Does nothing
+  // if deviceCreate has not been called.
+  LrtStatus FreeDevice();
+
   // Get qnn context handle. Nullptr if contextCreate has not been successfully
   // called.
   Qnn_ContextHandle_t& ContextHandle() { return context_handle_; }
@@ -113,12 +125,15 @@ class QnnManager {
 
   Qnn_BackendHandle_t backend_handle_ = nullptr;
 
+  Qnn_DeviceHandle_t device_handle_ = nullptr;
+
   Qnn_ContextHandle_t context_handle_ = nullptr;
 };
 
 // Runs alls "setup" methods (LoadLibSO, ResolveFuncs) and aditionally
 // instantiates the logging, backend and context.
-LrtStatus SetupAll(QnnManager& qnn);
+LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
+                   QnnManager& qnn);
 
 // Default QNN Configurations.
 namespace config {

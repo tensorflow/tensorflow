@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "third_party/qairt/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
@@ -37,23 +38,48 @@ using ::qnn::QnnManager;
 // Configurations
 //
 
-constexpr char kPluginMan[] = "QNN";
-constexpr char kPluginModel[] = "HTP_Reference";
+namespace {
 
-const char* LrtPluginSocManufacturer() { return kPluginMan; }
+constexpr char kPluginManufacturer[] = "Qualcomm";
+
+constexpr std::pair<const char*, QnnHtpDevice_Arch_t> kPluginSocModels[] = {
+    {"V68", QNN_HTP_DEVICE_ARCH_V68},
+    {"V69", QNN_HTP_DEVICE_ARCH_V69},
+    {"V73", QNN_HTP_DEVICE_ARCH_V73},
+    {"V75", QNN_HTP_DEVICE_ARCH_V75},
+};
+
+constexpr auto kNumPluginSocModels =
+    sizeof(kPluginSocModels) / sizeof(kPluginSocModels[0]);
+
+std::optional<QnnHtpDevice_Arch_t> FindSocModel(
+    absl::string_view soc_model_name) {
+  std::optional<QnnHtpDevice_Arch_t> soc_model;
+  for (auto i = 0; i < kNumPluginSocModels; ++i) {
+    if (soc_model_name == kPluginSocModels[i].first) {
+      soc_model = kPluginSocModels[i].second;
+      break;
+    }
+  }
+  return soc_model;
+}
+
+}  // namespace
+
+const char* LrtPluginSocManufacturer() { return kPluginManufacturer; }
 
 lrt_param_index_t LrtPluginNumSupportedSocModels(
     LrtCompilerPlugin compiler_plugin) {
-  return 1;
+  return kNumPluginSocModels;
 }
 
-LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
-                                          lrt_param_index_t config_idx,
-                                          const char** config_id) {
-  if (config_idx != 0) {
-    return kLrtStatusErrorUnsupported;
+LrtStatus LrtPluginGetSupportedSocModel(LrtCompilerPlugin compiler_plugin,
+                                        lrt_param_index_t soc_model_idx,
+                                        const char** soc_model_name) {
+  if (soc_model_idx < 0 || soc_model_idx >= kNumPluginSocModels) {
+    return kLrtStatusErrorInvalidArgument;
   }
-  *config_id = kPluginModel;
+  *soc_model_name = kPluginSocModels[soc_model_idx].first;
   return kLrtStatusOk;
 }
 
@@ -104,12 +130,10 @@ void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
 
 // Plugins can hold state.
 struct LrtCompilerPluginT {
-  QnnManager qnn;
 };
 
 LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
   auto* plugin = new LrtCompilerPluginT;
-  LRT_RETURN_STATUS_IF_NOT_OK(qnn::SetupAll(plugin->qnn));
   *compiler_plugin = plugin;
   return kLrtStatusOk;
 }
@@ -117,6 +141,8 @@ LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
 void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
+
+namespace {
 
 bool IsOpSupported(LrtOp op) {
   using TyInfo = graph_tools::RankedTypeInfo;
@@ -129,6 +155,8 @@ bool IsOpSupported(LrtOp op) {
   return graph_tools::MatchOpType(op, {supported_op_type, supported_op_type},
                                   {supported_op_type}, kLrtOpCodeTflMul);
 }
+
+}  // namespace
 
 LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
                                   LrtModel model, LrtOpList selected_ops) {
@@ -147,9 +175,14 @@ LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
 }
 
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
-                           LrtSubgraphArray partitions,
+                           const char* soc_model, LrtSubgraphArray partitions,
                            lrt_param_index_t num_partitions,
                            LrtCompiledResult* compiled_result) {
+  auto opt_soc_model = FindSocModel(soc_model);
+
+  QnnManager qnn;
+  LRT_RETURN_STATUS_IF_NOT_OK(qnn::SetupAll(opt_soc_model, qnn));
+
   auto result = std::make_unique<LrtCompiledResultT>();
 
   // TODO: Support multiple partitions in QCC plugin compile.
@@ -158,11 +191,10 @@ LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
     LRT_RETURN_STATUS_IF_NOT_OK(
-        ComposeGraph(compiler_plugin->qnn, partitions[0], entry_point_name));
+        ComposeGraph(qnn, partitions[0], entry_point_name));
   }
 
-  LRT_RETURN_STATUS_IF_NOT_OK(
-      compiler_plugin->qnn.GenerateContextBin(result->context_bin));
+  LRT_RETURN_STATUS_IF_NOT_OK(qnn.GenerateContextBin(result->context_bin));
 
   *compiled_result = result.release();
 

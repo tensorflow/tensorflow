@@ -20,8 +20,9 @@ namespace {
 // NOTE: This tests that all of the dynamic loading works properly and
 // the QNN SDK instance can be properly initialized and destroyed.
 TEST(QnnSdkTest, SetupQnnManager) {
+  std::optional<QnnHtpDevice_Arch_t> soc_model;
   qnn::QnnManager qnn;
-  ASSERT_STATUS_OK(qnn::SetupAll(qnn));
+  ASSERT_STATUS_OK(qnn::SetupAll(soc_model, qnn));
 }
 
 }  // namespace

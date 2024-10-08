@@ -30,23 +30,27 @@
 // Configurations
 //
 
-constexpr char kPluginMan[] = "ExampleSocManufacturer";
-constexpr char kPluginModel[] = "DummyMulOp";
+namespace {
 
-const char* LrtPluginSocManufacturer() { return kPluginMan; }
+constexpr char kPluginManufacturer[] = "ExampleSocManufacturer";
+constexpr char kPluginSocModel[] = "ExampleSocModel";
+
+}  // namespace
+
+const char* LrtPluginSocManufacturer() { return kPluginManufacturer; }
 
 lrt_param_index_t LrtPluginNumSupportedSocModels(
     LrtCompilerPlugin compiler_plugin) {
   return 1;
 }
 
-LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
-                                          lrt_param_index_t config_idx,
-                                          const char** config_id) {
-  if (config_idx != 0) {
+LrtStatus LrtPluginGetSupportedSocModel(LrtCompilerPlugin compiler_plugin,
+                                        lrt_param_index_t soc_model_idx,
+                                        const char** soc_model_name) {
+  if (soc_model_idx != 0) {
     return kLrtStatusErrorUnsupported;
   }
-  *config_id = kPluginModel;
+  *soc_model_name = kPluginSocModel;
   return kLrtStatusOk;
 }
 
@@ -124,6 +128,8 @@ LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
   return kLrtStatusOk;
 }
 
+namespace {
+
 LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
                                  LrtSubgraph subgraph,
                                  LrtCompiledResultT& result) {
@@ -160,8 +166,10 @@ LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
   return kLrtStatusOk;
 }
 
+}  // namespace
+
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
-                           LrtSubgraphArray partitions,
+                           const char* soc_model, LrtSubgraphArray partitions,
                            lrt_param_index_t num_partitions,
                            LrtCompiledResult* compiled_result) {
   LrtCompiledResult result = new LrtCompiledResultT;

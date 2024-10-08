@@ -135,6 +135,17 @@ LrtStatus QnnManager::FreeBackend() {
   return kLrtStatusOk;
 }
 
+LrtStatus QnnManager::FreeDevice() {
+  if (device_handle_ != nullptr) {
+    if (QNN_SUCCESS != Api()->deviceFree(device_handle_)) {
+      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free device\n");
+      return kLrtStatusErrorNotFound;
+    }
+  }
+  device_handle_ = nullptr;
+  return kLrtStatusOk;
+}
+
 LrtStatus QnnManager::FreeContext() {
   if (context_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->contextFree(context_handle_, nullptr)) {
@@ -169,37 +180,66 @@ LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
   return kLrtStatusOk;
 }
 
-LrtStatus SetupAll(QnnManager& qnn) {
+LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
+                   QnnManager& qnn) {
   LRT_RETURN_STATUS_IF_NOT_OK(qnn.LoadLib(kLibQnnHtpSo));
   qnn.DumpLibDetails();
 
   LRT_RETURN_STATUS_IF_NOT_OK(qnn.ResolveApi());
 
-  {
-    if (QNN_SUCCESS != qnn.Api()->logCreate(qnn::log::GetDefaultStdOutLogger(),
-                                            QNN_LOG_LEVEL_DEBUG,
-                                            &qnn.LogHandle())) {
-      return kLrtStatusErrorNotFound;
-    }
+  if (auto status = qnn.Api()->logCreate(qnn::log::GetDefaultStdOutLogger(),
+                                         QNN_LOG_LEVEL_DEBUG, &qnn.LogHandle());
+      status != QNN_SUCCESS) {
+    LITE_RT_LOG(LRT_ERROR, "Failed to create QNN logger: %d", status);
+    return kLrtStatusErrorRuntimeFailure;
   }
 
   {
     auto cfg = qnn::config::GetDefaultHtpConfigs();
-    if (QNN_SUCCESS != qnn.Api()->backendCreate(qnn.LogHandle(), cfg.data(),
-                                                &qnn.BackendHandle())) {
-      return kLrtStatusErrorNotFound;
+    if (auto status = qnn.Api()->backendCreate(qnn.LogHandle(), cfg.data(),
+                                               &qnn.BackendHandle());
+        status != QNN_SUCCESS) {
+      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN backend: %d", status);
+      return kLrtStatusErrorRuntimeFailure;
+    }
+  }
+
+  if (soc_model.has_value()) {
+    LITE_RT_LOG(LRT_INFO, "Initializing QNN backend for device architecture %d",
+                *soc_model);
+    QnnHtpDevice_CustomConfig_t arch_custom_config = {};
+    arch_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
+    arch_custom_config.arch.arch = *soc_model;
+    arch_custom_config.arch.deviceId = 0;
+
+    QnnDevice_Config_t arch_device_config = {};
+    arch_device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+    arch_device_config.customConfig = &arch_custom_config;
+
+    const QnnDevice_Config_t* device_configs[2] = {
+        &arch_device_config,
+        nullptr,
+    };
+
+    if (auto status = qnn.Api()->deviceCreate(nullptr, device_configs,
+                                              &qnn.DeviceHandle());
+        status != QNN_SUCCESS) {
+      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN device: %d", status);
+      return kLrtStatusErrorRuntimeFailure;
     }
   }
 
   {
     auto cfg = qnn::config::GetDefaultContextConfigs();
     auto device = nullptr;
-    if (QNN_SUCCESS != qnn.Api()->contextCreate(qnn.BackendHandle(), device,
-                                                cfg.data(),
-                                                &qnn.ContextHandle())) {
-      return kLrtStatusErrorNotFound;
+    if (auto status = qnn.Api()->contextCreate(
+            qnn.BackendHandle(), device, cfg.data(), &qnn.ContextHandle());
+        status != QNN_SUCCESS) {
+      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN context: %d", status);
+      return kLrtStatusErrorRuntimeFailure;
     }
   }
+
   return kLrtStatusOk;
 }
 

@@ -37,17 +37,19 @@ LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin);
 
 void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin);
 
-// Name associated with the manufacturer this plugin relates to (darwinn, QCC).
+// Name associated with the manufacturer this plugin relates to (e.g, Pixel,
+// Qualcomm).
 const char* LrtPluginSocManufacturer();
 
-// Number of soc models supported by this plugin.
+// Number of SoC models supported by this plugin.
 lrt_param_index_t LrtPluginNumSupportedSocModels(
     LrtCompilerPlugin compiler_plugin);
 
-// Gets a string identifying the given config index.
-LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
-                                          lrt_param_index_t config_idx,
-                                          const char** config_id);
+// Gets the name of the SoC model at the given index. The memory
+// associated with the returned name is owned by the plugin.
+LrtStatus LrtPluginGetSupportedSocModel(LrtCompilerPlugin compiler_plugin,
+                                        lrt_param_index_t soc_model_idx,
+                                        const char** soc_model_name);
 
 // Select desired ops for compilation. This will be called only once
 // during the plugin application flow, all ops should be selected during this
@@ -55,10 +57,11 @@ LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
 LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
                                   LrtModel model, LrtOpList selected_ops);
 
-// Prepare result to pass to the runtime for given partition. The given
+// Prepare result to pass to the runtime for given partition and, optionally,
+// for a given SoC model (parameter `soc_model` can be NULL). The given
 // subgraphs are valid sub-DAG within the ops selected in partition step.
 LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
-                           LrtSubgraphArray partitions,
+                           const char* soc_model, LrtSubgraphArray partitions,
                            lrt_param_index_t num_partitions,
                            LrtCompiledResult* compiled_result);
 

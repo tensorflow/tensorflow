@@ -43,10 +43,10 @@ TEST(TestDummyPlugin, GetConfigInfo) {
 
   ASSERT_EQ(1, LrtPluginNumSupportedSocModels(plugin.get()));
 
-  const char* config_id;
+  const char* soc_model_name;
   ASSERT_STATUS_OK(
-      LrtPluginGetSupportedSocModelId(plugin.get(), 0, &config_id));
-  ASSERT_STREQ(config_id, "DummyMulOp");
+      LrtPluginGetSupportedSocModel(plugin.get(), 0, &soc_model_name));
+  ASSERT_STREQ(soc_model_name, "ExampleSocModel");
 }
 
 TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
@@ -69,7 +69,8 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
   LrtCompiledResult compiled;
-  ASSERT_STATUS_OK(LrtPluginCompile(plugin.get(), &subgraph, 1, &compiled));
+  ASSERT_STATUS_OK(LrtPluginCompile(plugin.get(), /*soc_model=*/nullptr,
+                                    &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
