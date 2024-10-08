@@ -110,26 +110,14 @@ cc_library(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/test_utils:verified_hlo_module
+# instead.
 cc_library(
     name = "verified_hlo_module",
     testonly = True,
-    srcs = ["verified_hlo_module.cc"],
     hdrs = ["verified_hlo_module.h"],
     deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_verifier",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test",
+        "//xla/hlo/test_utils:verified_hlo_module",
     ],
 )
 
@@ -173,11 +161,9 @@ cc_library(
     srcs = ["hlo_test_base.cc"],
     hdrs = ["hlo_test_base.h"],
     deps = [
-        ":filecheck",
         ":literal_test_util",
         ":pjrt_client_registry",
         ":test_utils",
-        ":verified_hlo_module",
         "//xla:debug_options_flags",
         "//xla:error_spec",
         "//xla:literal",
@@ -188,6 +174,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/test_utils:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:backend",
         "//xla/service:computation_layout",
@@ -203,6 +190,8 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests:filecheck",
+        "//xla/tests:verified_hlo_module",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -293,9 +282,9 @@ cc_library(
     hdrs = ["llvm_irgen_test_base.h"],
     deps = [
         ":codegen_test_base",
-        ":filecheck",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tests:filecheck",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:test",
@@ -315,26 +304,14 @@ cc_library(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/test_utils:filecheck
+# instead.
 cc_library(
     name = "filecheck",
     testonly = True,
-    srcs = ["filecheck.cc"],
     hdrs = ["filecheck.h"],
-    data = [
-        "@llvm-project//llvm:FileCheck",
-    ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
-        "//xla:types",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:resource_loader",
-        "@local_tsl//tsl/platform:subprocess",
+        "//xla/hlo/test_utils:filecheck",
     ],
 )
 
@@ -345,7 +322,6 @@ cc_library(
     hdrs = ["local_client_test_base.h"],
     deps = [
         ":client_library_test_base",
-        ":verified_hlo_module",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:test_helpers",
@@ -364,6 +340,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -399,7 +376,6 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
-        ":verified_hlo_module",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:status_macros",
@@ -409,6 +385,7 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:executable",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests:verified_hlo_module",
         "//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -2334,7 +2311,6 @@ xla_test(
         ":literal_test_util",
         ":test_macros_header",
         ":test_utils",
-        ":verified_hlo_module",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
@@ -2342,6 +2318,7 @@ xla_test(
         "//xla/service:computation_placer",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
+        "//xla/tests:verified_hlo_module",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -2373,7 +2350,6 @@ xla_test(
         ":literal_test_util",
         ":test_macros_header",
         ":test_utils",
-        ":verified_hlo_module",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:literal",
@@ -2383,6 +2359,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
+        "//xla/tests:verified_hlo_module",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

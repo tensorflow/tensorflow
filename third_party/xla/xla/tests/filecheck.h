@@ -16,26 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_FILECHECK_H_
 #define XLA_TESTS_FILECHECK_H_
 
-#include <string>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/types.h"
-
-namespace xla {
-
-// Runs FileCheck with the given pattern over given input string. Provided that
-// FileCheck can execute, returns true if and only if FileCheck succeeded in
-// matching the input.
-absl::StatusOr<bool> RunFileCheck(const std::string& input,
-                                  absl::string_view pattern);
-
-// Runs FileCheck with the given pattern file over given input string. Provided
-// that FileCheck can execute, returns true if and only if FileCheck succeeded
-// in matching the input.
-absl::StatusOr<bool> RunFileCheckWithPatternFile(
-    const std::string& input, const std::string& pattern_file);
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/test_utils/filecheck.h"
 
 #endif  // XLA_TESTS_FILECHECK_H_

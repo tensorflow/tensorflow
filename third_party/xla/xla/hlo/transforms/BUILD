@@ -45,11 +45,11 @@ xla_cc_test(
         "//xla:test",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/test_utils:hlo_hardware_independent_test_base",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_parser",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )

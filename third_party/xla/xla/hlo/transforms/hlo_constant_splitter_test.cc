@@ -19,10 +19,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/test_utils/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using HloConstantSplitterTest = HloTestBase;
+using HloConstantSplitterTest = HloHardwareIndependentTestBase;
 
 TEST_F(HloConstantSplitterTest, SplitConstants) {
   const char* module_str = R"(
@@ -123,7 +123,8 @@ TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
   HloConstantSplitter pass = HloConstantSplitter();
-  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  const auto status_or =
+      HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
   TF_ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_FALSE(status_or.value());
@@ -154,7 +155,8 @@ TEST_F(HloConstantSplitterTest, SplittingExpressionsWithBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
-  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  const auto status_or =
+      HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
   TF_ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_TRUE(status_or.value());
@@ -184,7 +186,8 @@ TEST_F(HloConstantSplitterTest, SplittingExpressionsWithSlice) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
-  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  const auto status_or =
+      HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
   TF_ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_TRUE(status_or.value());
@@ -223,8 +226,9 @@ TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
 
   const int64_t count_before = module->entry_computation()->instruction_count();
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          HloTestBase::RunHloPass(&pass, module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      HloHardwareIndependentTestBase::RunHloPass(&pass, module.get()));
   HloDCE dce;
   TF_ASSERT_OK(dce.Run(module.get()).status());
   const int64_t count_after_dce =
@@ -280,8 +284,9 @@ TEST_F(HloConstantSplitterTest, InstructionsWithOneUser) {
                           ParseAndReturnUnverifiedModule(module_str));
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
   // Verify that the module is not changed as splitting on rng is prevented.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          HloTestBase::RunHloPass(&pass, module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      HloHardwareIndependentTestBase::RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   int64_t broadcast_count_before_dce = 0, broadcast_count_after_dce = 0;

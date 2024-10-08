@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/tests/verified_hlo_module.h"
+#include "xla/hlo/test_utils/verified_hlo_module.h"
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
