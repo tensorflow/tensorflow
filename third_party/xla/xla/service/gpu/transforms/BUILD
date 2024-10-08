@@ -415,6 +415,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "collective_send_recv_combiner",
+    srcs = ["collective_send_recv_combiner.cc"],
+    hdrs = ["collective_send_recv_combiner.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_send_recv_combiner_test",
+    srcs = ["collective_send_recv_combiner_test.cc"],
+    deps = [
+        ":collective_send_recv_combiner",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 xla_cc_test(
     name = "collective_permute_cycle_decomposer_test",
     srcs = ["collective_permute_cycle_decomposer_test.cc"],
