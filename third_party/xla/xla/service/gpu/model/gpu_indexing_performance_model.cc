@@ -130,11 +130,11 @@ bool DoesTileFitsInRegisters(int64_t tile_size,
 // originally selected from Triton SoftMax reduction row length.
 // TODO(b/332714755): Make it smarter.
 int64_t GetNumWarps(int64_t tile_size) {
-  if (tile_size <= 512) return 1;
-  if (tile_size <= 1024) return 2;
-  if (tile_size <= 16384) return 4;
-  if (tile_size <= 32768) return 8;
-  if (tile_size <= 65536) return 16;
+  if (tile_size <= 256) return 1;
+  if (tile_size <= 512) return 2;
+  if (tile_size <= 1024) return 4;
+  if (tile_size <= 2048) return 8;
+  if (tile_size <= 4096) return 16;
   return 32;
 }
 
