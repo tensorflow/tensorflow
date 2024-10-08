@@ -390,7 +390,7 @@ xla_test(
     ],
     shard_count = 10,
     tags = ["no_mac",
-            "no_rocm"],  # TODO(rocm) 240729
+            "cuda-only"],  # TODO(rocm) 240729
     deps = [
         ":triton_support",
         ":triton_test_utils",
@@ -445,7 +445,7 @@ xla_cc_test(
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
     tags = ["gpu"] +
-           ["no_rocm"], # TODO(rocm) 240729
+           ["cuda-only"], # TODO(rocm) 240729
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",
@@ -478,7 +478,7 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = ["no_mac",
-            "no_rocm"], # TODO(rocm) 240729
+            "cuda-only"], # TODO(rocm) 240729
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",

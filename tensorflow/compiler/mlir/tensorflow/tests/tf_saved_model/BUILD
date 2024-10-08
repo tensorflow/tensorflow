@@ -296,7 +296,7 @@ glob_lit_tests(
     default_tags = [
         "no_mac",  # TODO(b/191167848)
         "no_oss",  # TODO(b/190855110)
-        "no_rocm",
+        "cuda-only",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [

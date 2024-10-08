@@ -262,7 +262,7 @@ cuda_py_strict_test(
     shard_count = 50,
     tags = [
         "no_cuda11",  # TODO(b/197522782): reenable test after fixing.
-        "no_rocm", # extremely slow, thousands of subtests, many triggering
+        "cuda-only", # extremely slow, thousands of subtests, many triggering
         # llvm invocations
         "optonly",  # times out, b/79171797
     ],

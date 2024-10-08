@@ -1601,8 +1601,8 @@ xla_test(
     name = "gpu_compiler_test",
     srcs = ["gpu_compiler_test.cc"],
      backend_tags = {
-        "gpu_a100": ["no_rocm"],
-        "gpu_v100": ["no_rocm"],
+        "gpu_a100": ["cuda-only"],
+        "gpu_v100": ["cuda-only"],
     },
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
@@ -1652,7 +1652,6 @@ xla_test(
     name = "gpu_offloading_test",
     srcs = ["gpu_offloading_test.cc"],
     backends = ["gpu"],
-    tags = ["no_rocm"], #TODO(rocm): weekly sync
     deps = [
         ":backend_configs_cc",
         "//xla:autotune_results_proto_cc",
@@ -2529,7 +2528,7 @@ xla_test(
     name = "float_support_test",
     srcs = ["float_support_test.cc"],
     backend_tags = {"gpu": [
-        "no_rocm"
+        "cuda-only"
     ]},
     backends = [
         "gpu_a100",
@@ -2868,9 +2867,6 @@ xla_test(
     backends = [
         "gpu_a100",
         "gpu_amd_any",
-    ],
-    tags = [
-        "no_rocm", #TODO(rocm): TEMP, weekly sync 
     ],
     deps = [
         "//xla:literal",
