@@ -28,7 +28,7 @@
 +  // Matches subgraph of convert 8xi4 to 8xbf16 and rewrites it to inline PTX.
 +  LogicalResult matchAndRewriteInt4ToBf16Conversion(
 +      arith::SIToFPOp op, ConversionPatternRewriter &rewriter) const {
-+    if (true || computeCapability < 90) return failure();
++    if (computeCapability < 90) return failure();
 +    Type inElemTy = getElementType(op.getIn());
 +    Type outElemTy = getElementType(op.getOut());
 +    if (!inElemTy.isInteger(8) || !outElemTy.isBF16()) return failure();
