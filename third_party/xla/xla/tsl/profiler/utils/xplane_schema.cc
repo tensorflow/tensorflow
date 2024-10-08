@@ -343,7 +343,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_orig_id", kCudaGraphOrigId},
        {"step_idle_time_ps", kStepIdleTimePs},
        {"gpu_device_name", kGpuDeviceName},
-       {"source_stack", kSourceStack}});
+       {"source_stack", kSourceStack},
+       {"device_offset_ps", kDeviceOffsetPs},
+       {"device_duration_ps", kDeviceDurationPs}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
