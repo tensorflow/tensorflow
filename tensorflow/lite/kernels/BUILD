@@ -14,7 +14,10 @@ package(
 
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
-    srcs = ["op_macros.h"],
+    srcs = [
+        "builtin_ops_list.inc",
+        "op_macros.h",
+    ],
     visibility = [
         "//tensorflow/lite:__pkg__",
     ],
