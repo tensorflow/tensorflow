@@ -3423,10 +3423,15 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
   for (HloInstruction* instruction : sequence.instructions()) {
     if (spmd::IsSPMDFullToShardShapeCustomCall(instruction)) {
       for (const HloInstruction* user : instruction->users()) {
-        if (spmd::IsSPMDShardToFullShapeCustomCall(user)) {
-          continue;
+        if (!spmd::IsSPMDShardToFullShapeCustomCall(user)) {
+          queue.push(user);
         }
-        queue.push(user);
+      }
+    } else if (spmd::IsSPMDShardToFullShapeCustomCall(instruction)) {
+      for (const HloInstruction* operand : instruction->operands()) {
+        if (!spmd::IsSPMDFullToShardShapeCustomCall(operand)) {
+          queue.push(operand);
+        }
       }
     }
   }
@@ -3444,30 +3449,27 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
          instruction->called_computations()) {
       for (const HloInstruction* parameter :
            computation->parameter_instructions()) {
-        if (spmd::IsSPMDShardToFullShapeCustomCall(parameter) ||
-            spmd::IsSPMDFullToShardShapeCustomCall(parameter) ||
-            parameter == instruction || visited.contains(parameter)) {
-          continue;
+        if (!spmd::IsSPMDShardToFullShapeCustomCall(parameter) &&
+            !spmd::IsSPMDFullToShardShapeCustomCall(parameter) &&
+            parameter != instruction && !visited.contains(parameter)) {
+          queue.push(parameter);
         }
-        queue.push(parameter);
       }
     }
 
     for (const HloInstruction* user : instruction->users()) {
-      if (spmd::IsSPMDShardToFullShapeCustomCall(user) ||
-          spmd::IsSPMDFullToShardShapeCustomCall(user) ||
-          visited.contains(user)) {
-        continue;
+      if (!spmd::IsSPMDShardToFullShapeCustomCall(user) &&
+          !spmd::IsSPMDFullToShardShapeCustomCall(user) &&
+          !visited.contains(user)) {
+        queue.push(user);
       }
-      queue.push(user);
     }
     for (const HloInstruction* operand : instruction->operands()) {
-      if (spmd::IsSPMDShardToFullShapeCustomCall(operand) ||
-          spmd::IsSPMDFullToShardShapeCustomCall(operand) ||
-          operand == instruction || visited.contains(operand)) {
-        continue;
+      if (!spmd::IsSPMDShardToFullShapeCustomCall(operand) &&
+          !spmd::IsSPMDFullToShardShapeCustomCall(operand) &&
+          operand != instruction && !visited.contains(operand)) {
+        queue.push(operand);
       }
-      queue.push(operand);
     }
   }
 
@@ -3475,12 +3477,10 @@ absl::flat_hash_set<const HloInstruction*> ComputeInstructionsToShard(
   for (HloInstruction* instruction : sequence.instructions()) {
     if (!visited.contains(instruction) &&
         !spmd::IsSPMDFullToShardShapeCustomCall(instruction)) {
-      if (HloCollectiveInstruction::ClassOf(instruction)) {
-        LOG(FATAL) << "The module contains collective ops not contained within "
-                      "a graph surrounded by SPMDFullToShardShape and "
-                      "SPMDShardToFullShape custom calls. This case is not yet "
-                      "supported.";
-      }
+      LOG_IF(FATAL, HloCollectiveInstruction::ClassOf(instruction))
+          << "The module contains collective ops not contained within a graph "
+             "surrounded by SPMDFullToShardShape and SPMDShardToFullShape "
+             "custom calls. This case is not yet supported.";
       to_shard.insert(instruction);
     }
   }
