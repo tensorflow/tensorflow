@@ -6,7 +6,6 @@ import "tensorflow/core/framework/full_type.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
-option cc_enable_arenas = true;
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/python/framework/cpp_shape_inference_go_proto";
 
 message CppShapeInferenceResult {
@@ -17,16 +16,19 @@ message CppShapeInferenceResult {
     DataType dtype = 2;
     FullTypeDef type = 4;
   }
+
   message HandleData {
     bool is_set = 1;
 
     // Only valid if <is_set>.
     repeated HandleShapeAndType shape_and_type = 2;
   }
+
   TensorShapeProto shape = 1;
 
   reserved 2;  // was handle_shape
   reserved 3;  // was handle_dtype
+
   HandleData handle_data = 4;
 }
 
