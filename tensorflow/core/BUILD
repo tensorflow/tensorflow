@@ -112,6 +112,8 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
+load("//tools/build_defs/go:go_library.bzl", "go_library")
+# copybara:uncomment_end
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -2029,38 +2031,37 @@ transitive_hdrs(
 )
 
 # copybara:uncomment_begin(google-only)
-# # TODO(b/287346201): Look into replacing usages of this target.
-# py_proto_library(
-#     name = "protos_all_py_pb2",
-#     has_services = 0,
-#     visibility = ["//visibility:public"],
-#     deps = [":protos_all"],
-# )
-#
-# alias(
-#     name = "worker_service_cc_grpc_proto",
-#     actual = "//tensorflow/core/protobuf:worker_service_cc_grpc_proto",
-#     visibility = ["//tensorflow:internal"],
-# )
-#
-# alias(
-#     name = "master_service_cc_grpc_proto",
-#     actual = "//tensorflow/core/protobuf:master_service_cc_grpc_proto",
-#     visibility = ["//tensorflow:internal"],
-# )
-#
-# go_library(
-#     name = "protos_all_go_proto",
-#     srcs = ["protos_all_go_proto.go"],
-#     visibility = ["//visibility:public"],
-#     deps = [
-#         "//tensorflow/core/example:example_parser_configuration_go_proto",
-#         "//tensorflow/core/example:example_protos_go_proto",
-#         "//tensorflow/core/framework:graph_debug_info_go_proto",
-#         "//tensorflow/core/protobuf:for_core_protos_go_proto",
-#         "//tensorflow/core/util:event_go_proto",
-#         "//tensorflow/core/util:memmapped_file_system_go_proto",
-#         "//tensorflow/core/util:saved_tensor_slice_go_proto",
-#     ],
-# )
-# copybara:uncomment_end
+# TODO(b/287346201): Look into replacing usages of this target.
+py_proto_library(
+    name = "protos_all_py_pb2",
+    has_services = 0,
+    visibility = ["//visibility:public"],
+    deps = [":protos_all"],
+)
+
+alias(
+    name = "worker_service_cc_grpc_proto",
+    actual = "//tensorflow/core/protobuf:worker_service_cc_grpc_proto",
+    visibility = ["//tensorflow:internal"],
+)
+
+alias(
+    name = "master_service_cc_grpc_proto",
+    actual = "//tensorflow/core/protobuf:master_service_cc_grpc_proto",
+    visibility = ["//tensorflow:internal"],
+)
+
+go_library(
+    name = "protos_all_go_proto",
+    srcs = ["protos_all_go_proto.go"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/example:example_parser_configuration_go_proto",
+        "//tensorflow/core/example:example_protos_go_proto",
+        "//tensorflow/core/framework:graph_debug_info_go_proto",
+        "//tensorflow/core/protobuf:for_core_protos_go_proto",
+        "//tensorflow/core/util:event_go_proto",
+        "//tensorflow/core/util:memmapped_file_system_go_proto",
+        "//tensorflow/core/util:saved_tensor_slice_go_proto",
+    ],
+)
