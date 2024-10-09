@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -273,17 +274,14 @@ static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase* gpu_mem) {
 CudaExecutor::~CudaExecutor() {
   CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
-  if (gpu_context() != nullptr) {
-    GpuDriver::DestroyContext(gpu_context());
-  }
+  set_context(nullptr);
 }
 
 absl::Status CudaExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal(), &device_));
-  Context* context;
-  TF_RETURN_IF_ERROR(
-      GpuDriver::CreateContext(device_ordinal(), device_, &context));
+  TF_ASSIGN_OR_RETURN(Context * context,
+                      CudaContext::Create(device_ordinal(), device_));
   set_context(context);
   TF_RETURN_IF_ERROR(
       GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));

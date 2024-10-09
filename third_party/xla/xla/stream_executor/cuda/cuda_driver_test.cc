@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_driver.h"
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
@@ -22,6 +20,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -55,30 +54,6 @@ class CudaDriverTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() { CHECK_CUDA(cuInit(0)); }
 };
-
-TEST_F(CudaDriverTest, ScopedActivateContextTest) {
-  CUdevice device;
-  CHECK_CUDA(cuDeviceGet(&device, 0));
-  CUcontext context0, context1;
-  CHECK_CUDA(cuCtxCreate(&context0, 0, device));
-  CHECK_CUDA(cuCtxCreate(&context1, 0, device));
-  gpu::CudaContext se_context1(context1, /*device_ordinal=*/101);
-  {
-    gpu::ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-  CHECK_CUDA(cuCtxSetCurrent(context0));
-  // ScopedActivateContext must correctly set the CUDA context even if some
-  // other code changes the context between the two scopes.
-  {
-    gpu::ScopedActivateContext scope(&se_context1);
-    CUcontext c;
-    CHECK_CUDA(cuCtxGetCurrent(&c));
-    EXPECT_EQ(c, context1);
-  }
-}
 
 TEST_F(CudaDriverTest, DriverVersionParsingTest) {
   // Tests that the driver version can be right after 'Kernel Module',

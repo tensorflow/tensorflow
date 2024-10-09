@@ -15,23 +15,16 @@ limitations under the License.
 
 // CUDA userspace driver library wrapper functionality.
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
-#define XLA_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_CONTEXT_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_CONTEXT_H_
 
-#include <algorithm>
-#include <memory>
-#include <utility>
-#include <vector>
-
-#include "absl/container/node_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/context_map.h"
 
 namespace stream_executor::gpu {
 
@@ -40,6 +33,7 @@ class CudaContext : public Context {
  public:
   CudaContext(CUcontext context, int device_ordinal)
       : context_(context), device_ordinal_(device_ordinal) {}
+  ~CudaContext() override;
 
   void SetActive() override;
   bool IsActive() const override;
@@ -53,6 +47,13 @@ class CudaContext : public Context {
   CudaContext& operator=(CudaContext&&) = delete;
   CudaContext& operator=(const CudaContext&) = delete;
 
+  // Returns a new context for the given device.
+  static absl::StatusOr<CudaContext*> Create(int device_ordinal,
+                                             CUdevice device);
+
+  // Returns the context map for all XLA-known CUDA contexts.
+  static ContextMap<CUcontext, CudaContext>* GetContextMap();
+
  private:
   CUcontext const context_;
   const int device_ordinal_;
@@ -60,4 +61,4 @@ class CudaContext : public Context {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_DRIVER_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_CONTEXT_H_
