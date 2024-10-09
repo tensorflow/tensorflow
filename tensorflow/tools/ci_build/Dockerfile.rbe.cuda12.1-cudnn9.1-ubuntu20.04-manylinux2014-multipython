@@ -37,7 +37,7 @@ RUN /install/build_and_install_python.sh "3.9.18"
 RUN /install/build_and_install_python.sh "3.10.13"
 RUN /install/build_and_install_python.sh "3.11.6"
 RUN /install/build_and_install_python.sh "3.12.2"
-RUN /install/build_and_install_python.sh "3.13.0rc2"
+RUN /install/build_and_install_python.sh "3.13.0"
 
 COPY install/install_pip_packages_by_version.sh /install/
 # https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
