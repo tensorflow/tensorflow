@@ -28,20 +28,20 @@ namespace tensorflow {
 namespace ops {
 
 // Restores tensors from a V2 checkpoint.
-Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
-                 AbstractTensorHandle* const tensor_names,
-                 AbstractTensorHandle* const shape_and_slices,
-                 absl::Span<AbstractTensorHandle*> tensors,
-                 absl::Span<DataType> dtypes, const char* name = nullptr,
-                 const char* raw_device_name = nullptr);
+absl::Status RestoreV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
+                       AbstractTensorHandle* const tensor_names,
+                       AbstractTensorHandle* const shape_and_slices,
+                       absl::Span<AbstractTensorHandle*> tensors,
+                       absl::Span<DataType> dtypes, const char* name = nullptr,
+                       const char* raw_device_name = nullptr);
 
 // Saves tensors in V2 checkpoint format.
-Status SaveV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
-              AbstractTensorHandle* const tensor_names,
-              AbstractTensorHandle* const shape_and_slices,
-              absl::Span<AbstractTensorHandle* const> tensors,
-              const char* name = nullptr,
-              const char* raw_device_name = nullptr);
+absl::Status SaveV2(AbstractContext* ctx, AbstractTensorHandle* const prefix,
+                    AbstractTensorHandle* const tensor_names,
+                    AbstractTensorHandle* const shape_and_slices,
+                    absl::Span<AbstractTensorHandle* const> tensors,
+                    const char* name = nullptr,
+                    const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow
