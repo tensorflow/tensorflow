@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -89,6 +90,14 @@ bool SetBuffersToMemorySpaceColor(
     changed = true;
   }
   return changed;
+}
+
+void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
+  FrontendAttributes frontend_attributes =
+      host_instruction.frontend_attributes();
+  frontend_attributes.mutable_map()->insert(
+      {kXlaComputeTypeAttr, kXlaComputeTypeHost});
+  host_instruction.set_frontend_attributes(frontend_attributes);
 }
 
 }  // namespace
@@ -201,6 +210,14 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       // memory.
       slices_to_dynamify.insert(instruction);
       continue;
+    } else if (instruction->opcode() == HloOpcode::kAllGather ||
+               instruction->opcode() == HloOpcode::kAllReduce) {
+      LOG(WARNING) << absl::StreamFormat(
+          "Found an instruction (\"%s\") which does device compute in host "
+          "memory space. Converting into host compute. This is likely to have "
+          "a very high overhead.",
+          instruction->name());
+      SetHostComputeFrontendAttribute(*instruction);
     } else {
       // Found an instruction which is invalid during host memory offloading.
       return absl::InvalidArgumentError(
