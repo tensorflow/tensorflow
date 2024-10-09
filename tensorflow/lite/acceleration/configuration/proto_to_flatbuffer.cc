@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
@@ -68,6 +69,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_ARMNN;
     case proto::Delegate::MTK_NEURON:
       return Delegate_MTK_NEURON;
+    case proto::Delegate::INTEL_OPENVINO:
+      return Delegate_INTEL_OPENVINO;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -431,6 +434,12 @@ Offset<MtkNeuronSettings> ConvertMtkNeuronSettings(
       builder.CreateString(settings.neuron_config_path()));
 }
 
+Offset<IntelOpenVINOSettings> ConvertIntelOpenVINOSettings(
+    const proto::IntelOpenVINOSettings& settings, FlatBufferBuilder& builder) {
+  return CreateIntelOpenVINOSettings(builder,
+                                     settings.allow_fp16_precision_for_fp32());
+}
+
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
                                            FlatBufferBuilder& builder) {
   return CreateCoralSettings(
@@ -460,7 +469,9 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       ConvertCompilationCachingSettings(settings.compilation_caching_settings(),
                                         builder),
       ConvertArmNNSettings(settings.armnn_settings(), builder),
-      ConvertMtkNeuronSettings(settings.mtk_neuron_settings(), builder));
+      ConvertMtkNeuronSettings(settings.mtk_neuron_settings(), builder),
+      ConvertIntelOpenVINOSettings(settings.intel_openvino_settings(),
+                                   builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,
