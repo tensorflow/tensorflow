@@ -25,6 +25,7 @@ lld-18
 clang-format-12
 curl
 git
+parallel
 sudo
 swig
 unzip
