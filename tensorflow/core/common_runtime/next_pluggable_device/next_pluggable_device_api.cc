@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "xla/tsl/c/tsl_status_internal.h"
+#include "absl/status/statusor.h"
+#include "xla/tsl/c/tsl_status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
 #include "tsl/platform/errors.h"
 
