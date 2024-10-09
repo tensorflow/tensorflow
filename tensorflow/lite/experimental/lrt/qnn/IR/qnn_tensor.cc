@@ -70,14 +70,14 @@ void SetOutputTensorAttrs(Qnn_Tensor_t& tensor) {
 }
 
 void ResetTensor(Qnn_Tensor_t& tensor) {
-  tensor = QNN_TENSOR_INIT;
-  tensor.version = QNN_TENSOR_VERSION_2;
-  tensor.v2 = QNN_TENSOR_V2_INIT;
-  tensor.v2.dataFormat = QNN_TENSOR_DATA_FORMAT_DENSE;
   if (tensor.v2.dimensions != nullptr) {
     delete[] tensor.v2.dimensions;
     tensor.v2.dimensions = nullptr;
   }
+  tensor = QNN_TENSOR_INIT;
+  tensor.version = QNN_TENSOR_VERSION_2;
+  tensor.v2 = QNN_TENSOR_V2_INIT;
+  tensor.v2.dataFormat = QNN_TENSOR_DATA_FORMAT_DENSE;
 }
 
 Qnn_Tensor_t BuildDefaultTensor(uint32_t id) {
