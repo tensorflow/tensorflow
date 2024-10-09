@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_driver.h"
-
 #include <stdint.h>
 #include <stdlib.h>
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <new>
 #include <string>
 #include <utility>
 #include <variant>
@@ -29,19 +26,17 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/context_map.h"
@@ -55,11 +50,9 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -78,59 +71,7 @@ absl::StatusOr<CUdevice> DeviceFromContext(Context* context) {
   return status;
 }
 
-CUcontext CurrentContextOrDie() {
-  CUcontext current = nullptr;
-  TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
-                             "Failed to query current context"));
-  return current;
-}
-
-// Returns the singleton ContextMap.
-ContextMap<CUcontext, CudaContext>* GetContextMap() {
-  static ContextMap<CUcontext, CudaContext>* context_map =
-      new ContextMap<CUcontext, CudaContext>([](void* ptr) {
-        int device_ordinal;
-        absl::Status status = cuda::ToStatus(
-            cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
-                                  CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
-                                  reinterpret_cast<CUdeviceptr>(ptr)));
-        if (!status.ok()) {
-          LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
-                     << ". Error: " << status;
-        }
-        return device_ordinal;
-      });
-  return context_map;
-}
-
-// Returns the current context and checks that it is in the set of CUDA contexts
-// created by StreamExecutor (to ensure that the CUDA runtime didn't create a
-// context behind our backs).
-CUcontext CurrentContext() {
-  CUcontext current = CurrentContextOrDie();
-  if (current != nullptr && !GetContextMap()->Has(current)) {
-    LOG(FATAL) << "current context was not created by the StreamExecutor "
-                  "cuda_driver API: "
-               << current
-               << "; a CUDA runtime call "
-                  "was likely performed without using a StreamExecutor context";
-  }
-  return current;
-}
-
 }  // namespace
-
-void CudaContext::SetActive() {
-  TF_CHECK_OK(
-      cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
-}
-
-bool CudaContext::IsActive() const { return CurrentContext() == context_; }
-
-absl::Status CudaContext::Synchronize() {
-  ScopedActivateContext activation(this);
-  return cuda::ToStatus(cuCtxSynchronize());
-}
 
 namespace {
 
@@ -149,39 +90,6 @@ static absl::Status InternalInit() {
   return status;
 }
 
-// Synchronize with spinlocks.
-const char kScheduleSpinString[] = "spin";
-// Synchronize with spinlocks that also call CPU yield instructions.
-const char kScheduleYieldString[] = "yield";
-// Synchronize with a "synchronization primitive" (e.g. mutex).
-const char kScheduleBlockingSyncString[] = "blocking_sync";
-
-int GetFlagsFromEnv() {
-  const char* gpu_schedule_string =
-      std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
-
-  if (gpu_schedule_string == nullptr) {
-    return 0;
-  }
-
-  unsigned device_flags = 0;
-  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
-    device_flags = CU_CTX_SCHED_SPIN;
-  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
-    device_flags = CU_CTX_SCHED_YIELD;
-  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
-    device_flags = CU_CTX_SCHED_BLOCKING_SYNC;
-  } else {
-    LOG(QFATAL) << "Unknown option for environment variable "
-                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
-                << gpu_schedule_string << " should be one of {"
-                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
-                << ", " << kScheduleYieldString << "}";
-  }
-
-  return device_flags;
-}
-
 }  // namespace
 
 absl::Status GpuDriver::Init() {
@@ -196,97 +104,6 @@ absl::Status GpuDriver::Init() {
 absl::Status GpuDriver::GetDevice(int device_ordinal, CUdevice* device) {
   return cuda::ToStatus(cuDeviceGet(device, device_ordinal),
                         "Failed call to cuDeviceGet");
-}
-
-absl::Status GpuDriver::GetDeviceName(CUdevice device,
-                                      std::string* device_name) {
-  static const size_t kCharLimit = 64;
-  absl::InlinedVector<char, 4> chars(kCharLimit);
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetName(chars.begin(), kCharLimit - 1, device),
-                     "Failed to get device name"));
-  chars[kCharLimit - 1] = '\0';
-  *device_name = chars.begin();
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::CreateContext(int device_ordinal, CUdevice device,
-                                      Context** context) {
-  *context = nullptr;
-
-  int flags = GetFlagsFromEnv();
-
-  unsigned int former_primary_context_flags;
-  int former_primary_context_is_active;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
-                                 &former_primary_context_is_active)));
-  if (former_primary_context_flags != flags) {
-    if (former_primary_context_is_active) {
-      LOG(ERROR)
-          << "The primary context is active and has a different flag set ("
-          << former_primary_context_flags << ") than the desired flag set ("
-          << flags << ").";
-    } else {
-      TF_RETURN_IF_ERROR(
-          cuda::ToStatus(cuDevicePrimaryCtxSetFlags(device, flags)));
-    }
-  }
-
-  CUcontext former_context = CurrentContextOrDie();
-  CUcontext new_context;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDevicePrimaryCtxRetain(&new_context, device)));
-  if (former_context != nullptr) {
-    CUdevice former_device;
-    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-      if (former_device == device) {
-        if (former_context == new_context) {
-          VLOG(2) << "The primary context " << former_context << " for device "
-                  << device
-                  << " exists before initializing the StreamExecutor.";
-        } else {
-          LOG(WARNING) << "A non-primary context " << former_context
-                       << " for device " << device
-                       << " exists before initializing the StreamExecutor. The "
-                       << "primary context is now " << new_context << ". We "
-                       << "haven't verified StreamExecutor works with that.";
-        }
-      }
-    } else {
-      LOG(ERROR) << "Failed to get the device of the current context "
-                 << former_context;
-    }
-  }
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
-
-  *context = GetContextMap()->Add(new_context, device_ordinal);
-  CHECK(*context != nullptr)
-      << "success in this call must entail non-null result";
-  VLOG(2) << "created or reused context " << new_context << " for this thread";
-  return absl::OkStatus();
-}
-
-void GpuDriver::DestroyContext(Context* context) {
-  if (context == nullptr) {
-    return;
-  }
-  CudaContext* cuda_context = tensorflow::down_cast<CudaContext*>(context);
-  auto status = cuda::ToStatus(cuCtxPushCurrent(cuda_context->context()));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to Push CUDA context; leaking: " << status;
-  }
-  CUdevice device;
-  cuCtxGetDevice(&device);
-  cuCtxPopCurrent(nullptr);
-
-  status = cuda::ToStatus(cuDevicePrimaryCtxRelease(device));
-
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to release CUDA context; leaking: " << status;
-  }
-
-  GetContextMap()->Remove(cuda_context->context());
 }
 
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
@@ -1220,16 +1037,16 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
   TF_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
 
   if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
-    // GetContextMap()->GetAnyContext() doesn't works when ptr == 0.
+    // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
     // This happens when the size is 0.
     TF_RETURN_IF_ERROR(
         cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
   } else {
     // Any context work here.
-    CUcontext dst_context =
-        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_src));
+    CUcontext dst_context = CudaContext::GetContextMap()->GetAnyContext(
+        absl::bit_cast<void*>(gpu_dst));
+    CUcontext src_context = CudaContext::GetContextMap()->GetAnyContext(
+        absl::bit_cast<void*>(gpu_src));
 
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
@@ -1405,14 +1222,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(CUdevice_attribute attribute,
-                                                  CUdevice device) {
-  int val;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetAttribute(&val, attribute, device)));
-  return val;
-}
-
 bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   int value = -1;
   auto status = cuda::ToStatus(
@@ -1423,22 +1232,6 @@ bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   }
 
   *result = value;
-  return true;
-}
-
-bool GpuDriver::GetDeviceMemoryInfo(Context* context, int64_t* free_out,
-                                    int64_t* total_out) {
-  ScopedActivateContext activation(context);
-  size_t free = 0;
-  size_t total = 0;
-  auto status = cuda::ToStatus(cuMemGetInfo(&free, &total));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query device memory info: " << status;
-    return false;
-  }
-
-  *free_out = free;
-  *total_out = total;
   return true;
 }
 
