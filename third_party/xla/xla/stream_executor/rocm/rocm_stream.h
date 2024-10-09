@@ -16,14 +16,42 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_STREAM_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_STREAM_H_
 
+#include <memory>
+#include <optional>
+#include <utility>
+#include <variant>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace gpu {
 
 class RocmStream : public GpuStream {
  public:
-  using GpuStream::GpuStream;
+  absl::Status WaitFor(Stream* other) override;
+  absl::Status RecordEvent(Event* event) override;
+  absl::Status WaitFor(Event* event) override;
+
+  static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
+      GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+      std::optional<std::variant<StreamPriority, int>> priority);
+
+ private:
+  RocmStream(GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+             std::optional<std::variant<StreamPriority, int>> priority,
+             hipStream_t stream_handle)
+      : GpuStream(executor, std::move(completed_event), priority,
+                  stream_handle),
+        executor_(executor) {}
+
+  GpuExecutor* executor_;
 };
 
 }  // namespace gpu

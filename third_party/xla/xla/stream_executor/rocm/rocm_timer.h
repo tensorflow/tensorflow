@@ -1,4 +1,4 @@
-/* Copyright 2018 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,27 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_
-#define XLA_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_
+#ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_
+#define XLA_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_
 
-#include <cstdint>
+#include <memory>
 
-#include "absl/status/status.h"
-#include "xla/stream_executor/event.h"
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
 
 namespace stream_executor::gpu {
 
-// This class implements Event::PollForStatus for ROCm devices.
-class RocmEvent : public GpuEvent {
+class RocmTimer : public EventBasedTimer {
  public:
-  explicit RocmEvent(Context *context) : GpuEvent(context) {}
+  RocmTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
+            std::unique_ptr<GpuEvent> stop_event, GpuStream* stream);
 
-  Event::Status PollForStatus() override;
+  absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
-  absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+ private:
+  bool is_stopped_ = false;
+  Context* context_;
+  GpuStream* stream_;
+  std::unique_ptr<GpuEvent> start_event_;
+  std::unique_ptr<GpuEvent> stop_event_;
 };
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_ROCM_ROCM_EVENT_H_
+#endif  // XLA_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_

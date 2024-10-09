@@ -15,13 +15,25 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_event.h"
 
+#include <cstdint>
+
+#include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 
 namespace stream_executor {
 namespace gpu {
+namespace {
+absl::Status WaitStreamOnEvent(Context* context, CUstream stream,
+                               CUevent event) {
+  ScopedActivateContext activation(context);
+  return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
+}
+}  // namespace
 
 Event::Status CudaEvent::PollForStatus() {
   ScopedActivateContext activated(context());
@@ -32,6 +44,11 @@ Event::Status CudaEvent::PollForStatus() {
     return Event::Status::kPending;
   }
   return Event::Status::kError;
+}
+
+absl::Status CudaEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
+  return WaitStreamOnEvent(context(), absl::bit_cast<CUstream>(stream),
+                           gpu_event());
 }
 
 }  // namespace gpu

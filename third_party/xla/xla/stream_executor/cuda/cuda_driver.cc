@@ -1005,25 +1005,6 @@ absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
   return cuda::ToStatus(cuLaunchHostFunc(stream, callback, data));
 }
 
-absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
-                                                        int priority) {
-  ScopedActivateContext activated(context);
-  GpuStreamHandle stream;
-  // If the priority is 0, then use the previous api to create the stream with
-  // the default priority for backward compatibility. Probably there is no
-  // difference in using the new api call but leaving it as is for now.
-  if (priority == 0) {
-    TF_RETURN_IF_ERROR(
-        cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
-  } else {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
-  }
-
-  VLOG(2) << "successfully created stream " << stream << " for context "
-          << context << " on thread";
-  return stream;
-}
 
 void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
@@ -1155,23 +1136,6 @@ bool GpuDriver::HostUnregister(Context* context, void* location) {
   return true;
 }
 
-int GpuDriver::GetGpuStreamPriority(
-    Context* context, stream_executor::StreamPriority stream_priority) {
-  ScopedActivateContext activation(context);
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  auto status = cuda::ToStatus(cuCtxGetStreamPriorityRange(&lowest, &highest));
-  if (!status.ok()) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
-
 absl::Status GpuDriver::DestroyEvent(Context* context, CUevent* event) {
   if (*event == nullptr) {
     return absl::InvalidArgumentError("input event cannot be null");
@@ -1179,39 +1143,6 @@ absl::Status GpuDriver::DestroyEvent(Context* context, CUevent* event) {
 
   ScopedActivateContext activated{context};
   return cuda::ToStatus(cuEventDestroy(*event), "Error destroying CUDA event");
-}
-
-absl::Status GpuDriver::RecordEvent(Context* context, CUevent event,
-                                    CUstream stream) {
-  ScopedActivateContext activated{context};
-  return cuda::ToStatus(cuEventRecord(event, stream),
-                        "Error recording CUDA event");
-}
-
-absl::StatusOr<float> GpuDriver::GetEventElapsedTime(Context* context,
-                                                     CUevent start,
-                                                     CUevent stop) {
-  ScopedActivateContext activated{context};
-  // The stop event must have completed in order for cuEventElapsedTime to
-  // work.
-  auto status = cuda::ToStatus(cuEventSynchronize(stop));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to synchronize the stop event: " << status;
-    return false;
-  }
-
-  float elapsed_milliseconds;
-
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuEventElapsedTime(&elapsed_milliseconds, start, stop)));
-
-  return elapsed_milliseconds;
-}
-
-absl::Status GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,
-                                          CUevent event) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
 }
 
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {

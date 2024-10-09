@@ -878,25 +878,6 @@ absl::Status GpuDriver::AddStreamCallback(Context* context,
   return absl::OkStatus();
 }
 
-absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
-                                                        int priority) {
-  ScopedActivateContext activated(context);
-  GpuStreamHandle stream;
-  if (priority == 0) {
-    RETURN_IF_ROCM_ERROR(
-        wrap::hipStreamCreateWithFlags(&stream, hipStreamDefault),
-        "Failed to create stream");  // switch to hipStreamNonBlocking?
-  } else {
-    RETURN_IF_ROCM_ERROR(
-        wrap::hipStreamCreateWithPriority(&stream, hipStreamDefault, priority),
-        "Failed to create stream");  // switch to hipStreamNonBlocking?
-  }
-
-  VLOG(2) << "successfully created stream " << stream << " for device "
-          << context->device_ordinal() << " on thread";
-  return stream;
-}
-
 void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
     return;
@@ -1002,23 +983,6 @@ void GpuDriver::HostDeallocate(Context* context, void* location) {
   }
 }
 
-int GpuDriver::GetGpuStreamPriority(
-    Context* context, stream_executor::StreamPriority stream_priority) {
-  ScopedActivateContext activation(context);
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  hipError_t res = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
-  if (res != hipSuccess) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
-
 absl::Status GpuDriver::DestroyEvent(Context* context, GpuEventHandle* event) {
   if (*event == nullptr) {
     return absl::InvalidArgumentError("input event cannot be null");
@@ -1041,53 +1005,6 @@ absl::Status GpuDriver::DestroyEvent(Context* context, GpuEventHandle* event) {
           absl::StrFormat("error destroying ROCM event in device %d: %s",
                           context->device_ordinal(), ToString(res).c_str()));
   }
-}
-
-absl::Status GpuDriver::RecordEvent(Context* context, GpuEventHandle event,
-                                    GpuStreamHandle stream) {
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipEventRecord(event, stream);
-  switch (res) {
-    case hipSuccess:
-      return absl::OkStatus();
-    case hipErrorDeinitialized:
-    case hipErrorNotInitialized:
-      return absl::FailedPreconditionError(
-          absl::StrFormat("error recording ROCM event on stream %p: %s", stream,
-                          ToString(res).c_str()));
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrFormat("error recording ROCM event on stream %p: %s", stream,
-                          ToString(res).c_str()));
-  }
-}
-
-absl::StatusOr<float> GpuDriver::GetEventElapsedTime(Context* context,
-                                                     GpuEventHandle start,
-                                                     GpuEventHandle stop) {
-  ScopedActivateContext activated{context};
-  // The stop event must have completed in order for hipEventElapsedTime to
-  // work.
-  hipError_t res = wrap::hipEventSynchronize(stop);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
-    return false;
-  }
-  float elapsed_milliseconds;
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipEventElapsedTime(&elapsed_milliseconds, start, stop),
-      "failed to get elapsed time between events");
-
-  return elapsed_milliseconds;
-}
-
-absl::Status GpuDriver::WaitStreamOnEvent(Context* context,
-                                          GpuStreamHandle stream,
-                                          GpuEventHandle event) {
-  ScopedActivateContext activation{context};
-  RETURN_IF_ROCM_ERROR(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
-                       "could not wait stream on event");
-  return absl::OkStatus();
 }
 
 absl::Status GpuDriver::SynchronizeStream(Context* context,

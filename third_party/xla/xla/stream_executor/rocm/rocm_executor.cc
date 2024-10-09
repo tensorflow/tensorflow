@@ -56,7 +56,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
@@ -69,7 +68,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
-#include "xla/stream_executor/rocm/rocm_driver.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
@@ -77,6 +75,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_runtime.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/rocm/rocm_stream.h"
+#include "xla/stream_executor/rocm/rocm_timer.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -300,9 +299,9 @@ absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 RocmExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
   TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
-  TF_RETURN_IF_ERROR(start_event->Record(stream->gpu_stream()));
-  return std::make_unique<GpuTimer>(gpu_context(), std::move(start_event),
-                                    std::move(stop_event), stream);
+  TF_RETURN_IF_ERROR(stream->RecordEvent(start_event.get()));
+  return std::make_unique<RocmTimer>(gpu_context(), std::move(start_event),
+                                     std::move(stop_event), stream);
 }
 
 bool RocmExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -663,9 +662,9 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
-  auto stream = std::make_unique<RocmStream>(this, std::move(event), priority);
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      RocmStream::Create(this, std::move(event), priority));
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  TF_RETURN_IF_ERROR(stream->Init());
   auto gpu_stream = stream->gpu_stream();
   alive_gpu_streams_[gpu_stream] = stream.get();
   return std::move(stream);

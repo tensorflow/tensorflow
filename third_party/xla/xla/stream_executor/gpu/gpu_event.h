@@ -42,13 +42,8 @@ class GpuEvent : public Event {
   // out (not part of the destructor) to allow for error reporting.
   absl::Status Destroy();
 
-  // Inserts the event at the current position into the specified stream.
-  absl::Status Record(GpuStreamHandle stream_handle);
-
   // The underlying CUDA event element.
   GpuEventHandle gpu_event();
-
-  absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
 
  protected:
   Context* context() const { return context_; }

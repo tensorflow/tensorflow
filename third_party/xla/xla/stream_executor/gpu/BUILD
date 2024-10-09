@@ -427,33 +427,6 @@ gpu_only_cc_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_timer",
-    srcs = [
-        "gpu_timer.cc",
-    ],
-    hdrs = [
-        "gpu_timer.h",
-    ],
-    deps = [
-        ":context",
-        ":gpu_driver_header",
-        ":gpu_event",
-        ":gpu_semaphore",
-        ":gpu_stream",
-        "//xla/stream_executor:event_based_timer",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
     defines = if_rocm_is_configured([

@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,46 +13,76 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/gpu/gpu_timer.h"
+#include "xla/stream_executor/cuda/cuda_timer.h"
 
 #include <memory>
+#include <utility>
 
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-namespace stream_executor {
-namespace gpu {
+namespace stream_executor::gpu {
 
-GpuTimer::~GpuTimer() {
+namespace {
+absl::StatusOr<float> GetEventElapsedTime(Context* context, CUevent start,
+                                          CUevent stop) {
+  ScopedActivateContext activated{context};
+  // The stop event must have completed in order for cuEventElapsedTime to
+  // work.
+  auto status = cuda::ToStatus(cuEventSynchronize(stop));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to synchronize the stop event: " << status;
+    return false;
+  }
+
+  float elapsed_milliseconds;
+
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuEventElapsedTime(&elapsed_milliseconds, start, stop)));
+
+  return elapsed_milliseconds;
+}
+
+}  // namespace
+
+CudaTimer::CudaTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
+                     std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
+                     GpuSemaphore semaphore)
+    : semaphore_(std::move(semaphore)),
+      context_(context),
+      stream_(stream),
+      start_event_(std::move(start_event)),
+      stop_event_(std::move(stop_event)) {}
+
+CudaTimer::~CudaTimer() {
   if (semaphore_ && !is_stopped_) {
     // Signal the delay kernel that it can exit
     *semaphore_ = GpuSemaphoreState::kRelease;
     // Wait for the delay kernel to exit before destroying the value that it is
     // watching.
-    absl::Status status =
-        GpuDriver::SynchronizeStream(context_, stream_->gpu_stream());
-    if (!status.ok()) {
-      LOG(ERROR) << status;
+    absl::Status result = stream_->BlockHostUntilDone();
+    if (!result.ok()) {
+      LOG(ERROR) << result.message();
     }
   }
-  start_event_.reset();
-  stop_event_.reset();
 }
 
-absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
+absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::InternalError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stop_event_->Record(stream_->gpu_stream()));
+  TF_RETURN_IF_ERROR(stream_->RecordEvent(stop_event_.get()));
   // If we launched the delay kernel then check if it already timed out.
   if (semaphore_) {
     if (*semaphore_ == GpuSemaphoreState::kTimedOut) {
@@ -65,13 +95,11 @@ absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
       *semaphore_ = GpuSemaphoreState::kRelease;
     }
   }
-  TF_ASSIGN_OR_RETURN(
-      float elapsed_milliseconds,
-      GpuDriver::GetEventElapsedTime(context_, start_event_->gpu_event(),
-                                     stop_event_->gpu_event()));
+  TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
+                      GetEventElapsedTime(context_, start_event_->gpu_event(),
+                                          stop_event_->gpu_event()));
   is_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
 }
 
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu

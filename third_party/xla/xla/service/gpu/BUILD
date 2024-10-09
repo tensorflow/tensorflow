@@ -2892,7 +2892,6 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/gpu:mock_gpu_executor",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",

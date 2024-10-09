@@ -41,16 +41,7 @@ absl::Status GpuEvent::Destroy() {
   return GpuDriver::DestroyEvent(context_, &gpu_event_);
 }
 
-absl::Status GpuEvent::Record(GpuStreamHandle stream_handle) {
-  return GpuDriver::RecordEvent(context_, gpu_event_, stream_handle);
-}
-
 GpuEventHandle GpuEvent::gpu_event() { return gpu_event_; }
-
-absl::Status GpuEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
-  return GpuDriver::WaitStreamOnEvent(
-      context_, absl::bit_cast<GpuStreamHandle>(stream), gpu_event_);
-}
 
 }  // namespace gpu
 }  // namespace stream_executor

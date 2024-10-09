@@ -64,13 +64,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#initialization
   static absl::Status Init();
 
-  // Creates a new CUDA/HIP stream associated with the given context via
-  // cuStreamCreate/hipStreamCreateWithFlags.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
-  static absl::StatusOr<GpuStreamHandle> CreateStream(Context* context,
-                                                      int priority = 0);
-
   // Destroys a CUDA/HIP stream associated with the given context.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
@@ -146,14 +139,6 @@ class GpuDriver {
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
   static bool HostUnregister(Context* context, void* location);
-
-  // Queries the priority range and returns the corresponding integer value via
-  // cuCtxGetStreamPriorityRange/hipDeviceGetStreamPriorityRange
-  //
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g137920ab61a71be6ce67605b9f294091
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#context-management
-  static int GetGpuStreamPriority(
-      Context* context, stream_executor::StreamPriority stream_priority);
 
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.
@@ -512,13 +497,6 @@ class GpuDriver {
                                         GpuStreamHandle stream,
                                         StreamCallback callback, void* data);
 
-  // Causes stream to wait for event to trigger before proceeding via
-  // cuStreamWaitEvent.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#axzz334nAXAhM
-  static absl::Status WaitStreamOnEvent(Context* context,
-                                        GpuStreamHandle stream,
-                                        GpuEventHandle event);
-
   // Blocks the calling thread until the operations enqueued onto stream have
   // been completed, via cuStreamSynchronize.
   //
@@ -545,19 +523,6 @@ class GpuDriver {
   // Enables peer access per CanEnablePeerAccess, via cuCtxEnablePeerAccess.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g0889ec6728e61c05ed359551d67b3f5a
   static absl::Status EnablePeerAccess(Context* from, Context* to);
-
-  // Returns the elapsed milliseconds between start and stop via
-  // cuEventElapsedTime.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1gdfb1178807353bbcaa9e245da497cf97
-  static absl::StatusOr<float> GetEventElapsedTime(Context* context,
-                                                   GpuEventHandle start,
-                                                   GpuEventHandle stop);
-
-  // Records that an event occurred when execution reaches the current point in
-  // thestream via cuEventRecord.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g95424d3be52c4eb95d83861b70fb89d1
-  static absl::Status RecordEvent(Context* context, GpuEventHandle event,
-                                  GpuStreamHandle stream);
 
   // -- Pointer-specific calls.
 

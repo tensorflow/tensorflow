@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/mock_gpu_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"

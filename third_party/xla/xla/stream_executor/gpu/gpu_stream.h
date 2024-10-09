@@ -50,10 +50,11 @@ namespace gpu {
 class GpuStream : public StreamCommon {
  public:
   GpuStream(GpuExecutor* parent, std::unique_ptr<GpuEvent> completed_event,
-            std::optional<std::variant<StreamPriority, int>> priority)
+            std::optional<std::variant<StreamPriority, int>> priority,
+            GpuStreamHandle gpu_stream)
       : StreamCommon(parent),
         parent_(parent),
-        gpu_stream_(nullptr),
+        gpu_stream_(gpu_stream),
         completed_event_(std::move(completed_event)) {
     if (priority.has_value()) {
       stream_priority_ = priority.value();
@@ -62,9 +63,6 @@ class GpuStream : public StreamCommon {
 
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~GpuStream() override;
-
-  // Explicitly initialize the CUDA resources associated with this stream.
-  absl::Status Init();
 
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
@@ -85,9 +83,6 @@ class GpuStream : public StreamCommon {
     return gpu_stream_;
   }
 
-  absl::Status WaitFor(Stream* other) override;
-  absl::Status WaitFor(Event* event) override;
-  absl::Status RecordEvent(Event* event) override;
   absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
   absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
                         uint64_t size) override;
