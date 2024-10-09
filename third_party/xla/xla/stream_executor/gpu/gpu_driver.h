@@ -147,27 +147,6 @@ class GpuDriver {
   // the CUDA/HIP driver API.
   static absl::Status GetDevice(int device_ordinal, GpuDeviceHandle* device);
 
-  // Given a device handle, returns the name reported by the driver for the
-  // device.
-  static absl::Status GetDeviceName(GpuDeviceHandle device,
-                                    std::string* device_name);
-
-  // Given a device to create a context for, returns a context handle into the
-  // context outparam, which must not be null.
-  //
-  // N.B. CUDA contexts are weird. They are implicitly associated with the
-  // calling thread. Current documentation on contexts and their influence on
-  // userspace processes is given here:
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
-  static absl::Status CreateContext(int device_ordinal, GpuDeviceHandle device,
-                                    Context** context);
-
-  // Destroys the provided context via cuCtxDestroy.
-  // Don't do this while clients could still be using the context, per the docs
-  // bad things will happen.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
-  static void DestroyContext(Context* context);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
@@ -535,13 +514,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Returns the compute capability for the device; i.e (3, 5).
-  // This is currently done via the deprecated device API.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1ge2091bbac7e1fb18c2821612115607ea
-  // (supported on CUDA only)
-  static absl::Status GetComputeCapability(int* cc_major, int* cc_minor,
-                                           GpuDeviceHandle device);
-
   // Returns Gpu ISA version for the device; i.e 803, 900.
   // (supported on ROCm only)
   static absl::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
@@ -598,12 +570,6 @@ class GpuDriver {
   static bool GetDeviceProperties(GpuDeviceProperty* device_properties,
                                   int device_ordinal);
 
-  // Gets a specific integer-valued property about the given device.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static absl::StatusOr<int> GetDeviceAttribute(GpuDeviceAttribute attribute,
-                                                GpuDeviceHandle device);
-
   // Returns whether ECC is enabled for the given GpuDeviceHandle via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
@@ -612,12 +578,6 @@ class GpuDriver {
   // Returns the total amount of memory available for allocation by the CUDA
   // context, in bytes, via cuDeviceTotalMem.
   static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64_t* result);
-
-  // Returns the free amount of memory and total amount of memory, as reported
-  // by cuMemGetInfo.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g808f555540d0143a331cc42aa98835c0
-  static bool GetDeviceMemoryInfo(Context* context, int64_t* free,
-                                  int64_t* total);
 
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]

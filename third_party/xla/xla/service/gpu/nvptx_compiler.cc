@@ -94,7 +94,6 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"  // IWYU pragma : keep - Needed for GpuContext
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"

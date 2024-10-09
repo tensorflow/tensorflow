@@ -24,15 +24,12 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "absl/base/casts.h"
-#include "absl/functional/any_invocable.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -45,21 +42,17 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -67,7 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/rocm/rocm_diagnostics.h"
+#include "xla/stream_executor/rocm/rocm_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
@@ -219,6 +212,17 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
                << "; leaking: " << ToString(res);
   }
 }
+
+// Returns the name of the device.
+absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
+  static const size_t kCharLimit = 64;
+  absl::InlinedVector<char, 4> chars(kCharLimit);
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      "Failed to get device name");
+  chars[kCharLimit - 1] = '\0';
+  return chars.begin();
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -228,9 +232,7 @@ RocmExecutor::~RocmExecutor() {
   for (auto& it : in_memory_modules_) {
     UnloadRocmModule(gpu_context(), it.second);
   }
-  if (gpu_context() != nullptr) {
-    GpuDriver::DestroyContext(gpu_context());
-  }
+  set_context(nullptr);
   CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
 }
@@ -347,10 +349,9 @@ absl::Status RocmExecutor::Init() {
 
   TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal(), &device_));
 
-  Context* context;
-  TF_RETURN_IF_ERROR(
-      GpuDriver::CreateContext(device_ordinal(), device_, &context));
-  set_context(context);
+  TF_ASSIGN_OR_RETURN(rocm_context_,
+                      RocmContext::Create(device_ordinal(), device_));
+  set_context(rocm_context_);
   return GpuDriver::GetGpuISAVersion(&version_, device_);
 }
 
@@ -601,7 +602,7 @@ absl::Status RocmExecutor::EnablePeerAccessTo(StreamExecutor* other) {
 }
 
 bool RocmExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
-  return GpuDriver::GetDeviceMemoryInfo(gpu_context(), free, total);
+  return rocm_context_->GetDeviceMemoryUsage(free, total);
 }
 
 absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
@@ -755,8 +756,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::string device_name;
-    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
+    TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
     desc.set_name(device_name);
   }
 
@@ -792,22 +792,17 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
 
-  int cc_major = 0;
-  int cc_minor = 0;
-  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
-
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or
   // other hacks, which we don't have access to in OSS TensorFlow.
   //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // Alternatively you might be tempted to use GetDeviceName as a
   // unique identifier, but this is not stable across GPU VBIOS versions.
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  desc.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
-                                     cc_major, cc_minor, device_memory_size,
-                                     core_count));
+  desc.set_model_str(
+      absl::StrFormat("%dB RAM, %d cores", device_memory_size, core_count));
 
   return std::make_unique<DeviceDescription>(std::move(desc));
 }

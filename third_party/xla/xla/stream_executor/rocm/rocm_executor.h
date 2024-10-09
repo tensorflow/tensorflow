@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -216,6 +217,9 @@ class RocmExecutor : public GpuExecutor {
 
   // GPU ISA version for device_.
   int version_;
+
+  // RocmContext for this device.
+  RocmContext* rocm_context_;
 };
 
 }  // namespace stream_executor::gpu

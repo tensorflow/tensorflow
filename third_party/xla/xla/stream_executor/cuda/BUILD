@@ -160,14 +160,37 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_driver",
-    srcs = ["cuda_driver.cc"],
-    hdrs = ["cuda_driver.h"],
+    name = "cuda_context",
+    srcs = ["cuda_context.cc"],
+    hdrs = ["cuda_context.h"],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
+        ":cuda_status",
+        "//xla/stream_executor/gpu:context",
+        "//xla/stream_executor/gpu:context_map",
+        "//xla/stream_executor/gpu:scoped_activate_context",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+cc_library(
+    name = "cuda_driver",
+    srcs = ["cuda_driver.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_context",
         ":cuda_diagnostics",  # buildcleaner: keep
         ":cuda_status",
         "//xla/stream_executor",
@@ -323,8 +346,8 @@ xla_test(
         "cuda-only",
     ],
     deps = [
+        ":cuda_context",
         ":cuda_diagnostics",
-        ":cuda_driver",
         ":cuda_status",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -979,7 +1002,7 @@ cc_library(
     ],
     deps = [
         ":cuda_collectives",
-        ":cuda_driver",
+        ":cuda_context",
         ":cuda_event",  # buildcleaner: keep
         ":cuda_kernel",  # buildcleaner: keep
         ":cuda_platform_id",
@@ -1086,11 +1109,11 @@ cc_library(
     name = "stream_executor_cuda",
     tags = ["cuda-only"],
     deps = [
+        ":cuda_platform_id",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:scratch_allocator",
-        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/host:host_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
     ] + if_google(
