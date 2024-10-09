@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_CLUSTERS_UTILS_H_
 #define TENSORFLOW_CORE_GRAPPLER_CLUSTERS_UTILS_H_
 
+#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
