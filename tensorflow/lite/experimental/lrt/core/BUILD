@@ -75,7 +75,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":lite_rt_model_init",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
@@ -104,7 +104,7 @@ cc_test(
         ":api_internal",
         ":graph_tools",
         ":model",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

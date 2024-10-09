@@ -13,7 +13,7 @@
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 

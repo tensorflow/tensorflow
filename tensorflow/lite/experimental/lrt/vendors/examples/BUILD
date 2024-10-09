@@ -12,26 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_cc_lib_and_so")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-cc_library(
+lite_rt_cc_lib_and_so(
     name = "mul_op_plugin",
     srcs = ["mul_op_plugin.cc"],
+    shared_lib_name = "Plugin_Test_MulOp",
+    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
     ],
-)
-
-cc_shared_library(
-    name = "mul_op_plugin_so",
-    shared_lib_name = "libLrtPlugin_Test_MulOp.so",
-    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
-    deps = [":mul_op_plugin"],
 )
 
 cc_test(
@@ -44,7 +41,7 @@ cc_test(
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],

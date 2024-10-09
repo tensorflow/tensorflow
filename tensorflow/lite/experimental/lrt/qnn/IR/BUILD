@@ -46,7 +46,7 @@ ungrte_cc_test_with_qnn(
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )
 
@@ -73,6 +73,6 @@ ungrte_cc_test_with_qnn(
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )

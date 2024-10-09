@@ -24,7 +24,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
@@ -82,7 +82,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
 // NOLINTEND
 
 TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
@@ -151,7 +151,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
 }
 
 TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
@@ -233,7 +233,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
 }
 
 TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));

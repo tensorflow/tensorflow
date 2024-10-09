@@ -52,6 +52,6 @@ ungrte_cc_test_with_qnn(
         ":qnn_manager",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )

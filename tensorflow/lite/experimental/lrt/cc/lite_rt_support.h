@@ -109,7 +109,7 @@ class LrtResult {
 #define LRT_CHECK_STATUS_HAS_CODE_MSG(expr, code, d_msg) \
   if (LrtStatus status = expr; status != code) {         \
     _LRT_D_MSG(d_msg);                                   \
-    CHECK(false);                                        \
+    ABSL_CHECK(false);                                   \
   }
 
 #define LRT_CHECK_STATUS_HAS_CODE(expr, code) \

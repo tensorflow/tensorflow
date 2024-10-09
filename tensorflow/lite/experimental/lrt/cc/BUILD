@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/log:absl_check",
     ],
 )
 
@@ -48,7 +49,7 @@ cc_test(
         ":lite_rt_tensor",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -68,7 +69,7 @@ cc_test(
         ":lite_rt_op",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

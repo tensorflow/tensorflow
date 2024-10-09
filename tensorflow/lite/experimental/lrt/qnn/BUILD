@@ -47,7 +47,7 @@ ungrte_cc_test_with_qnn(
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
-        "//tensorflow/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )
 

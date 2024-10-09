@@ -15,21 +15,37 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_COMMON_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <memory>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+
+#define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
+  auto result = (expr);                              \
+  ASSERT_TRUE(result.HasValue());                    \
+  decl = result.Value();
+
+#define ASSERT_RESULT_OK_ASSIGN(decl, expr) \
+  _ASSERT_RESULT_OK_ASSIGN(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
+
+#define ASSERT_STATUS_HAS_CODE(expr, code) \
+  {                                        \
+    LrtStatus status = (expr);             \
+    ASSERT_EQ(status, code);               \
+  }
+
+#define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLrtStatusOk);
 
 namespace lrt {
 namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename);
-absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view file_name);
+
+absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
+
+UniqueLrtModel LoadTestFileModel(absl::string_view filename);
 
 }  // namespace testing
 }  // namespace lrt

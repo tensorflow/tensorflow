@@ -25,7 +25,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
@@ -51,7 +51,7 @@ TEST(TestDummyPlugin, GetConfigInfo) {
 
 TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
   auto plugin = GetDummyPlugin();
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   LrtOpListT selected_ops;
   ASSERT_STATUS_OK(
@@ -64,7 +64,7 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
 
 TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   auto plugin = GetDummyPlugin();
-  auto model = LoadTestFileModel("mul_simple.tflite");
+  auto model = lrt::testing::LoadTestFileModel("mul_simple.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 

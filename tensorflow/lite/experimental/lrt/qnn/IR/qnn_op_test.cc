@@ -19,7 +19,7 @@
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
@@ -29,7 +29,7 @@ TEST(TestInitQnnOp, BuildDefaultOp) {
 }
 
 TEST(TestLegalizeOp, SimpleSupportedOp) {
-  auto model = LoadTestFileModel("one_mul.tflite");
+  auto model = lrt::testing::LoadTestFileModel("one_mul.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
@@ -49,7 +49,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
 }
 
 TEST(TestLegalizeOp, UnsupportedOp) {
-  auto model = LoadTestFileModel("simple_floor_mod_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
