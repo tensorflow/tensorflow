@@ -1474,7 +1474,7 @@ TEST_F(AlgebraicSimplifierTest, SubAddReassociateMergeConstants) {
 
 TEST_F(AlgebraicSimplifierTest, ExpOfZero) {
   const char* m = R"(
-  HloModule m 
+  HloModule m
     ENTRY main{
       %constant = bf16[] constant(0)
       %broadcast = bf16[6,512]{1,0} broadcast(bf16[] %constant), dimensions={}
@@ -8450,11 +8450,11 @@ TEST_F(AlgebraicSimplifierTest, GatherOfPad) {
 HloModule module
 
 ENTRY %entry {
-  reshape.17992 = f32[25165824,32]{1,0} parameter(0)
-  constant.31700 = f32[] constant(0)
-  pad.921 = f32[25165824,128]{1,0} pad(reshape.17992, constant.31700), padding=0_0x0_96
-  reshape.40561 = s32[20447232,1]{1,0} parameter(1)
-  gather.100277 = f32[20447232,128]{1,0} gather(pad.921, reshape.40561),
+  par.0 = f32[25165824,32]{1,0} parameter(0)
+  constant.0 = f32[] constant(0)
+  pad = f32[25165824,128]{1,0} pad(par.0, constant.0), padding=0_0x0_96
+  start_indices = s32[20447232,1]{1,0} parameter(1)
+  gather = f32[20447232,128]{1,0} gather(pad, start_indices),
     offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0},
     index_vector_dim=1, slice_sizes={1,128}
 })";
@@ -8466,22 +8466,26 @@ ENTRY %entry {
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              GmockMatch(m::Pad(m::Gather(m::Parameter(0), m::Parameter(1)),
-                                m::ConstantScalar(0))));
+  const HloInstruction* gather_instr;
+  EXPECT_THAT(root, GmockMatch(m::Pad(m::Gather(&gather_instr, m::Parameter(0),
+                                                m::Parameter(1)),
+                                      m::ConstantScalar(0))));
+  EXPECT_THAT(Cast<HloGatherInstruction>(gather_instr)->gather_slice_sizes(),
+              ElementsAre(1, 32));
 }
 
-TEST_F(AlgebraicSimplifierTest, GatherOfPad2) {
+TEST_F(AlgebraicSimplifierTest, GatherOfPadWithBatchDims) {
   const char* hlo_string = R"(
 HloModule module
 
 ENTRY %entry {
-  iota.3 = s32[4,1]{1,0} iota(), iota_dimension=0
-  constant.36 = s32[] constant(0)
-  pad = s32[4,2]{1,0} pad(iota.3, constant.36), padding=0_0x0_1
-  reshape.300 = s32[3,40,1]{2,1,0} parameter(0)
-  gather.363 = s32[3,40,2]{2,1,0} gather(pad, reshape.300),
-    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+  iota = s32[4,1]{1,0} iota(), iota_dimension=0
+  constant.0 = s32[] constant(0)
+  pad = s32[4,2]{1,0} pad(iota, constant.0), padding=0_0x0_1
+  start_indices = s32[4,40,1]{2,1,0} parameter(0)
+  gather = s32[4,40,2]{2,1,0} gather(pad, start_indices),
+    offset_dims={2}, collapsed_slice_dims={}, start_index_map={0},
+    operand_batching_dims={0}, start_indices_batching_dims={0},
     index_vector_dim=2, slice_sizes={1,2}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -8492,8 +8496,16 @@ ENTRY %entry {
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Pad(m::Gather(m::Iota(), m::Parameter(0)),
-                                      m::ConstantScalar(0))));
+  const HloInstruction* gather_instr;
+  EXPECT_THAT(root, GmockMatch(m::Pad(
+                        m::Gather(&gather_instr, m::Iota(), m::Parameter(0)),
+                        m::ConstantScalar(0))));
+  auto gather = Cast<HloGatherInstruction>(gather_instr);
+  EXPECT_THAT(gather->gather_slice_sizes(), ElementsAre(1, 1));
+  EXPECT_THAT(gather->gather_dimension_numbers().operand_batching_dims(),
+              ElementsAre(0));
+  EXPECT_THAT(gather->gather_dimension_numbers().start_indices_batching_dims(),
+              ElementsAre(0));
 }
 
 TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad) {
