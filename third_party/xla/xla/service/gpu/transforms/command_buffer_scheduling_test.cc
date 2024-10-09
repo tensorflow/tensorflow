@@ -1124,8 +1124,14 @@ TEST_F(CommandBufferSchedulingTest, DynamicSliceFusionDynamicSlicing) {
     rs = s32[4,32] reduce-scatter(input), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
     ROOT dus = s32[8,32] dynamic-update-slice(p1, rs, c0, c0)
   })";
+  TF_ASSERT_OK_AND_ASSIGN(auto original_module,
+                          ParseAndReturnVerifiedModule(hlo));
+  DebugOptions& original_options =
+      original_module->mutable_config().mutable_debug_options();
+  original_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto m, GetOptimizedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          GetOptimizedModule(std::move(original_module)));
 
   HloModuleConfig config(m->config());
   DebugOptions options(config.debug_options());
