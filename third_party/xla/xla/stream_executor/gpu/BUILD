@@ -124,6 +124,7 @@ cc_library(
     deps = [
         ":context",
         ":gpu_executor_header",
+        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",

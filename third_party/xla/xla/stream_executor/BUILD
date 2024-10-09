@@ -149,6 +149,11 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "activate_context",
+    hdrs = ["activate_context.h"],
+)
+
+cc_library(
     name = "device_description",
     srcs = ["device_description.cc"],
     hdrs = ["device_description.h"],
