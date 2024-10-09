@@ -1117,11 +1117,6 @@ bool GpuDriver::GetDeviceProperties(hipDeviceProp_t* device_properties,
   return true;
 }
 
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(
-    hipDeviceAttribute_t attribute, hipDevice_t device) {
-  return GetSimpleAttribute<int>(device, attribute);
-}
-
 bool GpuDriver::IsEccEnabled(hipDevice_t device, bool* result) {
   int value = -1;
   hipError_t res = hipSuccess;

@@ -1234,14 +1234,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(CUdevice_attribute attribute,
-                                                  CUdevice device) {
-  int val;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetAttribute(&val, attribute, device)));
-  return val;
-}
-
 bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   int value = -1;
   auto status = cuda::ToStatus(
@@ -1252,22 +1244,6 @@ bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   }
 
   *result = value;
-  return true;
-}
-
-bool GpuDriver::GetDeviceMemoryInfo(Context* context, int64_t* free_out,
-                                    int64_t* total_out) {
-  ScopedActivateContext activation(context);
-  size_t free = 0;
-  size_t total = 0;
-  auto status = cuda::ToStatus(cuMemGetInfo(&free, &total));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query device memory info: " << status;
-    return false;
-  }
-
-  *free_out = free;
-  *total_out = total;
   return true;
 }
 
