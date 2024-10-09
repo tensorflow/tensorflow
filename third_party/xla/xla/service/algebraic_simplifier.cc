@@ -5341,6 +5341,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleCustomCall(
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::HandleExp(
+    HloInstruction* exponential) {
+  // Exp(0) => 1
+  if (Match(exponential, m::Exp(m::ConstantScalar(0))) ||
+      Match(exponential, m::Exp(m::Broadcast(m::ConstantScalar(0))))) {
+    return ReplaceInstruction(exponential, MakeScalarLike(exponential, 1.0));
+  }
+  return absl::OkStatus();
+}
+
 // Complex(Real(c), Imag(c)) -> c
 absl::Status AlgebraicSimplifierVisitor::HandleComplex(
     HloInstruction* complex) {

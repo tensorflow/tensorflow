@@ -1472,6 +1472,23 @@ TEST_F(AlgebraicSimplifierTest, SubAddReassociateMergeConstants) {
                   m::Parameter(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ExpOfZero) {
+  const char* m = R"(
+  HloModule m 
+    ENTRY main{
+      %constant = bf16[] constant(0)
+      %broadcast = bf16[6,512]{1,0} broadcast(bf16[] %constant), dimensions={}
+      ROOT exponential.11278 = bf16[6,512] exponential(%broadcast)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(m));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(m::ConstantScalar(1.0))));
+}
+
 TEST_F(AlgebraicSimplifierTest, SubAddReassociateMergeBroadcastedConstants) {
   const char* kModuleStr = R"(
     HloModule m

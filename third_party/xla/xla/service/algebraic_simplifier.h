@@ -425,6 +425,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
 
+  absl::Status HandleExp(HloInstruction* exp) override;
+
   absl::Status HandleReal(HloInstruction* real) override;
 
   absl::Status HandleImag(HloInstruction* imag) override;
