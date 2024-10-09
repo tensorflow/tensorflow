@@ -473,7 +473,7 @@ absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
-    bool run_hlo_passes) {
+    bool run_hlo_passes, DeviceAssignment* device_assignment) {
   CHECK(num_replicas > 0 && "expect at least one replica");
   CHECK(num_replicas == arguments.size() &&
         "expect arguments for each replica");
@@ -489,8 +489,7 @@ absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
       [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
         return arguments[replica_idx][argument_idx];
       },
-      num_replicas, /*run_hlo_passes=*/run_hlo_passes,
-      /*device_assignment=*/nullptr);
+      num_replicas, run_hlo_passes, device_assignment);
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(

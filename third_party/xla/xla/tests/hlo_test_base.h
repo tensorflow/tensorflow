@@ -277,7 +277,7 @@ class HloTestBase : public ::testing::Test {
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
-      bool run_hlo_passes);
+      bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
   // Executes the given hlo module on two backends and compares results.
   //

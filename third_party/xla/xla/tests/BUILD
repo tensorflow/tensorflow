@@ -2359,15 +2359,10 @@ xla_test(
             "multi_gpu",
             "no_oss",
         ],
-        "cpu": [
-            "notsan",
-        ],
     },
     backends = [
         "gpu",
-        "cpu",
     ],
-    tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
@@ -2381,6 +2376,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
+        "//xla/service:computation_placer",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/log",
