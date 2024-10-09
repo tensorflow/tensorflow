@@ -19,25 +19,18 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "absl/types/span.h"
-#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/set_tpu_infeed_layout.h"
-#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/shape.h"
-#include "xla/stream_executor/tpu/c_api_conversions.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 
 namespace mlir {
 namespace mhlo {
