@@ -14,7 +14,7 @@ load(
 load("//xla:package_groups.bzl", "xla_tests_package_groups")
 load("//xla:xla.bzl", "tests_build_defs_bzl_deps", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -395,6 +395,19 @@ xla_test(
 xla_test(
     name = "buffer_donation_test",
     srcs = ["buffer_donation_test.cc"],
+    backend_args = if_google(
+        {
+            "cpu": [
+                # TODO(b/372312816): Fix the leak in the test.
+                "--heap_check=",
+            ],
+            "interpreter": [
+                # TODO(b/372312816): Fix the leak in the test.
+                "--heap_check=",
+            ],
+        },
+        {},
+    ),
     tags = ["test_xla_cpu_thunks"],
     deps = [
         ":hlo_test_base",
