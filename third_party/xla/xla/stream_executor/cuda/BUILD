@@ -660,6 +660,8 @@ cc_library(
     ],
 )
 
+# This target serves to expose a single variable to all other kinds of
+# targets and should stay minimal (no dependencies).
 cc_library(
     name = "ptx_compiler_support",
     srcs = ["ptx_compiler_support.cc"],
@@ -672,9 +674,14 @@ cc_library(
             "LIBNVPTXCOMPILER_SUPPORT=false",
         ],
     }),
+)
+
+cc_library(
+    name = "ptx_compiler_helpers",
+    srcs = ["ptx_compiler_helpers.cc"],
+    hdrs = ["ptx_compiler_helpers.h"],
     deps = [
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -700,7 +707,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
-        ":ptx_compiler_support",
+        ":ptx_compiler_helpers",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
@@ -713,6 +720,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:nvptxcompiler",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -810,7 +818,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
-        ":ptx_compiler_support",
+        ":ptx_compiler_helpers",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -825,6 +833,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:nvjitlink",  # buildcleaner: keep
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -920,6 +929,7 @@ cc_library(
         ":cuda_driver",  # buildcleaner: keep
         ":cuda_status",
         ":ptx_compiler",
+        ":ptx_compiler_helpers",
         ":ptx_compiler_support",
         "//xla:status_macros",
         "//xla:util",

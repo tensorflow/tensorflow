@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/context.h"

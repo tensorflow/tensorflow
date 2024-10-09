@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
-#define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
+#define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_
+#include <string_view>
 
 namespace stream_executor {
-// Returns true if XLA was built with libnvptxcompiler support. Otherwise false
-// is returned.
-bool IsLibNvPtxCompilerSupported();
+// Checks whether ptxas log contains errors related to register allocation.
+bool IsPtxRegisterAllocationError(std::string_view);
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_HELPERS_H_

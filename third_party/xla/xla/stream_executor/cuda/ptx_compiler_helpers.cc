@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
-#define XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
+
+#include <string_view>
+
+#include "absl/strings/match.h"
 
 namespace stream_executor {
-// Returns true if XLA was built with libnvptxcompiler support. Otherwise false
-// is returned.
-bool IsLibNvPtxCompilerSupported();
-}  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_PTX_COMPILER_SUPPORT_H_
+bool IsPtxRegisterAllocationError(std::string_view str) {
+  return absl::StrContains(str, "ptxas fatal") &&
+         (absl::StrContains(str, "Register allocation failed") ||
+          absl::StrContains(str, "Insufficient registers"));
+}
+
+}  // namespace stream_executor
