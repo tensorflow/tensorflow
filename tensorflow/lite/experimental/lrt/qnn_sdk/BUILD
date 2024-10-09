@@ -46,6 +46,8 @@ ungrte_cc_library_with_qnn(
 ungrte_cc_test_with_qnn(
     name = "load_qnn_test",
     srcs = ["load_qnn_test.cc"],
+    # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+    tags = ["nosan"],
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",

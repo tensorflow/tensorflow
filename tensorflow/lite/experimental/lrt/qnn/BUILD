@@ -37,6 +37,8 @@ ungrte_cc_test_with_qnn(
     srcs = [
         "qnn_compiler_plugin_test.cc",
     ],
+    # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+    tags = ["nosan"],
     deps = [
         ":qnn_compiler_plugin",  # buildcleaner: keep
         "@com_google_absl//absl/log:absl_check",

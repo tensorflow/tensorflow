@@ -38,8 +38,8 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
   ASSERT_STATUS_OK(qnn::LegalizeOp(ops[0], qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, "mul"));
-  EXPECT_EQ(qnn_op.v1.packageName, "qti.aisw");
-  EXPECT_EQ(qnn_op.v1.typeName, "ElementWiseMultiply");
+  EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
+  EXPECT_STREQ(qnn_op.v1.typeName, "ElementWiseMultiply");
 
   EXPECT_EQ(qnn_op.v1.numOfInputs, 0);
   EXPECT_EQ(qnn_op.v1.numOfOutputs, 0);

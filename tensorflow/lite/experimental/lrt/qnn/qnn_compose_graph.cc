@@ -269,8 +269,7 @@ LrtStatus GraphMapper::MapGraph(QnnManager& qnn, LrtSubgraph subgraph,
     // Look up op input tensors in scope
 
     LRT_ASSIGN_OR_RETURN_STATUS(auto op_ins, ::graph_tools::GetOpIns(op));
-    Qnn_Tensor_t* qnn_op_ins =
-        (Qnn_Tensor_t*)alloca(sizeof(Qnn_Tensor_t) * op_ins.size());
+    LRT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_ins, op_ins.size(), QNN_TENSOR_INIT);
 
     Qnn_Tensor_t* cur_qnn_op_in = qnn_op_ins;
     for (auto op_in : op_ins) {
@@ -282,8 +281,7 @@ LrtStatus GraphMapper::MapGraph(QnnManager& qnn, LrtSubgraph subgraph,
     // Legalize op outputs and update scope
 
     LRT_ASSIGN_OR_RETURN_STATUS(auto op_outs, ::graph_tools::GetOpOuts(op));
-    Qnn_Tensor_t* qnn_op_outs =
-        (Qnn_Tensor_t*)alloca(sizeof(Qnn_Tensor_t) * op_outs.size());
+    LRT_STACK_ARRAY(Qnn_Tensor_t, qnn_op_outs, op_outs.size(), QNN_TENSOR_INIT);
 
     Qnn_Tensor_t* cur_qnn_op_out = qnn_op_outs;
     for (auto op_out : op_outs) {
