@@ -660,6 +660,8 @@ cc_library(
     ],
 )
 
+# This target serves to expose a single variable to all other kinds of
+# targets and should stay minimal (no dependencies).
 cc_library(
     name = "ptx_compiler_support",
     srcs = ["ptx_compiler_support.cc"],
@@ -672,10 +674,6 @@ cc_library(
             "LIBNVPTXCOMPILER_SUPPORT=false",
         ],
     }),
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-    ],
 )
 
 cc_library(
@@ -700,7 +698,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
-        ":ptx_compiler_support",
+        ":cuda_asm_compiler",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
@@ -810,7 +808,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
-        ":ptx_compiler_support",
+        ":cuda_asm_compiler",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

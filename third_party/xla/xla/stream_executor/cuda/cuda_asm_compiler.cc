@@ -655,4 +655,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
                                  cancel_if_reg_spill);
 }
 
+bool IsPtxRegisterAllocationError(std::string_view str) {
+  return absl::StrContains(str, "ptxas fatal") &&
+         (absl::StrContains(str, "Register allocation failed") ||
+          absl::StrContains(str, "Insufficient registers"));
+}
+
 }  // namespace stream_executor

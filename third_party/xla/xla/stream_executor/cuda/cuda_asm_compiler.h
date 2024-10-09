@@ -101,6 +101,9 @@ absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
 absl::StatusOr<SemanticVersion> GetNvLinkVersion(
     std::string_view preferred_cuda_dir);
 
+// Checks whether ptxas log contains errors related to register allocation.
+bool IsPtxRegisterAllocationError(std::string_view);
+
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_ASM_COMPILER_H_
