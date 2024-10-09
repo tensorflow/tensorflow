@@ -286,9 +286,8 @@ TEST_F(StatelessAutotunerTest,
           << "There is a cublas implementation for dot_bf16_bf16_f32 on Ampere";
       break;
     case se::CudaComputeCapability::HOPPER:
-      EXPECT_FALSE(hasCublasConfig(configs))
-          << "There is no cublas implementation for dot_bf16_bf16_f32 on "
-             "Hopper. That is why we don't want to fallback to cublas.";
+      EXPECT_TRUE(hasCublasConfig(configs))
+          << "There is a cublas implementation for dot_bf16_bf16_f32 on Hopper";
       break;
     default:
       // We don't know what to expect for other compute capabilities.
