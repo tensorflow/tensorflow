@@ -63,8 +63,9 @@ struct OperandReadInfo {
   // Total number of bytes read from the operand.
   int64_t total_bytes_read = 0;
 
-  // Whether the read is coalesced.
-  int64_t is_coalesced = true;
+  // Factor, between 0 and 1, determining how much of the chip's HBM bandwidth
+  // is actually attained when reading this operand.
+  double read_bandwidth_utilization_rate = 1.0;
 };
 
 // Returns the number of elements in the tile after each dimension is padded to
@@ -294,9 +295,10 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
 
       VLogOperandRead(instr, n_bytes_total, n_bytes_net, is_coalesced);
 
-      read_time +=
-          ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
-                                    n_bytes_total, element_type, is_coalesced);
+      read_time += ReadTimeWithDRAMHeuristic(
+          *device_info_, num_blocks, n_bytes_net, n_bytes_total, element_type,
+          GetCoalescingUtilizationRate(element_type, *device_info_,
+                                       is_coalesced));
     }
   }
 
@@ -434,12 +436,20 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
 
       bytes_read += tile_bytes_read;
 
-      bool is_coalesced =
-          IsTiledReadCoalescedHeuristic(*tiled_hlo, *device_info_);
+      double effective_bandwidth_utilization_rate =
+          BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*tiled_hlo,
+                                                                *device_info_);
 
       OperandReadInfo& operand_read_info = n_bytes_total_map[hlo];
       operand_read_info.total_bytes_read += tile_bytes_read;
-      operand_read_info.is_coalesced &= is_coalesced;
+      // TODO(b/332714755): using std::min is more pessimistic than it needs to
+      // be since it'll end up assuming that if one read is done with lower
+      // bandwidth, all other reads of the same operand will also be done with
+      // lower bandwidth. But it's a start. We should refactor this function to
+      // properly track each read independently later.
+      operand_read_info.read_bandwidth_utilization_rate =
+          std::min(operand_read_info.read_bandwidth_utilization_rate,
+                   effective_bandwidth_utilization_rate);
     }
   }
 
@@ -452,11 +462,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     // TODO(b/332714755): use
     // `BandwidthUtilizationRateHeuristicForTiledMemoryAccess` to compute read
     // time as well.
-    read_time +=
-        ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
-                                  operand_read_info.total_bytes_read,
-                                  /*element_type=*/hlo->shape().element_type(),
-                                  /*coalesced=*/operand_read_info.is_coalesced);
+    read_time += ReadTimeWithDRAMHeuristic(
+        *device_info_, num_blocks, n_bytes_net,
+        operand_read_info.total_bytes_read,
+        /*element_type=*/hlo->shape().element_type(),
+        /*hbm_bandwidth_utilization_rate=*/
+        operand_read_info.read_bandwidth_utilization_rate);
   }
 
   int64_t bytes_written =

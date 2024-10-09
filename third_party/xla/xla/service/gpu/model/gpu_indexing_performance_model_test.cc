@@ -527,8 +527,9 @@ ENTRY main {
   EXPECT_EQ(res.flops, kPaddedOutputTileSize * kAddFlops);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTiledFusion_UncoalescedReadsTakeMoreTime) {
+TEST_F(
+    GpuIndexingPerformanceModelTest,
+    EstimateRunTimeForTiledFusion_UncoalescedReadsAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -550,22 +551,25 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(
       auto res_coalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
-          *fusion_adaptor, /*launch_dimensions=*/{8192, 2 * WarpSize()},
-          /*output_tile_sizes=*/{1, 128}));
+          *fusion_adaptor, /*launch_dimensions=*/{4096, 2 * WarpSize()},
+          /*output_tile_sizes=*/{2, 128}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto res_uncoalesced,
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
-          *fusion_adaptor, /*launch_dimensions=*/{8192, 2 * WarpSize()},
-          /*output_tile_sizes=*/{128, 1}));
+          *fusion_adaptor, /*launch_dimensions=*/{4096, 2 * WarpSize()},
+          /*output_tile_sizes=*/{128, 2}));
 
-  constexpr int64_t kParamSizeBytes = 2048 * 512 * 4;
   // The number of bytes read is the same for coalesced and uncoalesced reads.
+  constexpr int64_t kParamSizeBytes = 2048 * 512 * 4;
   EXPECT_EQ(res_coalesced.bytes_read, 2 * kParamSizeBytes);
   EXPECT_EQ(res_uncoalesced.bytes_read, 2 * kParamSizeBytes);
 
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res_coalesced.read_time), 11, 1);
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res_uncoalesced.read_time), 175, 1);
+  // But we expect to waste 7/8th of read transaction time in the
+  // uncoalesced case, making the read time 8 times slower.
+  EXPECT_NEAR(
+      absl::FDivDuration(res_uncoalesced.read_time, res_coalesced.read_time), 8,
+      0.001);
 }
 
 TEST_F(
