@@ -1,360 +1,419 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/array_cookie.h b/libcxx/include/__memory/array_cookie.h
---- a/libcxx/include/__memory/array_cookie.h
-+++ b/libcxx/include/__memory/array_cookie.h
-@@ -24,7 +24,7 @@
- _LIBCPP_BEGIN_NAMESPACE_STD
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/pragma-pack-packed-2.cpp b/clang/test/SemaCXX/pragma-pack-packed-2.cpp
+--- a/clang/test/SemaCXX/pragma-pack-packed-2.cpp
++++ b/clang/test/SemaCXX/pragma-pack-packed-2.cpp
+@@ -1,6 +1,6 @@
+ // RUN: %clang_cc1 -triple s390x-ibm-zos -fzos-extensions -fsyntax-only -verify %s
+ // RUN: %clang_cc1 -triple s390x-ibm-zos -fzos-extensions -fxl-pragma-pack -fsyntax-only -verify %s
+-// RUN: %clang -target s390x-ibm-zos -S -emit-llvm -Xclang -verify -fno-xl-pragma-pack %s
++// RUN: %clang -target s390x-ibm-zos -S -emit-llvm -Xclang -verify -fno-xl-pragma-pack -o %t.ll %s
  
- // Trait representing whether a type requires an array cookie at the start of its allocation when
--// allocated as `new T[n]` and deallocated as `delete array`.
-+// allocated as `new T[n]` and deallocated as `delete[] array`.
- //
- // Under the Itanium C++ ABI [1], we know that an array cookie is available unless `T` is trivially
- // destructible and the call to `operator delete[]` is not a sized operator delete. Under ABIs other
-diff -ruN --strip-trailing-cr a/libcxx/include/__memory/unique_ptr.h b/libcxx/include/__memory/unique_ptr.h
---- a/libcxx/include/__memory/unique_ptr.h
-+++ b/libcxx/include/__memory/unique_ptr.h
-@@ -102,6 +102,12 @@
- };
- 
- template <class _Deleter>
-+struct __is_default_deleter : false_type {};
-+
-+template <class _Tp>
-+struct __is_default_deleter<default_delete<_Tp> > : true_type {};
-+
-+template <class _Deleter>
- struct __unique_ptr_deleter_sfinae {
-   static_assert(!is_reference<_Deleter>::value, "incorrect specialization");
-   typedef const _Deleter& __lval_ref_type;
-@@ -307,11 +313,16 @@
- // 1. When an array cookie (see [1]) exists at the beginning of the array allocation, we are
- //    able to reuse that cookie to extract the size of the array and perform bounds checking.
- //    An array cookie is a size inserted at the beginning of the allocation by the compiler.
--//    That size is inserted implicitly when doing `new T[n]` in some cases, and its purpose
--//    is to allow the runtime to destroy the `n` array elements when doing `delete array`.
-+//    That size is inserted implicitly when doing `new T[n]` in some cases (as of writing this
-+//    exactly when the array elements are not trivially destructible), and its main purpose is
-+//    to allow the runtime to destroy the `n` array elements when doing `delete[] array`.
- //    When we are able to use array cookies, we reuse information already available in the
- //    current runtime, so bounds checking does not require changing libc++'s ABI.
- //
-+//    However, note that we cannot assume the presence of an array cookie when a custom deleter
-+//    is used, because the unique_ptr could have been created from an allocation that wasn't
-+//    obtained via `new T[n]` (since it may not be deleted with `delete[] arr`).
-+//
- // 2. When the "bounded unique_ptr" ABI configuration (controlled by `_LIBCPP_ABI_BOUNDED_UNIQUE_PTR`)
- //    is enabled, we store the size of the allocation (when it is known) so we can check it when
- //    indexing into the `unique_ptr`. That changes the layout of `std::unique_ptr<T[]>`, which is
-@@ -328,7 +339,7 @@
- //    try to fall back to using an array cookie when available.
- //
- //    Finally, note that when this ABI configuration is enabled, we have no choice but to always
--//    make space for a size to be stored in the unique_ptr. Indeed, while we might want to avoid
-+//    make space for the size to be stored in the unique_ptr. Indeed, while we might want to avoid
- //    storing the size when an array cookie is available, knowing whether an array cookie is available
- //    requires the type stored in the unique_ptr to be complete, while unique_ptr can normally
- //    accommodate incomplete types.
-@@ -339,7 +350,9 @@
-   __unique_ptr_array_bounds_stateless() = default;
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR explicit __unique_ptr_array_bounds_stateless(size_t) {}
- 
--  template <class _Tp, __enable_if_t<__has_array_cookie<_Tp>::value, int> = 0>
-+  template <class _Deleter,
-+            class _Tp,
-+            __enable_if_t<__is_default_deleter<_Deleter>::value && __has_array_cookie<_Tp>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR bool __in_bounds(_Tp* __ptr, size_t __index) const {
-     // In constant expressions, we can't check the array cookie so we just pretend that the index
-     // is in-bounds. The compiler catches invalid accesses anyway.
-@@ -349,7 +362,9 @@
-     return __index < __cookie;
+ #pragma pack(show) // expected-warning {{value of #pragma pack(show) == 8}}
+ #pragma pack(twobyte)
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AArch64.cpp b/lld/ELF/Arch/AArch64.cpp
+--- a/lld/ELF/Arch/AArch64.cpp
++++ b/lld/ELF/Arch/AArch64.cpp
+@@ -1208,10 +1208,12 @@
    }
- 
--  template <class _Tp, __enable_if_t<!__has_array_cookie<_Tp>::value, int> = 0>
-+  template <class _Deleter,
-+            class _Tp,
-+            __enable_if_t<!__is_default_deleter<_Deleter>::value || !__has_array_cookie<_Tp>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR bool __in_bounds(_Tp*, size_t) const {
-     return true; // If we don't have an array cookie, we assume the access is in-bounds
-   }
-@@ -365,7 +380,9 @@
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR explicit __unique_ptr_array_bounds_stored(size_t __size) : __size_(__size) {}
- 
-   // Use the array cookie if there's one
--  template <class _Tp, __enable_if_t<__has_array_cookie<_Tp>::value, int> = 0>
-+  template <class _Deleter,
-+            class _Tp,
-+            __enable_if_t<__is_default_deleter<_Deleter>::value && __has_array_cookie<_Tp>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR bool __in_bounds(_Tp* __ptr, size_t __index) const {
-     if (__libcpp_is_constant_evaluated())
-       return true;
-@@ -374,7 +391,9 @@
-   }
- 
-   // Otherwise, fall back on the stored size (if any)
--  template <class _Tp, __enable_if_t<!__has_array_cookie<_Tp>::value, int> = 0>
-+  template <class _Deleter,
-+            class _Tp,
-+            __enable_if_t<!__is_default_deleter<_Deleter>::value || !__has_array_cookie<_Tp>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR bool __in_bounds(_Tp*, size_t __index) const {
-     return __index < __size_;
-   }
-@@ -562,7 +581,7 @@
-   }
- 
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX23 __add_lvalue_reference_t<_Tp> operator[](size_t __i) const {
--    _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(__checker_.__in_bounds(std::__to_address(__ptr_), __i),
-+    _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(__checker_.__in_bounds<deleter_type>(std::__to_address(__ptr_), __i),
-                                         "unique_ptr<T[]>::operator[](index): index out of range");
-     return __ptr_[__i];
-   }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/assert.subscript.pass.cpp b/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/assert.subscript.pass.cpp
---- a/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/assert.subscript.pass.cpp
-+++ b/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/assert.subscript.pass.cpp
-@@ -48,31 +48,24 @@
- 
- template <class WithCookie, class NoCookie>
- void test() {
--  // For types with an array cookie, we can always detect OOB accesses.
-+  // For types with an array cookie, we can always detect OOB accesses. Note that reliance on an array
-+  // cookie is limited to the default deleter, since a unique_ptr with a custom deleter may not have
-+  // been allocated with `new T[n]`.
-   {
--    // Check with the default deleter
-     {
--      {
--        std::unique_ptr<WithCookie[]> ptr(new WithCookie[5]);
--        TEST_LIBCPP_ASSERT_FAILURE(ptr[6], "unique_ptr<T[]>::operator[](index): index out of range");
--      }
--      {
--        std::unique_ptr<WithCookie[]> ptr = std::make_unique<WithCookie[]>(5);
--        TEST_LIBCPP_ASSERT_FAILURE(ptr[6], "unique_ptr<T[]>::operator[](index): index out of range");
--      }
--#if TEST_STD_VER >= 20
--      {
--        std::unique_ptr<WithCookie[]> ptr = std::make_unique_for_overwrite<WithCookie[]>(5);
--        TEST_LIBCPP_ASSERT_FAILURE(ptr[6] = WithCookie(), "unique_ptr<T[]>::operator[](index): index out of range");
--      }
--#endif
-+      std::unique_ptr<WithCookie[]> ptr(new WithCookie[5]);
-+      TEST_LIBCPP_ASSERT_FAILURE(ptr[6], "unique_ptr<T[]>::operator[](index): index out of range");
-     }
--
--    // Check with a custom deleter
-     {
--      std::unique_ptr<WithCookie[], MyDeleter> ptr(new WithCookie[5]);
-+      std::unique_ptr<WithCookie[]> ptr = std::make_unique<WithCookie[]>(5);
-       TEST_LIBCPP_ASSERT_FAILURE(ptr[6], "unique_ptr<T[]>::operator[](index): index out of range");
-     }
-+#if TEST_STD_VER >= 20
-+    {
-+      std::unique_ptr<WithCookie[]> ptr = std::make_unique_for_overwrite<WithCookie[]>(5);
-+      TEST_LIBCPP_ASSERT_FAILURE(ptr[6] = WithCookie(), "unique_ptr<T[]>::operator[](index): index out of range");
-+    }
-+#endif
-   }
- 
-   // For types that don't have an array cookie, things are a bit more complicated. We can detect OOB accesses
-@@ -97,14 +90,9 @@
- #endif
- 
-   // Make sure that we carry the bounds information properly through conversions, assignments, etc.
--  // These tests are mostly relevant when the ABI setting is enabled (with a stateful bounds-checker),
--  // but we still run them for types with an array cookie either way.
-+  // These tests are only relevant when the ABI setting is enabled (with a stateful bounds-checker).
- #if defined(_LIBCPP_ABI_BOUNDED_UNIQUE_PTR)
--  using Types = types::type_list<NoCookie, WithCookie>;
--#else
--  using Types = types::type_list<WithCookie>;
--#endif
--  types::for_each(Types(), []<class T> {
-+  types::for_each(types::type_list<NoCookie, WithCookie>(), []<class T> {
-     // Bounds carried through move construction
-     {
-       std::unique_ptr<T[]> ptr = std::make_unique<T[]>(5);
-@@ -135,6 +123,7 @@
-       TEST_LIBCPP_ASSERT_FAILURE(other[6], "unique_ptr<T[]>::operator[](index): index out of range");
-     }
-   });
-+#endif
  }
  
- template <std::size_t Size>
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/op_subscript.runtime.pass.cpp b/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/op_subscript.runtime.pass.cpp
---- a/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/op_subscript.runtime.pass.cpp
-+++ b/libcxx/test/std/utilities/smartptr/unique.ptr/unique.ptr.class/unique.ptr.observers/op_subscript.runtime.pass.cpp
-@@ -46,6 +46,11 @@
- template <class T>
- struct CustomDeleter : std::default_delete<T> {};
- 
-+struct NoopDeleter {
-+  template <class T>
-+  TEST_CONSTEXPR_CXX23 void operator()(T*) const {}
-+};
-+
- TEST_CONSTEXPR_CXX23 bool test() {
-   // Basic test
-   {
-@@ -112,12 +117,33 @@
-         WithNonTrivialDtor<16>,
-         WithNonTrivialDtor<256>>;
-     types::for_each(TrickyCookieTypes(), []<class T> {
--      types::for_each(types::type_list<std::default_delete<T[]>, CustomDeleter<T[]>>(), []<class Deleter> {
--        std::unique_ptr<T[], Deleter> p(new T[3]);
-+      // Array allocated with `new T[n]`, default deleter
-+      {
-+        std::unique_ptr<T[], std::default_delete<T[]>> p(new T[3]);
-+        assert(p[0] == T());
-+        assert(p[1] == T());
-+        assert(p[2] == T());
-+      }
-+
-+      // Array allocated with `new T[n]`, custom deleter
-+      {
-+        std::unique_ptr<T[], CustomDeleter<T[]>> p(new T[3]);
-+        assert(p[0] == T());
-+        assert(p[1] == T());
-+        assert(p[2] == T());
-+      }
-+
-+      // Array not allocated with `new T[n]`, custom deleter
-+      //
-+      // This test aims to ensure that the implementation doesn't try to use an array cookie
-+      // when there is none.
-+      {
-+        T array[50] = {};
-+        std::unique_ptr<T[], NoopDeleter> p(&array[0]);
-         assert(p[0] == T());
-         assert(p[1] == T());
-         assert(p[2] == T());
--      });
-+      }
-     });
+-void elf::setAArch64TargetInfo(Ctx &ctx) {
++TargetInfo *elf::getAArch64TargetInfo(Ctx &ctx) {
+   if ((ctx.arg.andFeatures & GNU_PROPERTY_AARCH64_FEATURE_1_BTI) ||
+-      ctx.arg.zPacPlt)
+-    ctx.target.reset(new AArch64BtiPac(ctx));
+-  else
+-    ctx.target.reset(new AArch64(ctx));
++      ctx.arg.zPacPlt) {
++    static AArch64BtiPac t(ctx);
++    return &t;
++  }
++  static AArch64 t(ctx);
++  return &t;
+ }
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AMDGPU.cpp b/lld/ELF/Arch/AMDGPU.cpp
+--- a/lld/ELF/Arch/AMDGPU.cpp
++++ b/lld/ELF/Arch/AMDGPU.cpp
+@@ -219,4 +219,7 @@
    }
- #endif // C++20
-diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/main.cpp b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/main.cpp
---- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/main.cpp
-+++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/main.cpp
-@@ -20,11 +20,7 @@
- // Pre-D128285 layout.
- #define PACKED_ANON_STRUCT
- #endif
--#if REVISION <= 4
--// Pre-2a1ef74 layout.
--#define NON_STANDARD_PADDING
--#endif
--// REVISION == 5: current layout
-+// REVISION == 4: current layout
+ }
  
- #ifdef PACKED_ANON_STRUCT
- #define BEGIN_PACKED_ANON_STRUCT struct __attribute__((packed)) {
-@@ -38,7 +34,6 @@
- namespace std {
- namespace __lldb {
+-void elf::setAMDGPUTargetInfo(Ctx &ctx) { ctx.target.reset(new AMDGPU(ctx)); }
++TargetInfo *elf::getAMDGPUTargetInfo(Ctx &ctx) {
++  static AMDGPU target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/ARM.cpp b/lld/ELF/Arch/ARM.cpp
+--- a/lld/ELF/Arch/ARM.cpp
++++ b/lld/ELF/Arch/ARM.cpp
+@@ -1533,7 +1533,10 @@
+           "': " + toString(std::move(e)));
+ }
  
--#ifdef NON_STANDARD_PADDING
- #if defined(ALTERNATE_LAYOUT) && defined(SUBCLASS_PADDING)
- template <class _CharT, size_t = sizeof(_CharT)> struct __padding {
-   unsigned char __xx[sizeof(_CharT) - 1];
-@@ -46,13 +41,6 @@
+-void elf::setARMTargetInfo(Ctx &ctx) { ctx.target.reset(new ARM(ctx)); }
++TargetInfo *elf::getARMTargetInfo(Ctx &ctx) {
++  static ARM target(ctx);
++  return &target;
++}
  
- template <class _CharT> struct __padding<_CharT, 1> {};
- #endif
--#else // !NON_STANDARD_PADDING
--template <size_t _PaddingSize> struct __padding {
--  char __padding_[_PaddingSize];
--};
--
--template <> struct __padding<0> {};
--#endif
+ template void elf::writeARMCmseImportLib<ELF32LE>(Ctx &);
+ template void elf::writeARMCmseImportLib<ELF32BE>(Ctx &);
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AVR.cpp b/lld/ELF/Arch/AVR.cpp
+--- a/lld/ELF/Arch/AVR.cpp
++++ b/lld/ELF/Arch/AVR.cpp
+@@ -267,7 +267,10 @@
+   }
+ }
  
- template <class _CharT, class _Traits, class _Allocator> class basic_string {
- public:
-@@ -89,12 +77,7 @@
-     };
- #else // !SUBCLASS_PADDING
+-void elf::setAVRTargetInfo(Ctx &ctx) { ctx.target.reset(new AVR(ctx)); }
++TargetInfo *elf::getAVRTargetInfo(Ctx &ctx) {
++  static AVR target(ctx);
++  return &target;
++}
  
--#ifdef NON_STANDARD_PADDING
-     unsigned char __padding[sizeof(value_type) - 1];
--#else
--    [[no_unique_address]] __padding<sizeof(value_type) - 1> __padding_;
--#endif
--
- #ifdef BITMASKS
-     unsigned char __size_;
- #else // !BITMASKS
-@@ -146,26 +129,21 @@
-     union {
- #ifdef BITMASKS
-       unsigned char __size_;
--#else  // !BITMASKS
-+#else
-       struct {
-         unsigned char __is_long_ : 1;
-         unsigned char __size_ : 7;
-       };
--#endif // BITMASKS
-+#endif
-       value_type __lx;
-     };
--#else  // !SHORT_UNION
-+#else
-     BEGIN_PACKED_ANON_STRUCT
-     unsigned char __is_long_ : 1;
-     unsigned char __size_ : 7;
-     END_PACKED_ANON_STRUCT
--#ifdef NON_STANDARD_PADDING
--    unsigned char __padding[sizeof(value_type) - 1];
--#else  // !NON_STANDARD_PADDING
--    [[no_unique_address]] __padding<sizeof(value_type) - 1> __padding_;
--#endif // NON_STANDARD_PADDING
--
--#endif // SHORT_UNION
-+    char __padding_[sizeof(value_type) - 1];
-+#endif
-     value_type __data_[__min_cap];
-   };
+ static uint32_t getEFlags(InputFile *file) {
+   return cast<ObjFile<ELF32LE>>(file)->getObj().getHeader().e_flags;
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/Hexagon.cpp b/lld/ELF/Arch/Hexagon.cpp
+--- a/lld/ELF/Arch/Hexagon.cpp
++++ b/lld/ELF/Arch/Hexagon.cpp
+@@ -404,4 +404,7 @@
+   }
+ }
  
-diff -ruN --strip-trailing-cr a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/TestDataFormatterLibcxxStringSimulator.py b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/TestDataFormatterLibcxxStringSimulator.py
---- a/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/TestDataFormatterLibcxxStringSimulator.py
-+++ b/lldb/test/API/functionalities/data-formatter/data-formatter-stl/libcxx-simulators/string/TestDataFormatterLibcxxStringSimulator.py
-@@ -27,7 +27,7 @@
+-void elf::setHexagonTargetInfo(Ctx &ctx) { ctx.target.reset(new Hexagon(ctx)); }
++TargetInfo *elf::getHexagonTargetInfo(Ctx &ctx) {
++  static Hexagon target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/LoongArch.cpp b/lld/ELF/Arch/LoongArch.cpp
+--- a/lld/ELF/Arch/LoongArch.cpp
++++ b/lld/ELF/Arch/LoongArch.cpp
+@@ -893,6 +893,7 @@
+   }
+ }
  
+-void elf::setLoongArchTargetInfo(Ctx &ctx) {
+-  ctx.target.reset(new LoongArch(ctx));
++TargetInfo *elf::getLoongArchTargetInfo(Ctx &ctx) {
++  static LoongArch target(ctx);
++  return &target;
+ }
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/Mips.cpp b/lld/ELF/Arch/Mips.cpp
+--- a/lld/ELF/Arch/Mips.cpp
++++ b/lld/ELF/Arch/Mips.cpp
+@@ -779,23 +779,23 @@
+   return cast<ObjFile<ELFT>>(file)->getObj().getHeader().e_flags & EF_MIPS_PIC;
+ }
  
- for v in [None, "ALTERNATE_LAYOUT"]:
--    for r in range(6):
-+    for r in range(5):
-         for c in range(3):
-             name = "test_r%d_c%d" % (r, c)
-             defines = ["REVISION=%d" % r, "COMPRESSED_PAIR_REV=%d" % c]
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -148,6 +148,9 @@
- libc_support_library(
-     name = "hdr_stdio_macros",
-     hdrs = ["hdr/stdio_macros.h"],
-+    deps = [
-+        ":hdr_stdio_overlay",
-+    ],
- )
+-void elf::setMipsTargetInfo(Ctx &ctx) {
++TargetInfo *elf::getMipsTargetInfo(Ctx &ctx) {
+   switch (ctx.arg.ekind) {
+   case ELF32LEKind: {
+-    ctx.target.reset(new MIPS<ELF32LE>(ctx));
+-    return;
++    static MIPS<ELF32LE> t(ctx);
++    return &t;
+   }
+   case ELF32BEKind: {
+-    ctx.target.reset(new MIPS<ELF32BE>(ctx));
+-    return;
++    static MIPS<ELF32BE> t(ctx);
++    return &t;
+   }
+   case ELF64LEKind: {
+-    ctx.target.reset(new MIPS<ELF64LE>(ctx));
+-    return;
++    static MIPS<ELF64LE> t(ctx);
++    return &t;
+   }
+   case ELF64BEKind: {
+-    ctx.target.reset(new MIPS<ELF64BE>(ctx));
+-    return;
++    static MIPS<ELF64BE> t(ctx);
++    return &t;
+   }
+   default:
+     llvm_unreachable("unsupported target");
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/MSP430.cpp b/lld/ELF/Arch/MSP430.cpp
+--- a/lld/ELF/Arch/MSP430.cpp
++++ b/lld/ELF/Arch/MSP430.cpp
+@@ -88,4 +88,7 @@
+   }
+ }
  
- libc_support_library(
-@@ -215,11 +218,17 @@
- libc_support_library(
-     name = "types_off_t",
-     hdrs = ["hdr/types/off_t.h"],
-+    deps = [
-+        ":hdr_stdio_overlay",
-+    ],
- )
+-void elf::setMSP430TargetInfo(Ctx &ctx) { ctx.target.reset(new MSP430(ctx)); }
++TargetInfo *elf::getMSP430TargetInfo(Ctx &ctx) {
++  static MSP430 target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/PPC64.cpp b/lld/ELF/Arch/PPC64.cpp
+--- a/lld/ELF/Arch/PPC64.cpp
++++ b/lld/ELF/Arch/PPC64.cpp
+@@ -1747,4 +1747,7 @@
+   return true;
+ }
  
- libc_support_library(
-     name = "types_FILE",
-     hdrs = ["hdr/types/FILE.h"],
-+    deps = [
-+        ":hdr_stdio_overlay",
-+    ],
- )
+-void elf::setPPC64TargetInfo(Ctx &ctx) { ctx.target.reset(new PPC64(ctx)); }
++TargetInfo *elf::getPPC64TargetInfo(Ctx &ctx) {
++  static PPC64 target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/PPC.cpp b/lld/ELF/Arch/PPC.cpp
+--- a/lld/ELF/Arch/PPC.cpp
++++ b/lld/ELF/Arch/PPC.cpp
+@@ -523,4 +523,7 @@
+   }
+ }
  
- libc_support_library(
+-void elf::setPPCTargetInfo(Ctx &ctx) { ctx.target.reset(new PPC(ctx)); }
++TargetInfo *elf::getPPCTargetInfo(Ctx &ctx) {
++  static PPC target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/RISCV.cpp b/lld/ELF/Arch/RISCV.cpp
+--- a/lld/ELF/Arch/RISCV.cpp
++++ b/lld/ELF/Arch/RISCV.cpp
+@@ -1329,4 +1329,7 @@
+                            mergeAttributesSection(ctx, sections));
+ }
+ 
+-void elf::setRISCVTargetInfo(Ctx &ctx) { ctx.target.reset(new RISCV(ctx)); }
++TargetInfo *elf::getRISCVTargetInfo(Ctx &ctx) {
++  static RISCV target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/SPARCV9.cpp b/lld/ELF/Arch/SPARCV9.cpp
+--- a/lld/ELF/Arch/SPARCV9.cpp
++++ b/lld/ELF/Arch/SPARCV9.cpp
+@@ -193,4 +193,7 @@
+   relocateNoSym(buf + 4, R_SPARC_WDISP19, -(off + 4 - pltEntrySize));
+ }
+ 
+-void elf::setSPARCV9TargetInfo(Ctx &ctx) { ctx.target.reset(new SPARCV9(ctx)); }
++TargetInfo *elf::getSPARCV9TargetInfo(Ctx &ctx) {
++  static SPARCV9 target(ctx);
++  return &target;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/SystemZ.cpp b/lld/ELF/Arch/SystemZ.cpp
+--- a/lld/ELF/Arch/SystemZ.cpp
++++ b/lld/ELF/Arch/SystemZ.cpp
+@@ -600,4 +600,7 @@
+   }
+ }
+ 
+-void elf::setSystemZTargetInfo(Ctx &ctx) { ctx.target.reset(new SystemZ(ctx)); }
++TargetInfo *elf::getSystemZTargetInfo(Ctx &ctx) {
++  static SystemZ t(ctx);
++  return &t;
++}
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/X86_64.cpp b/lld/ELF/Arch/X86_64.cpp
+--- a/lld/ELF/Arch/X86_64.cpp
++++ b/lld/ELF/Arch/X86_64.cpp
+@@ -1237,17 +1237,21 @@
+   write32le(buf + 8, ctx.in.plt->getVA() - pltEntryAddr - 12);
+ }
+ 
+-void elf::setX86_64TargetInfo(Ctx &ctx) {
++TargetInfo *elf::getX86_64TargetInfo(Ctx &ctx) {
+   if (ctx.arg.zRetpolineplt) {
+-    if (ctx.arg.zNow)
+-      ctx.target.reset(new RetpolineZNow(ctx));
+-    else
+-      ctx.target.reset(new Retpoline(ctx));
+-    return;
++    if (ctx.arg.zNow) {
++      static RetpolineZNow t(ctx);
++      return &t;
++    }
++    static Retpoline t(ctx);
++    return &t;
+   }
+ 
+-  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT)
+-    ctx.target.reset(new IntelIBT(ctx));
+-  else
+-    ctx.target.reset(new X86_64(ctx));
++  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT) {
++    static IntelIBT t(ctx);
++    return &t;
++  }
++
++  static X86_64 t(ctx);
++  return &t;
+ }
+diff -ruN --strip-trailing-cr a/lld/ELF/Arch/X86.cpp b/lld/ELF/Arch/X86.cpp
+--- a/lld/ELF/Arch/X86.cpp
++++ b/lld/ELF/Arch/X86.cpp
+@@ -706,17 +706,21 @@
+   write32le(buf + 22, -off - 26);
+ }
+ 
+-void elf::setX86TargetInfo(Ctx &ctx) {
++TargetInfo *elf::getX86TargetInfo(Ctx &ctx) {
+   if (ctx.arg.zRetpolineplt) {
+-    if (ctx.arg.isPic)
+-      ctx.target.reset(new RetpolinePic(ctx));
+-    else
+-      ctx.target.reset(new RetpolineNoPic(ctx));
+-    return;
++    if (ctx.arg.isPic) {
++      static RetpolinePic t(ctx);
++      return &t;
++    }
++    static RetpolineNoPic t(ctx);
++    return &t;
+   }
+ 
+-  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT)
+-    ctx.target.reset(new IntelIBT(ctx));
+-  else
+-    ctx.target.reset(new X86(ctx));
++  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT) {
++    static IntelIBT t(ctx);
++    return &t;
++  }
++
++  static X86 t(ctx);
++  return &t;
+ }
+diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
+--- a/lld/ELF/Config.h
++++ b/lld/ELF/Config.h
+@@ -545,7 +545,7 @@
+   Config arg;
+   LinkerDriver driver;
+   LinkerScript *script;
+-  std::unique_ptr<TargetInfo> target;
++  TargetInfo *target;
+ 
+   // These variables are initialized by Writer and should not be used before
+   // Writer is initialized.
+diff -ruN --strip-trailing-cr a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -99,7 +99,7 @@
+   driver.~LinkerDriver();
+   new (&driver) LinkerDriver(*this);
+   script = nullptr;
+-  target.reset();
++  target = nullptr;
+ 
+   bufferStart = nullptr;
+   mainPart = nullptr;
+@@ -3126,7 +3126,7 @@
+   // The Target instance handles target-specific stuff, such as applying
+   // relocations or writing a PLT section. It also contains target-dependent
+   // values such as a default image base address.
+-  setTarget(ctx);
++  ctx.target = getTarget(ctx);
+ 
+   ctx.arg.eflags = ctx.target->calcEFlags();
+   // maxPageSize (sometimes called abi page size) is the maximum page size that
+diff -ruN --strip-trailing-cr a/lld/ELF/Target.cpp b/lld/ELF/Target.cpp
+--- a/lld/ELF/Target.cpp
++++ b/lld/ELF/Target.cpp
+@@ -45,39 +45,39 @@
+   return std::string(s);
+ }
+ 
+-void elf::setTarget(Ctx &ctx) {
++TargetInfo *elf::getTarget(Ctx &ctx) {
+   switch (ctx.arg.emachine) {
+   case EM_386:
+   case EM_IAMCU:
+-    return setX86TargetInfo(ctx);
++    return getX86TargetInfo(ctx);
+   case EM_AARCH64:
+-    return setAArch64TargetInfo(ctx);
++    return getAArch64TargetInfo(ctx);
+   case EM_AMDGPU:
+-    return setAMDGPUTargetInfo(ctx);
++    return getAMDGPUTargetInfo(ctx);
+   case EM_ARM:
+-    return setARMTargetInfo(ctx);
++    return getARMTargetInfo(ctx);
+   case EM_AVR:
+-    return setAVRTargetInfo(ctx);
++    return getAVRTargetInfo(ctx);
+   case EM_HEXAGON:
+-    return setHexagonTargetInfo(ctx);
++    return getHexagonTargetInfo(ctx);
+   case EM_LOONGARCH:
+-    return setLoongArchTargetInfo(ctx);
++    return getLoongArchTargetInfo(ctx);
+   case EM_MIPS:
+-    return setMipsTargetInfo(ctx);
++    return getMipsTargetInfo(ctx);
+   case EM_MSP430:
+-    return setMSP430TargetInfo(ctx);
++    return getMSP430TargetInfo(ctx);
+   case EM_PPC:
+-    return setPPCTargetInfo(ctx);
++    return getPPCTargetInfo(ctx);
+   case EM_PPC64:
+-    return setPPC64TargetInfo(ctx);
++    return getPPC64TargetInfo(ctx);
+   case EM_RISCV:
+-    return setRISCVTargetInfo(ctx);
++    return getRISCVTargetInfo(ctx);
+   case EM_SPARCV9:
+-    return setSPARCV9TargetInfo(ctx);
++    return getSPARCV9TargetInfo(ctx);
+   case EM_S390:
+-    return setSystemZTargetInfo(ctx);
++    return getSystemZTargetInfo(ctx);
+   case EM_X86_64:
+-    return setX86_64TargetInfo(ctx);
++    return getX86_64TargetInfo(ctx);
+   default:
+     fatal("unsupported e_machine value: " + Twine(ctx.arg.emachine));
+   }
+diff -ruN --strip-trailing-cr a/lld/ELF/Target.h b/lld/ELF/Target.h
+--- a/lld/ELF/Target.h
++++ b/lld/ELF/Target.h
+@@ -179,21 +179,21 @@
+   uint64_t defaultImageBase = 0x10000;
+ };
+ 
+-void setAArch64TargetInfo(Ctx &);
+-void setAMDGPUTargetInfo(Ctx &);
+-void setARMTargetInfo(Ctx &);
+-void setAVRTargetInfo(Ctx &);
+-void setHexagonTargetInfo(Ctx &);
+-void setLoongArchTargetInfo(Ctx &);
+-void setMSP430TargetInfo(Ctx &);
+-void setMipsTargetInfo(Ctx &);
+-void setPPC64TargetInfo(Ctx &);
+-void setPPCTargetInfo(Ctx &);
+-void setRISCVTargetInfo(Ctx &);
+-void setSPARCV9TargetInfo(Ctx &);
+-void setSystemZTargetInfo(Ctx &);
+-void setX86TargetInfo(Ctx &);
+-void setX86_64TargetInfo(Ctx &);
++TargetInfo *getAArch64TargetInfo(Ctx &);
++TargetInfo *getAMDGPUTargetInfo(Ctx &);
++TargetInfo *getARMTargetInfo(Ctx &);
++TargetInfo *getAVRTargetInfo(Ctx &);
++TargetInfo *getHexagonTargetInfo(Ctx &);
++TargetInfo *getLoongArchTargetInfo(Ctx &);
++TargetInfo *getMSP430TargetInfo(Ctx &);
++TargetInfo *getMipsTargetInfo(Ctx &);
++TargetInfo *getPPC64TargetInfo(Ctx &);
++TargetInfo *getPPCTargetInfo(Ctx &);
++TargetInfo *getRISCVTargetInfo(Ctx &);
++TargetInfo *getSPARCV9TargetInfo(Ctx &);
++TargetInfo *getSystemZTargetInfo(Ctx &);
++TargetInfo *getX86TargetInfo(Ctx &);
++TargetInfo *getX86_64TargetInfo(Ctx &);
+ 
+ struct ErrorPlace {
+   InputSectionBase *isec;
+@@ -251,7 +251,7 @@
+ void createTaggedSymbols(Ctx &);
+ void initSymbolAnchors(Ctx &);
+ 
+-void setTarget(Ctx &);
++TargetInfo *getTarget(Ctx &);
+ 
+ template <class ELFT> bool isMipsPIC(const Defined *sym);
+ 
