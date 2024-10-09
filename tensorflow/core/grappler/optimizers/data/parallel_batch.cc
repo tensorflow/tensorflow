@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/parallel_batch.h"
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
-#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace grappler {
