@@ -57,6 +57,17 @@ class Array2D : public Array<T> {
       : Array<T>(values) {}
 
   Array2D(const Array2D<T>& other) : Array<T>(other) {}
+  Array2D(Array2D<T>&& other) : Array<T>(std::move(other)) {}
+
+  Array2D& operator=(const Array2D<T>& other) {
+    Array<T>::operator=(other);
+    return *this;
+  }
+
+  Array2D& operator=(Array2D<T>&& other) {
+    Array<T>::operator=(std::move(other));
+    return *this;
+  }
 
   int64_t n1() const { return this->dim(0); }
   int64_t n2() const { return this->dim(1); }
