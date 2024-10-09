@@ -327,7 +327,8 @@ absl::StatusOr<std::vector<int64_t>> GetByteStrides(const DLTensor& dl_tensor) {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakePjrtBuffer(
     PjRtDevice& device, ::DLManagedTensor* dlmt, const Shape& shape,
-    PrimitiveType element_type, absl::Span<int64_t const> dimensions) {
+    PrimitiveType element_type, absl::Span<int64_t const> dimensions,
+    std::optional<std::intptr_t> stream = std::nullopt) {
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
@@ -336,8 +337,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakePjrtBuffer(
   // First try to create a view.
   void* data =
       static_cast<char*>(dlmt->dl_tensor.data) + dlmt->dl_tensor.byte_offset;
-  auto result = device.client()->CreateViewOfDeviceBuffer(data, shape, &device,
-                                                          on_delete_callback);
+  auto result = device.client()->CreateViewOfDeviceBuffer(
+      data, shape, &device, on_delete_callback, stream);
 
   // If that fails with invalid argument, it's possibly because of the incorrect
   // alignment. If we're on CPU, we can create a copy of buffer.
@@ -583,7 +584,7 @@ absl::StatusOr<nb::object> DLPackManagedTensorToBuffer(
 
   TF_ASSIGN_OR_RETURN(auto pjrt_buffer,
                       MakePjrtBuffer(*device->pjrt_device(), dlmt, shape,
-                                     element_type, dimensions));
+                                     element_type, dimensions, stream));
 
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.
