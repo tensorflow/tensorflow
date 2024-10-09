@@ -83,8 +83,8 @@ TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
                           se::gpu::CudaPlatform().GetUncachedExecutor(0));
   TF_ASSERT_OK_AND_ASSIGN(
       CustomKernel custom_kernel,
-      GetPtxCustomKernel<3>("AddI32", kAddI32KernelPtx, se::BlockDim(4),
-                            se::ThreadDim(1), byte_length));
+      GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),
+                         se::ThreadDim(1), byte_length));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Kernel> kernel,
                           executor->LoadKernel(custom_kernel.kernel_spec()));

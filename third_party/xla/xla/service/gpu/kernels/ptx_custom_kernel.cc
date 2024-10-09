@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
@@ -31,53 +30,27 @@ namespace xla::gpu::kernel {
 
 namespace se = ::stream_executor;
 
-template <int n>
 absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>
 KernelArgsPacking(const se::Kernel &kernel, const se::KernelArgs &args) {
   auto *mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
-  auto packed_args =
-      std::make_unique<stream_executor::KernelArgsPackedArray<n>>();
-  int number_of_arguments = mem_args->number_of_arguments();
-  if (mem_args->number_of_shared_bytes() > 0) {
-    number_of_arguments--;
-  }
-  for (int i = 0; i < number_of_arguments; ++i) {
-    packed_args->add_argument(mem_args->device_memory_ptr(i));
-  }
-
-  return packed_args;
+  return se::PackKernelArgs(mem_args->device_memory_args(),
+                            mem_args->number_of_shared_bytes());
 }
 
 // Note: Make sure that the kernel_name matches the kernel name in the ptx,
 // otherwise you will get a "CUDA_ERROR_NOT_FOUND: named symbol not found.".
 // E.g. `.visible .entry AddI32(...)` would have a kernel name of "AddI32".
-template <int n>
 absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
                                                 std::string_view ptx,
+                                                int num_args,
                                                 se::BlockDim block_dim,
                                                 se::ThreadDim thread_dim,
                                                 size_t shared_memory_bytes) {
-  // LINT.IfChange(check_n)
-  if (n != 3) {
-    // LINT.ThenChange(:explicit_instantiations)
-    return absl::UnimplementedError(
-        "Only 3 arguments are supported for PTX custom kernels.");
-  }
-
-  se::MultiKernelLoaderSpec kernel_spec(/*arity=*/n, KernelArgsPacking<n>);
+  se::MultiKernelLoaderSpec kernel_spec(/*arity=*/num_args, KernelArgsPacking);
   kernel_spec.AddCudaPtxInMemory(ptx, kernel_name);
   return CustomKernel(kernel_name, kernel_spec, block_dim, thread_dim,
                       /*shared_memory_bytes=*/shared_memory_bytes);
 };
-
-// LINT.IfChange(explicit_instantiations)
-template absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>
-KernelArgsPacking<3>(const se::Kernel &kernel, const se::KernelArgs &args);
-
-template absl::StatusOr<CustomKernel> GetPtxCustomKernel<3>(
-    std::string kernel_name, std::string_view ptx, se::BlockDim block_dim,
-    se::ThreadDim thread_dim, size_t shared_memory_bytes);
-// LINT.ThenChange(:check_n)
 
 }  // namespace xla::gpu::kernel
