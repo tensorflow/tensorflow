@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {

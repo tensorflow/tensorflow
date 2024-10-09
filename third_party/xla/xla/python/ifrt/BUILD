@@ -137,6 +137,7 @@ xla_cc_test(
     deps = [
         ":ifrt",
         ":mock",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -722,6 +723,7 @@ xla_cc_test(
         ":ifrt",
         ":program_serdes",
         ":serdes",
+        ":serdes_proto_cc",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/functional:bind_front",
