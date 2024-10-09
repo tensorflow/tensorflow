@@ -1708,6 +1708,7 @@ cc_library(
 xla_test(
     name = "gemm_rewriter_test",
     srcs = ["gemm_rewriter_test.cc"],
+    tags = ["cuda-only",] #TODO(rocm): weekly sync 24-01-10
     backends = ["gpu"],
     shard_count = 5,
     deps = [

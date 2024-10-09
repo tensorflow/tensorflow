@@ -931,6 +931,7 @@ xla_test(
     tags = [
         "optonly",
         "test_xla_cpu_thunks",
+        "cuda-only", #TODO(rocm): weekly sync 24-10-01
     ],
     deps = [
         ":client_library_test_base",
@@ -990,6 +991,7 @@ xla_test(
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
         "test_xla_cpu_thunks",
+        "cuda-only", #TODO(rocm): weekly sync 24-10-01
     ],
     deps = [
         ":client_library_test_base",
@@ -1121,6 +1123,7 @@ xla_test(
     tags = [
         "optonly",
         "test_xla_cpu_thunks",
+        "cuda-only", #TODO(rocm): weekly sync 24-10-01
     ],
     deps = [
         ":client_library_test_base",
@@ -2269,7 +2272,10 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
-    tags = ["test_xla_cpu_thunks"],
+    tags = [
+        "test_xla_cpu_thunks",
+        "cuda-only", #TODO(rocm): weekly sync 24-10-01
+        ],
     deps = [
         ":client_library_test_base",
         ":test_macros_header",

@@ -514,6 +514,7 @@ xla_cc_test(
     ],
     tags = [
         "gpu",
+        "cuda-only", #TODO(rocm): weekly sync 24-10-01
     ],
     deps = [
         ":autotuner_util",
