@@ -2119,6 +2119,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -2152,6 +2153,7 @@ xla_cc_test(
     shard_count = 12,
     deps = [
         ":host_offload_legalize",
+        ":host_offload_utils",
         ":host_offloader",
         "//xla:shape_util",
         "//xla:util",
@@ -2179,6 +2181,7 @@ cc_library(
     srcs = ["host_offloading_prepare.cc"],
     hdrs = ["host_offloading_prepare.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
