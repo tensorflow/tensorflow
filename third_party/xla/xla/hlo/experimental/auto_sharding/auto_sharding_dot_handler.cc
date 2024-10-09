@@ -996,7 +996,9 @@ void ConvHandler::SplitDepthwise(bool forward) {
             lhs_dim_map, rhs_dim_map, output_dim_map);
       };
   std::vector<int> all_mesh_dims(device_mesh_.num_dimensions());
-  Enumerate(split_func, 2, /*current_mesh_dim_idx=*/0, all_mesh_dims,
+  std::iota(all_mesh_dims.begin(), all_mesh_dims.end(), 0);
+  Enumerate(split_func, ins_->shape().rank(), /*current_mesh_dim_idx=*/0,
+            all_mesh_dims,
             /*current_dim_map=*/{});
 }
 

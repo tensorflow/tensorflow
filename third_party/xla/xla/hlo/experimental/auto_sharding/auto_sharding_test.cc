@@ -595,6 +595,31 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
+TEST_F(AutoShardingTest, ConvolutionSplitDepthwiseTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %elementwise {
+  %param0 = pred[512,1,1024,512]{3,2,1,0} parameter(0)
+  %param1 = f32[1,1,5,5]{3,2,1,0} parameter(1)
+  %convolution = f32[512,1,1024,512]{3,2,1,0} convolution(pred[512,1,1024,512]{3,2,1,0} %param0, f32[1,1,5,5]{3,2,1,0} %param1), window={size=5x5 pad=2_2x2_2}, dim_labels=bf01_oi01->bf01
+  ROOT %copy = f32[512,1,1024,512]{3,2,1,0} copy(%convolution)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {512};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(5) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* convolution =
+      FindInstruction(module.get(), "convolution");
+  ASSERT_NE(convolution, nullptr);
+  ASSERT_TRUE(convolution->has_sharding());
+  EXPECT_EQ(convolution->sharding().NumTiles(), 512);
+}
+
 TEST_F(AutoShardingTest, NDIterativeSolveTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module

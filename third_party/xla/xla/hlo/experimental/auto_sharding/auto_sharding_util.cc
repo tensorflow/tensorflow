@@ -1051,17 +1051,17 @@ absl::StatusOr<int64_t> CheckArithmeticSequence(
   return delta;
 }
 
-bool IsValidTileAssignment(const HloSharding& spec) {
-  if (IsUndefined(spec)) {
+bool IsValidTileAssignment(const HloSharding& sharding) {
+  if (IsUndefined(sharding)) {
     return false;
   }
 
-  if (spec.IsReplicated()) {
+  if (sharding.IsReplicated()) {
     return true;
   }
 
   // Check all tile dims
-  const auto& tile_assignment = spec.tile_assignment();
+  const auto& tile_assignment = sharding.tile_assignment();
   for (int i = 0; i < tile_assignment.num_dimensions(); i++) {
     if (tile_assignment.dim(i) != 1) {
       std::vector<int64_t> device_ids =
@@ -1076,24 +1076,24 @@ bool IsValidTileAssignment(const HloSharding& spec) {
   return true;
 }
 
-int64_t NumTileDimensions(const HloSharding& spec) {
-  if (spec.IsReplicated()) {
+int64_t NumTileDimensions(const HloSharding& sharding) {
+  if (sharding.IsReplicated()) {
     return -1;
   }
   int64_t num_tile_dims = 0;
-  for (int i = 0; i < spec.tile_assignment().num_dimensions(); i++) {
-    if (spec.tile_assignment().dim(i) != 1) {
+  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); i++) {
+    if (sharding.tile_assignment().dim(i) != 1) {
       num_tile_dims++;
     }
   }
   return num_tile_dims;
 }
 
-bool TileAssignmentMatchesMesh(const HloSharding& spec,
+bool TileAssignmentMatchesMesh(const HloSharding& sharding,
                                const DeviceMesh& mesh) {
   int sharded_dims = 0;
-  for (int i = 0; i < spec.tile_assignment().num_dimensions(); ++i) {
-    if (spec.tile_assignment().dim(i) > 1) {
+  for (int i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    if (sharding.tile_assignment().dim(i) > 1) {
       sharded_dims++;
     }
   }
