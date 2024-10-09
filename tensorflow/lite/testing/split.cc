@@ -22,7 +22,7 @@ namespace testing {
 std::vector<std::pair<size_t, size_t>> SplitToPos(const string& s,
                                                   const string& delimiter) {
   std::vector<std::pair<size_t, size_t>> fields;
-  if (delimiter.length() == 0) {
+  if (delimiter.empty()) {
     fields.emplace_back(0, s.length());
     return fields;
   }
