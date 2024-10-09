@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/scratch_allocator.h"
 
 namespace stream_executor {
 
