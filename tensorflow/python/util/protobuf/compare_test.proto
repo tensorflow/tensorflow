@@ -3,8 +3,6 @@ syntax = "proto2";
 
 package compare_test;
 
-option cc_enable_arenas = true;
-
 enum Enum {
   A = 0;
   B = 1;
@@ -56,6 +54,7 @@ message Floats {
 
 message RepeatedFloats {
   repeated float float_ = 1 [packed = true];
+
   repeated double double_ = 2 [packed = true];
 }
 
