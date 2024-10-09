@@ -56,6 +56,10 @@ LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
       inputs_(context_binary_info.Graphs()[graph_index].Inputs()),
       outputs_(context_binary_info.Graphs()[graph_index].Outputs()) {}
 
+LiteRtDispatchInvocationContextT::~LiteRtDispatchInvocationContextT() {
+  qnn_manager_.FreeContext();
+}
+
 absl::StatusOr<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     QnnManager& qnn, LiteRtDispatchDeviceContextT& device_context,
@@ -110,12 +114,11 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
     return absl::InternalError("Tensor strides are not supported by QNN");
   }
 
-  static constexpr LiteRtTensorBufferType supported_tensor_buffer_types[] = {
-      kLiteRtTensorBufferTypeFastRpc,
-  };
-  int num_supported_tensor_buffer_types =
-      sizeof(supported_tensor_buffer_types) /
-      sizeof(supported_tensor_buffer_types[0]);
+  static constexpr std::array<const LiteRtTensorBufferType, 2>
+      kSupportedTensorBufferTypes = {
+          kLiteRtTensorBufferTypeFastRpc,
+          kLiteRtTensorBufferTypeDmaBuf,
+      };
 
   auto buffer_size = litert::internal::GetNumPackedBytes(tensor_type);
   if (!buffer_size.ok()) {
@@ -124,8 +127,8 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
 
   LiteRtTensorBufferRequirements requirements;
   if (auto status = LiteRtCreateTensorBufferRequirements(
-          num_supported_tensor_buffer_types, supported_tensor_buffer_types,
-          *buffer_size, &requirements);
+          kSupportedTensorBufferTypes.size(),
+          kSupportedTensorBufferTypes.data(), *buffer_size, &requirements);
       status != kLiteRtStatusOk) {
     return absl::InternalError("Not implemented");
   }
