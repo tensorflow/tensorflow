@@ -14,7 +14,6 @@
 
 #include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_op.h"
 
-#include "absl/strings/str_format.h"
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
@@ -22,8 +21,9 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_op.h"
 
-#define QNN_OP_NAME(prefix) \
-  absl::StrFormat("%s_%lu", prefix, __COUNTER__).c_str();
+// A macro dance to create a unique literal string given a prefix.
+#define STRINGIFY(x) #x
+#define QNN_OP_NAME(prefix) STRINGIFY(prefix##__COUNTER)
 
 namespace qnn {
 
@@ -36,7 +36,7 @@ namespace {
 LrtStatus LegalizeOpType(const LrtOpManager& src, Qnn_OpConfig_t& dest) {
   switch (src.Code()) {
     case kLrtOpCodeTflMul:
-      dest.v1.name = QNN_OP_NAME("mul");
+      dest.v1.name = QNN_OP_NAME(mul_);
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseMultiply";
       break;
