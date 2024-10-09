@@ -206,6 +206,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/platform:errors",
