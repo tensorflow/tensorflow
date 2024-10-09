@@ -4029,41 +4029,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
         MakeBroadcastHlo(new_operand, {}, gather->shape());
     return ReplaceInstruction(gather, new_gather);
   }
-  // If the operand of a gather is very small, it is easier to fuse a
-  // sequence of selects.
-  const Shape& index_shape = gather->operand(1)->shape();
-  if (operand_shape.rank() == 1 &&
-      operand_shape.dimensions(0) <= options_.very_small_gather_size() &&
-      gather->gather_dimension_numbers().index_vector_dim() ==
-          index_shape.rank() &&
-      gather->gather_dimension_numbers().collapsed_slice_dims_size() == 1) {
-    const int64_t operand_elements = operand_shape.dimensions(0);
-    auto get_value = [&](int64_t i) {
-      auto slice = gather->AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(operand_shape.element_type(), {1}),
-          gather->mutable_operand(0), {i}, {i + 1}, {1}));
-      auto scalar = gather->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(operand_shape.element_type(), {}), slice));
-      return gather->AddInstruction(
-          HloInstruction::CreateBroadcast(gather->shape(), scalar, {}));
-    };
-    auto result = get_value(0);
-    auto pred_shape = ShapeUtil::ChangeElementType(gather->shape(), PRED);
-    simplifier_->UpdateLayout(&pred_shape);
-    auto iter_shape = ShapeUtil::ChangeElementType(gather->shape(),
-                                                   index_shape.element_type());
-    simplifier_->UpdateLayout(&iter_shape);
-    for (int64_t i = 0; i < operand_elements; ++i) {
-      auto index_mask = gather->AddInstruction(HloInstruction::CreateCompare(
-          pred_shape, gather->mutable_operand(1),
-          MakeScalarLike(gather->mutable_operand(1), i),
-          ComparisonDirection::kGe));
-      result = gather->AddInstruction(
-          HloInstruction::CreateTernary(gather->shape(), HloOpcode::kSelect,
-                                        index_mask, get_value(i), result));
-    }
-    return ReplaceInstruction(gather, result);
-  }
 
   const auto gather_operand_passthrough_operand_dims =
       hlo_sharding_util::GetGatherOperandPassthroughOperandDims(
