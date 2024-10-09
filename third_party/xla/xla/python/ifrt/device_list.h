@@ -77,6 +77,9 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // `DeviceList`'s lifetime by using `tsl::FormRef()`.
   virtual DeviceList* AddressableDeviceList() const = 0;
 
+  // Returns true if all devices are addressable.
+  bool IsFullyAddressable() const { return AddressableDeviceList() == this; }
+
   virtual bool operator==(const DeviceList& other) const = 0;
   bool operator!=(const DeviceList& other) const { return !(*this == other); }
 

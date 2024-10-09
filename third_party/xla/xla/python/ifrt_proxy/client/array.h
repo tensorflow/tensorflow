@@ -71,7 +71,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       Shape shape, std::shared_ptr<const Sharding> sharding,
       absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-      ArrayCopySemantics semantics);
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics);
 
   // `Array::RemapArrays()` implements `Client::RemapArrays()`.
   // TODO(b/261226026): Implement logic directly in client.cc.
@@ -118,6 +119,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) override;
+  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+  DisassembleIntoSingleDeviceArrays(
+      ArrayCopySemantics array_copy_semantics,
+      SingleDeviceShardSemantics single_device_shard_semantics) override;
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> FullyReplicatedShard(
       xla::ifrt::ArrayCopySemantics semantics) override;
