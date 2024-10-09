@@ -1,419 +1,49 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/pragma-pack-packed-2.cpp b/clang/test/SemaCXX/pragma-pack-packed-2.cpp
---- a/clang/test/SemaCXX/pragma-pack-packed-2.cpp
-+++ b/clang/test/SemaCXX/pragma-pack-packed-2.cpp
-@@ -1,6 +1,6 @@
- // RUN: %clang_cc1 -triple s390x-ibm-zos -fzos-extensions -fsyntax-only -verify %s
- // RUN: %clang_cc1 -triple s390x-ibm-zos -fzos-extensions -fxl-pragma-pack -fsyntax-only -verify %s
--// RUN: %clang -target s390x-ibm-zos -S -emit-llvm -Xclang -verify -fno-xl-pragma-pack %s
-+// RUN: %clang -target s390x-ibm-zos -S -emit-llvm -Xclang -verify -fno-xl-pragma-pack -o %t.ll %s
- 
- #pragma pack(show) // expected-warning {{value of #pragma pack(show) == 8}}
- #pragma pack(twobyte)
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AArch64.cpp b/lld/ELF/Arch/AArch64.cpp
---- a/lld/ELF/Arch/AArch64.cpp
-+++ b/lld/ELF/Arch/AArch64.cpp
-@@ -1208,10 +1208,12 @@
-   }
- }
- 
--void elf::setAArch64TargetInfo(Ctx &ctx) {
-+TargetInfo *elf::getAArch64TargetInfo(Ctx &ctx) {
-   if ((ctx.arg.andFeatures & GNU_PROPERTY_AARCH64_FEATURE_1_BTI) ||
--      ctx.arg.zPacPlt)
--    ctx.target.reset(new AArch64BtiPac(ctx));
--  else
--    ctx.target.reset(new AArch64(ctx));
-+      ctx.arg.zPacPlt) {
-+    static AArch64BtiPac t(ctx);
-+    return &t;
-+  }
-+  static AArch64 t(ctx);
-+  return &t;
- }
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AMDGPU.cpp b/lld/ELF/Arch/AMDGPU.cpp
---- a/lld/ELF/Arch/AMDGPU.cpp
-+++ b/lld/ELF/Arch/AMDGPU.cpp
-@@ -219,4 +219,7 @@
-   }
- }
- 
--void elf::setAMDGPUTargetInfo(Ctx &ctx) { ctx.target.reset(new AMDGPU(ctx)); }
-+TargetInfo *elf::getAMDGPUTargetInfo(Ctx &ctx) {
-+  static AMDGPU target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/ARM.cpp b/lld/ELF/Arch/ARM.cpp
---- a/lld/ELF/Arch/ARM.cpp
-+++ b/lld/ELF/Arch/ARM.cpp
-@@ -1533,7 +1533,10 @@
-           "': " + toString(std::move(e)));
- }
- 
--void elf::setARMTargetInfo(Ctx &ctx) { ctx.target.reset(new ARM(ctx)); }
-+TargetInfo *elf::getARMTargetInfo(Ctx &ctx) {
-+  static ARM target(ctx);
-+  return &target;
-+}
- 
- template void elf::writeARMCmseImportLib<ELF32LE>(Ctx &);
- template void elf::writeARMCmseImportLib<ELF32BE>(Ctx &);
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/AVR.cpp b/lld/ELF/Arch/AVR.cpp
---- a/lld/ELF/Arch/AVR.cpp
-+++ b/lld/ELF/Arch/AVR.cpp
-@@ -267,7 +267,10 @@
-   }
- }
- 
--void elf::setAVRTargetInfo(Ctx &ctx) { ctx.target.reset(new AVR(ctx)); }
-+TargetInfo *elf::getAVRTargetInfo(Ctx &ctx) {
-+  static AVR target(ctx);
-+  return &target;
-+}
- 
- static uint32_t getEFlags(InputFile *file) {
-   return cast<ObjFile<ELF32LE>>(file)->getObj().getHeader().e_flags;
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/Hexagon.cpp b/lld/ELF/Arch/Hexagon.cpp
---- a/lld/ELF/Arch/Hexagon.cpp
-+++ b/lld/ELF/Arch/Hexagon.cpp
-@@ -404,4 +404,7 @@
-   }
- }
- 
--void elf::setHexagonTargetInfo(Ctx &ctx) { ctx.target.reset(new Hexagon(ctx)); }
-+TargetInfo *elf::getHexagonTargetInfo(Ctx &ctx) {
-+  static Hexagon target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/LoongArch.cpp b/lld/ELF/Arch/LoongArch.cpp
---- a/lld/ELF/Arch/LoongArch.cpp
-+++ b/lld/ELF/Arch/LoongArch.cpp
-@@ -893,6 +893,7 @@
-   }
- }
- 
--void elf::setLoongArchTargetInfo(Ctx &ctx) {
--  ctx.target.reset(new LoongArch(ctx));
-+TargetInfo *elf::getLoongArchTargetInfo(Ctx &ctx) {
-+  static LoongArch target(ctx);
-+  return &target;
- }
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/Mips.cpp b/lld/ELF/Arch/Mips.cpp
---- a/lld/ELF/Arch/Mips.cpp
-+++ b/lld/ELF/Arch/Mips.cpp
-@@ -779,23 +779,23 @@
-   return cast<ObjFile<ELFT>>(file)->getObj().getHeader().e_flags & EF_MIPS_PIC;
- }
- 
--void elf::setMipsTargetInfo(Ctx &ctx) {
-+TargetInfo *elf::getMipsTargetInfo(Ctx &ctx) {
-   switch (ctx.arg.ekind) {
-   case ELF32LEKind: {
--    ctx.target.reset(new MIPS<ELF32LE>(ctx));
--    return;
-+    static MIPS<ELF32LE> t(ctx);
-+    return &t;
-   }
-   case ELF32BEKind: {
--    ctx.target.reset(new MIPS<ELF32BE>(ctx));
--    return;
-+    static MIPS<ELF32BE> t(ctx);
-+    return &t;
-   }
-   case ELF64LEKind: {
--    ctx.target.reset(new MIPS<ELF64LE>(ctx));
--    return;
-+    static MIPS<ELF64LE> t(ctx);
-+    return &t;
-   }
-   case ELF64BEKind: {
--    ctx.target.reset(new MIPS<ELF64BE>(ctx));
--    return;
-+    static MIPS<ELF64BE> t(ctx);
-+    return &t;
-   }
-   default:
-     llvm_unreachable("unsupported target");
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/MSP430.cpp b/lld/ELF/Arch/MSP430.cpp
---- a/lld/ELF/Arch/MSP430.cpp
-+++ b/lld/ELF/Arch/MSP430.cpp
-@@ -88,4 +88,7 @@
-   }
- }
- 
--void elf::setMSP430TargetInfo(Ctx &ctx) { ctx.target.reset(new MSP430(ctx)); }
-+TargetInfo *elf::getMSP430TargetInfo(Ctx &ctx) {
-+  static MSP430 target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/PPC64.cpp b/lld/ELF/Arch/PPC64.cpp
---- a/lld/ELF/Arch/PPC64.cpp
-+++ b/lld/ELF/Arch/PPC64.cpp
-@@ -1747,4 +1747,7 @@
-   return true;
- }
- 
--void elf::setPPC64TargetInfo(Ctx &ctx) { ctx.target.reset(new PPC64(ctx)); }
-+TargetInfo *elf::getPPC64TargetInfo(Ctx &ctx) {
-+  static PPC64 target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/PPC.cpp b/lld/ELF/Arch/PPC.cpp
---- a/lld/ELF/Arch/PPC.cpp
-+++ b/lld/ELF/Arch/PPC.cpp
-@@ -523,4 +523,7 @@
-   }
- }
- 
--void elf::setPPCTargetInfo(Ctx &ctx) { ctx.target.reset(new PPC(ctx)); }
-+TargetInfo *elf::getPPCTargetInfo(Ctx &ctx) {
-+  static PPC target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/RISCV.cpp b/lld/ELF/Arch/RISCV.cpp
---- a/lld/ELF/Arch/RISCV.cpp
-+++ b/lld/ELF/Arch/RISCV.cpp
-@@ -1329,4 +1329,7 @@
-                            mergeAttributesSection(ctx, sections));
- }
- 
--void elf::setRISCVTargetInfo(Ctx &ctx) { ctx.target.reset(new RISCV(ctx)); }
-+TargetInfo *elf::getRISCVTargetInfo(Ctx &ctx) {
-+  static RISCV target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/SPARCV9.cpp b/lld/ELF/Arch/SPARCV9.cpp
---- a/lld/ELF/Arch/SPARCV9.cpp
-+++ b/lld/ELF/Arch/SPARCV9.cpp
-@@ -193,4 +193,7 @@
-   relocateNoSym(buf + 4, R_SPARC_WDISP19, -(off + 4 - pltEntrySize));
- }
- 
--void elf::setSPARCV9TargetInfo(Ctx &ctx) { ctx.target.reset(new SPARCV9(ctx)); }
-+TargetInfo *elf::getSPARCV9TargetInfo(Ctx &ctx) {
-+  static SPARCV9 target(ctx);
-+  return &target;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/SystemZ.cpp b/lld/ELF/Arch/SystemZ.cpp
---- a/lld/ELF/Arch/SystemZ.cpp
-+++ b/lld/ELF/Arch/SystemZ.cpp
-@@ -600,4 +600,7 @@
-   }
- }
- 
--void elf::setSystemZTargetInfo(Ctx &ctx) { ctx.target.reset(new SystemZ(ctx)); }
-+TargetInfo *elf::getSystemZTargetInfo(Ctx &ctx) {
-+  static SystemZ t(ctx);
-+  return &t;
-+}
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/X86_64.cpp b/lld/ELF/Arch/X86_64.cpp
---- a/lld/ELF/Arch/X86_64.cpp
-+++ b/lld/ELF/Arch/X86_64.cpp
-@@ -1237,17 +1237,21 @@
-   write32le(buf + 8, ctx.in.plt->getVA() - pltEntryAddr - 12);
- }
- 
--void elf::setX86_64TargetInfo(Ctx &ctx) {
-+TargetInfo *elf::getX86_64TargetInfo(Ctx &ctx) {
-   if (ctx.arg.zRetpolineplt) {
--    if (ctx.arg.zNow)
--      ctx.target.reset(new RetpolineZNow(ctx));
--    else
--      ctx.target.reset(new Retpoline(ctx));
--    return;
-+    if (ctx.arg.zNow) {
-+      static RetpolineZNow t(ctx);
-+      return &t;
-+    }
-+    static Retpoline t(ctx);
-+    return &t;
-   }
- 
--  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT)
--    ctx.target.reset(new IntelIBT(ctx));
--  else
--    ctx.target.reset(new X86_64(ctx));
-+  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT) {
-+    static IntelIBT t(ctx);
-+    return &t;
-+  }
+diff -ruN --strip-trailing-cr a/clang/lib/Frontend/TextDiagnostic.cpp b/clang/lib/Frontend/TextDiagnostic.cpp
+--- a/clang/lib/Frontend/TextDiagnostic.cpp
++++ b/clang/lib/Frontend/TextDiagnostic.cpp
+@@ -1252,10 +1252,10 @@
+     for (unsigned I = 0; I <= Spelling.size(); ++I) {
+       // This line is done.
+       if (I == Spelling.size() || isVerticalWhitespace(Spelling[I])) {
+-        SmallVector<TextDiagnostic::StyleRange> &LineRanges =
+-            SnippetRanges[L - StartLineNumber];
+-
+         if (L >= StartLineNumber) {
++          SmallVector<TextDiagnostic::StyleRange> &LineRanges =
++              SnippetRanges[L - StartLineNumber];
 +
-+  static X86_64 t(ctx);
-+  return &t;
- }
-diff -ruN --strip-trailing-cr a/lld/ELF/Arch/X86.cpp b/lld/ELF/Arch/X86.cpp
---- a/lld/ELF/Arch/X86.cpp
-+++ b/lld/ELF/Arch/X86.cpp
-@@ -706,17 +706,21 @@
-   write32le(buf + 22, -off - 26);
- }
- 
--void elf::setX86TargetInfo(Ctx &ctx) {
-+TargetInfo *elf::getX86TargetInfo(Ctx &ctx) {
-   if (ctx.arg.zRetpolineplt) {
--    if (ctx.arg.isPic)
--      ctx.target.reset(new RetpolinePic(ctx));
--    else
--      ctx.target.reset(new RetpolineNoPic(ctx));
--    return;
-+    if (ctx.arg.isPic) {
-+      static RetpolinePic t(ctx);
-+      return &t;
-+    }
-+    static RetpolineNoPic t(ctx);
-+    return &t;
-   }
- 
--  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT)
--    ctx.target.reset(new IntelIBT(ctx));
--  else
--    ctx.target.reset(new X86(ctx));
-+  if (ctx.arg.andFeatures & GNU_PROPERTY_X86_FEATURE_1_IBT) {
-+    static IntelIBT t(ctx);
-+    return &t;
-+  }
+           if (L == TokenStartLine) // First line
+             appendStyle(LineRanges, T, StartCol, LineLength);
+           else if (L == TokenEndLine) // Last line
+diff -ruN --strip-trailing-cr a/clang/test/Frontend/highlight-text.c b/clang/test/Frontend/highlight-text.c
+--- a/clang/test/Frontend/highlight-text.c
++++ b/clang/test/Frontend/highlight-text.c
+@@ -0,0 +1,27 @@
++// RUN: %clang_cc1 -fsyntax-only %s 2> %t
++// RUN: FileCheck < %t %s
++#define F (1 << 99)
 +
-+  static X86 t(ctx);
-+  return &t;
- }
-diff -ruN --strip-trailing-cr a/lld/ELF/Config.h b/lld/ELF/Config.h
---- a/lld/ELF/Config.h
-+++ b/lld/ELF/Config.h
-@@ -545,7 +545,7 @@
-   Config arg;
-   LinkerDriver driver;
-   LinkerScript *script;
--  std::unique_ptr<TargetInfo> target;
-+  TargetInfo *target;
- 
-   // These variables are initialized by Writer and should not be used before
-   // Writer is initialized.
-diff -ruN --strip-trailing-cr a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
---- a/lld/ELF/Driver.cpp
-+++ b/lld/ELF/Driver.cpp
-@@ -99,7 +99,7 @@
-   driver.~LinkerDriver();
-   new (&driver) LinkerDriver(*this);
-   script = nullptr;
--  target.reset();
-+  target = nullptr;
- 
-   bufferStart = nullptr;
-   mainPart = nullptr;
-@@ -3126,7 +3126,7 @@
-   // The Target instance handles target-specific stuff, such as applying
-   // relocations or writing a PLT section. It also contains target-dependent
-   // values such as a default image base address.
--  setTarget(ctx);
-+  ctx.target = getTarget(ctx);
- 
-   ctx.arg.eflags = ctx.target->calcEFlags();
-   // maxPageSize (sometimes called abi page size) is the maximum page size that
-diff -ruN --strip-trailing-cr a/lld/ELF/Target.cpp b/lld/ELF/Target.cpp
---- a/lld/ELF/Target.cpp
-+++ b/lld/ELF/Target.cpp
-@@ -45,39 +45,39 @@
-   return std::string(s);
- }
- 
--void elf::setTarget(Ctx &ctx) {
-+TargetInfo *elf::getTarget(Ctx &ctx) {
-   switch (ctx.arg.emachine) {
-   case EM_386:
-   case EM_IAMCU:
--    return setX86TargetInfo(ctx);
-+    return getX86TargetInfo(ctx);
-   case EM_AARCH64:
--    return setAArch64TargetInfo(ctx);
-+    return getAArch64TargetInfo(ctx);
-   case EM_AMDGPU:
--    return setAMDGPUTargetInfo(ctx);
-+    return getAMDGPUTargetInfo(ctx);
-   case EM_ARM:
--    return setARMTargetInfo(ctx);
-+    return getARMTargetInfo(ctx);
-   case EM_AVR:
--    return setAVRTargetInfo(ctx);
-+    return getAVRTargetInfo(ctx);
-   case EM_HEXAGON:
--    return setHexagonTargetInfo(ctx);
-+    return getHexagonTargetInfo(ctx);
-   case EM_LOONGARCH:
--    return setLoongArchTargetInfo(ctx);
-+    return getLoongArchTargetInfo(ctx);
-   case EM_MIPS:
--    return setMipsTargetInfo(ctx);
-+    return getMipsTargetInfo(ctx);
-   case EM_MSP430:
--    return setMSP430TargetInfo(ctx);
-+    return getMSP430TargetInfo(ctx);
-   case EM_PPC:
--    return setPPCTargetInfo(ctx);
-+    return getPPCTargetInfo(ctx);
-   case EM_PPC64:
--    return setPPC64TargetInfo(ctx);
-+    return getPPC64TargetInfo(ctx);
-   case EM_RISCV:
--    return setRISCVTargetInfo(ctx);
-+    return getRISCVTargetInfo(ctx);
-   case EM_SPARCV9:
--    return setSPARCV9TargetInfo(ctx);
-+    return getSPARCV9TargetInfo(ctx);
-   case EM_S390:
--    return setSystemZTargetInfo(ctx);
-+    return getSystemZTargetInfo(ctx);
-   case EM_X86_64:
--    return setX86_64TargetInfo(ctx);
-+    return getX86_64TargetInfo(ctx);
-   default:
-     fatal("unsupported e_machine value: " + Twine(ctx.arg.emachine));
-   }
-diff -ruN --strip-trailing-cr a/lld/ELF/Target.h b/lld/ELF/Target.h
---- a/lld/ELF/Target.h
-+++ b/lld/ELF/Target.h
-@@ -179,21 +179,21 @@
-   uint64_t defaultImageBase = 0x10000;
- };
- 
--void setAArch64TargetInfo(Ctx &);
--void setAMDGPUTargetInfo(Ctx &);
--void setARMTargetInfo(Ctx &);
--void setAVRTargetInfo(Ctx &);
--void setHexagonTargetInfo(Ctx &);
--void setLoongArchTargetInfo(Ctx &);
--void setMSP430TargetInfo(Ctx &);
--void setMipsTargetInfo(Ctx &);
--void setPPC64TargetInfo(Ctx &);
--void setPPCTargetInfo(Ctx &);
--void setRISCVTargetInfo(Ctx &);
--void setSPARCV9TargetInfo(Ctx &);
--void setSystemZTargetInfo(Ctx &);
--void setX86TargetInfo(Ctx &);
--void setX86_64TargetInfo(Ctx &);
-+TargetInfo *getAArch64TargetInfo(Ctx &);
-+TargetInfo *getAMDGPUTargetInfo(Ctx &);
-+TargetInfo *getARMTargetInfo(Ctx &);
-+TargetInfo *getAVRTargetInfo(Ctx &);
-+TargetInfo *getHexagonTargetInfo(Ctx &);
-+TargetInfo *getLoongArchTargetInfo(Ctx &);
-+TargetInfo *getMSP430TargetInfo(Ctx &);
-+TargetInfo *getMipsTargetInfo(Ctx &);
-+TargetInfo *getPPC64TargetInfo(Ctx &);
-+TargetInfo *getPPCTargetInfo(Ctx &);
-+TargetInfo *getRISCVTargetInfo(Ctx &);
-+TargetInfo *getSPARCV9TargetInfo(Ctx &);
-+TargetInfo *getSystemZTargetInfo(Ctx &);
-+TargetInfo *getX86TargetInfo(Ctx &);
-+TargetInfo *getX86_64TargetInfo(Ctx &);
- 
- struct ErrorPlace {
-   InputSectionBase *isec;
-@@ -251,7 +251,7 @@
- void createTaggedSymbols(Ctx &);
- void initSymbolAnchors(Ctx &);
- 
--void setTarget(Ctx &);
-+TargetInfo *getTarget(Ctx &);
- 
- template <class ELFT> bool isMipsPIC(const Defined *sym);
- 
++#define M \
++F | F
++
++int a = M;
++// CHECK: :8:9: warning: shift count >= width of type [-Wshift-count-overflow]
++// CHECK-NEXT:     8 | int a = M;
++// CHECK-NEXT:       |         ^
++// CHECK-NEXT: :5:11: note: expanded from macro 'M'
++// CHECK-NEXT:     5 | #define M \
++// CHECK-NEXT:       |           ^
++// CHECK-NEXT: :3:14: note: expanded from macro '\
++// CHECK-NEXT: F'
++// CHECK-NEXT:     3 | #define F (1 << 99)
++// CHECK-NEXT:       |              ^  ~~
++// CHECK-NEXT: :8:9: warning: shift count >= width of type [-Wshift-count-overflow]
++// CHECK-NEXT:     8 | int a = M;
++// CHECK-NEXT:       |         ^
++// CHECK-NEXT: :6:5: note: expanded from macro 'M'
++// CHECK-NEXT:     6 | F | F
++// CHECK-NEXT:       |     ^
++// CHECK-NEXT: :3:14: note: expanded from macro 'F'
++// CHECK-NEXT:     3 | #define F (1 << 99)
++// CHECK-NEXT:       |              ^  ~~
