@@ -2431,8 +2431,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   TF_RETURN_IF_ERROR(importer.ImporterBase::Convert(graph_func_name, func_type,
                                                     arg_nodes, ret_nodes,
                                                     control_ret_nodes, attrs));
-  // TODO(b/370078030): add tests once migration and code decoupling is
-  // complete.
   if (specs.convert_all_functions_to_mlir) {
     auto fn_names = graph.flib_def().ListFunctionNames();
     for (const auto& fn_name : fn_names) {

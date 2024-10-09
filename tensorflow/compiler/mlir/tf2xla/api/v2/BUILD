@@ -370,6 +370,7 @@ tf_cc_test(
     name = "graph_to_tf_executor_test",
     srcs = ["graph_to_tf_executor_test.cc"],
     data = [
+        "testdata/graph_with_flib_def.txt",
         "testdata/valid_graph.txt",
     ],
     deps = [
@@ -384,14 +385,11 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:read_all",

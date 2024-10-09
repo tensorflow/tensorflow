@@ -20,8 +20,12 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/bytes/read_all.h"  // from @riegeli
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
@@ -68,6 +72,15 @@ class GraphToTfExecutorTest : public ::testing::Test {
     return graph_def;
   }
 
+  int CountNumberOfFunctionsInModule(mlir::ModuleOp module) {
+    int count = 0;
+    for (auto unused : module.getOps<mlir::func::FuncOp>()) {
+      (void)unused;  // Avoid unused variable warning
+      count++;
+    }
+    return count;
+  }
+
   DialectRegistry registry_;
   MLIRContext context_;
 };
@@ -84,6 +97,49 @@ TEST_F(GraphToTfExecutorTest, BasicConvertGraphToTfExecutorPasses) {
 
   TF_ASSERT_OK(
       ConvertGraphToTfExecutor(graph, debug_info, flib_def, specs, &context_));
+}
+
+TEST_F(
+    GraphToTfExecutorTest,
+    ConvertGraphToTfExecutorConvertAllFunctionsTrueConvertsAllFunctionsInFlibDef) {
+  Graph graph(OpRegistry::Global());
+  GraphDebugInfo debug_info;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                     FunctionDefLibrary());
+  GraphDef graph_def = CreateGraphDef("graph_with_flib_def.txt");
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  GraphImportConfig specs;
+  specs.convert_all_functions_to_mlir = true;
+
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> result =
+      ConvertGraphToTfExecutor(graph, debug_info, graph.flib_def(), specs,
+                               &context_);
+
+  // should equal main + 4 functions in flib_def
+  ASSERT_EQ(CountNumberOfFunctionsInModule(result->get()), 5);
+}
+
+TEST_F(
+    GraphToTfExecutorTest,
+    ConvertGraphToTfExecutorConvertAllFunctionsFalseOnlyConvertsFunctionsReferencedInGraph) {
+  Graph graph(OpRegistry::Global());
+  GraphDebugInfo debug_info;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                     FunctionDefLibrary());
+  GraphDef graph_def = CreateGraphDef("graph_with_flib_def.txt");
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  GraphImportConfig specs;
+  specs.convert_all_functions_to_mlir = false;
+
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> result =
+      ConvertGraphToTfExecutor(graph, debug_info, graph.flib_def(), specs,
+                               &context_);
+
+  // should equal main + 2 functions referenced by nodes in the graph via the
+  // "f" attr.
+  ASSERT_EQ(CountNumberOfFunctionsInModule(result->get()), 3);
 }
 
 }  // namespace
