@@ -74,9 +74,9 @@ hipCtx_t CurrentContextOrDie() {
 }
 
 // Returns the singleton ContextMap.
-ContextMap<hipCtx_t, GpuContext>* GetContextMap() {
-  static ContextMap<hipCtx_t, GpuContext>* context_map =
-      new ContextMap<hipCtx_t, GpuContext>([](void* ptr) {
+ContextMap<hipCtx_t, RocmContext>* GetContextMap() {
+  static ContextMap<hipCtx_t, RocmContext>* context_map =
+      new ContextMap<hipCtx_t, RocmContext>([](void* ptr) {
         int device_ordinal;
         hipError_t result =
             hipPointerGetAttribute(static_cast<void*>(&device_ordinal),
@@ -135,14 +135,14 @@ void SynchronizeOrDie() {
 
 }  // namespace
 
-void GpuContext::SetActive() {
+void RocmContext::SetActive() {
   FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(context_),
                      "Failed setting context");
 }
 
-bool GpuContext::IsActive() const { return CurrentContext() == context_; }
+bool RocmContext::IsActive() const { return CurrentContext() == context_; }
 
-absl::Status GpuContext::Synchronize() {
+absl::Status RocmContext::Synchronize() {
   ScopedActivateContext activation(this);
   RETURN_IF_ROCM_ERROR(wrap::hipDeviceSynchronize(),
                        "could not synchronize on ROCM device");
@@ -277,7 +277,7 @@ void GpuDriver::DestroyContext(Context* context) {
   if (context == nullptr) {
     return;
   }
-  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
+  RocmContext* gpu_context = tensorflow::down_cast<RocmContext*>(context);
   hipCtx_t former_context = CurrentContext();
   context->SetActive();
   hipDevice_t device;
@@ -1469,7 +1469,7 @@ absl::Status GpuDriver::EnablePeerAccess(Context* from, Context* to) {
 
   ScopedActivateContext activated{from};
   hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<GpuContext*>(to)->context(), 0 /* = flags */);
+      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
