@@ -3532,6 +3532,8 @@ LogicalResult ConvertToHloModule::Lower(
 LogicalResult ConvertToHloModule::LowerFunctionCall(
     mlir::func::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  xla::XlaScopedShardingAssignment scoped_sharding(
+      builder, CreateOpShardingFromAttribute(call_op));
   auto& value_map = *value_lowering;
   mlir::func::FuncOp callee =
       module_.lookupSymbol<mlir::func::FuncOp>(call_op.getCallee());
@@ -3640,10 +3642,9 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     // means no replication. This avoids the need for unrelated tests to handle
     // this field.
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
-
-    ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
     ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
+  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
   if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
                                        false, entry_args_same_across_replicas,
                                        arg_shardings, ret_shardings,

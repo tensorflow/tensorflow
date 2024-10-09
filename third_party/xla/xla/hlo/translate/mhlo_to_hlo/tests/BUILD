@@ -24,6 +24,7 @@ lit_test_suite(
             "export_large_constants.mlir",
             "export_replicas.mlir",
             "frontend_attributes.mlir",
+            "function.mlir",
             "fusion.mlir",
             "if.mlir",
             "input_output_aliasing.mlir",
