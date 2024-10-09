@@ -367,7 +367,7 @@ UNARY_TEST(Erfc, {
       .Error(+[](NativeT x) {
         NativeT min = std::numeric_limits<NativeT>::min();
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
-        return ErrorSpec::Builder().abs_err(2 * min).rel_err(50 * eps).build();
+        return ErrorSpec::Builder().abs_err(min).rel_err(35 * eps).build();
       })
       .Run();
 })
