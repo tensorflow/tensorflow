@@ -66,12 +66,6 @@ package(
 )
 
 cc_library(
-    name = "gpu_activation_header",
-    hdrs = ["gpu_activation.h"],
-    deps = [":scoped_activate_context"],
-)
-
-cc_library(
     name = "context",
     hdrs = ["context.h"],
     deps = [
@@ -146,14 +140,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-gpu_only_cc_library(
-    name = "gpu_activation",
-    hdrs = ["gpu_activation.h"],
-    deps = [
-        ":scoped_activate_context",
     ],
 )
 
