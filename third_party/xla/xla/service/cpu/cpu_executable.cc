@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include "xla/service/hlo_profile_printer_data.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>

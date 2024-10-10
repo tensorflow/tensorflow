@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace cpu {

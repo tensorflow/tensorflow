@@ -24,20 +24,23 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/notification.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

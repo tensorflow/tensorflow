@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <optional>
 
-#include "absl/base/dynamic_annotations.h"
+#include "absl/base/attributes.h"
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDeviceDefault.h"
 #include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void

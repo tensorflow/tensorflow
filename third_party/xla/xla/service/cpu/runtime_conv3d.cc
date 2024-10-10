@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/base/attributes.h"
+#include "Eigen/Core"
+
 #define EIGEN_USE_THREADS
 
-#include "absl/base/dynamic_annotations.h"
 #include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
