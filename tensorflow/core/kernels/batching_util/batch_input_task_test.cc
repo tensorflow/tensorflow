@@ -60,7 +60,7 @@ namespace {
 
 using TensorMatrix = std::vector<std::vector<Tensor>>;
 
-using SplitFunc = std::function<Status(
+using SplitFunc = std::function<absl::Status(
     std::unique_ptr<BatchResourceBase::BatchTask>* input_task,
     int first_output_task_size, int input_batch_size_limit,
     std::vector<std::unique_ptr<BatchResourceBase::BatchTask>>* output_tasks)>;
@@ -114,7 +114,7 @@ class BatchInputTaskTest : public ::testing::Test {
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
                                        "/job:a/replica:0/task:0");
 
-    Status op_kernel_creation_status;
+    absl::Status op_kernel_creation_status;
     batch_kernel_ = CreateOpKernel(
         DEVICE_CPU, device_.get(), device_->GetAllocator(AllocatorAttributes{}),
         CreateBatchKernelNodeDef(), TF_GRAPH_DEF_VERSION,

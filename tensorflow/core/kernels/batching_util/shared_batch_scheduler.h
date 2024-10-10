@@ -142,7 +142,7 @@ class SharedBatchScheduler
   };
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
-  static Status Create(
+  static absl::Status Create(
       const Options& options,
       std::shared_ptr<SharedBatchScheduler<TaskType>>* scheduler);
 
@@ -205,9 +205,10 @@ class SharedBatchScheduler
     // NOTE:
     // Instantiations of `TaskType` may vary, so it's up to caller to define
     // how (e.g., which members to access) to split input tasks.
-    std::function<Status(std::unique_ptr<TaskType>* input_task,
-                         int first_output_task_size, int input_batch_size_limit,
-                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+    std::function<absl::Status(
+        std::unique_ptr<TaskType>* input_task, int first_output_task_size,
+        int input_batch_size_limit,
+        std::vector<std::unique_ptr<TaskType>>* output_tasks)>
         split_input_task_func;
 
     // The maximum size of each enqueued batch (i.e., in
@@ -268,9 +269,9 @@ class SharedBatchScheduler
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
   };
   // This method is marked virtual for testing purposes only.
-  virtual Status AddQueue(const QueueOptions& options,
-                          ProcessBatchCallback process_batch_callback,
-                          std::unique_ptr<BatchScheduler<TaskType>>* queue);
+  virtual absl::Status AddQueue(
+      const QueueOptions& options, ProcessBatchCallback process_batch_callback,
+      std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
  protected:
   explicit SharedBatchScheduler(const Options& options);
@@ -287,7 +288,7 @@ class SharedBatchScheduler
   void ThreadLogic();
 
   // Called by `AddQueue`.
-  Status AddQueueAfterRewritingOptions(
+  absl::Status AddQueueAfterRewritingOptions(
       const QueueOptions& options, ProcessBatchCallback process_batch_callback,
       std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
@@ -358,7 +359,7 @@ class Queue {
                    ProcessBatchCallbackWithPaddingTasks>;
 
   using SchedulableBatchCallback = std::function<void()>;
-  using SplitInputTaskIntoSubtasksCallback = std::function<Status(
+  using SplitInputTaskIntoSubtasksCallback = std::function<absl::Status(
       std::unique_ptr<TaskType>* input_task, int open_batch_remaining_slot,
       int max_execution_batch_size,
       std::vector<std::unique_ptr<TaskType>>* output_tasks)>;
@@ -371,7 +372,7 @@ class Queue {
 
   // Submits a task to the queue, with the same semantics as
   // BatchScheduler::Schedule().
-  Status Schedule(std::unique_ptr<TaskType>* task);
+  absl::Status Schedule(std::unique_ptr<TaskType>* task);
 
   // Returns the number of enqueued tasks, with the same semantics as
   // BatchScheduler::NumEnqueuedTasks().
@@ -439,7 +440,7 @@ class Queue {
   // Implementation of Schedule above. Enqueues `task` as it
   // is or split it inline (eagerly) to form batches to be processed by
   // `Queue<TaskType>::ProcessBatch`
-  Status ScheduleWithoutOrEagerSplitImpl(std::unique_ptr<TaskType>* task)
+  absl::Status ScheduleWithoutOrEagerSplitImpl(std::unique_ptr<TaskType>* task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Closes the open batch residing at the back of std::deque, and inserts a
@@ -447,7 +448,7 @@ class Queue {
   void StartNewBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Split `input task` into `output_tasks` according to 'task_sizes'.
-  Status SplitInputBatchIntoSubtasks(
+  absl::Status SplitInputBatchIntoSubtasks(
       std::unique_ptr<TaskType>* input_task,
       std::vector<std::unique_ptr<TaskType>>* output_tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -469,7 +470,7 @@ class Queue {
   // Returns an error if queue doesn't have capacity for this task.
   //
   // `task` must outlive this method.
-  Status ValidateBatchTaskQueueCapacity(TaskType* task) const
+  absl::Status ValidateBatchTaskQueueCapacity(TaskType* task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns an error if the low priority task queue doesn't have capacity for
@@ -478,7 +479,7 @@ class Queue {
   // single task does not it exceed input batch size limit and the total size of
   // the tasks in the queue does not exceed the max batch size * max enqueued
   // batch sizes.
-  Status ValidateLowPriorityTaskQueueCapacity(const TaskType& task) const
+  absl::Status ValidateLowPriorityTaskQueueCapacity(const TaskType& task) const
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The task size of the last batch in the queue.
@@ -588,7 +589,7 @@ class QueueHandle : public BatchScheduler<TaskType> {
               Queue<TaskType>* queue);
   ~QueueHandle() override;
 
-  Status Schedule(std::unique_ptr<TaskType>* task) override;
+  absl::Status Schedule(std::unique_ptr<TaskType>* task) override;
   size_t NumEnqueuedTasks() const override;
   size_t SchedulingCapacity() const override;
 
@@ -609,7 +610,7 @@ class QueueHandle : public BatchScheduler<TaskType> {
 }  // namespace internal
 
 template <typename TaskType>
-Status SharedBatchScheduler<TaskType>::Create(
+absl::Status SharedBatchScheduler<TaskType>::Create(
     const Options& options,
     std::shared_ptr<SharedBatchScheduler<TaskType>>* scheduler) {
   if (options.num_batch_threads < 1) {
@@ -640,7 +641,7 @@ SharedBatchScheduler<TaskType>::~SharedBatchScheduler() {
 }
 
 template <typename TaskType>
-Status SharedBatchScheduler<TaskType>::AddQueue(
+absl::Status SharedBatchScheduler<TaskType>::AddQueue(
     const QueueOptions& options, ProcessBatchCallback process_batch_callback,
     std::unique_ptr<BatchScheduler<TaskType>>* queue) {
   QueueOptions rewrite_options = options;
@@ -659,7 +660,7 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
 }
 
 template <typename TaskType>
-Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
+absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     const QueueOptions& options, ProcessBatchCallback process_batch_callback,
     std::unique_ptr<BatchScheduler<TaskType>>* queue) {
   if (options.input_batch_size_limit == 0) {
@@ -856,7 +857,7 @@ bool Queue<TaskType>::IsLowPriorityTask(std::unique_ptr<TaskType>* task) {
 }
 
 template <typename TaskType>
-Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
+absl::Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
     std::unique_ptr<TaskType>* task) {
   // TODO(b/161857471):
   // Add test coverage when when concurrent incoming batches arrives and
@@ -902,7 +903,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplitImpl(
 }
 
 template <typename TaskType>
-Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   const bool large_batch_splitting = options_.enable_large_batch_splitting;
   tsl::profiler::TraceMe trace_me([task, large_batch_splitting] {
     return profiler::TraceMeEncode(
@@ -974,7 +975,8 @@ size_t Queue<TaskType>::SchedulingCapacityInternal() const {
 }
 
 template <typename TaskType>
-Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
+absl::Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(
+    TaskType* task) const {
   // Check if the task size is larger than the batch size limit, regardless of
   // the batch capacity.
   if (task->size() > options_.input_batch_size_limit) {
@@ -1020,7 +1022,7 @@ Status Queue<TaskType>::ValidateBatchTaskQueueCapacity(TaskType* task) const {
 }
 
 template <typename TaskType>
-Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
+absl::Status Queue<TaskType>::ValidateLowPriorityTaskQueueCapacity(
     const TaskType& task) const {
   // Unlike the high priority batch capacity validation where having only
   // input_batch_size_limit without max_execution_batch_size is allowed, it
@@ -1237,7 +1239,7 @@ void Queue<TaskType>::StartNewBatch() {
 }
 
 template <typename TaskType>
-Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
+absl::Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
     std::unique_ptr<TaskType>* input_task,
     std::vector<std::unique_ptr<TaskType>>* output_tasks) {
   const int open_batch_remaining_slot =
@@ -1328,7 +1330,7 @@ QueueHandle<TaskType>::~QueueHandle() {
 }
 
 template <typename TaskType>
-Status QueueHandle<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+absl::Status QueueHandle<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   return queue_->Schedule(task);
 }
 
