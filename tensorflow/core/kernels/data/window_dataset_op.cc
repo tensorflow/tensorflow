@@ -123,19 +123,20 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return cardinality;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* window_size_node = nullptr;
@@ -160,18 +161,18 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       const int64_t window_size = dataset()->window_size_;
       const int64_t window_shift = dataset()->window_shift_;
       const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
-      Status status = absl::OkStatus();
+      absl::Status status = absl::OkStatus();
       {
         const size_t target_size = TargetBufferSize(window_size, window_stride);
 
@@ -189,7 +190,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;
                ++i) {
             std::vector<Tensor> element;
-            Status status =
+            absl::Status status =
                 input_impl_->GetNext(ctx, &element, end_of_sequence);
             if (!*end_of_sequence) {
               RecordBufferEnqueue(ctx, element);
@@ -280,8 +281,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                        dataset()->window_shift_);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputImplEmpty, ""));
@@ -305,8 +306,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       if (!reader->Contains(prefix(), kInputImplEmpty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
@@ -342,15 +343,15 @@ class WindowDatasetOp::Dataset : public DatasetBase {
    private:
     struct InvocationResult {
       InvocationResult() = default;
-      InvocationResult(std::vector<Tensor>&& result, const Status& status)
+      InvocationResult(std::vector<Tensor>&& result, const absl::Status& status)
           : result(result), status(status) {}
 
       std::vector<Tensor> result;
-      Status status;
+      absl::Status status;
     };
 
-    Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
-                             const Status& status)
+    absl::Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
+                                   const absl::Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           prefix(), CodeKey(index), static_cast<int64_t>(status.code())));
@@ -361,8 +362,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
-                            Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
+                                  absl::Status* status)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(prefix(), CodeKey(index), &code_int));
@@ -372,7 +374,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), ErrorMessageKey(index),
                                               &error_message));
-        *status = Status(code, error_message);
+        *status = absl::Status(code, error_message);
       } else {
         *status = absl::OkStatus();
       }

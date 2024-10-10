@@ -58,16 +58,17 @@ class Dataset : public DatasetBase {
     return sparse_tensor_.shape()[0];
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return absl::OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* indices_node;
     TF_RETURN_IF_ERROR(b->AddTensor(sparse_tensor_.indices(), &indices_node));
     Node* value_node;
@@ -101,9 +102,9 @@ class Dataset : public DatasetBase {
       }
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (i_ == num_elements_) {
         *end_of_sequence = true;
@@ -167,8 +168,8 @@ class Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::prefix(), "i", i_));
       TF_RETURN_IF_ERROR(
@@ -184,8 +185,8 @@ class Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::prefix(), "i", &i_));
       int64_t iter_loc;
