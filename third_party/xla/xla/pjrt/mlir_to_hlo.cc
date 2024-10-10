@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -161,6 +162,21 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
                       xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple, /*use_shardy=*/false);
+}
+
+absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module) {
+  mlir::MLIRContext* context = module.getContext();
+  mlir::PassManager pm(context);
+  xla::sdy::addSdyRoundTripExportPipeline(pm);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  if (!mlir::succeeded(pm.run(module))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shardy export failed;\n\nDetailed "
+                     "error from MLIR: ",
+                     status.message()));
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::string> SerializeUsingNativeBytecode(

@@ -49,8 +49,6 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -148,12 +146,8 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   XlaComputation computation;
-  mlir::PassManager pm(&context);
-  // SDY dialect may be part of the module which XLA doesn't know about. Export
-  // it.
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
-  TF_RETURN_IF_ERROR(tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
-      pm.run(*module)));
+  // SDY dialect may be part of the module which XLA doesn't know about.
+  TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
   TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation, use_tuple_args,
                                           return_tuple,
                                           /*use_shardy=*/false));
@@ -213,6 +207,9 @@ absl::StatusOr<nb::bytes> PySerializePortableArtifact(
   if (VLOG_IS_ON(3)) context.disableMultithreading();
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
+
+  // SDY dialect may be part of the module which XLA doesn't know about.
+  TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
 
   // Serialize portable artifact
   TF_ASSIGN_OR_RETURN(

@@ -393,6 +393,13 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
+
+  if (options.executable_build_options.use_shardy_partitioner()) {
+    // Since Shardy is located in the middle of the XLA pipeline, we need to
+    // export it before going to HLO while preserving Shardy ops and attrs.
+    TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(module));
+  }
+
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
       xla::Serialize(module,

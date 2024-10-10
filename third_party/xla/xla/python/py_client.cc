@@ -88,13 +88,9 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/platform_util.h"  // IWYU pragma: keep
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -453,15 +449,9 @@ PyClient::CompileIfrtProgram(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseMlirModuleString(mlir_module, context));
   if (options.executable_build_options.use_shardy_partitioner()) {
-    mlir::PassManager pm(&context);
-    // Since Shardy is inside the middle of the XLA pipeline, after converting
-    // down to HLO, we need to run the Shardy export pipeline to preserve the
-    // SDY ops and sharding attributes for when we come back from HLO to MLIR
-    // when Shardy propagation is run.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
-    TF_RETURN_IF_ERROR(
-        tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
-            pm.run(*module)));
+    // Since Shardy is located in the middle of the XLA pipeline, we need to
+    // export it before going to HLO while preserving Shardy ops and attrs.
+    TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
   }
   return CompileIfrtProgram(
       client, std::make_unique<xla::ifrt::HloProgram>(module.get()),
