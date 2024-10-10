@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_join.h"
+
 namespace tensorflow {
 
 std::ostream& operator<<(std::ostream& os,
@@ -59,6 +61,15 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << ", min_max_enqueued_batches = "
             << options.min_max_enqueued_batches
             << ", batch_padding_policy = " << options.batch_padding_policy
+            << ", num_batch_threads = "
+            << options.batch_options.num_batch_threads()
+            << ", max_batch_size = " << options.batch_options.max_batch_size()
+            << ", batch_timeout_micros = "
+            << options.batch_options.batch_timeout_micros()
+            << ", allowed_batch_sizes = "
+            << absl::StrJoin(options.batch_options.allowed_batch_sizes(), ",")
+            << ", max_enqueued_batches = "
+            << options.batch_options.max_enqueued_batches()
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops
