@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 
