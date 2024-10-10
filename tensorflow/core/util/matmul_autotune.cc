@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 bool MatmulAutotuneEnable() {
   bool value;
-  Status status =
+  absl::Status status =
       ReadBoolFromEnvVar("TF_MATMUL_AUTOTUNE_ENABLE", false, &value);
   if (!status.ok()) {
     LOG(ERROR) << status.message();
@@ -40,7 +40,7 @@ bool MatmulDoFP32ComputationFP16Input() {
   // user-set-true, user-set-false, user-no-setting. In the calling sites,
   // check the compatibilities. Note that user-set-false with compute
   // capability <= 5.2 will cause an error in the later cublasGemmEx() call.
-  Status status =
+  absl::Status status =
       ReadBoolFromEnvVar("TF_FP16_MATMUL_USE_FP32_COMPUTE", true, &value);
   if (!status.ok()) {
     LOG(ERROR) << status.message();

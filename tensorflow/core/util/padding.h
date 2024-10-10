@@ -47,9 +47,9 @@ enum Padding {
 };
 
 // Returns an error if the padding attributes are invalid.
-Status CheckValidPadding(Padding padding_type,
-                         const std::vector<int64_t>& explicit_paddings,
-                         int num_dims, TensorFormat data_format);
+absl::Status CheckValidPadding(Padding padding_type,
+                               const std::vector<int64_t>& explicit_paddings,
+                               int num_dims, TensorFormat data_format);
 
 // Return the string containing the list of valid padding types, that can be
 // used as an Attr() in REGISTER_OP.
@@ -61,7 +61,7 @@ std::string GetPaddingAttrStringWithExplicit();
 std::string GetExplicitPaddingsAttrString();
 
 // Sets padding value based on the given string padding value.
-Status GetPaddingFromString(StringPiece str_value, Padding* value);
+absl::Status GetPaddingFromString(StringPiece str_value, Padding* value);
 
 }  // end namespace tensorflow
 

@@ -55,8 +55,8 @@ class EventsWriter {
   // and is open this is a no-op.  If on the other hand the file was opened,
   // but has since disappeared (e.g. deleted by another process), this will open
   // a new file with a new timestamp in its filename.
-  Status Init();
-  Status InitWithSuffix(const std::string& suffix);
+  absl::Status Init();
+  absl::Status InitWithSuffix(const std::string& suffix);
 
   // Returns the filename for the current events file:
   // filename_ = [file_prefix_].out.events.[timestamp].[hostname][suffix]
@@ -78,12 +78,12 @@ class EventsWriter {
   // be written too.
   //   Close() calls Flush() and then closes the current events file.
   // Returns true only if both the flush and the closure were successful.
-  Status Flush();
-  Status Close();
+  absl::Status Flush();
+  absl::Status Close();
 
  private:
-  Status FileStillExists();  // OK if event_file_path_ exists.
-  Status InitIfNeeded();
+  absl::Status FileStillExists();  // OK if event_file_path_ exists.
+  absl::Status InitIfNeeded();
 
   Env* env_;
   const std::string file_prefix_;
