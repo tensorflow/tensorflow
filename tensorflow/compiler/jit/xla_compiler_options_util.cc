@@ -15,9 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include <memory>
+
+#include "absl/status/statusor.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -25,6 +37,22 @@ using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
 using PjRtDeviceCompiler =
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
+
+absl::StatusOr<std::shared_ptr<se::DeviceMemoryAllocator>>
+GetAllocatorFromPjrtClient(DeviceBase* device_base,
+                           const XlaPlatformInfo& platform_info,
+                           xla::PjRtClient* pjrt_client) {
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client->LookupAddressableDevice(
+          xla::PjRtLocalDeviceId(device_base->parsed_name().id)));
+  TF_ASSIGN_OR_RETURN(
+      xla::LocalDeviceState * local_device,
+      tensorflow::down_cast<xla::PjRtStreamExecutorDevice*>(pjrt_device)
+          ->GetLocalDeviceState());
+  return GetAllocator(device_base, local_device->compute_stream(),
+                      platform_info);
+}
 
 inline void LogOptions(const XlaCompiler::Options& options) {
   VLOG(2) << "XlaCompiler::Options[device_type=" << options.device_type
@@ -85,9 +113,9 @@ XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
   return options;
 }
 
-XlaCompiler::Options GenerateCompilerOptionsForPjRt(
-    const FunctionLibraryRuntime& function_library,
-    const DeviceBase* device_base, const XlaPlatformInfo& platform_info,
+absl::StatusOr<XlaCompiler::Options> GenerateCompilerOptionsForPjRt(
+    const FunctionLibraryRuntime& function_library, DeviceBase* device_base,
+    const XlaPlatformInfo& platform_info,
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
         pjrt_device_compiler) {
   return GenerateCompilerOptionsForPjRt(
@@ -96,22 +124,32 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
       pjrt_device_compiler);
 }
 
-XlaCompiler::Options GenerateCompilerOptionsForPjRt(
+absl::StatusOr<XlaCompiler::Options> GenerateCompilerOptionsForPjRt(
     const FunctionLibraryDefinition* function_library_def,
-    int graph_def_version, const DeviceBase* device_base,
+    int graph_def_version, DeviceBase* device_base,
     const XlaPlatformInfo& platform_info,
     const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
+  DeviceType device_type(
+      tensorflow::down_cast<const Device*>(device_base)->device_type());
   absl::StatusOr<int> platform_device_id =
-      tsl::GetPlatformDeviceIdFromDeviceParsedName(
-          device_base->parsed_name(),
-          DeviceType(tensorflow::down_cast<const Device*>(device_base)
-                         ->device_type()));
+      tsl::GetPlatformDeviceIdFromDeviceParsedName(device_base->parsed_name(),
+                                                   device_type);
   if (platform_device_id.ok()) {
     options.device_ordinal = *platform_device_id;
   } else {
     options.device_ordinal = device_base->parsed_name().id;
   }
+
+  if (device_type == DEVICE_GPU) {
+    LOG(INFO) << "[clin] device_type - gpu = " << device_type.type_string();
+    TF_ASSIGN_OR_RETURN(
+        options.device_allocator,
+        GetAllocatorFromPjrtClient(device_base, platform_info,
+                                   pjrt_device_compiler->client()));
+  }
+  LOG(INFO) << "[clin] device_type - others = " << device_type.type_string();
+
   options.flib_def = function_library_def;
   options.graph_def_version = graph_def_version;
   if (const auto* metadata = platform_info.xla_device_metadata();

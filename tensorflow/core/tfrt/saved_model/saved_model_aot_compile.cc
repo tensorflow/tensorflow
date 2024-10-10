@@ -109,8 +109,9 @@ Status CompileTfGraphToHlo(
 
   XlaPlatformInfo platform_info(DEVICE_GPU, se::cuda::kCudaPlatformId, nullptr,
                                 nullptr, nullptr);
-  *options = GenerateCompilerOptionsForPjRt(
-      flib_def, graph_def_version, device.get(), platform_info, nullptr);
+  TF_ASSIGN_OR_RETURN(*options, GenerateCompilerOptionsForPjRt(
+                                    flib_def, graph_def_version, device.get(),
+                                    platform_info, nullptr));
   // Set device type correctly so that compilation can find kernels.
   options->device_type = DeviceType("XLA_GPU_JIT");
 
