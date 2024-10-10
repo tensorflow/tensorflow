@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -2176,40 +2177,128 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   return absl::OkStatus();
 }
 
-absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
-                                                  const HloInstruction* inst) {
-  CollectivesAsyncEvents& collectives_async_events =
-      GetCollectivesAsyncEvents();
-  if (kind == Thunk::Kind::kNcclRecvDone ||
-      kind == Thunk::Kind::kNcclSendDone) {
-    const HloChannelInstruction* done = DynCast<HloChannelInstruction>(inst);
-    int64_t channel_id = done->channel_id().value();
-    // We only pipeline Send/Recv when channel_id > 0, and allows multiple
-    // and potentially interleaving Send/Recv chains using channel_id = 0.
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      auto it = collectives_async_events.find(
-          GetSendRecvAsyncEventsKey(kind, channel_id));
-      TF_RET_CHECK(it != collectives_async_events.end())
-          << "couldn't find async events for channel_id " << channel_id;
-      AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
-          kind, Thunk::ThunkInfo::WithProfileAnnotation(inst), it->second,
-          GetStreamKindForSendRecv(DynCast<HloSendRecvInstruction>(inst))));
-      return absl::OkStatus();
+// Find the canonical send/recv start op for one of send, recv, send-done, or
+// recv-done. For trivial cases send/recv and send-done/recv-done come in pairs
+// and the canonical start op is the send/recv op of the pair. If send/recv is
+// partially pipelined, we will use the send/recv leading into the while loop as
+// the canonical start op, which will serve as a key for the async events.
+//
+// Example:
+// ```
+// send_ctx = send(src, ...)  <-- canonical start op
+// send_ctx_final = while(send_ctx) {
+//   send_ctx_in = parameter(0)
+//   send-done(send_ctx_in)
+//   ...
+//   ROOT send_ctx_out = send(next_src, ...)
+// }
+// send-done(send_ctx_final)
+// ```
+static const HloInstruction* FindCanonicalSendRecvStartOp(
+    const HloInstruction* inst) {
+  CHECK(inst->opcode() == HloOpcode::kSend ||
+        inst->opcode() == HloOpcode::kRecv ||
+        inst->opcode() == HloOpcode::kSendDone ||
+        inst->opcode() == HloOpcode::kRecvDone);
+
+  // Find container while loop and index for the send/recv case or return
+  // canonical start op directly.
+  const HloInstruction* while_op = nullptr;
+  int64_t i = -1;
+  if (inst->opcode() == HloOpcode::kSend ||
+      inst->opcode() == HloOpcode::kRecv) {
+    CHECK_EQ(inst->users().size(), 1);
+    const HloInstruction* unique_user = inst->users().front();
+
+    // Return send/recv inst directly if this is a simple send/recv pair.
+    if (unique_user->opcode() == HloOpcode::kSendDone ||
+        unique_user->opcode() == HloOpcode::kRecvDone) {
+      return inst;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(unique_user->opcode() == HloOpcode::kTuple ||
+          unique_user->opcode() == HloOpcode::kWhile);
+    if (unique_user->IsRoot()) {
+      // send/recv op in the loop body.
+      CHECK(unique_user->parent()->IsWhileBodyComputation());
+      while_op = unique_user->parent()->WhileCallInstruction();
+      i = unique_user->operand_index(inst);
+    } else {
+      // send/recv leading into the loop.
+      CHECK_EQ(unique_user->users().size(), 1);
+      CHECK(unique_user->users().front()->opcode() == HloOpcode::kWhile);
+      while_op = unique_user->users().front();
+      i = unique_user->operand_index(inst);
     }
   }
 
-  const HloInstruction* start = inst->operand(0);
-  auto async_events = collectives_async_events.extract(start);
-  TF_RET_CHECK(async_events)
+  // Find container while loop and index for the send-done/recv-done case or
+  // return canonical start op directly.
+  if (inst->opcode() == HloOpcode::kSendDone ||
+      inst->opcode() == HloOpcode::kRecvDone) {
+    const HloInstruction* operand = inst->operand(0);
+
+    // Return send/recv inst directly if this is a simple send/recv pair.
+    if (operand->opcode() == HloOpcode::kSend ||
+        operand->opcode() == HloOpcode::kRecv) {
+      return operand;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
+    const auto* gte = Cast<HloGetTupleElementInstruction>(operand);
+    const HloInstruction* iter_tuple = operand->operand(0);
+    if (iter_tuple->opcode() == HloOpcode::kParameter) {
+      // send-done/recv-done in the loop body.
+      CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
+      CHECK(operand->parent()->IsWhileBodyComputation());
+      while_op = iter_tuple->parent()->WhileCallInstruction();
+      i = gte->tuple_index();
+    } else {
+      // send-done/recv-done proceeding the loop.
+      CHECK(iter_tuple->opcode() == HloOpcode::kWhile);
+      while_op = iter_tuple;
+      i = gte->tuple_index();
+    }
+  }
+
+  // Extract canonical start op from while loop's init.
+  CHECK(while_op != nullptr);
+  CHECK(0 <= i && i < while_op->shape().tuple_shapes_size());
+  const HloInstruction* init = while_op->operand(0);
+  const HloInstruction* canonical_start_op = init->operand(i);
+  CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
+        canonical_start_op->opcode() == HloOpcode::kRecv);
+  return canonical_start_op;
+}
+
+absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
+                                                  const HloInstruction* inst) {
+  // Partial pipelining is only implemented for send/recv.
+  bool is_send_recv =
+      kind == Thunk::Kind::kNcclRecvDone || kind == Thunk::Kind::kNcclSendDone;
+  const HloInstruction* start =
+      is_send_recv ? FindCanonicalSendRecvStartOp(inst) : inst->operand(0);
+
+  // Find canonical async event.
+  CollectivesAsyncEvents& collectives_async_events =
+      GetCollectivesAsyncEvents();
+  auto async_events_it = collectives_async_events.find(start);
+  TF_RET_CHECK(async_events_it != collectives_async_events.end())
       << "couldn't find async events for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_events.mapped()) {
-    AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
-        kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        std::move(async_events.mapped()), AsyncStreamKind::kCollective));
+  if (!async_events_it->second) return absl::OkStatus();
+
+  AsyncStreamKind stream_kind = AsyncStreamKind::kCollective;
+  if (is_send_recv) {
+    stream_kind = GetStreamKindForSendRecv(Cast<HloSendRecvInstruction>(start));
   }
+  AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
+      kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
+      async_events_it->second, stream_kind));
   return absl::OkStatus();
 }
 
@@ -2464,8 +2553,10 @@ absl::Status IrEmitterUnnested::EmitCopyDoneThunk(const HloInstruction* instr) {
 }
 
 absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown send instruction channel id");
+  }
 
   const HloInstruction* src = instr->operand(0);
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
@@ -2489,20 +2580,12 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
         instr, replica_count, partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
-    int64_t channel_id = instr->channel_id().value();
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      std::pair<bool, int64_t> async_events_key =
-          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclSendDone, channel_id);
-      auto it = collectives_async_events.find(async_events_key);
-      if (it != collectives_async_events.end()) {
-        VLOG(0) << "Found async events " << it->second.get();
-        thunk->set_async_events(it->second);
-      } else {
-        VLOG(0) << "Used Async events create for thunk "
-                << thunk->async_events().get();
-        collectives_async_events.emplace(async_events_key,
-                                         thunk->async_events());
-      }
+
+    // Wire up async events.
+    const HloInstruction* canonical_send_instr =
+        FindCanonicalSendRecvStartOp(instr);
+    if (collectives_async_events.contains(canonical_send_instr)) {
+      thunk->set_async_events(collectives_async_events[canonical_send_instr]);
     } else {
       collectives_async_events.try_emplace(instr, thunk->async_events());
     }
@@ -2522,8 +2605,10 @@ absl::Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitSendDoneThunk(
     const HloSendDoneInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send-done.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown send done instruction channel id");
+  }
 
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclSendDone, instr);
@@ -2537,8 +2622,11 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
 }
 
 absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for recv.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown recv instruction channel id");
+  }
+
   TF_RET_CHECK(instr->shape().IsTuple());
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                       GetAllocationSliceForHlo(instr, {0}));
@@ -2564,18 +2652,12 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
         instr, replica_count, partition_count, nccl_buffer);
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
-    int64_t channel_id = instr->channel_id().value();
-    if (MayPipelineSendRecvChannel(channel_id)) {
-      std::pair<bool, int64_t> async_events_key =
-          GetSendRecvAsyncEventsKey(Thunk::Kind::kNcclRecvDone, channel_id);
-      auto it = collectives_async_events.find(async_events_key);
 
-      if (it != GetCollectivesAsyncEvents().end()) {
-        thunk->set_async_events(it->second);
-      } else {
-        collectives_async_events.emplace(async_events_key,
-                                         thunk->async_events());
-      }
+    // Wire up async events.
+    const HloInstruction* canonical_recv_instr =
+        FindCanonicalSendRecvStartOp(instr);
+    if (collectives_async_events.contains(canonical_recv_instr)) {
+      thunk->set_async_events(collectives_async_events[canonical_recv_instr]);
     } else {
       collectives_async_events.try_emplace(instr, thunk->async_events());
     }
@@ -2596,8 +2678,10 @@ absl::Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
 
 absl::Status IrEmitterUnnested::EmitRecvDoneThunk(
     const HloRecvDoneInstruction* instr) {
-  if (!instr->channel_id().has_value())
+  // TODO(b/372306903): Do not require channel id for send-done.
+  if (!instr->channel_id().has_value()) {
     return absl::InternalError("Unknown recv done instruction channel id");
+  }
 
   if (!instr->is_host_transfer()) {
     return EmitNcclAsyncDone(Thunk::kNcclRecvDone, instr);
