@@ -23,9 +23,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
@@ -40,11 +41,7 @@ absl::StatusOr<float> GetEventElapsedTime(Context* context, CUevent start,
   ScopedActivateContext activated{context};
   // The stop event must have completed in order for cuEventElapsedTime to
   // work.
-  auto status = cuda::ToStatus(cuEventSynchronize(stop));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to synchronize the stop event: " << status;
-    return false;
-  }
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuEventSynchronize(stop)));
 
   float elapsed_milliseconds;
 
@@ -56,8 +53,8 @@ absl::StatusOr<float> GetEventElapsedTime(Context* context, CUevent start,
 
 }  // namespace
 
-CudaTimer::CudaTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
-                     std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
+CudaTimer::CudaTimer(Context* context, CudaEvent start_event,
+                     CudaEvent stop_event, GpuStream* stream,
                      GpuSemaphore semaphore)
     : semaphore_(std::move(semaphore)),
       context_(context),
@@ -80,9 +77,9 @@ CudaTimer::~CudaTimer() {
 
 absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
   if (is_stopped_) {
-    return absl::InternalError("Measuring inactive timer");
+    return absl::FailedPreconditionError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(stop_event_.get()));
+  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
   // If we launched the delay kernel then check if it already timed out.
   if (semaphore_) {
     if (*semaphore_ == GpuSemaphoreState::kTimedOut) {
@@ -96,10 +93,29 @@ absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
     }
   }
   TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
-                      GetEventElapsedTime(context_, start_event_->gpu_event(),
-                                          stop_event_->gpu_event()));
+                      GetEventElapsedTime(context_, start_event_.GetHandle(),
+                                          stop_event_.GetHandle()));
   is_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
+}
+
+absl::StatusOr<CudaTimer> CudaTimer::Create(Context* context, GpuStream* stream,
+                                            TimerType timer_type) {
+  GpuSemaphore semaphore{};
+
+  if (timer_type == TimerType::kDelayKernel) {
+    TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
+  }
+
+  TF_ASSIGN_OR_RETURN(CudaEvent start_event,
+                      CudaEvent::Create(context, /*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(CudaEvent stop_event,
+                      CudaEvent::Create(context, /*allow_timing=*/true));
+
+  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+
+  return CudaTimer(context, std::move(start_event), std::move(stop_event),
+                   stream, std::move(semaphore));
 }
 
 }  // namespace stream_executor::gpu

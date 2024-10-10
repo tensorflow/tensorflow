@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform.h"
@@ -90,7 +89,7 @@ absl::StatusOr<CUstream> CreateStream(Context* context, int priority) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
-    GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+    GpuExecutor* executor, CudaEvent completed_event,
     std::optional<std::variant<StreamPriority, int>> priority) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
@@ -110,22 +109,29 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
 absl::Status CudaStream::WaitFor(Stream* other) {
   CudaStream* other_stream = static_cast<CudaStream*>(other);
 
-  GpuEvent* other_completed_event = other_stream->completed_event();
-  TF_RETURN_IF_ERROR(other_stream->RecordEvent(other_completed_event));
-
+  TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
   return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
-                           other_completed_event->gpu_event());
+                           other_stream->completed_event_.GetHandle());
 }
 
 absl::Status CudaStream::RecordEvent(Event* event) {
   return stream_executor::gpu::RecordEvent(
-      executor_->gpu_context(), static_cast<CudaEvent*>(event)->gpu_event(),
+      executor_->gpu_context(), static_cast<CudaEvent*>(event)->GetHandle(),
       gpu_stream());
 }
 
 absl::Status CudaStream::WaitFor(Event* event) {
   return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
-                           static_cast<GpuEvent*>(event)->gpu_event());
+                           static_cast<CudaEvent*>(event)->GetHandle());
+}
+
+absl::Status CudaStream::RecordCompletedEvent() {
+  return RecordEvent(&completed_event_);
+}
+
+CudaStream::~CudaStream() {
+  BlockHostUntilDone().IgnoreError();
+  executor_->DeallocateStream(this);
 }
 
 }  // namespace gpu

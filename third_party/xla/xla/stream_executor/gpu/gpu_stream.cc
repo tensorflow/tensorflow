@@ -19,26 +19,20 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
@@ -120,10 +114,6 @@ absl::Status GpuStream::DoHostCallbackWithStatus(
 }
 
 GpuStream::~GpuStream() {
-  BlockHostUntilDone().IgnoreError();
-  parent()->DeallocateStream(this);
-
-  completed_event_.reset();
   GpuDriver::DestroyStream(parent_->gpu_context(), gpu_stream_);
 }
 

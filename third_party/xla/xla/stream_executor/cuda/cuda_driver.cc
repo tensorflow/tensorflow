@@ -965,14 +965,6 @@ bool GpuDriver::HostUnregister(Context* context, void* location) {
   return true;
 }
 
-absl::Status GpuDriver::DestroyEvent(Context* context, CUevent* event) {
-  if (*event == nullptr) {
-    return absl::InvalidArgumentError("input event cannot be null");
-  }
-
-  ScopedActivateContext activated{context};
-  return cuda::ToStatus(cuEventDestroy(*event), "Error destroying CUDA event");
-}
 
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
   ScopedActivateContext activated{context};
@@ -1075,24 +1067,6 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
           << " from " << absl::bit_cast<void*>(gpu_src) << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return absl::OkStatus();
-}
-
-absl::Status GpuDriver::InitEvent(Context* context, CUevent* result,
-                                  EventFlags flags) {
-  int cuflags;
-  switch (flags) {
-    case EventFlags::kDefault:
-      cuflags = CU_EVENT_DEFAULT;
-      break;
-    case EventFlags::kDisableTiming:
-      cuflags = CU_EVENT_DISABLE_TIMING;
-      break;
-    default:
-      LOG(FATAL) << "impossible event flags: " << int(flags);
-  }
-
-  ScopedActivateContext activated{context};
-  return cuda::ToStatus(cuEventCreate(result, cuflags));
 }
 
 int GpuDriver::GetDeviceCount() {
