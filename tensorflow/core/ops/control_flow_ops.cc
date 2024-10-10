@@ -27,7 +27,7 @@ using shape_inference::ShapeHandle;
 // --------------------------------------------------------------------------
 namespace {
 
-Status SwitchShape(InferenceContext* c) {
+absl::Status SwitchShape(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   ShapeHandle out = c->input(0);
@@ -43,7 +43,7 @@ Status SwitchShape(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SwitchNShape(InferenceContext* c) {
+absl::Status SwitchNShape(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   ShapeHandle out = c->input(0);
@@ -121,7 +121,7 @@ REGISTER_OP("RefSelect")
 
 // --------------------------------------------------------------------------
 namespace {
-Status MergeShape(InferenceContext* c) {
+absl::Status MergeShape(InferenceContext* c) {
   ShapeHandle out = c->input(0);
   if (!c->RankKnown(out)) {
     out = c->UnknownShape();
