@@ -753,8 +753,20 @@ absl::Status CudaExecutor::EnablePeerAccessTo(StreamExecutor* other) {
   return GpuDriver::EnablePeerAccess(gpu_context(), cuda_other->gpu_context());
 }
 
-bool CudaExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
-  return GpuDriver::GetDeviceMemoryInfo(gpu_context(), free, total);
+bool CudaExecutor::DeviceMemoryUsage(int64_t* free_out,
+                                     int64_t* total_out) const {
+  ScopedActivateContext activation(gpu_context());
+  size_t free = 0;
+  size_t total = 0;
+  auto status = cuda::ToStatus(cuMemGetInfo(&free, &total));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to query device memory info: " << status;
+    return false;
+  }
+
+  *free_out = free;
+  *total_out = total;
+  return true;
 }
 
 absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(

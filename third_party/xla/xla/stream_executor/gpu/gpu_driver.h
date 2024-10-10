@@ -597,12 +597,6 @@ class GpuDriver {
   // context, in bytes, via cuDeviceTotalMem.
   static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64_t* result);
 
-  // Returns the free amount of memory and total amount of memory, as reported
-  // by cuMemGetInfo.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g808f555540d0143a331cc42aa98835c0
-  static bool GetDeviceMemoryInfo(Context* context, int64_t* free,
-                                  int64_t* total);
-
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g85295e7d9745ab8f0aa80dd1e172acfc
