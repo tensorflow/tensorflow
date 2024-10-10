@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn_sdk/log.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_log.h"
 
 #include <cstdarg>
 #include <cstdint>
@@ -22,19 +22,24 @@
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 #include "third_party/qairt/include/QNN/QnnLog.h"
 
-namespace qnn::log {
+namespace lrt::qnn {
 namespace {
 
 // NOLINTBEGIN
-constexpr char kProviderDumpTemplate[] =
+constexpr char kQnnInterfaceDumpTpl[] =
     "\
-PROVIDER LOADED\n\
+QNN-INTERFACE\n\
 name: %s\n\
 backend_id: %u\n\
 core_api_version: %u.%u.%u\n\
-backend_api_version: %u.%u.%u\n\
-has_createLog_function: %d\n\
-has_createBackend_function: %d\n";
+backend_api_version: %u.%u.%u\n";
+
+constexpr char kQnnSystemInterfaceDumpTpl[] =
+    "\
+QNN-SYTSTEM-INTERFACE\n\
+name: %s\n\
+backend_id: %u\n\
+system_api_version: %u.%u.%u\n";
 // NOLINTEND
 
 void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
@@ -76,14 +81,20 @@ void DumpInterface(const QnnInterface_t* interface) {
   const auto core_version = interface->apiVersion.coreApiVersion;
   const auto backend_version = interface->apiVersion.backendApiVersion;
 
-  fprintf(stderr, kProviderDumpTemplate, interface->providerName,
+  fprintf(stderr, kQnnInterfaceDumpTpl, interface->providerName,
           interface->backendId, core_version.major, core_version.minor,
           core_version.patch, backend_version.major, backend_version.minor,
-          backend_version.patch,
-          interface->QNN_INTERFACE_VER_NAME.logCreate != nullptr,
-          interface->QNN_INTERFACE_VER_NAME.backendCreate != nullptr);
+          backend_version.patch);
+}
+
+void DumpSystemInterface(const QnnSystemInterface_t* interface) {
+  const auto system_version = interface->systemApiVersion;
+
+  fprintf(stderr, kQnnSystemInterfaceDumpTpl, interface->providerName,
+          interface->backendId, system_version.major, system_version.minor,
+          system_version.patch);
 }
 
 QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
 
-}  // namespace qnn::log
+}  // namespace lrt::qnn
