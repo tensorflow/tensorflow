@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 
 #include <atomic>
+#include <memory>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
@@ -49,14 +50,14 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name_, &devices));
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
+    drl_ = std::make_unique<DeviceResolverLocal>(device_mgr_.get());
     ResetParamResolver(ConfigProto());
   }
 
   void ResetParamResolver(const ConfigProto& config) {
-    prl_.reset(new CollectiveParamResolverLocal(
+    prl_ = std::make_unique<CollectiveParamResolverLocal>(
         config, device_mgr_.get(), drl_.get(), /*nccl_communicator*/ nullptr,
-        task_name_));
+        task_name_);
   }
 
   void RunCompleteDefaultRanking(
