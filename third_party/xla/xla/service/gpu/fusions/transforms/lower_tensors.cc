@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cassert>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -345,7 +344,8 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       Value low_updated = b.create<mlir::arith::OrIOp>(
           b.create<mlir::arith::AndIOp>(
               current_value, b.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
-          scalar_value);
+          b.create<mlir::arith::AndIOp>(
+              scalar_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
       Value high_updated = b.create<mlir::arith::OrIOp>(
           b.create<mlir::arith::AndIOp>(
               current_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)),

@@ -112,16 +112,15 @@ std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
                          "/task:", server_def.task_index());
 }
 
-Status SessionMgr::CreateSession(const std::string& session,
-                                 const ServerDef& server_def,
-                                 bool isolate_session_state,
-                                 StatusCallback coordination_error_callback) {
+absl::Status SessionMgr::CreateSession(
+    const std::string& session, const ServerDef& server_def,
+    bool isolate_session_state, StatusCallback coordination_error_callback) {
   return CreateSession(session, server_def, {}, isolate_session_state,
                        /*master_task=*/"",
                        /*master_incarnation=*/0, coordination_error_callback);
 }
 
-Status SessionMgr::CreateSession(
+absl::Status SessionMgr::CreateSession(
     const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
@@ -132,7 +131,7 @@ Status SessionMgr::CreateSession(
                        /*master_incarnation=*/0);
 }
 
-Status SessionMgr::CreateSession(
+absl::Status SessionMgr::CreateSession(
     const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes,
@@ -314,7 +313,7 @@ void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
   default_worker_cache_.reset(worker_cache);
 }
 
-Status SessionMgr::UpdateSession(
+absl::Status SessionMgr::UpdateSession(
     const std::string& session, const ServerDef& server_def,
     const protobuf::RepeatedPtrField<DeviceAttributes>&
         cluster_device_attributes) {
@@ -377,7 +376,7 @@ Status SessionMgr::UpdateSession(
   return absl::OkStatus();
 }
 
-Status SessionMgr::DeleteSession(const std::string& session) {
+absl::Status SessionMgr::DeleteSession(const std::string& session) {
   mutex_lock l(mu_);
   auto it = sessions_.find(session);
   if (it != sessions_.end()) {
@@ -386,7 +385,7 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   return absl::OkStatus();
 }
 
-Status SessionMgr::DeleteAllSessions() {
+absl::Status SessionMgr::DeleteAllSessions() {
   std::map<std::string, std::shared_ptr<WorkerSession>> tmp_sessions;
   {
     mutex_lock l(mu_);
@@ -399,7 +398,7 @@ Status SessionMgr::DeleteAllSessions() {
   return absl::OkStatus();
 }
 
-Status SessionMgr::WorkerSessionForSessionLocked(
+absl::Status SessionMgr::WorkerSessionForSessionLocked(
     const std::string& session_handle,
     std::shared_ptr<WorkerSession>* out_session) {
   if (session_handle.empty()) {
@@ -422,7 +421,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
   return absl::OkStatus();
 }
 
-Status SessionMgr::WorkerSessionForSession(
+absl::Status SessionMgr::WorkerSessionForSession(
     const std::string& session_handle,
     std::shared_ptr<WorkerSession>* out_session) {
   mutex_lock l(mu_);

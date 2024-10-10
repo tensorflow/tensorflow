@@ -65,7 +65,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   friend class RpcCollectiveExecutorMgrTest;
 
  private:
-  Status UpdateStepSequences(const GetStepSequenceResponse& resp);
+  absl::Status UpdateStepSequences(const GetStepSequenceResponse& resp);
 
   // This class maintains the step_id sequencing for a single
   // collective_graph_key.

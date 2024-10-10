@@ -49,18 +49,18 @@ class ServerInterface {
 
   // Starts the server running asynchronously. Returns OK on success, otherwise
   // returns an error.
-  virtual Status Start() = 0;
+  virtual absl::Status Start() = 0;
 
   // Stops the server asynchronously. Returns OK on success, otherwise returns
   // an error.
   //
   // After calling `Stop()`, the caller may call `Join()` to block until the
   // server has stopped.
-  virtual Status Stop() = 0;
+  virtual absl::Status Stop() = 0;
 
   // Blocks until the server has stopped. Returns OK on success, otherwise
   // returns an error.
-  virtual Status Join() = 0;
+  virtual absl::Status Join() = 0;
 
   // Returns a target string that can be used to connect to this server using
   // `tensorflow::NewSession()`.
@@ -70,20 +70,20 @@ class ServerInterface {
   virtual MasterEnv* master_env() = 0;
 
   // Update the set of workers that can be reached by the server
-  virtual Status UpdateServerDef(const ServerDef& server_def) = 0;
+  virtual absl::Status UpdateServerDef(const ServerDef& server_def) = 0;
 
   // Functions to operate on service-specific properties.
   //
   // Add master eager context to local eager service in order to handle enqueue
   // requests from remote workers.
-  virtual Status AddMasterEagerContextToEagerService(
+  virtual absl::Status AddMasterEagerContextToEagerService(
       const tensorflow::uint64 context_id, EagerContext* context) = 0;
   // Set coordination service agent instance to coordination service RPC handler
-  virtual Status SetCoordinationServiceAgentInstance(
+  virtual absl::Status SetCoordinationServiceAgentInstance(
       tsl::CoordinationServiceAgent* agent) = 0;
   // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
   // supported.
-  virtual Status StopCoordinationService() = 0;
+  virtual absl::Status StopCoordinationService() = 0;
 
  private:
   ServerInterface(const ServerInterface&) = delete;
@@ -99,8 +99,9 @@ class ServerFactory {
   // Creates a new server based on the given `server_def`, and stores
   // it in `*out_server`. Returns OK on success, otherwise returns an
   // error.
-  virtual Status NewServer(const ServerDef& server_def, const Options& options,
-                           std::unique_ptr<ServerInterface>* out_server) = 0;
+  virtual absl::Status NewServer(
+      const ServerDef& server_def, const Options& options,
+      std::unique_ptr<ServerInterface>* out_server) = 0;
 
   // Returns true if and only if this factory can create a server
   // based on the given `server_def`.
@@ -117,17 +118,17 @@ class ServerFactory {
   // Looks up a factory that can create a server based on the given
   // `server_def`, and stores it in `*out_factory`. Returns OK on
   // success, otherwise returns an error.
-  static Status GetFactory(const ServerDef& server_def,
-                           ServerFactory** out_factory);
+  static absl::Status GetFactory(const ServerDef& server_def,
+                                 ServerFactory** out_factory);
 };
 
 // Creates a server based on the given `server_def`, and stores it in
 // `*out_server`. Returns OK on success, otherwise returns an error.
-Status NewServer(const ServerDef& server_def,
-                 std::unique_ptr<ServerInterface>* out_server);
-Status NewServerWithOptions(const ServerDef& server_def,
-                            const ServerFactory::Options& options,
-                            std::unique_ptr<ServerInterface>* out_server);
+absl::Status NewServer(const ServerDef& server_def,
+                       std::unique_ptr<ServerInterface>* out_server);
+absl::Status NewServerWithOptions(const ServerDef& server_def,
+                                  const ServerFactory::Options& options,
+                                  std::unique_ptr<ServerInterface>* out_server);
 
 }  // namespace tensorflow
 
