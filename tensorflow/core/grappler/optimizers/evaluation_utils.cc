@@ -49,9 +49,9 @@ DeviceSimple::~DeviceSimple() {
   delete eigen_worker_threads_.workers;
 }
 
-Status DeviceSimple::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                         const AllocatorAttributes alloc_attrs,
-                                         Tensor* tensor) {
+absl::Status DeviceSimple::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
@@ -60,10 +60,10 @@ Status DeviceSimple::MakeTensorFromProto(const TensorProto& tensor_proto,
   return absl::OkStatus();
 }
 
-Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
-                    DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                    TensorVector* output) {
-  Status status;
+absl::Status EvaluateNode(const NodeDef& node, const TensorVector& inputs,
+                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
+                          TensorVector* output) {
+  absl::Status status;
   std::unique_ptr<DeviceBase> device;
   if (cpu_device == nullptr) {
     device.reset(new DeviceSimple());

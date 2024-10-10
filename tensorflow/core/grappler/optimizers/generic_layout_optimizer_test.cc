@@ -284,7 +284,7 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv2DGraph) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
 
@@ -311,7 +311,7 @@ TEST_F(GenericLayoutOptimizerTest, PreserveFetch) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
@@ -330,7 +330,7 @@ TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
@@ -354,7 +354,7 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
@@ -373,7 +373,7 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
@@ -396,7 +396,7 @@ TEST_F(GenericLayoutOptimizerTest, NoOptimizeIntegerConvolution) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv_node = graph_view.GetNode("Conv2D");
@@ -418,7 +418,7 @@ TEST_F(GenericLayoutOptimizerTest, Connectivity) {
   // middle are layout agnostic). If the graph is already in topological order,
   // the problem is easier, where layout optimizer only needs to check
   // single-hop connectivity.
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view_original(&item.graph, &status);
   const int i1_index = graph_view_original.GetNode("i1")->node_index();
   const int i2_index = graph_view_original.GetNode("i2")->node_index();
@@ -452,7 +452,7 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
     GraphDef output;
     TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-    Status status;
+    absl::Status status;
     utils::GraphView graph_view(&output, &status);
     TF_ASSERT_OK(status);
     auto* conv2d_backprop_node = graph_view.GetNode("Conv2DBackpropInput");
@@ -487,7 +487,7 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
   //
   // Graph after collapsion:
   // input -> T -> conv2d -> shape -> fill -> T' -> output
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
   auto* conv2d_node = graph_view.GetNode("Conv2D");
@@ -564,7 +564,7 @@ TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
 
@@ -710,7 +710,7 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
 
@@ -735,7 +735,7 @@ TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
 
-  Status status;
+  absl::Status status;
   utils::GraphView graph_view(&output, &status);
   TF_ASSERT_OK(status);
 
