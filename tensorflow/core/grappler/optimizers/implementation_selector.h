@@ -94,7 +94,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
  public:
   ImplementationSelector() = default;
   ~ImplementationSelector() override = default;
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return absl::OkStatus();
   }
@@ -105,12 +105,13 @@ class ImplementationSelector : public CustomGraphOptimizer {
   bool UsesFunctionLibrary() const override { return false; }
 
   // This call is not thread-safe.
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override;
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override;
 
  private:
-  Status LoadFunctions(const GraphDef& graph);
-  Status MaybeOptimizeFunctionCall(utils::MutableNodeView* node_view) const;
+  absl::Status LoadFunctions(const GraphDef& graph);
+  absl::Status MaybeOptimizeFunctionCall(
+      utils::MutableNodeView* node_view) const;
 
   // Finds all call sites for functions, then replace with the appropriate
   // implementation.
@@ -123,7 +124,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
   // may call into another function, so a function might have to be duplicated.
   // For simplicity, we do not change function bodies. Also, we do not change
   // gradients.
-  Status SelectImplementation(GraphDef* graph) const;
+  absl::Status SelectImplementation(GraphDef* graph) const;
 
   // Rewrites the DeviceIndex op with a Const op with value of the index of the
   // device the associcated Case op runs.
@@ -185,7 +186,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
   //   device: "/device:GPU:0"
   //   ...
   // }
-  Status SelectDeviceIndex(GraphDef* graph) const;
+  absl::Status SelectDeviceIndex(GraphDef* graph) const;
 
   std::unique_ptr<FunctionLibraryApiInfo> lib_info_;
 
