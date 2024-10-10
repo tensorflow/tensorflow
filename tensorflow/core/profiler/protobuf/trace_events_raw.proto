@@ -5,8 +5,6 @@ syntax = "proto2";
 
 package tensorflow.profiler;
 
-option cc_enable_arenas = true;
-
 // RawData contains raw data that can be used to attach further details to a
 // TraceEvent. TraceEvents store this raw data in serialized form so it can be
 // decoded on demand. This can improve performance as TraceEvents are often
@@ -31,6 +29,7 @@ message DmaActivity {
   optional uint32 multicast = 8;
   optional uint32 segmented = 9;
   optional uint64 temporary = 10;  // temporary field, not saved to .sstable.
+
   reserved 3;
 }
 
@@ -38,6 +37,7 @@ message DmaActivity {
 message TraceEventArguments {
   message Argument {
     optional string name = 1;
+
     oneof value {
       string str_value = 2;
       uint64 uint_value = 3;
@@ -46,6 +46,7 @@ message TraceEventArguments {
       fixed64 ref_value = 6;  // string type but stored in metadata.
     }
   }
+
   repeated Argument arg = 1;
 }
 
