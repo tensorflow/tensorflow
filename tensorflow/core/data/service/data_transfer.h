@@ -74,12 +74,12 @@ class DataTransferClient {
     Allocator* allocator;
   };
   using ClientFactoryT =
-      std::function<Status(Config, std::unique_ptr<DataTransferClient>*)>;
+      std::function<absl::Status(Config, std::unique_ptr<DataTransferClient>*)>;
   virtual ~DataTransferClient() = default;
 
   // Fetches the next element.
-  virtual Status GetElement(const GetElementRequest& req,
-                            GetElementResult& result) = 0;
+  virtual absl::Status GetElement(const GetElementRequest& req,
+                                  GetElementResult& result) = 0;
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
@@ -89,8 +89,8 @@ class DataTransferClient {
   static void Register(std::string name, ClientFactoryT factory);
 
   // Builds a DataTransferClient from the factory registered under `name`.
-  static Status Build(std::string name, Config config,
-                      std::unique_ptr<DataTransferClient>* out);
+  static absl::Status Build(std::string name, Config config,
+                            std::unique_ptr<DataTransferClient>* out);
 
   // Returns a string describing properties of the client relevant for checking
   // compatibility with a server for a given protocol.
@@ -100,7 +100,7 @@ class DataTransferClient {
 
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `server_compatibility_info`.
-  virtual Status CheckCompatibility(
+  virtual absl::Status CheckCompatibility(
       const std::string& server_compatibility_info) const {
     return absl::OkStatus();
   }
@@ -113,13 +113,13 @@ class DataTransferClient {
 class DataTransferServer {
  public:
   using GetElementT =
-      std::function<Status(const GetElementRequest*, GetElementResult*)>;
-  using ServerFactoryT =
-      std::function<Status(GetElementT, std::shared_ptr<DataTransferServer>*)>;
+      std::function<absl::Status(const GetElementRequest*, GetElementResult*)>;
+  using ServerFactoryT = std::function<absl::Status(
+      GetElementT, std::shared_ptr<DataTransferServer>*)>;
   virtual ~DataTransferServer() = default;
 
   // Starts DataTransferServer, it should be available for requests afterwards.
-  virtual Status Start(const experimental::WorkerConfig& config) = 0;
+  virtual absl::Status Start(const experimental::WorkerConfig& config) = 0;
 
   // Return the port that this server is listening on.
   virtual int Port() const = 0;
@@ -128,8 +128,8 @@ class DataTransferServer {
   static void Register(std::string name, ServerFactoryT factory);
 
   // Builds a DataTransferServer from the factory registered with `name`.
-  static Status Build(std::string name, GetElementT get_element,
-                      std::shared_ptr<DataTransferServer>* out);
+  static absl::Status Build(std::string name, GetElementT get_element,
+                            std::shared_ptr<DataTransferServer>* out);
 
   // Returns a string describing properties of the server relevant for checking
   // compatibility with a client for a given protocol.

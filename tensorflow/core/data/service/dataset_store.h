@@ -35,10 +35,11 @@ class DatasetStore {
 
   // Stores the given dataset under the given key. Overwrites a dataset if it
   // already exists.
-  virtual Status Put(const std::string& key, const DatasetDef& dataset) = 0;
+  virtual absl::Status Put(const std::string& key,
+                           const DatasetDef& dataset) = 0;
   // Gets the dataset for the given key, storing the dataset in `dataset_def`.
-  virtual Status Get(const std::string& key,
-                     std::shared_ptr<const DatasetDef>& dataset_def) = 0;
+  virtual absl::Status Get(const std::string& key,
+                           std::shared_ptr<const DatasetDef>& dataset_def) = 0;
 };
 
 // Dataset store which reads and writes datasets within a directory.
@@ -49,9 +50,9 @@ class FileSystemDatasetStore : public DatasetStore {
   FileSystemDatasetStore(const FileSystemDatasetStore&) = delete;
   FileSystemDatasetStore& operator=(const FileSystemDatasetStore&) = delete;
 
-  Status Put(const std::string& key, const DatasetDef& dataset) override;
-  Status Get(const std::string& key,
-             std::shared_ptr<const DatasetDef>& dataset_def) override;
+  absl::Status Put(const std::string& key, const DatasetDef& dataset) override;
+  absl::Status Get(const std::string& key,
+                   std::shared_ptr<const DatasetDef>& dataset_def) override;
 
  private:
   const std::string datasets_dir_;
@@ -65,9 +66,9 @@ class MemoryDatasetStore : public DatasetStore {
   MemoryDatasetStore(const MemoryDatasetStore&) = delete;
   MemoryDatasetStore& operator=(const MemoryDatasetStore&) = delete;
 
-  Status Put(const std::string& key, const DatasetDef& dataset) override;
-  Status Get(const std::string& key,
-             std::shared_ptr<const DatasetDef>& dataset_def) override;
+  absl::Status Put(const std::string& key, const DatasetDef& dataset) override;
+  absl::Status Get(const std::string& key,
+                   std::shared_ptr<const DatasetDef>& dataset_def) override;
 
  private:
   // Mapping from key to dataset definition.

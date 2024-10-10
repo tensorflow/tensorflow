@@ -40,12 +40,12 @@ class ThreadSafeBuffer final {
 
   // Writes the next element. Blocks if the buffer is full. Returns an error if
   // the buffer has been cancelled.
-  Status Push(StatusOr<T> value);
+  absl::Status Push(StatusOr<T> value);
 
   // Cancels the buffer with `status` and notifies waiting threads. After
   // cancelling, all `Push` and `Pop` calls will return `status`.
   // REQUIRES: !status.ok()
-  void Cancel(Status status);
+  void Cancel(absl::Status status);
 
   // Returns whether the buffer is empty.
   bool Empty() const;
@@ -57,7 +57,7 @@ class ThreadSafeBuffer final {
   condition_variable ready_to_pop_;
   condition_variable ready_to_push_;
   std::deque<StatusOr<T>> results_ TF_GUARDED_BY(mu_);
-  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
+  absl::Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
 
   ThreadSafeBuffer(const ThreadSafeBuffer&) = delete;
   void operator=(const ThreadSafeBuffer&) = delete;
@@ -93,7 +93,7 @@ StatusOr<T> ThreadSafeBuffer<T>::Pop() {
 }
 
 template <class T>
-Status ThreadSafeBuffer<T>::Push(StatusOr<T> value) {
+absl::Status ThreadSafeBuffer<T>::Push(StatusOr<T> value) {
   mutex_lock l(mu_);
   while (status_.ok() && results_.size() >= buffer_size_) {
     ready_to_push_.wait(l);
@@ -107,7 +107,7 @@ Status ThreadSafeBuffer<T>::Push(StatusOr<T> value) {
 }
 
 template <class T>
-void ThreadSafeBuffer<T>::Cancel(Status status) {
+void ThreadSafeBuffer<T>::Cancel(absl::Status status) {
   DCHECK(!status.ok())
       << "Cancelling ThreadSafeBuffer requires a non-OK status. Got " << status;
   mutex_lock l(mu_);
