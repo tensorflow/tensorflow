@@ -1302,6 +1302,25 @@ cc_library(
 )
 
 cc_library(
+    name = "fusion_dispatch_pipeline",
+    srcs = ["fusion_dispatch_pipeline.cc"],
+    hdrs = ["fusion_dispatch_pipeline.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu/transforms:fusion_block_level_rewriter",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "fusion_pipeline",
     srcs = ["fusion_pipeline.cc"],
     hdrs = ["fusion_pipeline.h"],
@@ -1367,6 +1386,7 @@ cc_library(
         ":cublas_cudnn",
         ":executable_proto_cc",
         ":execution_stream_assignment",
+        ":fusion_dispatch_pipeline",
         ":fusion_pipeline",
         ":gpu_constants",
         ":gpu_executable",
@@ -1607,6 +1627,7 @@ xla_test(
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_compiler",
         ":gpu_hlo_schedule",
         ":metrics",
