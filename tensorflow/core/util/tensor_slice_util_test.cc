@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_util.h"
 
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
