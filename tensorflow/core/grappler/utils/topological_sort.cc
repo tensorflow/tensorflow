@@ -46,7 +46,7 @@ std::vector<GraphView::Edge> MakeEphemeralEdges(
 
 // Kahn's algorithm is implemented.
 // For details, see https://en.wikipedia.org/wiki/Topological_sorting
-Status ComputeTopologicalOrder(
+absl::Status ComputeTopologicalOrder(
     const GraphDef& graph,
     const absl::Span<const TopologicalDependency> extra_dependencies,
     std::vector<int>* ready_nodes) {
@@ -110,7 +110,7 @@ Status ComputeTopologicalOrder(
 
 }  // namespace
 
-Status ComputeTopologicalOrder(
+absl::Status ComputeTopologicalOrder(
     const GraphDef& graph,
     const absl::Span<const TopologicalDependency> extra_dependencies,
     std::vector<const NodeDef*>* topo_order) {
@@ -126,12 +126,12 @@ Status ComputeTopologicalOrder(
   return absl::OkStatus();
 }
 
-Status ComputeTopologicalOrder(const GraphDef& graph,
-                               std::vector<const NodeDef*>* topo_order) {
+absl::Status ComputeTopologicalOrder(const GraphDef& graph,
+                                     std::vector<const NodeDef*>* topo_order) {
   return ComputeTopologicalOrder(graph, {}, topo_order);
 }
 
-Status ReversedTopologicalSort(GraphDef* graph) {
+absl::Status ReversedTopologicalSort(GraphDef* graph) {
   std::vector<int> ready_nodes;
   TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, {}, &ready_nodes));
   std::reverse(ready_nodes.begin(), ready_nodes.end());
@@ -139,7 +139,7 @@ Status ReversedTopologicalSort(GraphDef* graph) {
   return absl::OkStatus();
 }
 
-Status TopologicalSort(GraphDef* graph) {
+absl::Status TopologicalSort(GraphDef* graph) {
   std::vector<int> ready_nodes;
   TF_RETURN_IF_ERROR(ComputeTopologicalOrder(*graph, {}, &ready_nodes));
   PermuteNodesInPlace(graph, &ready_nodes, /*invert_permutation=*/true);
