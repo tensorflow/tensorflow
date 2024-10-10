@@ -36,7 +36,7 @@ class WorkerCacheInterface;
 // This callback should have the same definition as DeviceMgr::LookupDevice
 // It assigns *device with pointer to Device of the given 'name', where 'name'
 // is either a full device name, or just the replica-local suffix.
-typedef std::function<Status(StringPiece name, Device** device)>
+typedef std::function<absl::Status(StringPiece name, Device** device)>
     LookupLocalDevice;
 
 // Creates Remote Devices for the provided device attributes. Helpful when the
@@ -59,7 +59,7 @@ void AsRemoteDevices(
 //
 // Otherwise, the 'done' callback is given an error status and the
 // vector is empty.
-typedef std::function<void(const Status&, std::vector<Device*>*)>
+typedef std::function<void(const absl::Status&, std::vector<Device*>*)>
     NewRemoteDevicesDone;
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done);

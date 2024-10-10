@@ -39,7 +39,7 @@ class Master {
   virtual ~Master();
 
   // Convenient typedef for a closure passing a Status.
-  typedef std::function<void(const Status&)> MyClosure;
+  typedef std::function<void(const absl::Status&)> MyClosure;
 
   void CreateSession(const CreateSessionRequest* req,
                      CreateSessionResponse* resp, MyClosure done);
