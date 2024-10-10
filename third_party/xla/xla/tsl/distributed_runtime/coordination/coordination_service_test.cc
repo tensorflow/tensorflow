@@ -431,8 +431,6 @@ TEST(CoordinationServiceTest,
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kAborted));
 }
 
-// TODO(b/195990880): Remove this test once server-client connection is removed.
-// This test passes only when there is a single task.
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   CoordinationServiceConfig config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
@@ -449,11 +447,14 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   ASSERT_OK(coord_service->ReportTaskError(task_0,
                                            absl::InternalError("test_error")));
 
-  // Registration should fail since task already registered previously.
+  // Registration should fail.
   const absl::Status status =
       coord_service->RegisterTask(task_0, /*incarnation=*/0);
 
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kAborted));
+  // Impl note: the error triggers the service to stop, which fails new
+  // requests. It's okay to change the error code during development as long as
+  // it fails.
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
@@ -1904,8 +1905,10 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorWhenInErrorState) {
 
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
-  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
-                          HasSubstr("test_error")));
+  // Impl note: the error triggers the service to stop, which fails new
+  // requests. It's okay to change the error code during development as long as
+  // it fails.
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfServiceHasStopped) {
