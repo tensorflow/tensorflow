@@ -23,9 +23,9 @@ limitations under the License.
 // in the path to the audio file, the window size and stride parameters
 // controlling the spectrogram creation, the brightness scaling to use, and a
 // path to save the output PNG file to.
-tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
-                                    int32_t window_size, int32_t stride,
-                                    float brightness,
-                                    const tensorflow::string& output_image);
+absl::Status WavToSpectrogram(const tensorflow::string& input_wav,
+                              int32_t window_size, int32_t stride,
+                              float brightness,
+                              const tensorflow::string& output_image);
 
 #endif  // TENSORFLOW_EXAMPLES_WAV_TO_SPECTROGRAM_WAV_TO_SPECTROGRAM_H_
