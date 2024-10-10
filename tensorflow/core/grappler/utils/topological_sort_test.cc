@@ -205,7 +205,7 @@ static void BM_ComputeTopologicalOrder(::testing::benchmark::State& state) {
   std::vector<const NodeDef*> topo_order;
   for (auto s : state) {
     topo_order.clear();
-    Status st = ComputeTopologicalOrder(graph, &topo_order);
+    absl::Status st = ComputeTopologicalOrder(graph, &topo_order);
     CHECK(st.ok()) << "Failed to compute topological order";
   }
 }
