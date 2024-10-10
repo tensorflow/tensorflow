@@ -55,6 +55,21 @@ _KOKORO_ARTIFACTS_DIR = os.environ.get(
 )
 
 
+def retry(
+    args: List[str], delay_seconds: int = 15, retries: int = 3
+) -> List[str]:
+  # Possibly a slight abuse of `parallel` as nothing happens in parallel, just
+  # retries with delay if the command fails.
+  # pyformat:disable
+  return [
+      "parallel", "--ungroup",
+      "--retries", str(retries),
+      "--delay", str(delay_seconds),
+      "--nonall",
+      "--", *args,
+  ]
+
+
 def sh(args, check=True, **kwargs):
   logging.info("Starting process: %s", " ".join(args))
   return subprocess.run(args, check=check, **kwargs)
@@ -102,8 +117,14 @@ class Build:
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
 
-  def bazel_test_command(self) -> List[str]:
+  def bazel_command(
+      self, subcommand: str = "test", extra_options: Tuple[str, ...] = ()
+  ) -> List[str]:
     """Returns a bazel test command for this build.
+
+    Args:
+      subcommand: The subcommand to give to bazel. `test` by default.
+      extra_options: Extra options. For now just used to pass in `--nobuild`.
 
     Returns: List of command line arguments
     """
@@ -117,8 +138,15 @@ class Build:
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
 
     tag_filters = [build_tag_filters, test_tag_filters]
-    all_options = tag_filters + configs + action_env + test_env + options
-    return ["bazel", "test", *all_options, "--", *self.target_patterns]
+    all_options = (
+        tag_filters
+        + configs
+        + action_env
+        + test_env
+        + options
+        + list(extra_options)
+    )
+    return ["bazel", subcommand, *all_options, "--", *self.target_patterns]
 
   def docker_run_command(self, *, command: str, **kwargs: Any) -> List[str]:
     assert self.image_url, "`docker run` has no meaning without an image."
@@ -147,15 +175,12 @@ class Build:
 
     # pyformat:disable
 
-    if self.type_ == BuildType.CPU_ARM64:
+    if self.type_ == BuildType.CPU_ARM64 and using_docker:
       # We would need to install parallel, but `apt` hangs regularly on Kokoro
       # VMs due to yaqs/eng/q/4506961933928235008
       cmds.append(["docker", "pull", self.image_url])
     elif using_docker:
-      # This is a slightly odd use of parallel, we aren't doing anything besides
-      # retrying after 15 seconds up to 3 times if `docker pull` fails.
-      cmds.append(["parallel", "--ungroup", "--retries", "3", "--delay", "15",
-                   "docker", "pull", ":::", self.image_url])
+      cmds.append(retry(["docker", "pull", self.image_url]))
 
     container_name = "xla_ci"
     _, repo_name = self.repo.split("/")
@@ -173,7 +198,17 @@ class Build:
     maybe_docker_exec = (
         ["docker", "exec", container_name] if using_docker else []
     )
-    cmds.append(maybe_docker_exec + self.bazel_test_command())
+
+    # We really want `bazel fetch` here, but it uses `bazel query` and not
+    # `cquery`, which means that it fails due to config issues that aren't
+    # problems in practice.
+    cmds.append(
+        maybe_docker_exec
+        + retry(
+            self.bazel_command(subcommand="build", extra_options=("--nobuild",))
+        )
+    )
+    cmds.append(maybe_docker_exec + self.bazel_command())
     cmds.append(
         maybe_docker_exec + ["bazel", "analyze-profile", "profile.json.gz"]
     )
