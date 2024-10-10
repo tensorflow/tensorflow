@@ -80,10 +80,10 @@ namespace tensorflow {
 using se::DeviceMemoryBase;
 using se::Stream;
 
-Status PrepareCopy(Device* device, const DeviceContext* ctx, const Tensor& src,
-                   const Tensor* dst,
-                   const DeviceBase::AcceleratorDeviceInfo** dev_info,
-                   se::Stream** stream) {
+absl::Status PrepareCopy(Device* device, const DeviceContext* ctx,
+                         const Tensor& src, const Tensor* dst,
+                         const DeviceBase::AcceleratorDeviceInfo** dev_info,
+                         se::Stream** stream) {
   if (device == nullptr) {
     return errors::Internal("Unexpected null device.");
   }
@@ -139,8 +139,8 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   VLOG(1) << "SetProtoFromGPU device_context " << device_context;
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
-  Status s = PrepareCopy(dev, device_context, tensor, nullptr, &dev_info,
-                         &send_stream);
+  absl::Status s = PrepareCopy(dev, device_context, tensor, nullptr, &dev_info,
+                               &send_stream);
   if (!s.ok()) {
     done(s);
     return;
@@ -222,8 +222,8 @@ void GPUUtil::DeviceToDeviceCopy(
     int dev_to_dev_stream_index, StatusCallback done) {
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
-  Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
-                         &send_stream);
+  absl::Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
+                               &send_stream);
   if (!s.ok()) {
     done(s);
     return;
@@ -323,8 +323,8 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
                                  StatusCallback done) {
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
-  Status s = PrepareCopy(gpu_device, device_context, *gpu_tensor, cpu_tensor,
-                         &dev_info, &send_stream);
+  absl::Status s = PrepareCopy(gpu_device, device_context, *gpu_tensor,
+                               cpu_tensor, &dev_info, &send_stream);
   if (!s.ok()) {
     done(s);
     return;
@@ -367,7 +367,7 @@ void GPUUtil::CopyGPUTensorToCPU(Device* gpu_device,
     xla::PjRtFuture<> future =
         pjrt_tensor_buffer->pjrt_buffer()->ToLiteral(literal.get());
     future.OnReady([literal = std::move(literal),
-                    done](const tensorflow::Status& status) { done(status); });
+                    done](const absl::Status& status) { done(status); });
     return;
   }
 #endif  // TF_GPU_USE_PJRT
@@ -404,8 +404,8 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
   VLOG(1) << "CopyCPUTensorToGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* recv_stream = nullptr;
-  Status s = PrepareCopy(gpu_device, device_context, *cpu_tensor, gpu_tensor,
-                         &dev_info, &recv_stream);
+  absl::Status s = PrepareCopy(gpu_device, device_context, *cpu_tensor,
+                               gpu_tensor, &dev_info, &recv_stream);
   if (!s.ok()) {
     done(s);
     return;
@@ -514,7 +514,7 @@ void GPUUtil::CopyCPUTensorToGPU(const Tensor* cpu_tensor,
       });
 }
 
-Status GPUUtil::Sync(Device* gpu_device) {
+absl::Status GPUUtil::Sync(Device* gpu_device) {
   VLOG(1) << "GPUUtil::Sync";
   auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
@@ -523,7 +523,7 @@ Status GPUUtil::Sync(Device* gpu_device) {
   return dev_info->stream->BlockHostUntilDone();
 }
 
-Status GPUUtil::SyncAll(Device* gpu_device) {
+absl::Status GPUUtil::SyncAll(Device* gpu_device) {
   VLOG(1) << "GPUUtil::SyncAll";
   auto* dev_info = gpu_device->tensorflow_accelerator_device_info();
   if (!dev_info) {
@@ -565,10 +565,10 @@ uint64 GPUUtil::Checksum(Device* gpu_device,
                          const DeviceContext* device_context,
                          const Tensor& tensor) {
   Tensor copy(tensor.dtype(), tensor.shape());
-  Status s;
+  absl::Status s;
   Notification n;
   CopyGPUTensorToCPU(gpu_device, device_context, &tensor, &copy,
-                     [&s, &n](Status status) {
+                     [&s, &n](absl::Status status) {
                        s.Update(status);
                        n.Notify();
                      });
@@ -598,8 +598,8 @@ void GPUUtil::CopyGPUTensorToSameGPU(Device* gpu_device,
   VLOG(1) << "CopyGPUTensorToSameGPU";
   const DeviceBase::AcceleratorDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
-  Status s = PrepareCopy(gpu_device, device_context, *src_gpu_tensor,
-                         dst_gpu_tensor, &dev_info, &send_stream);
+  absl::Status s = PrepareCopy(gpu_device, device_context, *src_gpu_tensor,
+                               dst_gpu_tensor, &dev_info, &send_stream);
   if (!s.ok()) {
     done(s);
     return;

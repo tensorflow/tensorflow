@@ -52,12 +52,12 @@ class GPUUtil {
   // Blocks until all operations queued on the stream associated with
   // "gpu_device" at the time of the call have completed.  Returns any
   // error pending on the stream at completion.
-  static Status Sync(Device* gpu_device);
+  static absl::Status Sync(Device* gpu_device);
 
   // Blocks until all operations queued on all streams associated with the
   // corresponding GPU device at the time of call have completed.
   // Returns any error pending on the stream at completion.
-  static Status SyncAll(Device* gpu_device);
+  static absl::Status SyncAll(Device* gpu_device);
 
   // For debugging purpose, given a "device" and a "tensor" allocated
   // on the device, return a string printing each byte in the tensor

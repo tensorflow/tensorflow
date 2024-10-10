@@ -26,13 +26,13 @@ namespace tensorflow {
 class GpuIdManager {
  public:
   // Adds a mapping from tf_device_id to platform_device_id.
-  static Status InsertTfPlatformDeviceIdPair(
+  static absl::Status InsertTfPlatformDeviceIdPair(
       tsl::TfDeviceId tf_device_id, tsl::PlatformDeviceId platform_device_id);
 
   // Gets the platform_device_id associated with tf_device_id. Returns OK if
   // found.
-  static Status TfToPlatformDeviceId(tsl::TfDeviceId tf_device_id,
-                                     tsl::PlatformDeviceId* platform_device_id);
+  static absl::Status TfToPlatformDeviceId(
+      tsl::TfDeviceId tf_device_id, tsl::PlatformDeviceId* platform_device_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();
