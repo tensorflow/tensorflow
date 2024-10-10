@@ -64,7 +64,7 @@ class TestFileSystem : public NullFileSystem {
   // import non-transactional method from the base class
   using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
-  Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
@@ -146,8 +146,8 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
       error::INTERNAL);
 }
 
-Status CreateTempFileFloat(Env* env, float value, uint64 size,
-                           string* filename) {
+absl::Status CreateTempFileFloat(Env* env, float value, uint64 size,
+                                 string* filename) {
   const string dir = testing::TmpDir();
   *filename = io::JoinPath(dir, strings::StrCat("file_", value));
   std::unique_ptr<WritableFile> file;
@@ -191,8 +191,8 @@ TEST(ImmutableConstantOpTest, FromFile) {
   EXPECT_EQ(outputs.front().flat<float>()(2), 2.0f * 3.0f);
 }
 
-Status CreateTempFileBadString(Env* env, char value, uint64 size,
-                               const string suffix, string* filename) {
+absl::Status CreateTempFileBadString(Env* env, char value, uint64 size,
+                                     const string suffix, string* filename) {
   const string dir = testing::TmpDir();
   *filename = io::JoinPath(dir, strings::StrCat("file_", suffix));
   std::unique_ptr<WritableFile> file;
