@@ -499,6 +499,175 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
   }
 };
 
+/// Lower tf.ImageProjectiveTransformV3 op in certain cases.
+class LowerImageProjectiveTransform
+    : public OpRewritePattern<ImageProjectiveTransformV3> {
+ public:
+  using OpRewritePattern<ImageProjectiveTransformV3>::OpRewritePattern;
+
+  /// Check if a projective transformation is a translation. A projective
+  /// transformation (standard terminology in image processing) is represented
+  /// using a 3x3 matrix; in TF op's form, the last entry is always one (sort of
+  /// a normalized form): hence, only eight values are used.
+  //
+  /// M = [[c0 c1 c2]
+  ///      [c3 c4 c5]
+  ///      [c6 c7 c8]]
+  ///
+  /// Every pixel (x, y) is transformed using:
+  ///  (x', y', z) = M * (x, y, 1)^T
+  ///
+  /// x' = (c0*x + c1*y + c2)  / (c6*x + c7*y + c8)
+  /// y' = (c3*x + c4*y + c5)  / (c6*x + c7*y + c8)
+  //
+  /// The [[c0, c1], [c3, c4]] thus captures rotation, scaling, and skewing.
+  ///
+  /// c2 and c5 are translations. c8 is always one, [c6, c7] are projection
+  /// vectors: these are always zero for "affine" transformations. Non-zero
+  /// projection vectors correspond to transformations that do not preserve
+  /// parallelism between lines for example.
+  ///
+  static bool isTranslation(ArrayRef<float> transform, int64_t& rowShift,
+                            int64_t& colShift) {
+    // The transforms is 3x3 matrix with the last entry always one; hence, eight
+    // values.
+    assert(transform.size() == 8 && "unexpected project transforms matrix");
+    // Projection part should all be zero.
+    if (transform[6] != 0 || transform[7] != 0) return false;
+
+    // The top left 2x2 (rotation/scale/skew) part has to be an identity matrix.
+    if (transform[0] != 1 && transform[1] != 0 && transform[3] != 0 &&
+        transform[4] != 1)
+      return false;
+
+    // Shifts. Note that x corresponds to columns, y to rows. The translation is
+    // the negation of the coefficient: for e.g. y' = y - 1 corresponds to a
+    // shift of one (along the +ve y-axis).
+    float colShiftF = -transform[2];
+    float rowShiftF = -transform[5];
+    // Check if these values are integers.
+    if (floorf(rowShiftF) != rowShiftF && floorf(colShiftF) != colShiftF)
+      return false;
+    rowShift = rowShiftF;
+    colShift = colShiftF;
+    return true;
+  }
+
+  LogicalResult matchAndRewrite(ImageProjectiveTransformV3 op,
+                                PatternRewriter& rewriter) const override {
+    // Lower the translation to a pad + slice op. We will pad by the translation
+    // amount and then slice the tensor to its original size. For e.g., a shift
+    // of -2 along the x direction would be a "high" padding of two along the
+    // columns followed by a slice starting at index two.
+    auto outputType = op.getType().dyn_cast<RankedTensorType>();
+    auto inputType = op.getImages().getType().dyn_cast<RankedTensorType>();
+    if (!outputType || !inputType) {
+      return rewriter.notifyMatchFailure(op,
+                                         "tensors have to be ranked to lower");
+    }
+    assert(inputType.getRank() == 4 && "expected 4-d tensors");
+    if (op.getFillMode() != "CONSTANT") {
+      return rewriter.notifyMatchFailure(op,
+                                         "only CONSTANT fill mode supported");
+    }
+
+    // Get the transformation matrix.
+    Attribute transformsAttr;
+    if (!matchPattern(op.getTransforms(), m_Constant(&transformsAttr))) {
+      return failure();
+    }
+    auto fpTransformsAttr = transformsAttr.cast<DenseFPElementsAttr>();
+    // Check if the projective transformation is a translation.
+    // The transform is gauranteed to be a float32 tensor. We only support the
+    // case where these is a single transform for all batches. `transforms` can
+    // be [1x8] or [batches x 8].
+    if (fpTransformsAttr.getValues<float>().size() != 8) {
+      return rewriter.notifyMatchFailure(
+          op, "same projective transformation for the entire batch supported");
+    }
+    SmallVector<float, 8> coeffs = llvm::to_vector<8>(llvm::map_range(
+        fpTransformsAttr.getValues<float>(), [&](float v) { return v; }));
+    int64_t rowShift, colShift;
+    if (!isTranslation(coeffs, rowShift, colShift)) {
+      return rewriter.notifyMatchFailure(op,
+                                         "projective transformations that are "
+                                         "only translations are supported");
+    }
+
+    // Nothing to do. Fold it away since we checked for all these.
+    if (rowShift == 0 && colShift == 0) {
+      rewriter.replaceOp(op, op.getImages());
+      return success();
+    }
+
+    auto inputShape = inputType.getShape();
+    assert(outputType.getShape() == inputShape &&
+           "input and output shapes expected to be the same for translations");
+
+    // Perform the lowering to pad + slice.
+    Type eltType = outputType.getElementType();
+    auto height = inputType.getDimSize(1);
+    auto width = inputType.getDimSize(2);
+
+    // Create the pad op.
+    int64_t paddedHeight = height + std::abs(rowShift);
+    int64_t paddedWidth = width + std::abs(colShift);
+    SmallVector<int64_t, 4> padOutputShape = {inputShape[0], paddedHeight,
+                                              paddedWidth, inputShape[3]};
+    auto padOutputType = RankedTensorType::get(padOutputShape, eltType);
+
+    // Depending on the direction of the shift, pad at the low or high end.
+    int64_t rowLowPad = rowShift < 0 ? 0 : rowShift;
+    int64_t rowHighPad = rowShift > 0 ? 0 : -rowShift;
+    int64_t colLowPad = colShift < 0 ? 0 : colShift;
+    int64_t colHighPad = colShift > 0 ? 0 : -colShift;
+    Location loc = op.getLoc();
+    auto padAttr = DenseElementsAttr::get<int64_t>(
+        RankedTensorType::get({4, 2}, rewriter.getI64Type()),
+        {0, 0, rowLowPad, rowHighPad, colLowPad, colHighPad, 0, 0});
+    auto paddings = rewriter.create<ConstOp>(loc, padAttr);
+
+    // Create the pad fill value.
+    // Work around a bug where the tf.ImageProjectiveTransformV3 has
+    // a fill value of f32 type even with f16 tensors. We'll create the fill
+    // value of the right float type.
+    Value fillValue = op.getFillValue();
+    Attribute cst;
+    SplatElementsAttr fillValueAttr;
+    if (!matchPattern(fillValue, m_Constant(&cst)) ||
+        !(fillValueAttr = cst.dyn_cast<SplatElementsAttr>()) ||
+        !cst.isa<DenseFPElementsAttr>()) {
+      return rewriter.notifyMatchFailure(
+          op, "fill value is not a constant splat fp elements attribute");
+    }
+    // Create a 0-d const op for the fill value of the right type.
+    auto newFillValueAttr = DenseFPElementsAttr::get<Attribute>(
+        RankedTensorType::get({}, eltType),
+        FloatAttr::get(
+            eltType,
+            fillValueAttr.getSplatValue<FloatAttr>().getValueAsDouble()));
+    auto newFillValue = rewriter.create<ConstOp>(loc, newFillValueAttr);
+    auto padOp = rewriter.create<PadV2Op>(loc, padOutputType, op.getImages(),
+                                          paddings, newFillValue);
+
+    // Create the slice op.
+    int64_t rowStart = rowHighPad;
+    int64_t colStart = colHighPad;
+    auto startsAttr = DenseIntElementsAttr::get<int64_t>(
+        RankedTensorType::get({4}, rewriter.getI64Type()),
+        {0, rowStart, colStart, 0});
+    Value starts = rewriter.create<ConstOp>(loc, startsAttr);
+    // The slice size would be the same as the original input/output shape.
+    auto sizesAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get({4}, rewriter.getI64Type()), inputShape);
+    Value sizes = rewriter.create<ConstOp>(loc, sizesAttr);
+    auto sliceOp = rewriter.create<SliceOp>(loc, outputType, padOp.getResult(),
+                                            starts, sizes);
+    rewriter.replaceOp(op, sliceOp.getResult());
+    return success();
+  }
+};
+
 // Lowers InvertPermutation op to TensorScatterUpdate op.
 //
 // Example:
@@ -1798,6 +1967,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerBatchToSpaceND,
       LowerDynamicStitchOp<DynamicStitchOp>,
       LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+      LowerImageProjectiveTransform,
       LowerInvertPermutationOp,
       LowerPackOp,
       LowerResizeNearestNeighbor,
