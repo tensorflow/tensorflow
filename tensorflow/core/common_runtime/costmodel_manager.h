@@ -43,7 +43,7 @@ class CostModelManager {
 
   bool RemoveCostModelForGraph(const Graph* graph);
 
-  Status AddToCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
+  absl::Status AddToCostGraphDef(const Graph* graph, CostGraphDef* cost_graph);
 
  private:
   mutex mu_;

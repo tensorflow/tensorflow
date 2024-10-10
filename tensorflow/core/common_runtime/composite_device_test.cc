@@ -25,7 +25,7 @@ TEST(CompositeDeviceTest, Basic) {
   EXPECT_TRUE(DeviceNameUtils::ParseFullName(host_name, &parsed_host_name));
   std::vector<string> underlying_devices;
   {
-    Status status;
+    absl::Status status;
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/0,
                                     parsed_host_name, &status);
@@ -37,7 +37,7 @@ TEST(CompositeDeviceTest, Basic) {
   }
 
   {
-    Status status;
+    absl::Status status;
     underlying_devices.push_back(
         "/job:localhost/replica:0/task:0/device:CPU:0");
     underlying_devices.push_back(
@@ -51,7 +51,7 @@ TEST(CompositeDeviceTest, Basic) {
   }
 
   {
-    Status status;
+    absl::Status status;
     underlying_devices.push_back(
         "/job:localhost/replica:0/task:0/device:GPU:0");
     std::unique_ptr<CompositeDevice> composite_device =
@@ -71,7 +71,7 @@ TEST(CompositeDeviceTest, DeviceName) {
   std::vector<string> underlying_devices;
   underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:0");
   underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:1");
-  Status status;
+  absl::Status status;
   std::unique_ptr<CompositeDevice> composite_device =
       CompositeDevice::MakeDevice(underlying_devices, composite_device_name,
                                   &status);

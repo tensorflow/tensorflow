@@ -166,7 +166,7 @@ void LogGraphProperties(bool is_graph_changed, bool has_valid_fill_op,
 }
 
 }  // namespace
-Status ColocatePredecessorTreesPass::Run(
+absl::Status ColocatePredecessorTreesPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (!ShouldRunPass(options)) {
     return absl::OkStatus();

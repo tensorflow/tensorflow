@@ -53,8 +53,8 @@ bool CostModelManager::RemoveCostModelForGraph(const Graph* graph) {
   return true;
 }
 
-Status CostModelManager::AddToCostGraphDef(const Graph* graph,
-                                           CostGraphDef* cost_graph) {
+absl::Status CostModelManager::AddToCostGraphDef(const Graph* graph,
+                                                 CostGraphDef* cost_graph) {
   mutex_lock l(mu_);
   // Get the cost model for the graph.
   auto it = cost_models_.find(graph);

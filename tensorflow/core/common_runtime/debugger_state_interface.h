@@ -48,7 +48,7 @@ class DebuggerStateInterface {
   //   input_names: Name of the input Tensors (feed keys).
   //   output_names: Names of the fetched Tensors.
   //   target_names: Names of the target nodes.
-  virtual Status PublishDebugMetadata(
+  virtual absl::Status PublishDebugMetadata(
       const int64_t global_step, const int64_t session_run_index,
       const int64_t executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
@@ -62,11 +62,11 @@ class DebugGraphDecoratorInterface {
   // Insert special-purpose debug nodes to graph and dump the graph for
   // record. See the documentation of DebugNodeInserter::InsertNodes() for
   // details.
-  virtual Status DecorateGraph(Graph* graph, Device* device) = 0;
+  virtual absl::Status DecorateGraph(Graph* graph, Device* device) = 0;
 
   // Publish Graph to debug URLs.
-  virtual Status PublishGraph(const Graph& graph,
-                              const string& device_name) = 0;
+  virtual absl::Status PublishGraph(const Graph& graph,
+                                    const string& device_name) = 0;
 };
 
 typedef std::function<std::unique_ptr<DebuggerStateInterface>(
@@ -88,8 +88,9 @@ class DebuggerStateRegistry {
   // DebuggerStateInterface implementation using the registered factory,
   // owned by the caller and return an OK Status. Otherwise returns an error
   // Status.
-  static Status CreateState(const DebugOptions& debug_options,
-                            std::unique_ptr<DebuggerStateInterface>* state);
+  static absl::Status CreateState(
+      const DebugOptions& debug_options,
+      std::unique_ptr<DebuggerStateInterface>* state);
 
  private:
   static DebuggerStateFactory* factory_;
@@ -106,7 +107,7 @@ class DebugGraphDecoratorRegistry {
  public:
   static void RegisterFactory(const DebugGraphDecoratorFactory& factory);
 
-  static Status CreateDecorator(
+  static absl::Status CreateDecorator(
       const DebugOptions& options,
       std::unique_ptr<DebugGraphDecoratorInterface>* decorator);
 
