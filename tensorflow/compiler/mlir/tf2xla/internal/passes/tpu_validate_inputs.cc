@@ -12,19 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <bitset>
 #include <functional>
-#include <ios>
 #include <memory>
 #include <optional>
 #include <queue>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 
+#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -39,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "xla/client/sharding_builder.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/tpu_validate_inputs_utils.h"
 #include "xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -599,6 +596,12 @@ void TPUValidateInputsPass::runOnOperation() {
   });
 
   getOperation().walk([&](mlir::Operation* op) {
+    if (IsPotentialUnsupportedOp(op)) {
+      LOG(WARNING) << "Potential unsupported op: "
+                   << op->getName().getStringRef().str()
+                   << ". TF2XLA MLIR bridge does not guarantee to support it.";
+    }
+
     if (IsTpuRegularOp(op)) {
       success &= CheckOpsClusterIO(op, metadata_map);
     }
@@ -610,6 +613,7 @@ void TPUValidateInputsPass::runOnOperation() {
       success &= IsValidShardingTupleForArity(op);
     }
     success &= !HasSingleCoreTpu(op);
+
     if (!success) {
       signalPassFailure();
     }

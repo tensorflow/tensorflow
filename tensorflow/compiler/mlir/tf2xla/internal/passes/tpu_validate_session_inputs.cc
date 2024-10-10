@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
+#include "absl/log/log.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/tpu_validate_inputs_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -27,13 +29,29 @@ namespace {
 #define GEN_PASS_DEF_TPUVALIDATESESSIONINPUTSPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
+using mlir::ModuleOp;
+
 struct TPUValidateSessionInputsPass
     : public impl::TPUValidateSessionInputsPassBase<
           TPUValidateSessionInputsPass> {
   void runOnOperation() override;
 };
 
-void TPUValidateSessionInputsPass::runOnOperation() {}
+void TPUValidateSessionInputsPass::runOnOperation() {
+  ModuleOp module = getOperation();
+  bool success = true;
+
+  module.walk([&](mlir::Operation* op) {
+    if (IsPotentialUnsupportedOp(op)) {
+      LOG(WARNING) << "Potential unsupported op: "
+                   << op->getName().getStringRef().str()
+                   << ". TF2XLA MLIR bridge does not guarantee to support it.";
+    }
+    if (!success) {
+      signalPassFailure();
+    }
+  });
+}
 
 }  // anonymous namespace
 
