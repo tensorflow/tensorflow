@@ -631,6 +631,20 @@ absl::Status GPUOperationFromNodePart0(
       RETURN_IF_ERROR(SelectGather(attr, op_def, gpu_info, gpu_op));
       return absl::OkStatus();
     }
+    case OperationType::GROUP_NORMALIZATION: {
+      auto attr = absl::any_cast<GroupNormalizationAttributes>(node.operation.attributes);
+      RETURN_IF_ERROR(SelectGroupNormalization(attr, op_def, gpu_info, gpu_op));
+      return absl::OkStatus();
+    }
+    case OperationType::GROUP_NORM_MEAN: {
+      *gpu_op = SelectGroupNormMean(inputs[0]->tensor.shape, op_def, gpu_info);
+      return absl::OkStatus();
+    }
+    case OperationType::GROUP_NORM_VAR: {
+      auto attr = absl::any_cast<GroupNormVarAttributes>(node.operation.attributes);
+      *gpu_op = SelectGroupNormVar(attr, inputs[0]->tensor.shape, op_def, gpu_info);
+      return absl::OkStatus();
+    }
     case OperationType::LSTM: {
       *gpu_op = SelectLSTM(op_def, gpu_info);
       return absl::OkStatus();

@@ -603,6 +603,59 @@ cc_library(
 )
 
 cc_library(
+    name = "group_normalization",
+    srcs = ["group_normalization.cc"],
+    hdrs = ["group_normalization.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "group_norm_mean",
+    srcs = ["group_norm_mean.cc"],
+    hdrs = ["group_norm_mean.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "group_norm_var",
+    srcs = ["group_norm_var.cc"],
+    hdrs = ["group_norm_var.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "group_normalization_test_util",
+    testonly = 1,
+    srcs = ["group_normalization_test_util.cc"],
+    hdrs = ["group_normalization_test_util.h"],
+    deps = [
+        ":group_normalization",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "lstm",
     srcs = ["lstm.cc"],
     hdrs = ["lstm.h"],

@@ -1379,6 +1379,138 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   }
 };
 
+class GroupNormalizationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+      return CheckGpuDelegateCompatibility(context, tflite_node, registration);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node, 
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph,
+                     ObjectReader* reader) final {
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::GROUP_NORMALIZATION);
+
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
+      GroupNormalizationAttributes gn_attr;
+      gn_attr.num_of_runtime_inputs = reader->GetNumberOfRuntimeInputs();
+
+      if(gn_attr.num_of_runtime_inputs > 1) {
+        return absl::UnimplementedError(
+          "The group normalization layer only supports constant gamma & bets"
+        );
+      }
+
+      RETURN_IF_ERROR(reader->ReadTensor(5, &gn_attr.gamma));
+      RETURN_IF_ERROR(reader->ReadTensor(6, &gn_attr.beta));
+
+      Tensor<Scalar, DataType::INT32> axis_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(1, &axis_tensor));
+      if(axis_tensor.data.size())
+        gn_attr.axis = axis_tensor.data[0];
+
+      Tensor<Scalar, DataType::INT32> group_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(2, &group_tensor));
+      if(group_tensor.data.size())
+        gn_attr.groups = group_tensor.data[0];
+
+      Tensor<Scalar, DataType::BOOL> centre_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(3, &centre_tensor));
+      if(centre_tensor.data.size())
+        gn_attr.centre = centre_tensor.data[0];
+
+      Tensor<Scalar, DataType::BOOL> scale_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(4, &scale_tensor));
+      if(scale_tensor.data.size())
+        gn_attr.scale = scale_tensor.data[0];
+
+      Tensor<Scalar, DataType::FLOAT32> epsilon_tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(7, &epsilon_tensor));
+      if(scale_tensor.data.size())
+        gn_attr.epsilon = epsilon_tensor.data[0];
+
+      //kernel limitations
+      if(gn_attr.scale != true && gn_attr.centre != true){
+        return absl::UnimplementedError(
+          "need gamma and beta values for the kernel to work");
+      }
+
+      if(gn_attr.axis != -1){
+        return absl::UnimplementedError(
+          "kernel only implemented for axis = -1");
+      }
+
+      BHWC input_shape;
+      RETURN_IF_ERROR(ExtractTensorShape(*input_tensor, &input_shape));
+
+      int channels = input_shape.c;
+      if(channels/gn_attr.groups < 4){
+        return absl::UnimplementedError("kernel limitations");
+      }
+
+      node->operation.attributes = std::move(gn_attr);
+      return absl::OkStatus();
+  }
+};
+
+class GroupNormMeanOperationParser : public TFLiteOperationParser {
+  public:
+    absl::Status IsSupported(const TfLiteContext* context,
+                             const TfLiteNode* tflite_node,
+                             const TfLiteRegistration* registration) final {
+      return absl::OkStatus();
+    }
+
+    absl::Status Parse(const TfLiteNode* tflite_node, 
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph,
+                     ObjectReader* reader) final {
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::GROUP_NORM_MEAN);
+
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      return absl::OkStatus();
+    }
+
+};
+
+class GroupNormVarOperationParser : public TFLiteOperationParser {
+  public:
+    absl::Status IsSupported(const TfLiteContext* context,
+                             const TfLiteNode* tflite_node,
+                             const TfLiteRegistration* registration) final {
+      return absl::OkStatus();
+    }
+
+    absl::Status Parse(const TfLiteNode* tflite_node, 
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph,
+                     ObjectReader* reader) final {
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::GROUP_NORM_VAR);
+
+      GroupNormVarAttributes attr;
+      // setting the default value,
+      // the attr.num_groups is set in model transformation.
+      attr.num_groups = 32;
+      node->operation.attributes = std::move(attr);
+
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      return absl::OkStatus();
+    }
+
+};
+
 class GatherOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -3261,6 +3393,15 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "Resampler") {
         return std::make_unique<ResamplerOperationParser>();
+      }
+      if (custom_name == "GroupNormalization") {
+        return std::make_unique<GroupNormalizationParser>();
+      }
+      if (custom_name == "GroupNormMean") {
+        return std::make_unique<GroupNormMeanOperationParser>();
+      }
+      if (custom_name == "GroupNormVar") {
+        return std::make_unique<GroupNormVarOperationParser>();
       }
       return NewCustomOperationParser(registration->custom_name);
     }

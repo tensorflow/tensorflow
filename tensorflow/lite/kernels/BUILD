@@ -728,6 +728,7 @@ BUILTIN_KERNEL_SRCS = [
     "fully_connected.cc",
     "gather.cc",
     "gather_nd.cc",
+    "group_normalization.cc",
     "hashtable.cc",
     "hashtable_find.cc",
     "hashtable_import.cc",
