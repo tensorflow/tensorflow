@@ -262,7 +262,7 @@ bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
   return true;
 }
 
-Status SimplifyIciDummyVariablesPass::Run(
+absl::Status SimplifyIciDummyVariablesPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (!ShouldRunPass(options)) {
     return absl::OkStatus();

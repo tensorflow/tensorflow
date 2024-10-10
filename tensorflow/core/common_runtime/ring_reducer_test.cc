@@ -47,7 +47,7 @@ namespace tensorflow {
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
                                     const DeviceType& device_type,
                                     DeviceBase* device) {
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> k = CreateOpKernel(
       device_type, device, device->GetAllocator(AllocatorAttributes()), node,
       TF_GRAPH_DEF_VERSION, &status);
@@ -194,7 +194,7 @@ class RingReducerTest : public ::testing::Test {
     core::RefCountPtr<CollectiveParams> col_params_;
     std::unique_ptr<OpKernel> merge_op_;
     std::unique_ptr<OpKernel> final_op_;
-    Status status_;
+    absl::Status status_;
   };
 
   std::unique_ptr<CollectiveTestEnv> test_env_;

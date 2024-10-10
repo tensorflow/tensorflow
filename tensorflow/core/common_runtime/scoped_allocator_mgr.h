@@ -31,7 +31,7 @@ class ScopedAllocatorMgr;
 class ScopedAllocatorContainer : public core::RefCounted {
  public:
   // Establishes a reachable ScopedAllocator.
-  Status AddScopedAllocator(
+  absl::Status AddScopedAllocator(
       const Tensor& backing_tensor, int32_t scope_id,
       const std::string& scope_name,
       const absl::Span<const ScopedAllocator::Field>& fields,
@@ -80,7 +80,7 @@ class ScopedAllocatorMgr {
   ScopedAllocatorContainer* GetContainer(int64_t step_id);
 
   // Establishes a reachable ScopedAllocator.
-  Status AddScopedAllocator(
+  absl::Status AddScopedAllocator(
       const Tensor& backing_tensor, int64_t step_id, int32_t scope_id,
       const std::string& scope_name,
       const absl::Span<const ScopedAllocator::Field>& fields,

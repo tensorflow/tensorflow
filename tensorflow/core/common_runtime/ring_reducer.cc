@@ -45,7 +45,8 @@ namespace tensorflow {
 
 RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
 
-Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
+absl::Status RingReducer::InitializeCollectiveParams(
+    CollectiveParams* col_params) {
   // TODO(b/113171733): change CHECKs to return errors.
   CHECK_EQ(col_params->instance.type, REDUCTION_COLLECTIVE);
   CHECK_EQ(col_params->instance.impl_details.collective_name, "RingReduce");
@@ -92,7 +93,7 @@ void RingReducer::Run(StatusCallback done) {
     // We are running in a blockable thread and the callback can't block so
     // just wait here on the copy.
     Notification note;
-    Status status;
+    absl::Status status;
     tsl::profiler::TraceMe activity("MemCpyAsync",
                                     tsl::profiler::TraceMeLevel::kInfo);
     CollectiveRemoteAccessLocal::MemCpyAsync(
@@ -101,7 +102,7 @@ void RingReducer::Run(StatusCallback done) {
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
         col_ctx_->output, 0 /*dev_to_dev_stream_index*/,
-        [&note, &status](const Status& s) {
+        [&note, &status](const absl::Status& s) {
           status.Update(s);
           note.Notify();
         });
@@ -144,7 +145,7 @@ void RingReducer::ContinueAfterInputCopy() {
       DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
       op_dev_ctx->CopyCPUTensorToDevice(
           &group_size_val, col_ctx_->device, &group_size_tensor_,
-          [this](const Status& s) {
+          [this](const absl::Status& s) {
             if (!s.ok()) {
               StartAbort(s);
             }
@@ -198,7 +199,7 @@ bool RingReducer::RunAsyncParts() {
     tsl::profiler::TraceMe activity("WaitForQueuedEvents",
                                     tsl::profiler::TraceMeLevel::kInfo);
     Notification note;
-    Status s = gpu_info->default_context->ThenExecute(
+    absl::Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
     if (s.ok()) {
       note.WaitForNotification();
@@ -236,7 +237,8 @@ bool RingReducer::RunAsyncParts() {
           case RF_INIT:
             if (rf->do_recv) {
               rf->action = RF_RECV;
-              auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
+              auto requeue = [this, rf, &ready_queue,
+                              &aborted](absl::Status s) {
                 if (!s.ok()) {
                   aborted = true;
                   StartAbort(s);
@@ -255,7 +257,7 @@ bool RingReducer::RunAsyncParts() {
             --recv_pending_count;
             if (!rf->second_pass) {
               rf->action = RF_REDUCE;
-              Status s = collective_util::ComputeBinOp(
+              absl::Status s = collective_util::ComputeBinOp(
                   col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
                   col_params_->merge_op, &rf->chunk, &rf->tmp_chunk);
               if (!s.ok()) {
@@ -270,7 +272,7 @@ bool RingReducer::RunAsyncParts() {
             if (!rf->second_pass && col_params_->final_op && rf->is_final) {
               rf->action = RF_FINALIZE;
               group_size_tensor_ready_.WaitForNotification();
-              Status s = collective_util::ComputeBinOp(
+              absl::Status s = collective_util::ComputeBinOp(
                   col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
                   col_params_->final_op, &rf->chunk, &group_size_tensor_);
               if (!s.ok()) {
@@ -288,7 +290,7 @@ bool RingReducer::RunAsyncParts() {
             if (rf->do_send) {
               rf->action = RF_SEND;
               auto send_complete = [this, rf, &ready_queue,
-                                    &aborted](Status s) {
+                                    &aborted](absl::Status s) {
                 if (!s.ok()) {
                   aborted = true;
                   StartAbort(s);

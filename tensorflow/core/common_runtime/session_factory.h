@@ -33,8 +33,8 @@ class SessionFactory {
   // Creates a new session and stores it in *out_session, or fails with an error
   // status if the Session could not be created. Caller takes ownership of
   // *out_session if this returns OkStatus().
-  virtual Status NewSession(const SessionOptions& options,
-                            Session** out_session) = 0;
+  virtual absl::Status NewSession(const SessionOptions& options,
+                                  Session** out_session) = 0;
 
   virtual bool AcceptsOptions(const SessionOptions& options) = 0;
 
@@ -60,15 +60,15 @@ class SessionFactory {
   // listed explicitly.
   //
   // Sessions that support resource containers should override this function.
-  virtual Status Reset(const SessionOptions& options,
-                       const std::vector<string>& containers) {
+  virtual absl::Status Reset(const SessionOptions& options,
+                             const std::vector<string>& containers) {
     return errors::Unimplemented("Reset()");
   }
 
   virtual ~SessionFactory() {}
   static void Register(const string& runtime_type, SessionFactory* factory);
-  static Status GetFactory(const SessionOptions& options,
-                           SessionFactory** out_factory);
+  static absl::Status GetFactory(const SessionOptions& options,
+                                 SessionFactory** out_factory);
 };
 
 }  // namespace tensorflow

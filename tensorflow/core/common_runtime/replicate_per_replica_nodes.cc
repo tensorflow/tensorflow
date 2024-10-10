@@ -33,7 +33,7 @@ constexpr int kOptimizeCrossHostDataEdgesTheshold = 2;
 class ReplicateHelper {
  public:
   // Initialize replicated nodes with nullptr.
-  Status InitializeNode(const Node* node, int num_allowed_devices) {
+  absl::Status InitializeNode(const Node* node, int num_allowed_devices) {
     if (replicated_nodes_map_.find(node) != replicated_nodes_map_.end()) {
       return errors::InvalidArgument("Node ", node->name(),
                                      " has been replicated.");
@@ -44,9 +44,9 @@ class ReplicateHelper {
   }
 
   // Replicate the given node to an allowed device.
-  Status ReplicateNode(const Node* node,
-                       const std::vector<string>& allowed_devices,
-                       int allowed_device_index, Graph* graph) {
+  absl::Status ReplicateNode(const Node* node,
+                             const std::vector<string>& allowed_devices,
+                             int allowed_device_index, Graph* graph) {
     auto& replicated_nodes = replicated_nodes_map_.at(node);
     if (replicated_nodes[allowed_device_index] != nullptr) {
       return absl::OkStatus();
@@ -82,7 +82,7 @@ class ReplicateHelper {
 
   // Replace an edge (composite device -> composite device) with
   // N edges (allowed devices -> allowed devices).
-  Status ReplicateFromCompositeDeviceToCompositeDevice(
+  absl::Status ReplicateFromCompositeDeviceToCompositeDevice(
       const Edge* edge, const std::vector<string>& allowed_devices,
       Graph* graph) {
     const std::vector<Node*>& src_replicated_nodes =
@@ -114,7 +114,7 @@ class ReplicateHelper {
   // one edge (one allowed device -> a regular device).
   // Control edge: replace an edge (composite device -> a regular device) with
   // N edges (allowed devices -> a regular device).
-  Status ReplicateFromCompositeDeviceToRegularDevice(
+  absl::Status ReplicateFromCompositeDeviceToRegularDevice(
       const Edge* edge, const std::vector<string>& allowed_devices,
       Graph* graph) {
     const std::vector<Node*>& src_replicated_nodes =
@@ -197,9 +197,10 @@ class ReplicateHelper {
 };
 
 // Replicate the nodes in cluster_nodes and update edges.
-Status ReplicateNodesAndEdges(const std::vector<string>& allowed_devices,
-                              absl::flat_hash_map<Node*, int>* cluster_nodes,
-                              ReplicateHelper* helper, Graph* graph) {
+absl::Status ReplicateNodesAndEdges(
+    const std::vector<string>& allowed_devices,
+    absl::flat_hash_map<Node*, int>* cluster_nodes, ReplicateHelper* helper,
+    Graph* graph) {
   // Contains nodes in cluster_nodes whose out nodes are all on physical
   // devices.
   std::queue<Node*> nodes_ready_to_delete;
@@ -251,7 +252,7 @@ Status ReplicateNodesAndEdges(const std::vector<string>& allowed_devices,
 
 }  // namespace
 
-Status ReplicatePerReplicaNodesInFunctionGraph(
+absl::Status ReplicatePerReplicaNodesInFunctionGraph(
     const absl::flat_hash_map<string, const std::vector<string>*>&
         composite_devices,
     Graph* graph) {

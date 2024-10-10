@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ScopedAllocatorContainer::AddScopedAllocator(
+absl::Status ScopedAllocatorContainer::AddScopedAllocator(
     const Tensor& backing_tensor, int32_t scope_id, const string& scope_name,
     const absl::Span<const ScopedAllocator::Field>& fields,
     int32_t expected_call_count) {
@@ -150,7 +150,7 @@ ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64_t step_id) {
   return sac;
 }
 
-Status ScopedAllocatorMgr::AddScopedAllocator(
+absl::Status ScopedAllocatorMgr::AddScopedAllocator(
     const Tensor& backing_tensor, int64_t step_id, int32_t scope_id,
     const string& scope_name,
     const absl::Span<const ScopedAllocator::Field>& fields,
