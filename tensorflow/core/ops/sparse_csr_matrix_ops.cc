@@ -30,8 +30,8 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
 
-Status GetVariantInput(InferenceContext* c, int index,
-                       ShapeAndType* shape_and_type) {
+absl::Status GetVariantInput(InferenceContext* c, int index,
+                             ShapeAndType* shape_and_type) {
   ShapeHandle variant;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(index), 0, &variant));
   auto* shapes_and_types = c->input_handle_shapes_and_types(index);
@@ -45,9 +45,9 @@ Status GetVariantInput(InferenceContext* c, int index,
 
 // Validates that a shape represents a (rank-2) square matrix or a (rank-3)
 // batch of square matrices.
-Status ValidateSquareMatrixShape(InferenceContext* c,
-                                 const ShapeHandle& matrix_shape,
-                                 DimensionHandle* matrix_dimension) {
+absl::Status ValidateSquareMatrixShape(InferenceContext* c,
+                                       const ShapeHandle& matrix_shape,
+                                       DimensionHandle* matrix_dimension) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(matrix_shape, 2, &out));
   TF_RETURN_IF_ERROR(c->WithRankAtMost(matrix_shape, 3, &out));
