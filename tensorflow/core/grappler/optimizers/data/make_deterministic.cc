@@ -167,8 +167,8 @@ NodeDef* GetMutableNode(const string& node_name, MutableGraphView* graph) {
 
 // Converts a ParallelInterleaveDataset or ParallelMapDataset to the equivalent
 // non-parallel version, to make it deterministic.
-Status ConvertMapOrInterleave(const string& node_name,
-                              MutableGraphView* graph) {
+absl::Status ConvertMapOrInterleave(const string& node_name,
+                                    MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
 
   auto Targuments = node->attr().find("Targuments");
@@ -256,7 +256,7 @@ absl::flat_hash_set<absl::string_view> GetAllTransitiveDependencies(
 // ParallelMapV2 ops, or a MapAndBatch op deterministic by splitting it into
 // separate Map and MapAndBatch ops. All the nondeterministic nodes and their
 // dependencies are moved to the Map node.
-Status SplitMap(
+absl::Status SplitMap(
     const FunctionLibraryDefinition& library, const string& map_node_name,
     MutableGraphView* graph,
     const absl::flat_hash_set<absl::string_view>& nondeterministic_nodes) {
@@ -384,7 +384,7 @@ Status SplitMap(
 
 // Converts a ParallalBatch dataset to a Batch dataset, to make it
 // deterministic.
-Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
+absl::Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
   node->set_op(kBatchV2Op);
   std::string num_parallel_calls_input = node->input(2);
@@ -398,7 +398,8 @@ Status ConvertBatch(const string& node_name, MutableGraphView* graph) {
 // deterministic. Caller should delete the MapAndBatch node afterwards.
 // TODO(reedwm): Handle 'metadata' attribute. Currently the Map node and Batch
 // node will have an empty 'metadata' attribute.
-Status ConvertMapAndBatch(const string& node_name, MutableGraphView* graph) {
+absl::Status ConvertMapAndBatch(const string& node_name,
+                                MutableGraphView* graph) {
   int index = graph_utils::FindGraphNodeWithName(node_name, *graph->graph());
   DCHECK_NE(index, -1) << "Failed to find node " << node_name
                        << " in the optimized graph.";
@@ -478,7 +479,7 @@ Status ConvertMapAndBatch(const string& node_name, MutableGraphView* graph) {
 
 // Change the buffer_size of a Prefetch node to zero, effectively disabling it,
 // to make it deterministic.
-Status ConvertPrefetch(const string& node_name, MutableGraphView* graph) {
+absl::Status ConvertPrefetch(const string& node_name, MutableGraphView* graph) {
   NodeDef* node = GetMutableNode(node_name, graph);
   constexpr int buffer_size_index = 1;
   node->add_input(absl::StrCat("^", node->input(buffer_size_index)));
@@ -559,7 +560,7 @@ bool FunctionNodeMayIntroduceNondeterminism(
     NondeterminismType nondeterminism_type,
     absl::flat_hash_set<std::string>* functions_processed) {
   const OpRegistrationData* op_reg_data = nullptr;
-  Status s = library.LookUp(node_def.op(), &op_reg_data);
+  absl::Status s = library.LookUp(node_def.op(), &op_reg_data);
   if (!s.ok()) {
     VLOG(2) << "Could not look up op " << node_def.op()
             << " in FunctionLibraryDefinition, so rewriting op to be safe";
@@ -616,7 +617,7 @@ bool FunctionNodeMayIntroduceNondeterminism(
 bool NodeMayIntroduceNondeterminismWhenAsync(
     const FunctionLibraryDefinition& library, const NodeDef& node) {
   const OpDef* op_def;
-  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  absl::Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (s.code() == error::NOT_FOUND) {
     return false;
   } else if (!s.ok()) {
@@ -665,10 +666,9 @@ bool GraphMayHaveAsyncNondeterminism(const FunctionLibraryDefinition& library,
 
 }  // namespace
 
-Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
-                                                  const GrapplerItem& item,
-                                                  GraphDef* output,
-                                                  OptimizationStats* stats) {
+absl::Status MakeDeterministic::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
@@ -711,8 +711,8 @@ Status MakeDeterministic::OptimizeAndCollectStats(Cluster* cluster,
         !rewrite_due_to_async &&
         (node.op() == kParallelMapOpV2 || IsMapAndBatch(node.op()));
     if (maybe_can_split) {
-      Status s = SplitMap(function_library, node.name(), &graph,
-                          nondeterministic_nodes);
+      absl::Status s = SplitMap(function_library, node.name(), &graph,
+                                nondeterministic_nodes);
       if (s.ok()) {
         VLOG(1) << "Split node " << node.name() << " (" << node.op()
                 << ") into two map nodes: a nonparallel version and a "

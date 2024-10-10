@@ -54,7 +54,7 @@ NodeDef MakeParallelFilter(const string& name, MutableGraphView* graph) {
 
 }  // namespace
 
-Status FilterParallelization::OptimizeAndCollectStats(
+absl::Status FilterParallelization::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;

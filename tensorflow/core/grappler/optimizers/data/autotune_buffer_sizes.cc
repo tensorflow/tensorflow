@@ -48,10 +48,9 @@ constexpr std::array<const char*, 8> kAsyncDatasetOps = {
 
 }  // namespace
 
-Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
-                                                    const GrapplerItem& item,
-                                                    GraphDef* output,
-                                                    OptimizationStats* stats) {
+absl::Status AutotuneBufferSizes::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   if (!autotune_) {
     VLOG(1) << "The optimization autotune_buffer_sizes is not applied if "

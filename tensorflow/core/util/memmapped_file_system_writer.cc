@@ -18,8 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
-                                                   const string& filename) {
+absl::Status MemmappedFileSystemWriter::InitializeToFile(
+    Env* env, const string& filename) {
   auto status = env->NewWritableFile(filename, &output_file_);
   if (status.ok()) {
     output_file_offset_ = 0;
@@ -27,8 +27,8 @@ Status MemmappedFileSystemWriter::InitializeToFile(Env* env,
   return status;
 }
 
-Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
-                                             const string& element_name) {
+absl::Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
+                                                   const string& element_name) {
   if (!output_file_) {
     return errors::FailedPrecondition(
         "MemmappedEnvWritter: saving tensor into not opened file");
@@ -55,7 +55,7 @@ Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
   return result;
 }
 
-Status MemmappedFileSystemWriter::SaveProtobuf(
+absl::Status MemmappedFileSystemWriter::SaveProtobuf(
     const protobuf::MessageLite& message, const string& element_name) {
   if (!output_file_) {
     return errors::FailedPrecondition(
@@ -89,7 +89,7 @@ StringPiece EncodeUint64LittleEndian(uint64 val, char* output_buffer) {
 
 }  // namespace
 
-Status MemmappedFileSystemWriter::FlushAndClose() {
+absl::Status MemmappedFileSystemWriter::FlushAndClose() {
   if (!output_file_) {
     return errors::FailedPrecondition(
         "MemmappedEnvWritter: flushing into not opened file");
@@ -109,7 +109,7 @@ Status MemmappedFileSystemWriter::FlushAndClose() {
   return absl::OkStatus();
 }
 
-Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
+absl::Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
   const uint64 alignment_rest = output_file_offset_ % alignment;
   const uint64 to_write_for_alignment =
       (alignment_rest == 0) ? 0 : alignment - (output_file_offset_ % alignment);

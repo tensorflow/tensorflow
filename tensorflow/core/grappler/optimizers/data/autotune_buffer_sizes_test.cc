@@ -28,8 +28,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-Status OptimizeWithAutotuneBufferSizes(const GrapplerItem &item,
-                                       GraphDef *output, bool autotune) {
+absl::Status OptimizeWithAutotuneBufferSizes(const GrapplerItem &item,
+                                             GraphDef *output, bool autotune) {
   AutotuneBufferSizes optimizer;
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {
