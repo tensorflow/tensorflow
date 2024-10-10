@@ -140,18 +140,6 @@ class GpuDriver {
   // previously registered.
   static bool HostUnregister(Context* context, void* location);
 
-  // Given a device ordinal, returns a device handle into the device outparam,
-  // which must not be null.
-  //
-  // N.B. these device handles do not have a corresponding destroy function in
-  // the CUDA/HIP driver API.
-  static absl::Status GetDevice(int device_ordinal, GpuDeviceHandle* device);
-
-  // Given a device handle, returns the name reported by the driver for the
-  // device.
-  static absl::Status GetDeviceName(GpuDeviceHandle device,
-                                    std::string* device_name);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
@@ -519,59 +507,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Returns the compute capability for the device; i.e (3, 5).
-  // This is currently done via the deprecated device API.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1ge2091bbac7e1fb18c2821612115607ea
-  // (supported on CUDA only)
-  static absl::Status GetComputeCapability(int* cc_major, int* cc_minor,
-                                           GpuDeviceHandle device);
-
-  // Returns Gpu ISA version for the device; i.e 803, 900.
-  // (supported on ROCm only)
-  static absl::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
-
-  // Return the full GCN Architecture Name for the device
-  // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
-  // (supported on ROCm only)
-  static absl::Status GetGpuGCNArchName(GpuDeviceHandle device,
-                                        std::string* gcnArchName);
-
-  // Returns the number of multiprocessors on the device (note that the device
-  // may be multi-GPU-per-board).
-  static absl::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
-
-  // Returns the limit on number of threads that can be resident in a single
-  // multiprocessor.
-  static absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
-      GpuDeviceHandle device);
-
-  // Returns the amount of shared memory available on a single GPU core (i.e.
-  // SM on NVIDIA devices).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
-      GpuDeviceHandle device);
-
-  // Returns the amount of static shared memory available for a single block
-  // (cooperative thread array).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
-      GpuDeviceHandle device);
-
-  // Returns the total amount of shared memory available for a single block
-  // (cooperative thread array).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(
-      GpuDeviceHandle device);
-
-  // Returns the maximum supported number of registers per block.
-  static absl::StatusOr<int64_t> GetMaxRegistersPerBlock(
-      GpuDeviceHandle device);
-
-  // Returns the number of threads per warp.
-  static absl::StatusOr<int64_t> GetThreadsPerWarp(GpuDeviceHandle device);
-
-  // Queries the grid limits for device with cuDeviceGetAttribute calls.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static absl::Status GetGridLimits(int* x, int* y, int* z,
-                                    GpuDeviceHandle device);
-
   // Returns a grab-bag of device properties in a caller-owned device_properties
   // structure for device_ordinal via cuDeviceGetProperties.
   //
@@ -582,12 +517,6 @@ class GpuDriver {
   static bool GetDeviceProperties(GpuDeviceProperty* device_properties,
                                   int device_ordinal);
 
-  // Gets a specific integer-valued property about the given device.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static absl::StatusOr<int> GetDeviceAttribute(GpuDeviceAttribute attribute,
-                                                GpuDeviceHandle device);
-
   // Returns whether ECC is enabled for the given GpuDeviceHandle via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
@@ -596,12 +525,6 @@ class GpuDriver {
   // Returns the total amount of memory available for allocation by the CUDA
   // context, in bytes, via cuDeviceTotalMem.
   static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64_t* result);
-
-  // Returns the free amount of memory and total amount of memory, as reported
-  // by cuMemGetInfo.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g808f555540d0143a331cc42aa98835c0
-  static bool GetDeviceMemoryInfo(Context* context, int64_t* free,
-                                  int64_t* total);
 
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
