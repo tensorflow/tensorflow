@@ -1214,7 +1214,7 @@ class TrtGraphConverterV2(object):
       input_saved_model_signature_key: the key of the signature to optimize the
         graph for.
       use_dynamic_shape: whether to enable dynamic shape support. None is
-        equivalent to False in the current implementation.
+        equivalent to True in the current implementation.
       dynamic_shape_profile_strategy: one of the strings in
         supported_profile_strategies(). None is equivalent to Range in the
         current implementation.
@@ -1284,7 +1284,7 @@ class TrtGraphConverterV2(object):
     self._calibrated = False
 
     if use_dynamic_shape is None:
-      self._use_dynamic_shape = False
+      self._use_dynamic_shape = True
     else:
       self._use_dynamic_shape = use_dynamic_shape
 
