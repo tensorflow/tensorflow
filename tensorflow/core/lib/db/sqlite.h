@@ -79,7 +79,7 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   ///
   /// This function sets PRAGMA values from TF_SQLITE_* environment
   /// variables. See sqlite.cc to learn more.
-  static Status Open(const string& path, int flags, Sqlite** db);
+  static absl::Status Open(const string& path, int flags, Sqlite** db);
 
   /// \brief Creates SQLite statement.
   ///
@@ -89,7 +89,7 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   /// routine will retry automatically and then possibly fail.
   ///
   /// The returned statement holds a reference to this object.
-  Status Prepare(const StringPiece& sql, SqliteStatement* stmt);
+  absl::Status Prepare(const StringPiece& sql, SqliteStatement* stmt);
   SqliteStatement PrepareOrDie(const StringPiece& sql);
 
   /// \brief Returns extended result code of last error.
@@ -177,7 +177,7 @@ class SqliteStatement {
   ///
   /// This statement should be Reset() or destructed when finished with
   /// the result.
-  Status Step(bool* is_done);
+  absl::Status Step(bool* is_done);
   bool StepOrDie() TF_MUST_USE_RESULT;
 
   /// \brief Executes query when only one row is desired.
@@ -187,14 +187,14 @@ class SqliteStatement {
   ///
   /// This statement should be Reset() or destructed when finished with
   /// the result.
-  Status StepOnce();
+  absl::Status StepOnce();
   const SqliteStatement& StepOnceOrDie();
 
   /// \brief Executes query, ensures zero rows returned, then Reset().
   ///
   /// If a row is returned, an internal error Status is returned that
   /// won't be reflected in the connection error state.
-  Status StepAndReset();
+  absl::Status StepAndReset();
   void StepAndResetOrDie();
 
   /// \brief Resets statement so it can be executed again.
@@ -430,7 +430,7 @@ class TF_SCOPED_LOCKABLE SqliteTransaction {
   ///
   /// If this is successful, a new transaction will be started, which
   /// is rolled back when exiting the scope.
-  Status Commit();
+  absl::Status Commit();
 
  private:
   void Begin();
