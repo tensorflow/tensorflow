@@ -1005,7 +1005,21 @@ message DebugOptions {
   // loop by a factor of two if a collective op is present.
   bool xla_gpu_enable_heuristic_pass_configuration = 332;
 
-  // Next id: 336
+  // This controls how many in-flight collectives latency hiding scheduler
+  // can schedule. Example usage:
+  // With xla_gpu_experimental_parallel_collective_overlap_limit = 1:
+  //   coll.1-start = collective(input)
+  //   coll.1-done = collective(coll.1-start)
+  //   coll.2-start = collective(input2)
+  //   coll.2-done = collective(coll.2-start)
+  // With xla_gpu_experimental_parallel_collective_overlap_limit = 2:
+  //   coll.1-start = collective(input)
+  //   coll.2-start = collective(input2)
+  //   coll.1-done = collective(coll.1-start)
+  //   coll.2-done = collective(coll.2-start)
+  int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
+
+  // Next id: 337
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

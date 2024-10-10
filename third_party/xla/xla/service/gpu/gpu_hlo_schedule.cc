@@ -249,7 +249,8 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
 
 // Latency hiding scheduler support.
 
-SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
+SchedulerConfig GetSchedulerConfig(int64_t memory_limit,
+                                   int64_t collective_resource) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
   config.collective_broadcast_overlap_limit = 1;
@@ -258,6 +259,7 @@ SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   config.aggressive_scheduling_policies = true;
   config.schedule_send_recvs = true;
   config.memory_limit = memory_limit;
+  config.parallel_collective_overlap_limit = collective_resource;
   return config;
 }
 
@@ -456,7 +458,21 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     return ScheduleMetadata{memory_limit};
   }
 
-  SchedulerConfig config = GetSchedulerConfig(memory_limit);
+  SchedulerConfig config = GetSchedulerConfig(
+      memory_limit,
+      module->config()
+          .debug_options()
+          .xla_gpu_experimental_parallel_collective_overlap_limit());
+  CHECK((config.collective_broadcast_overlap_limit <=
+         config.parallel_collective_overlap_limit) &&
+        (config.all_to_all_overlap_limit <=
+         config.parallel_collective_overlap_limit) &&
+        (config.all_gather_overlap_limit <=
+         config.parallel_collective_overlap_limit) &&
+        (config.all_reduce_overlap_limit <=
+         config.parallel_collective_overlap_limit) &&
+        (config.reduce_scatter_overlap_limit <=
+         config.parallel_collective_overlap_limit));
   auto gpu_latency_estimator =
       std::make_unique<GpuLatencyEstimator>(pointer_size);
 
