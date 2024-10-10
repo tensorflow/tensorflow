@@ -32,8 +32,8 @@ struct TfStreamzSnapshot {
   uint64 end_time_ns;    // time after collection.
 };
 
-Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
-                         XPlane* plane, uint64 line_start_time_ns);
+absl::Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
+                               XPlane* plane, uint64 line_start_time_ns);
 
 }  // namespace profiler
 }  // namespace tensorflow
