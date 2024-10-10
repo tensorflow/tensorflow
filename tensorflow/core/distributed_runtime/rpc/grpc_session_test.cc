@@ -208,7 +208,7 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
   opts.mutable_fetch_devices()->insert({fetch, device_name});
 
   Session::CallableHandle handle;
-  Status status = session->MakeCallable(opts, &handle);
+  absl::Status status = session->MakeCallable(opts, &handle);
   EXPECT_EQ(error::UNIMPLEMENTED, status.code());
   TF_ASSERT_OK(session->Close());
 }
@@ -344,8 +344,8 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
     RunOptions run_options;
     run_options.set_output_partition_graphs(true);
     RunMetadata run_metadata;
-    Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
-                            &run_metadata);
+    absl::Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
+                                  &run_metadata);
     EXPECT_TRUE(errors::IsInvalidArgument(s));
     EXPECT_TRUE(
         absl::StrContains(s.message(), "disable_output_partition_graphs"));
@@ -601,7 +601,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
       SetDevice(&def, a->name(), a_dev.name());
       SetDevice(&def, b->name(), b_dev.name());
 
-      Status s = session->Create(def);
+      absl::Status s = session->Create(def);
       if (s.ok()) {
         std::vector<Tensor> outputs;
         TF_ASSERT_OK(session->Run({}, {b->name()}, {}, &outputs));
@@ -727,7 +727,7 @@ TEST(GrpcSessionTest, Error) {
 
   TF_ASSERT_OK(session->Create(gdef));
   {
-    Status status = session->Run({}, fetches, {}, nullptr);
+    absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
   }
@@ -788,7 +788,7 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
 
   TF_ASSERT_OK(session->Create(gdef));
   {
-    Status status = session->Run({}, fetches, {}, nullptr);
+    absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     std::cerr << status << "\n";
     EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
@@ -854,7 +854,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
 
   TF_ASSERT_OK(session->Create(gdef));
   {
-    Status status = session->Run({}, fetches, {}, nullptr);
+    absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
   }
@@ -1023,7 +1023,7 @@ void CreateInvalidGraph(const string& graph_def_ascii,
 
   std::unique_ptr<Session> session(
       NewRemote(Options(cluster->targets()[0], 1)));
-  Status s = session->Create(graph);
+  absl::Status s = session->Create(graph);
 
   ASSERT_FALSE(s.ok());
   EXPECT_NE(s.message().find(error_substring), string::npos);
@@ -1182,7 +1182,7 @@ TEST(SessionTest, ExtendValidation) {
                                                   &extension);
   ASSERT_TRUE(success);
 
-  Status s = session->Extend(extension);
+  absl::Status s = session->Extend(extension);
   ASSERT_FALSE(s.ok());
   EXPECT_NE(s.message().find("Illegal op input name"), string::npos);
 
@@ -1228,7 +1228,7 @@ TEST(SessionTest, CreateTimeoutWithSessionOptions) {
   test::graph::Delay(&graph, b, Microseconds(1000000));
   GraphDef gdef;
   test::graph::ToGraphDef(&graph, &gdef);
-  Status status = session->Create(gdef);
+  absl::Status status = session->Create(gdef);
   // Either error is possible, depending on the environment.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
               error::UNAVAILABLE == status.code());
@@ -1248,7 +1248,7 @@ TEST(SessionTest, CreateTimeoutWithRunOptions) {
   RunOptions run_options;
   // Sets RunOption timeout_in_ms to 20.
   run_options.set_timeout_in_ms(20);
-  Status status = session->Create(run_options, gdef);
+  absl::Status status = session->Create(run_options, gdef);
   // Either error is possible, depending on the environment.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
               error::UNAVAILABLE == status.code());
@@ -1278,7 +1278,7 @@ TEST(SessionTest, RunTimeoutWithSessionOptions) {
 
   // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
   std::vector<std::pair<string, Tensor>> inputs;
-  Status status = session->Run(inputs, {}, {b_delay->name()}, nullptr);
+  absl::Status status = session->Run(inputs, {}, {b_delay->name()}, nullptr);
   // TODO(sherrym): Due to potentially a GRPC bug, we sometimes get
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
@@ -1308,8 +1308,8 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   std::vector<std::pair<string, Tensor>> inputs;
   RunOptions run_options;
   run_options.set_timeout_in_ms(100);
-  Status status = session->Run(run_options, inputs, {}, {b_delay->name()},
-                               nullptr, nullptr);
+  absl::Status status = session->Run(run_options, inputs, {}, {b_delay->name()},
+                                     nullptr, nullptr);
   // TODO(sherrym): Due to potentially a GRPC bug, we sometimes get
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
   EXPECT_TRUE(error::DEADLINE_EXCEEDED == status.code() ||
@@ -1405,7 +1405,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
   TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
-    Status status = session->Run({}, fetches, {}, &outputs);
+    absl::Status status = session->Run({}, fetches, {}, &outputs);
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // Status contains the error either worker1 or worker2.
@@ -1488,7 +1488,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
   TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
-    Status status = session->Run({}, fetches, targets, &outputs);
+    absl::Status status = session->Run({}, fetches, targets, &outputs);
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error
@@ -1587,7 +1587,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
   TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
-    Status status = session->Run({}, fetches, targets, &outputs);
+    absl::Status status = session->Run({}, fetches, targets, &outputs);
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error
@@ -1688,7 +1688,7 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
   TF_ASSERT_OK(session->Create(gdef));
   {
     std::vector<Tensor> outputs;
-    Status status = session->Run({}, fetches, targets, &outputs);
+    absl::Status status = session->Run({}, fetches, targets, &outputs);
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error

@@ -41,7 +41,7 @@ namespace tensorflow {
 class RpcResponseCache {
  public:
   using FinishResponseCB = std::function<void(
-      const Tensor& tensor, bool is_dead, const Status& status)>;
+      const Tensor& tensor, bool is_dead, const absl::Status& status)>;
 
   // Add the given request to the cache.
   // If the request is in the cache,
@@ -56,7 +56,7 @@ class RpcResponseCache {
   // Fill the response cache for the given request_id and respond to all
   // pending request.
   void RequestFinished(int64_t request_id, const Tensor& tensor, bool is_dead,
-                       const Status& status);
+                       const absl::Status& status);
 
   // Erase the cache entry with the given request_id
   void EraseRequestId(int64_t request_id);
@@ -78,7 +78,7 @@ class RpcResponseCache {
     int64_t step_id = -1;
     Tensor tensor;
     bool is_dead = false;
-    Status response_status;
+    absl::Status response_status;
 
     void FinishResponse(const FinishResponseCB& cb) const {
       cb(tensor, is_dead, response_status);
