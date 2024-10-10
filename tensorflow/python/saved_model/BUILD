@@ -927,6 +927,7 @@ tf_python_pybind_extension(
         "pywrap_saved_model/metrics.pyi",
     ],
     visibility = [
+        "//tensorflow/python:__pkg__",
         "//tensorflow/python/checkpoint:__subpackages__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/training:__subpackages__",

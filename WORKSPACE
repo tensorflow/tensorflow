@@ -24,11 +24,11 @@ load("@//tensorflow:workspace3.bzl", "tf_workspace3")
 tf_workspace3()
 
 # Initialize hermetic Python
-load("@local_xla//third_party/py:python_init_rules.bzl", "python_init_rules")
+load("@local_tsl//third_party/py:python_init_rules.bzl", "python_init_rules")
 
 python_init_rules()
 
-load("@local_xla//third_party/py:python_init_repositories.bzl", "python_init_repositories")
+load("@local_tsl//third_party/py:python_init_repositories.bzl", "python_init_repositories")
 
 python_init_repositories(
     default_python_version = "system",
@@ -46,11 +46,11 @@ python_init_repositories(
     },
 )
 
-load("@local_xla//third_party/py:python_init_toolchains.bzl", "python_init_toolchains")
+load("@local_tsl//third_party/py:python_init_toolchains.bzl", "python_init_toolchains")
 
 python_init_toolchains()
 
-load("@local_xla//third_party/py:python_init_pip.bzl", "python_init_pip")
+load("@local_tsl//third_party/py:python_init_pip.bzl", "python_init_pip")
 
 python_init_pip()
 

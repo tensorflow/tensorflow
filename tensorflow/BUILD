@@ -13,7 +13,7 @@ load(
     "if_google",
     "if_oss",
     "if_xla_available",
-    "tf_cc_shared_object",
+    "pywrap_aware_tf_cc_shared_object",
     "tf_custom_op_library_additional_deps_impl",
     "tf_monitoring_python_deps",
     "tf_native_cc_binary",
@@ -1085,18 +1085,11 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_xla//xla/tsl:tsl_bzl",
         "@local_xla//xla/tsl/mkl:build_defs_bzl",
         "@rules_java//java:rules",
     ],
-)
-
-bzl_library(
-    name = "tensorflow_default_bzl",
-    srcs = ["tensorflow.default.bzl"],
-    visibility = ["//visibility:public"],
-    deps = [":tensorflow_bzl"],
 )
 
 # TODO(jakeharmon8): Remove these in favor of tsl:grpc
@@ -1232,7 +1225,7 @@ cc_import(
 # an "-exported_symbols_list" command.  -z defs disallows undefined
 # symbols in object files.
 
-tf_cc_shared_object(
+pywrap_aware_tf_cc_shared_object(
     name = "tensorflow",
     linkopts = select({
         "//tensorflow:macos": [

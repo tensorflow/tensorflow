@@ -546,6 +546,7 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
 )

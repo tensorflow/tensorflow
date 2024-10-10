@@ -394,6 +394,9 @@ dtensor_test(
         "tpu",
     ],
     main = "layout_test.py",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
