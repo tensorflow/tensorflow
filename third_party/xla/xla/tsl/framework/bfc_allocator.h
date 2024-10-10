@@ -307,8 +307,8 @@ class BFCAllocator : public Allocator {
     }
 
     AllocationRegion() = default;
-    AllocationRegion(AllocationRegion&& other) { Swap(&other); }
-    AllocationRegion& operator=(AllocationRegion&& other) {
+    AllocationRegion(AllocationRegion&& other) noexcept { Swap(&other); }
+    AllocationRegion& operator=(AllocationRegion&& other) noexcept {
       Swap(&other);
       return *this;
     }
