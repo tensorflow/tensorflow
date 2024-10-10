@@ -87,6 +87,13 @@ multiclass FuseActFnIntoConvOpPat<Op ActFnOp, ConstantStrAttr ActFnAttr> {
     (TFL_Conv2DOp $input, $filter, $bias, $h_factor, $w_factor, ActFnAttr,
         $padding, $stride_h, $stride_w),
     [(HasOneUse $conv_out)]>;
+  def FuseActivationFuncWithConv3D#ActFnOp#ActFnAttr : Pat<
+    (ActFnOp (TFL_Conv3DOp:$conv_out $input, $filter, $bias, $d_factor,
+                $h_factor, $w_factor, TFL_AF_None, $padding, $stride_d,
+                $stride_h, $stride_w)),
+    (TFL_Conv3DOp $input, $filter, $bias, $d_factor, $h_factor, $w_factor,
+        ActFnAttr, $padding, $stride_d, $stride_h, $stride_w),
+    [(HasOneUse $conv_out)]>;
   def FuseActivationFuncWithDepthwiseConv#ActFnOp#ActFnAttr : Pat<
     (ActFnOp (TFL_DepthwiseConv2DOp:$conv_out $input, $filter, $bias, $h_factor,
                 $w_factor, TFL_AF_None, $padding, $stride_h, $stride_w,
@@ -143,6 +150,28 @@ multiclass FuseBinaryOpToPrecedingAffine<Op binaryOp> {
                 (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
       $h_factor, $w_factor, $act_fn, $padding, $stride_h, $stride_w),
     [(CanFuseConvOrDepthwiseConv<"false"> $filter, $value),
+     (HasOneUse $output)]>;
+  def FuseBinaryOpWithConv3D#binaryOp : Pat<
+    (binaryOp (TFL_Conv3DOp:$output $input, $filter,
+                (Arith_ConstantOp FloatElementsAttr:$bias), $d_factor, $h_factor, $w_factor,
+                TFL_AF_None, $padding, $stride_d, $stride_h, $stride_w),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_Conv3DOp $input, $filter,
+      (binaryOp (Arith_ConstantOp $bias),
+                (Arith_ConstantOp (FlattenTo1D $value)), TFL_AF_None),
+      $d_factor, $h_factor, $w_factor, $act_fn, $padding, $stride_d, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (HasOneUse $output)]>;
+  def FuseBinaryOpWithConv3DNoneBias#binaryOp : Pat<
+    (binaryOp (TFL_Conv3DOp:$output $input, $filter,
+                $bias, $d_factor, $h_factor, $w_factor,
+                TFL_AF_None, $padding, $stride_d, $stride_h, $stride_w),
+              (Arith_ConstantOp FloatElementsAttr:$value), $act_fn),
+    (TFL_Conv3DOp $input, $filter,
+      (Arith_ConstantOp (FlattenTo1D $value)),
+      $d_factor, $h_factor, $w_factor, $act_fn, $padding, $stride_d, $stride_h, $stride_w),
+    [(CanFuseConvOrDepthwiseConv<"true"> $filter, $value),
+     (IsNoneType $bias),
      (HasOneUse $output)]>;
   def FuseBinaryOpWithDepthwiseConv#binaryOp : Pat<
     (binaryOp (TFL_DepthwiseConv2DOp:$output $input, $filter,
