@@ -49,12 +49,12 @@ limitations under the License.
 
 namespace py = pybind11;
 
-tensorflow::Status _GetOpPerformanceDataAndRunTime(
+absl::Status _GetOpPerformanceDataAndRunTime(
     const tensorflow::grappler::GrapplerItem& item,
     tensorflow::grappler::CostEstimator* cost_measure,
     tensorflow::OpPerformanceList* op_performance_data,
     tensorflow::grappler::Costs* costs) {
-  tensorflow::Status status = cost_measure->Initialize(item);
+  absl::Status status = cost_measure->Initialize(item);
   if (!status.ok()) return status;
 
   tensorflow::RunMetadata run_metadata;
@@ -159,7 +159,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
          tensorflow::grappler::GrapplerItem* item)
           -> std::unordered_map<std::string, std::vector<std::string>> {
         if (cluster == nullptr || item == nullptr) {
-          tsl::MaybeRaiseRegisteredFromStatus(tensorflow::Status(
+          tsl::MaybeRaiseRegisteredFromStatus(absl::Status(
               tensorflow::errors::Internal("You need both a cluster and an "
                                            "item to get supported devices.")));
         }
@@ -184,7 +184,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
             } else {
               // Check the kernel capabilities
               const tensorflow::DeviceType dev_type(type);
-              tensorflow::Status s =
+              absl::Status s =
                   tensorflow::FindKernelDef(dev_type, node, nullptr, nullptr);
               if (s.ok()) {
                 supported_device_types[node.name()].insert(type);
@@ -193,7 +193,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
                 // TODO: extends this to support outputs as well
                 tensorflow::MemoryTypeVector inp_mtypes;
                 tensorflow::MemoryTypeVector out_mtypes;
-                tensorflow::Status s = tensorflow::MemoryTypesForNode(
+                absl::Status s = tensorflow::MemoryTypesForNode(
                     tensorflow::OpRegistry::Global(), dev_type, node,
                     &inp_mtypes, &out_mtypes);
                 if (s.ok()) {
@@ -261,7 +261,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
 
           tensorflow::OpPerformanceList op_performance_data;
           tensorflow::grappler::Costs costs;
-          tensorflow::Status s = _GetOpPerformanceDataAndRunTime(
+          absl::Status s = _GetOpPerformanceDataAndRunTime(
               *item, &cost_measure, &op_performance_data, &costs);
           double run_time = FLT_MAX;
           if (s.ok()) {
@@ -298,7 +298,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
                                 std::tuple<int64_t, std::vector<MemoryUsage>>> {
         if (item == nullptr || cluster == nullptr) {
           tsl::MaybeRaiseRegisteredFromStatus(
-              tensorflow::Status(tensorflow::errors::Internal(
+              absl::Status(tensorflow::errors::Internal(
                   "You need both a cluster and an item to determine peak "
                   "memory usage.")));
         }
