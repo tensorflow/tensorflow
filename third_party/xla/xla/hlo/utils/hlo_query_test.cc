@@ -16,11 +16,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 
 #include <memory>
-#include <utility>
 
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -41,6 +39,14 @@ int CountInstructions(Hlo& module, HloOpcode opcode) {
   int counter = 0;
   hlo_query::ForEachInstructionWithOpcode(
       module, opcode, [&counter](auto& instr) { counter++; });
+  return counter;
+}
+
+template <typename Hlo>
+int CountInstructions(Hlo& module, HloPredicate pred) {
+  int counter = 0;
+  hlo_query::ForEachInstructionWithPred(module, pred,
+                                        [&counter](auto& instr) { counter++; });
   return counter;
 }
 
@@ -82,6 +88,11 @@ ENTRY main {
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kAdd), 2);
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kSubtract), 1);
   EXPECT_EQ(CountInstructions(*module, HloOpcode::kMultiply), 3);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kAdd>), 2);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kSubtract>),
+            1);
+  EXPECT_EQ(CountInstructions(*module, HloPredicateIsOp<HloOpcode::kMultiply>),
+            3);
 }
 
 TEST_F(HloQueryTest,
@@ -120,6 +131,14 @@ ENTRY main {
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kAdd), 2);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kSubtract), 1);
   EXPECT_EQ(CountInstructions(*computation, HloOpcode::kMultiply), 3);
+  EXPECT_EQ(CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kAdd>),
+            2);
+  EXPECT_EQ(
+      CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kSubtract>),
+      1);
+  EXPECT_EQ(
+      CountInstructions(*computation, HloPredicateIsOp<HloOpcode::kMultiply>),
+      3);
 }
 
 TEST_F(HloQueryTest, GetUniqueGteTest) {
