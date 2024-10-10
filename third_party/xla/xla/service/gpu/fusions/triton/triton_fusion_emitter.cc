@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/triton/passes.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter_legacy_matmul.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/xla_triton_ops.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -983,10 +984,10 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 }  // namespace
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
-  mlir_context
-      .loadDialect<mt::TritonDialect, mt::gpu::TritonGPUDialect,
-                   mlir::arith::ArithDialect, mlir::affine::AffineDialect,
-                   mlir::LLVM::LLVMDialect, xla::gpu::XlaGpuDialect>();
+  mlir_context.loadDialect<
+      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
+      mlir::affine::AffineDialect, mlir::LLVM::LLVMDialect,
+      xla::gpu::XlaGpuDialect, mlir::triton::xla::XlaTritonDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);

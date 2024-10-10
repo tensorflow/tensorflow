@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/fusions/triton/emitter_helpers.h"
+#include "xla/service/gpu/fusions/triton/xla_triton_ops.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -2062,7 +2063,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
     }
 
     if (is_sparse) {
-      iter_args_next.push_back(b.create<mt::gpu::SparseDotOp>(
+      iter_args_next.push_back(b.create<mt::xla::SparseDotOp>(
           dot_input_lhs, dot_input_rhs, iter_args.back(), dot_input_meta));
       b.create<mlir::scf::YieldOp>(iter_args_next);
       return;

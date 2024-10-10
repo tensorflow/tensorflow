@@ -21,119 +21,18 @@ index 04ba95196..192d8fab4 100644
  def TTG_SharedMemorySpace : AttrDef<TritonGPU_Dialect, "SharedMemorySpace"> {
    let mnemonic = "shared_memory";
    let description = [{
-diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-index a87e1c44a..456a4f224 100644
---- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-+++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td
-@@ -7,6 +7,7 @@ include "triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td"
- include "mlir/Dialect/Arith/IR/ArithBase.td"
- include "triton/Dialect/Triton/IR/TritonTypes.td"
- include "triton/Dialect/Triton/IR/TritonAttrDefs.td"
-+include "triton/Dialect/Triton/IR/TritonTypeInterfaces.td"
- include "mlir/IR/OpBase.td"
- include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
- include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
-@@ -256,4 +257,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
-   }];
- }
- 
-+def TTNG_SparseDotOp : TTG_Op<"sparse_dot", [
-+        Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>,
-+        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
-+    let summary = "sparse dot";
-+
-+    let arguments = (ins
-+      TT_TensorOrMemDesc:$a,
-+      TT_TensorOrMemDesc:$b,
-+      TT_FpIntTensor:$c,
-+      TT_IntTensor: $aMeta);
-+    let results = (outs TT_FpIntTensor:$d);
-+    let assemblyFormat = "$a`,` $b`,` $c`,` $aMeta attr-dict `:` type($a) `meta` type($aMeta) `*` type($b) `->` type($d)";
-+    let hasVerifier = 1;
-+}
-+
- #endif
 diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
 index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -497,6 +497,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -497,6 +497,54 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
-+///--- SparseDotOp ---
-+namespace {
-+// Implied properties of 2:4 sparse dots.
-+constexpr int kContractingFactor = 2;
-+constexpr int kMetadataElementsPerPackedValue = 8;
-+constexpr int kMetadataElementsPerWarp = 16;
-+}  // namespace
-+
-+mlir::LogicalResult SparseDotOp::inferReturnTypes(
-+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
-+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
-+    SmallVectorImpl<Type> &inferredReturnTypes) {
-+  return DotOp::inferReturnTypes(context, location, operands, attributes,
-+                                 properties, regions, inferredReturnTypes);
-+}
-+
-+LogicalResult SparseDotOp::verify() {
-+  // Verify operand A.
-+  auto aTensorTy = cast<TensorOrMemDesc>(getOperand(0).getType());
-+  auto aElemTy = aTensorTy.getElementType();
-+  if (!aElemTy.isF16() && !aElemTy.isBF16())
-+    return emitError("element type of operand A is not supported");
-+  auto aShape = aTensorTy.getShape();
-+  if (aShape.size() != 2) return emitError("shape of operand A is incorrect");
-+
-+  // Verify operand B.
-+  auto bTensorTy = cast<TensorOrMemDesc>(getOperand(1).getType());
-+  auto bElemTy = bTensorTy.getElementType();
-+  if (!bElemTy.isF16() && !bElemTy.isBF16())
-+    return emitError("element type of operand B is not supported");
-+  auto bShape = bTensorTy.getShape();
-+  if (bShape.size() != 2) return emitError("shape of operand B is incorrect");
-+
-+  // Verify operand C.
-+  auto cTensorTy = cast<RankedTensorType>(getOperand(2).getType());
-+  auto cElemTy = cTensorTy.getElementType();
-+  if (!cElemTy.isF32())
-+    return emitError("element type of operand C is not supported");
-+  auto cShape = cTensorTy.getShape();
-+  if (cShape.size() != 2) return emitError("shape of operand C is incorrect");
-+
-+  // Check operand dependencies.
-+  if (aShape[0] != cShape[0] || bShape[1] != cShape[1] ||
-+      bShape[0] != aShape[1] * kContractingFactor)
-+    return emitError("operand shape dimensions are incorrect");
-+  if (aElemTy != bElemTy)
-+    return emitError("operand element types do not match");
-+
-+  // Verify sparse metadata.
-+  auto metaTy = cast<RankedTensorType>(getOperand(3).getType());
-+  auto metaShape = metaTy.getShape();
-+  if (!metaTy.getElementType().isInteger(16) || metaShape.size() != 2)
-+    return emitError("sparse metadata tensor is invalid");
-+  if (metaShape[0] != aShape[0] ||
-+      metaShape[1] * kMetadataElementsPerPackedValue != aShape[1])
-+    return emitError("sparse metadata shape dimensions are incorrect");
-+
-+  // Verify tensor encoding.
-+  auto aEncoding = aTensorTy.getEncoding();
-+  auto bEncoding = bTensorTy.getEncoding();
-+  if (!aEncoding && !bEncoding) return mlir::success();
-+  if (!aEncoding || !bEncoding)
-+    return emitError("mismatching encoding between A and B operands");
-+
-+  Dialect &dialect = aEncoding.getDialect();
-+  auto interface = cast<DialectInferLayoutInterface>(&dialect);
-+  return interface->verifyDotOpEncodingCompatibility(getOperation(), aEncoding,
-+                                                     bEncoding);
-+}
-+
 +//--- SparseDotMetaEncodingAttr ---
 +unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
 +    ArrayRef<int64_t> shape, Type eltTy) const {
++  constexpr int kMetadataElementsPerWarp = 16;
 +  auto mmaLayout = mlir::cast<NvidiaMmaEncodingAttr>(getParent());
 +  return product<int64_t>(shape) /
 +         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
@@ -269,18 +168,19 @@ diff --git a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp b
 index d74e0a224..4e45f7c4c 100644
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/MatmulLoopPipeline.cpp
-@@ -51,6 +51,10 @@ struct LoadInfo {
+@@ -51,6 +51,11 @@ struct LoadInfo {
  
  } // namespace
  
 +static bool isDotLikeOp(Operation* op) {
-+  return op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op);
++  return op->hasTrait<OpTrait::DotLike>() ||
++         op->getName().getStringRef() != "triton_xla.sparse_dot";
 +}
 +
  static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
                              Value insertIdx, Value extractIdx,
                              tt::CoarseSchedule &schedule,
-@@ -235,17 +239,25 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -235,17 +240,25 @@ getSharedEncIfAllUsersAreDotEnc(Value val) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -316,7 +216,7 @@ index d74e0a224..4e45f7c4c 100644
      }
      // Check that the shared encodings needed by the users are compatible.
      if (attr != nullptr)
-@@ -352,7 +364,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+@@ -352,7 +365,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -338,21 +238,23 @@ diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dia
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 +++ b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
-@@ -44,7 +44,7 @@ public:
+@@ -44,7 +44,8 @@ public:
        return;
      ModuleOp mod = getOperation();
      mod.walk([&](Operation *op) {
 -      if (!isa<ttng::WarpGroupDotOp>(op))
-+      if (!isa<ttng::WarpGroupDotOp, ttg::SparseDotOp>(op))
++      if (!isa<ttng::WarpGroupDotOp>(op) &&
++          op->getName().getStringRef() != "triton_xla.sparse_dot")
          return WalkResult::advance();
        OpBuilder builder(op);
        auto a = op->getOperand(0);
-@@ -79,7 +79,7 @@ private:
+@@ -79,7 +80,8 @@ private:
      static DenseSet<std::pair<Operation *, unsigned>> trace;
      auto op = operand.getDefiningOp();
      // avoid redundant insertion
 -    if (op && op->hasTrait<OpTrait::DotLike>())
-+    if (op && (op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op)))
++    if (op && (op->hasTrait<OpTrait::DotLike>() ||
++               op->getName().getStringRef() == "triton_xla.sparse_dot"))
        return false;
      // reach convertlayout
      if (op && isa<ttg::LocalAllocOp>(op) &&
@@ -395,11 +297,12 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp b/
 index f2742218e..4cb1fae93 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
-@@ -69,6 +69,7 @@ public:
+@@ -69,6 +69,8 @@ public:
      addIllegalDialect<triton::nvidia_gpu::TritonNvidiaGPUDialect>();
      addIllegalDialect<mlir::gpu::GPUDialect>();
      addLegalOp<mlir::UnrealizedConversionCastOp>();
-+    addLegalOp<triton::gpu::SparseDotOp>();  // Rewritten in a separate pass.
++    addLegalOp(OperationName("triton_xla.sparse_dot",
++                             &ctx));  // Rewritten in a separate pass.
    }
  };
  

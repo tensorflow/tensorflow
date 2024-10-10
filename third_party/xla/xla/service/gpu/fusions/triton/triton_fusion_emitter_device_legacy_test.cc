@@ -982,7 +982,7 @@ ENTRY e {
 CHECK: %[[LHS:[0-9]+]] = tt.load
 CHECK: %[[RHS:[0-9]+]] = tt.load
 CHECK: %[[META:[0-9]+]] = tt.load
-CHECK: triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
+CHECK: triton_xla.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
     )"));
 }
 
@@ -1019,7 +1019,7 @@ CHECK: arith.cmpi slt, %{{.+}}, %[[C24]] :
 CHECK: %[[LHS_MASKED:[0-9]+]] = arith.select %{{.+}}, %[[LHS]],
 CHECK: arith.cmpi slt, %{{.+}}, %[[C48]] :
 CHECK: %[[RHS_MASKED:[0-9]+]] = arith.select %{{.+}}, %[[RHS]],
-CHECK: triton_gpu.sparse_dot %[[LHS_MASKED]], %[[RHS_MASKED]], %{{[^:]+}}, %[[META]] :
+CHECK: triton_xla.sparse_dot %[[LHS_MASKED]], %[[RHS_MASKED]], %{{[^:]+}}, %[[META]] :
     )"));
 }
 
@@ -1056,7 +1056,7 @@ CHECK: %[[T1:[0-9]+]] = tt.load %[[PTR:.+]] :
 CHECK: tt.advance %[[PTR]], [%[[TWO]]]
 CHECK: %[[T2:[0-9]+]] = tt.expand_dims %[[T1]]
 CHECK: %[[META:[0-9]+]] = tt.broadcast %[[T2]]
-CHECK: triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
+CHECK: triton_xla.sparse_dot %[[LHS]], %[[RHS]], %{{[^:]+}}, %[[META]] :
     )"));
 }
 
