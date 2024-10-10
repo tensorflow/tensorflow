@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
@@ -35,6 +36,7 @@ namespace gpu {
 namespace {
 
 using mlir::MLIRContext;
+using mlir::Operation;
 using mlir::SmallVector;
 using mlir::Value;
 using mlir::ValueRange;
@@ -42,6 +44,15 @@ namespace mv = ::mlir::vector;
 
 #define GEN_PASS_DEF_FUSELOOPSPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
+
+bool LoopsUseSameDimOps(LoopOp& loop1, LoopOp& loop2) {
+  for (auto [dim1, dim2] : llvm::zip(loop1.getDims(), loop2.getDims())) {
+    if (dim1.getDefiningOp() != dim2.getDefiningOp()) {
+      return false;
+    }
+  }
+  return true;
+}
 
 bool LoopsHaveTheSameDomain(LoopOp& loop1, LoopOp& loop2) {
   auto map1 = loop1.getIndexingMap();
@@ -61,12 +72,7 @@ bool LoopsHaveTheSameDomain(LoopOp& loop1, LoopOp& loop2) {
 
   // Check dimensions come from the same op. This is technically not a
   // requirement and could be modified to handle different dim args.
-  for (auto [dim1, dim2] : llvm::zip(loop1.getDims(), loop2.getDims())) {
-    if (dim1.getDefiningOp() != dim2.getDefiningOp()) {
-      continue;
-    }
-  }
-  return true;
+  return LoopsUseSameDimOps(loop1, loop2);
 }
 
 // Check that the loops:
@@ -105,9 +111,9 @@ bool IndicesAreEqualAndInjective(int64_t iv_count, mv::InsertOp insert,
 
 // Fuse insert_loop and extract_loop into a single loop, and remove the
 // vector.insert and vector.extract ops.
-void FuseLoops(MLIRContext* mlir_context, LoopOp insert_loop,
-               LoopOp extract_loop, mv::InsertOp insert,
-               mv::ExtractOp extract) {
+void FuseExtractInsertLoopPair(MLIRContext* mlir_context, LoopOp insert_loop,
+                               LoopOp extract_loop, mv::InsertOp insert,
+                               mv::ExtractOp extract) {
   mlir::IRRewriter rewriter(mlir_context);
   rewriter.setInsertionPointAfter(extract_loop);
   // Create a new map that has the results of both loops.
@@ -170,51 +176,57 @@ void FuseLoops(MLIRContext* mlir_context, LoopOp insert_loop,
   rewriter.eraseOp(extract_loop);
 }
 
+void FuseExtractIfPossible(MLIRContext* mlir_context, mv::ExtractOp extract) {
+  // Check that it has the following pattern:
+  // %insert_loop = { %insert = vector.insert ... }
+  // %extract_loop = { %extract = vector.extract %insert_loop }
+  auto extract_loop = extract->getParentOfType<LoopOp>();
+  if (!extract_loop) return;
+  if (!extract.getVector().getDefiningOp()) return;
+  auto insert_loop =
+      mlir::dyn_cast<LoopOp>(extract.getVector().getDefiningOp());
+  if (!insert_loop) return;
+  SmallVector<mv::InsertOp> inserts;
+  // If necessary, the insert_loop result size constraint may be relaxed.
+  if (insert_loop.getResults().size() != 1) return;
+  for (auto user : insert_loop.getRegionIterArgs().back().getUsers()) {
+    if (auto insert = mlir::dyn_cast<mv::InsertOp>(user)) {
+      inserts.push_back(insert);
+    }
+  }
+  if (inserts.size() != 1) return;
+  auto insert = inserts.front();
+
+  // Check that the vector isn't being used anywhere else so it can be
+  // removed entirely; we already know from above it's being used by
+  // extract so it should have exactly one use.
+  if (!insert_loop.getResult(0).hasOneUse()) return;
+
+  if (!LoopsHaveTheSameDomain(insert_loop, extract_loop)) return;
+  // Only fuse loops if we are extracting from the same position that we are
+  // inserting into on each iteration.
+  if (!IndicesAreEqualAndInjective(insert_loop.getNumInductionVars(), insert,
+                                   extract)) {
+    return;
+  }
+
+  // All requirements have been met: fuse loops.
+  FuseExtractInsertLoopPair(mlir_context, insert_loop, extract_loop, insert,
+                            extract);
+}
+
 struct FuseLoopsPass : public impl::FuseLoopsPassBase<FuseLoopsPass> {
   void runOnOperation() override {
+    auto mlir_context = &getContext();
+
     SmallVector<mv::ExtractOp> extracts;
-    getOperation()->walk([&](mlir::Operation* op) -> void {
+    getOperation()->walk([&](Operation* op) -> void {
       if (auto extract = mlir::dyn_cast<mv::ExtractOp>(op)) {
         extracts.push_back(extract);
       }
     });
-
     for (auto extract : extracts) {
-      // Check that it has the following pattern:
-      // %insert_loop = { %insert = vector.insert ... }
-      // %extract_loop = { %extract = vector.extract %insert_loop }
-      auto extract_loop = extract->getParentOfType<LoopOp>();
-      if (!extract_loop) continue;
-      if (!extract.getVector().getDefiningOp()) continue;
-      auto insert_loop =
-          mlir::dyn_cast<LoopOp>(extract.getVector().getDefiningOp());
-      if (!insert_loop) continue;
-      SmallVector<mv::InsertOp> inserts;
-      // If necessary, the insert_loop result size constraint may be relaxed.
-      if (insert_loop.getResults().size() != 1) continue;
-      for (auto user : insert_loop.getRegionIterArgs().back().getUsers()) {
-        if (auto insert = mlir::dyn_cast<mv::InsertOp>(user)) {
-          inserts.push_back(insert);
-        }
-      }
-      if (inserts.size() != 1) continue;
-      auto insert = inserts.front();
-
-      // Check that the vector isn't being used anywhere else so it can be
-      // removed entirely; we already know from above it's being used by
-      // extract so it should have exactly one use.
-      if (!insert_loop.getResult(0).hasOneUse()) continue;
-
-      if (!LoopsHaveTheSameDomain(insert_loop, extract_loop)) continue;
-      // Only fuse loops if we are extracting from the same position that we are
-      // inserting into on each iteration.
-      if (!IndicesAreEqualAndInjective(insert_loop.getNumInductionVars(),
-                                       insert, extract)) {
-        continue;
-      }
-
-      // All requirements have been met: fuse loops.
-      FuseLoops(&getContext(), insert_loop, extract_loop, insert, extract);
+      FuseExtractIfPossible(mlir_context, extract);
     }
   }
 };
