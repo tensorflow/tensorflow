@@ -45,11 +45,11 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
-                           llvm::SmallVector<int64_t, 4>& begins,
-                           bool& dynamic_begins,
-                           llvm::SmallVector<int64_t, 4>& sizes) {
-  Status begins_result =
+absl::Status GetSliceOpArguments(mlir::TF::SliceOp slice_op,
+                                 llvm::SmallVector<int64_t, 4>& begins,
+                                 bool& dynamic_begins,
+                                 llvm::SmallVector<int64_t, 4>& sizes) {
+  absl::Status begins_result =
       ExtractConstVectorFromValue(slice_op.getBegin(), &begins);
   dynamic_begins = !begins_result.ok();
 

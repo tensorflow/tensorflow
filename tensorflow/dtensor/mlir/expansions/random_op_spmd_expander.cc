@@ -47,7 +47,7 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status CheckLayoutIsSupported(const Layout& layout) {
+absl::Status CheckLayoutIsSupported(const Layout& layout) {
   // Currently we support small mesh rank for arbitrary layout.
   if (layout.mesh().rank() > 3)
     return errors::InvalidArgument("Large mesh rank size is not supported",
@@ -56,7 +56,7 @@ Status CheckLayoutIsSupported(const Layout& layout) {
   return absl::OkStatus();
 }
 
-Status ValidateShapeAndGetNewShape(
+absl::Status ValidateShapeAndGetNewShape(
     const llvm::SmallVector<int64_t, 4>& op_shape, const Layout& layout,
     llvm::SmallVectorImpl<int64_t>& new_random_shape) {
   TF_RETURN_IF_ERROR(CheckLayoutIsSupported(layout));
