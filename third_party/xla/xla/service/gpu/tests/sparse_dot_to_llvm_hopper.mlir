@@ -23,7 +23,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     // CHECK-DAG: k = 32 : i32
     // CHECK: nvgpu.wgmma_commit_group
     %acc = arith.constant dense<0.000000e+00> : tensor<64x64xf32, #mma>
-    %D = triton_gpu.sparse_dot %A_alloc, %B_alloc, %acc, %meta_reg : !tt.memdesc<64x32xf16, #shared, #triton_gpu.shared_memory> meta tensor<64x4xi16, #dot_meta_enc> * !tt.memdesc<64x64xf16, #shared, #triton_gpu.shared_memory> -> tensor<64x64xf32, #mma>
+    %D = triton_xla.sparse_dot %A_alloc, %B_alloc, %acc, %meta_reg : !tt.memdesc<64x32xf16, #shared, #triton_gpu.shared_memory> meta tensor<64x4xi16, #dot_meta_enc> * !tt.memdesc<64x64xf16, #shared, #triton_gpu.shared_memory> -> tensor<64x64xf32, #mma>
     tt.return
   }
 }

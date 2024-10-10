@@ -24,12 +24,12 @@ module {
     %c = arith.constant dense<0.00e+00> : tensor<64x64xf32>
     %meta = arith.constant dense<0x3333> : tensor<64x4xi16>
 
-    // CHECK-NEXT: %[[D:.*]] = triton_gpu.sparse_dot %[[A]], %[[B]], %[[C]], %[[META]]
+    // CHECK-NEXT: %[[D:.*]] = triton_xla.sparse_dot %[[A]], %[[B]], %[[C]], %[[META]]
     // CHECK-SAME:   : tensor<64x32xf16, #triton_gpu.dot_op<{opIdx = 0, parent = #[[BLOCKED4x4]]}>>
     // CHECK-SAME:     meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[BLOCKED4x4]]}>>
     // CHECK-SAME:     * tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #[[BLOCKED4x4]]}>>
     // CHECK-SAME:     -> tensor<64x64xf32, #[[BLOCKED4x4]]>
-    %d = triton_gpu.sparse_dot %a, %b, %c, %meta
+    %d = triton_xla.sparse_dot %a, %b, %c, %meta
       : tensor<64x32xf16> meta tensor<64x4xi16> * tensor<64x64xf16> -> tensor<64x64xf32>
 
     // CHECK-NEXT: %[[CVT:.*]] = triton_gpu.convert_layout %[[D]]
