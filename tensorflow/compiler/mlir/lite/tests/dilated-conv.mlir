@@ -543,3 +543,18 @@ func.func @testDilatedConvInterleaved(%arg0: tensor<1x128x128x3xf32>, %arg1: ten
   // CHECK-NEXT: [[RESULT1:%.*]] = "tf.Conv2D"([[INPUT]], [[FILTER]]) <{dilations = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<1x128x128x3xf32>, tensor<5x5x3x8xf32>) -> tensor<1x120x120x8xf32>
   // CHECK-NEXT: return [[RESULT0]], [[RESULT1]] : tensor<1x120x120x8xf32>, tensor<1x120x120x8xf32>
 }
+
+func.func @testDilatedConv3D(%arg0: tensor<1x100x27x48x32xf32>, %arg1: tensor<3x1x1x32x16xf32>) -> tensor<1x100x27x48x16xf32> {
+  %crops = "tf.Const"() {device = "", value = dense<0> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %block_shape = "tf.Const"() {device = "", value = dense<[2, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %paddings = "tf.Const"() {device = "", value = dense<[[2, 2], [0, 0], [0, 0]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %0 = "tf.SpaceToBatchND"(%arg0, %block_shape, %paddings) {device = ""} : (tensor<1x100x27x48x32xf32>, tensor<3xi32>, tensor<3x2xi32>) -> tensor<2x52x27x48x32xf32>
+  %1 = "tf.Conv3D"(%0, %arg1) {data_format = "NDHWC", device = "", dilations = [1, 1, 1, 1, 1], padding = "VALID", strides = [1, 1, 1, 1, 1]} : (tensor<2x52x27x48x32xf32>, tensor<3x1x1x32x16xf32>) -> tensor<2x50x27x48x16xf32>
+  %2 = "tf.BatchToSpaceND"(%1, %block_shape, %crops) {device = ""} : (tensor<2x50x27x48x16xf32>, tensor<3xi32>, tensor<3x2xi32>) -> tensor<1x100x27x48x16xf32>
+  return %2 : tensor<1x100x27x48x16xf32>
+
+  // CHECK-LABEL: testDilatedConv3D
+  // CHECK-SAME: ([[INPUT:%.*]]: tensor<1x100x27x48x32xf32>, [[FILTER:%.*]]: tensor<3x1x1x32x16xf32>)
+  // CHECK-NEXT: [[RESULT:%.*]] = "tf.Conv3D"([[INPUT]], [[FILTER]]) {data_format = "NDHWC", device = "", dilations = [1, 2, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<1x100x27x48x32xf32>, tensor<3x1x1x32x16xf32>) -> tensor<1x100x27x48x16xf32>
+  // CHECK-NEXT: return [[RESULT]] : tensor<1x100x27x48x16xf32>
+}
