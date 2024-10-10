@@ -74,7 +74,8 @@ class LowerClusterToRuntimeOpsTest : public ::testing::Test {
     env_ = Env::Default();
     test_group_name_ = "TestGroup";
     test_dir_ = testing::TmpDir();
-    setenv("TF_DUMP_GRAPH_PREFIX", test_dir_.c_str(), /*overwrite=*/1);
+    setenv(/*name=*/"TF_DUMP_GRAPH_PREFIX", /*value=*/test_dir_.c_str(),
+           /*overwrite=*/1);
   }
 
   absl::Status CreateMlirModule(std::string mlir_module_filename) {
@@ -179,8 +180,9 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
   std::vector<std::string> files;
   TF_ASSERT_OK(env_->GetChildren(test_dir_, &files));
   EXPECT_THAT(files, ::testing::IsEmpty());
-  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", /*overwrite=*/1);
-  setenv("TF_DUMP_GRAPH_GROUPS", "main,runtime_lowering", /*overwrite=*/1);
+  setenv(/*name=*/"TF_DUMP_GRAPH_NAME_FILTER", /*value=*/"*", /*overwrite=*/1);
+  setenv(/*name=*/"TF_DUMP_GRAPH_GROUPS", /*value=*/"main,runtime_lowering",
+         /*overwrite=*/1);
   DEBUG_DATA_DUMPER()->LoadEnvvars();
 
   TF_ASSERT_OK(CreateMlirModule("basic_cluster.mlir"));
