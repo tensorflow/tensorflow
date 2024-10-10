@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -8896,10 +8895,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::Parameter(0),
@@ -8956,14 +8953,10 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 2);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
-  }
-  if (cross_program_prefetches.size() > 1) {
-    EXPECT_EQ(cross_program_prefetches[1].parameter, 2);
-    EXPECT_EQ(cross_program_prefetches[1].index, ShapeIndex({}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
+  EXPECT_EQ(cross_program_prefetches[1].parameter, 2);
+  EXPECT_EQ(cross_program_prefetches[1].index, ShapeIndex({}));
 
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -9010,10 +9003,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
@@ -9052,10 +9043,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
@@ -9098,10 +9087,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 }
 
 TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
@@ -9631,10 +9618,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
@@ -9711,10 +9696,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
@@ -9790,10 +9773,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
@@ -9850,10 +9831,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
-  if (!cross_program_prefetches.empty()) {
-    EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
-    EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
-  }
+  EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
+  EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
