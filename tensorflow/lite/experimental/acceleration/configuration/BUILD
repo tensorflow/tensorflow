@@ -155,6 +155,7 @@ cc_library(
     srcs = ["hexagon_plugin.cc"],
     deps = [
         ":configuration_fbs",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
