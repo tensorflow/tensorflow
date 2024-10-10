@@ -29,13 +29,6 @@ std::optional<int64_t> Range::GetSingleSignedValue() const {
   return min_.GetSignedValue();
 }
 
-std::optional<int64_t> Range::GetSingleUnsignedValue() const {
-  if (!IsSingleValue()) {
-    return std::nullopt;
-  }
-  return min_.GetUnsignedValue();
-}
-
 std::string Range::ToString() const {
   if (IsEmpty()) {
     return std::string("Empty");
