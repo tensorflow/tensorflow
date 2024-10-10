@@ -40,9 +40,11 @@ class CheckpointLoader {
  public:
   explicit CheckpointLoader(
       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
-      tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue)
+      tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
+      bool use_async_restore = true)
       : ifrt_restore_tensor_registry_(ifrt_restore_tensor_registry),
-        checkpoint_loader_work_queue_(checkpoint_loader_work_queue) {}
+        checkpoint_loader_work_queue_(checkpoint_loader_work_queue),
+        use_async_restore_(use_async_restore) {}
   virtual ~CheckpointLoader() = default;
 
   // Called before `Load` to do some preparation work.
@@ -61,6 +63,7 @@ class CheckpointLoader {
  protected:
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
+  bool use_async_restore_ = true;
 };
 
 }  // namespace ifrt_serving
