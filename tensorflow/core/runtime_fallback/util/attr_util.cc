@@ -21,23 +21,36 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
+#include "tsl/platform/errors.h"
+#include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
+#include "tfrt/core_runtime/op_attr_type.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
+#include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/logging.h"  // from @tf_runtime
+#include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_serialize_utils.h"  // from @tf_runtime
 
