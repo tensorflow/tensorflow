@@ -57,16 +57,15 @@ VirtualCluster::VirtualCluster(const DeviceSet* device_set)
 
 VirtualCluster::~VirtualCluster() {}
 
-Status VirtualCluster::Provision() { return absl::OkStatus(); }
+absl::Status VirtualCluster::Provision() { return absl::OkStatus(); }
 
-Status VirtualCluster::Initialize(const GrapplerItem& item) {
+absl::Status VirtualCluster::Initialize(const GrapplerItem& item) {
   return absl::OkStatus();
 }
 
-Status VirtualCluster::Run(const GraphDef& graph,
-                           const std::vector<std::pair<string, Tensor>>& feed,
-                           const std::vector<string>& fetch,
-                           RunMetadata* metadata) {
+absl::Status VirtualCluster::Run(
+    const GraphDef& graph, const std::vector<std::pair<string, Tensor>>& feed,
+    const std::vector<string>& fetch, RunMetadata* metadata) {
   GrapplerItem item;
   item.graph = graph;
   item.feed = feed;
@@ -74,7 +73,8 @@ Status VirtualCluster::Run(const GraphDef& graph,
   return Run(item, metadata);
 }
 
-Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
+absl::Status VirtualCluster::Run(const GrapplerItem& item,
+                                 RunMetadata* metadata) {
   // Initializes an analytical cost estimator to estimate the graph cost. Makes
   // sure to use static shape inference to prevent the virtual scheduler from
   // calling the Run method on the cluster and creating an infinite loop.

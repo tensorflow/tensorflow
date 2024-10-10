@@ -44,12 +44,13 @@ class VirtualCluster : public Cluster {
 
   string type() const override { return "virtual"; }
 
-  Status Provision() override;
-  Status Initialize(const GrapplerItem& item) override;
-  Status Run(const GraphDef& graph,
-             const std::vector<std::pair<string, Tensor>>& feed,
-             const std::vector<string>& fetch, RunMetadata* metadata) override;
-  Status Run(const GrapplerItem& item, RunMetadata* metadata) override;
+  absl::Status Provision() override;
+  absl::Status Initialize(const GrapplerItem& item) override;
+  absl::Status Run(const GraphDef& graph,
+                   const std::vector<std::pair<string, Tensor>>& feed,
+                   const std::vector<string>& fetch,
+                   RunMetadata* metadata) override;
+  absl::Status Run(const GrapplerItem& item, RunMetadata* metadata) override;
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
  private:
