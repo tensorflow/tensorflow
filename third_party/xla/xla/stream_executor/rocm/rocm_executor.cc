@@ -23,12 +23,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -211,6 +214,113 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
                << "; leaking: " << ToString(res);
   }
 }
+
+// Returns the name of the device.
+absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
+  static const size_t kCharLimit = 64;
+  absl::InlinedVector<char, 4> chars(kCharLimit);
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      "Failed to get device name");
+  chars[kCharLimit - 1] = '\0';
+  return chars.begin();
+}
+
+absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    std::string gcnName = props.gcnArchName;
+    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
+    std::string amdgpu_version = gcnName;
+    if (!tokens.empty() && tokens[0].size() >= 3) {
+      amdgpu_version = tokens[0].substr(3);
+    }
+    int version = stoi(amdgpu_version);
+    return version;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu ISA version for device %d", device));
+}
+
+// Return the full GCN Architecture Name for the device
+// for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
+absl::StatusOr<std::string> GetGpuGCNArchName(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    return props.gcnArchName;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu GCN Arch Name for device %d", device));
+}
+
+// Helper function that turns the integer output of hipDeviceGetAttribute to
+// type T and wraps it in a absl::StatusOr.
+template <typename T>
+static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
+                                            hipDeviceAttribute_t attribute) {
+  int value = -1;
+  hipError_t result = wrap::hipDeviceGetAttribute(&value, attribute, device);
+  if (result != hipSuccess) {
+    return absl::NotFoundError(
+        absl::StrCat("could not retrieve ROCM device attribute (", attribute,
+                     "): ", ToString(result)));
+  }
+  T converted = value;
+  return converted;
+}
+
+// Returns the number of multiprocessors on the device (note that the device
+// may be multi-GPU-per-board).
+
+absl::StatusOr<int> GetMultiprocessorCount(hipDevice_t device) {
+  return GetSimpleAttribute<int>(device, hipDeviceAttributeMultiprocessorCount);
+}
+
+absl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(
+      device, hipDeviceAttributeMaxSharedMemoryPerMultiprocessor);
+}
+
+absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(device,
+                                     hipDeviceAttributeMaxSharedMemoryPerBlock);
+}
+
+absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(
+      device, hipDeviceAttributeMaxThreadsPerMultiProcessor);
+}
+
+absl::StatusOr<int64_t> GetMaxRegistersPerBlock(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(device,
+                                     hipDeviceAttributeMaxRegistersPerBlock);
+}
+
+absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
+  return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
+}
+
+absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
+  int value;
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimX, device),
+                       "failed to query max grid dim x");
+  *x = value;
+
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimY, device),
+                       "failed to query max grid dim y");
+  *y = value;
+
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
+                           &value, hipDeviceAttributeMaxGridDimZ, device),
+                       "failed to query max grid dim z");
+  *z = value;
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -340,7 +450,8 @@ absl::Status RocmExecutor::Init() {
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
   set_context(rocm_context_);
-  return GpuDriver::GetGpuISAVersion(&version_, device_);
+  TF_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
@@ -629,7 +740,7 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  TF_RETURN_IF_ERROR(GpuDriver::GetGridLimits(&x, &y, &z, device));
+  TF_RETURN_IF_ERROR(GetGridLimits(&x, &y, &z, device));
 
   block_dim_limit->x = x;
   block_dim_limit->y = y;
@@ -679,17 +790,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
-  int version;
-  status = GpuDriver::GetGpuISAVersion(&version, device);
-  if (!status.ok()) {
-    return status;
-  }
-
-  std::string gcn_arch_name;
-  status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
 
   DeviceDescription desc;
 
@@ -744,8 +845,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::string device_name;
-    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
+    TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
     desc.set_name(device_name);
   }
 
@@ -759,18 +859,15 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_device_vendor("Advanced Micro Devices, Inc");
   desc.set_rocm_compute_capability(gcn_arch_name);
 
-  desc.set_shared_memory_per_core(
-      GpuDriver::GetMaxSharedMemoryPerCore(device).value());
-  desc.set_shared_memory_per_block(
-      GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
-  int core_count = GpuDriver::GetMultiprocessorCount(device).value();
+  desc.set_shared_memory_per_core(GetMaxSharedMemoryPerCore(device).value());
+  desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
+  int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
   desc.set_fpus_per_core(fpus_per_core(gcn_arch_name));
   desc.set_threads_per_core_limit(
-      GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
-  desc.set_registers_per_block_limit(
-      GpuDriver::GetMaxRegistersPerBlock(device).value());
-  desc.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
+      GetMaxThreadsPerMultiprocessor(device).value());
+  desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
+  desc.set_threads_per_warp(GetThreadsPerWarp(device).value());
   desc.set_registers_per_core_limit(64 * 1024);
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
@@ -781,22 +878,17 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
 
-  int cc_major = 0;
-  int cc_minor = 0;
-  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
-
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or
   // other hacks, which we don't have access to in OSS TensorFlow.
   //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // Alternatively you might be tempted to use GetDeviceName as a
   // unique identifier, but this is not stable across GPU VBIOS versions.
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  desc.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
-                                     cc_major, cc_minor, device_memory_size,
-                                     core_count));
+  desc.set_model_str(
+      absl::StrFormat("%dB RAM, %d cores", device_memory_size, core_count));
 
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
