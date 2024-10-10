@@ -82,7 +82,7 @@ absl::StatusOr<string> SummarizeClustering(
   return result;
 }
 
-Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
+absl::Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   const char* kXlaClusterAttr = "_XlaCluster";
   const char* kXlaAlreadyClusteredAttr = "_XlaAlreadyClustered";
 
@@ -99,8 +99,8 @@ Status AssertGraphDefIsUnclustered(const GraphDef& graphdef) {
   return absl::OkStatus();
 }
 
-Status ReadTextProtoFromString(Env* env, const string& data,
-                               ::tensorflow::protobuf::Message* proto) {
+absl::Status ReadTextProtoFromString(Env* env, const string& data,
+                                     ::tensorflow::protobuf::Message* proto) {
   if (!::tensorflow::protobuf::TextFormat::ParseFromString(data, proto)) {
     return errors::DataLoss("Can't parse input data as text proto");
   }
@@ -108,7 +108,7 @@ Status ReadTextProtoFromString(Env* env, const string& data,
 }
 }  // namespace
 
-Status AutoClusteringTest::RunAutoClusteringTestImpl(
+absl::Status AutoClusteringTest::RunAutoClusteringTestImpl(
     GraphDef graphdef, absl::string_view golden_summary_file_path) {
   if (!IsGoogleCudaEnabled()) {
     // There is some slight change in the clustering decisions under
@@ -162,7 +162,7 @@ Status AutoClusteringTest::RunAutoClusteringTestImpl(
   return absl::OkStatus();
 }
 
-Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
+absl::Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
     absl::string_view pbtxt_file_path,
     absl::string_view golden_summary_file_path) {
   GraphDef graphdef;
@@ -172,7 +172,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithPbtxt(
                                    golden_summary_file_path);
 }
 
-Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
+absl::Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
     absl::string_view gzipped_pbtxt_file_path,
     absl::string_view golden_summary_file_path) {
   Env* env = Env::Default();
@@ -187,7 +187,7 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
                          /*output_buffer_bytes=*/k_buffer_size,
                          io::ZlibCompressionOptions::GZIP());
   tstring decompressed_pbtxt_string;
-  Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
+  absl::Status s = in.ReadNBytes(INT_MAX, &decompressed_pbtxt_string);
   if (!s.ok() && !errors::IsOutOfRange(s)) {
     // OutOfRange is fine since we set the number of read bytes to INT_MAX.
     // Only return other kinds of errors.
@@ -202,8 +202,8 @@ Status AutoClusteringTest::RunAutoClusteringTestWithGzippedPbtxt(
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
-                                   benchmark::State& state) {
+absl::Status BenchmarkMarkForCompilation(absl::string_view graph_def_path,
+                                         benchmark::State& state) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(
       ReadTextProto(Env::Default(), string(graph_def_path), &graph_def));

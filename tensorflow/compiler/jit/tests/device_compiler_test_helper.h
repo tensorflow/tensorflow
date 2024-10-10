@@ -31,24 +31,25 @@ namespace tensorflow {
 // A listener to inspect the use of XLA's persistent compilation cache entries.
 class JitCompilationListener : public XlaActivityListener {
  public:
-  Status Listen(
+  absl::Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
     return absl::OkStatus();
   }
 
-  Status Listen(
+  absl::Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     activity_history_.push_back(jit_compilation_activity);
     return absl::OkStatus();
   }
 
-  Status Listen(const XlaOptimizationRemark& optimization_remark) override {
+  absl::Status Listen(
+      const XlaOptimizationRemark& optimization_remark) override {
     return absl::OkStatus();
   }
 
   ~JitCompilationListener() override = default;
 
-  Status VerifyPersistentCacheUseListenerHistory(
+  absl::Status VerifyPersistentCacheUseListenerHistory(
       bool expect_persistent_cache_use) {
     for (const auto& activity : activity_history_) {
       if (activity.used_persistent_cache() != expect_persistent_cache_use) {
@@ -85,12 +86,12 @@ class DeviceCompilerSerializeTest : public ::testing::Test {
 
   // Runs the graph using specified batch size both with and without XLA JIT
   // compilation. Returns an error if the results between the two do not match.
-  Status ExecuteWithBatch(const GraphDef& graph, int batch);
+  absl::Status ExecuteWithBatch(const GraphDef& graph, int batch);
 
   // Adds the suffix "_altered" to the HLO module names of all of the persistent
   // XLA compilation cache entries found at the specified directory. If none are
   // found, returns NOT_FOUND error.
-  Status AlterPersistentCacheEntryHloModuleNames(
+  absl::Status AlterPersistentCacheEntryHloModuleNames(
       absl::string_view persistent_cache_dir_path,
       absl::string_view file_prefix = "xla_compile_cache");
 
