@@ -221,7 +221,7 @@ TEST(RearrangeFunctionArgumentForFunctionTest,
   TF_CHECK_OK(s.ToGraph(g.get()));
 
   std::vector<std::unique_ptr<FunctionBody>> fbodies;
-  Status status = RearrangeFunctionArguments(
+  absl::Status status = RearrangeFunctionArguments(
       [&](const NameAttrList &function, const FunctionBody **fbody) {
         std::unique_ptr<FunctionBody> new_fbody;
         TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fld.Find(function.name()),

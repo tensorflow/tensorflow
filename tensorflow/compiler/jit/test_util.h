@@ -42,7 +42,7 @@ namespace tensorflow {
 // `expected_shapes`. Returns an error if there are nodes in `expected_shapes`
 // that do not have shape information. Ignores nodes in `graph` that do not have
 // `expected_shapes` entries.
-Status ShapeAnnotationsMatch(
+absl::Status ShapeAnnotationsMatch(
     const Graph& graph, const GraphShapeInfo& shape_info,
     std::map<string, std::vector<PartialTensorShape>> expected_shapes);
 

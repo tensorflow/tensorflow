@@ -82,7 +82,7 @@ REGISTER_KERNEL_BUILDER(
     Name("FakeResourceUpdate").Device(DEVICE_CPU).HostMemory("something_else"),
     FakeResourceUpdateOp);
 
-Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
+absl::Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   FixupSourceAndSinkEdges(graph->get());
   // Assign all nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";

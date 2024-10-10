@@ -59,9 +59,10 @@ namespace tensorflow {
 //
 // If `resource_ops_to_ignore` is set then nodes for which it returns true are
 // ignored (we pretend these nodes are not resource operations).
-Status ComputeIncompatibleResourceOperationPairs(
+absl::Status ComputeIncompatibleResourceOperationPairs(
     const Graph& g, const FunctionLibraryDefinition* flib_def,
-    const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
+    const std::function<absl::Status(const Node&, bool*)>&
+        resource_ops_to_ignore,
     std::vector<std::pair<int, int>>* result);
 }  // namespace tensorflow
 

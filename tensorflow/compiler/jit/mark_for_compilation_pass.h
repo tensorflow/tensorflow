@@ -37,12 +37,12 @@ class MarkForCompilationPass : public GraphOptimizationPass {
  public:
   MarkForCompilationPass() = default;
 
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  Status RunForTest(const GraphOptimizationPassOptions& options,
-                    bool disable_deadness_analysis,
-                    bool deterministic_cluster_names);
+  absl::Status RunForTest(const GraphOptimizationPassOptions& options,
+                          bool disable_deadness_analysis,
+                          bool deterministic_cluster_names);
 
   friend class MarkForCompilationPassTestHelper;
 };

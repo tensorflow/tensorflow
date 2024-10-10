@@ -42,9 +42,9 @@ namespace tensorflow {
 namespace {
 
 // Converts a shape inference handle to a PartialTensorShape.
-Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
-                                const shape_inference::ShapeHandle& handle,
-                                PartialTensorShape* shape) {
+absl::Status ShapeHandleToTensorShape(
+    shape_inference::InferenceContext* context,
+    const shape_inference::ShapeHandle& handle, PartialTensorShape* shape) {
   // The default is already unknown
   if (!context->RankKnown(handle)) return absl::OkStatus();
 
@@ -55,10 +55,10 @@ Status ShapeHandleToTensorShape(shape_inference::InferenceContext* context,
   return PartialTensorShape::MakePartialShape(dims.data(), dims.size(), shape);
 }
 
-Status PropagateShapes(Graph* graph,
-                       const std::map<int, InferredShape>& arg_shapes,
-                       const std::vector<BackEdgeHelper::BackEdge>& back_edges,
-                       ShapeRefiner* shape_refiner) {
+absl::Status PropagateShapes(
+    Graph* graph, const std::map<int, InferredShape>& arg_shapes,
+    const std::vector<BackEdgeHelper::BackEdge>& back_edges,
+    ShapeRefiner* shape_refiner) {
   std::map<const Node*, const Node*> merge_to_next_iteration;
   for (const auto& e : back_edges) {
     if (e.src->IsNextIteration() && e.dst->IsMerge()) {
@@ -77,7 +77,7 @@ Status PropagateShapes(Graph* graph,
             << ", type: " << n->type_string();
     // Ignore the status returned by the shape_refiner. We want the best effort
     // shapes, even if no shape function is registered for a node.
-    Status status = shape_refiner->AddNode(n);
+    absl::Status status = shape_refiner->AddNode(n);
     if (!status.ok()) {
       VLOG(1) << "Shape inference failed for node " << n->name() << ": "
               << status;
@@ -227,8 +227,9 @@ Status PropagateShapes(Graph* graph,
 }
 
 // Store the shapes of the output tensors in a map
-Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
-                         GraphShapeInfo* shape_info) {
+absl::Status StoreOutputShapes(const Graph& graph,
+                               const ShapeRefiner& shape_refiner,
+                               GraphShapeInfo* shape_info) {
   for (const Node* node : graph.nodes()) {
     shape_inference::InferenceContext* context = shape_refiner.GetContext(node);
     if (!context) continue;
@@ -264,9 +265,10 @@ Status StoreOutputShapes(const Graph& graph, const ShapeRefiner& shape_refiner,
 
 }  // namespace
 
-Status InferShapes(Graph* graph, const std::map<int, InferredShape>& arg_shapes,
-                   const tensorflow::FunctionLibraryDefinition* fnlib_def,
-                   GraphShapeInfo* shape_info) {
+absl::Status InferShapes(Graph* graph,
+                         const std::map<int, InferredShape>& arg_shapes,
+                         const tensorflow::FunctionLibraryDefinition* fnlib_def,
+                         GraphShapeInfo* shape_info) {
   ShapeRefiner shape_refiner(graph->versions(), graph->op_registry());
   shape_refiner.set_require_shape_inference_fns(false);
   // TODO(dlibenzi): Verify if it is worth trying to infer shaped within
