@@ -54,9 +54,10 @@ namespace gradients {
 // }
 class GradientFunction {
  public:
-  virtual Status Compute(AbstractContext* ctx,
-                         absl::Span<AbstractTensorHandle* const> grad_outputs,
-                         absl::Span<AbstractTensorHandle*> grad_inputs) = 0;
+  virtual absl::Status Compute(
+      AbstractContext* ctx,
+      absl::Span<AbstractTensorHandle* const> grad_outputs,
+      absl::Span<AbstractTensorHandle*> grad_inputs) = 0;
   virtual ~GradientFunction() {}
 };
 
@@ -77,10 +78,11 @@ using GradientFunctionFactory =
 // Map from op name to a `GradientFunctionFactory`.
 class GradientRegistry {
  public:
-  Status Register(const string& op,
-                  GradientFunctionFactory gradient_function_factory);
-  Status Lookup(const ForwardOperation& op,
-                std::unique_ptr<GradientFunction>* gradient_function) const;
+  absl::Status Register(const string& op,
+                        GradientFunctionFactory gradient_function_factory);
+  absl::Status Lookup(
+      const ForwardOperation& op,
+      std::unique_ptr<GradientFunction>* gradient_function) const;
 
  private:
   absl::flat_hash_map<string, GradientFunctionFactory> registry_;
@@ -163,7 +165,7 @@ class Tape : protected eager::GradientTape<AbstractTensorHandle,
   // tensors with respect to the source tensors. The output gradients are used
   // if not empty and not null. The result is populated with one tensor per
   // target element.
-  Status ComputeGradient(
+  absl::Status ComputeGradient(
       AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> targets,
       absl::Span<AbstractTensorHandle* const> sources,
       absl::Span<AbstractTensorHandle* const> output_gradients,

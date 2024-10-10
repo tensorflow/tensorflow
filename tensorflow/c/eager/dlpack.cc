@@ -160,8 +160,8 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
 }
 
 // Converts DLPack data type to TF_DATATYPE.
-Status TfDataTypeFormDlDataType(const DLDataType& dtype,
-                                TF_DataType* tf_dtype) {
+absl::Status TfDataTypeFormDlDataType(const DLDataType& dtype,
+                                      TF_DataType* tf_dtype) {
   switch (dtype.code) {
     case DLDataTypeCode::kDLBool:
       if (dtype.bits != 8) {
@@ -354,7 +354,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
     return nullptr;
   }
   TF_DataType dtype;
-  Status s = TfDataTypeFormDlDataType(dl_tensor->dtype, &dtype);
+  absl::Status s = TfDataTypeFormDlDataType(dl_tensor->dtype, &dtype);
   if (!s.ok()) {
     status->status = std::move(s);
     return nullptr;

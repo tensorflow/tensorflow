@@ -48,7 +48,7 @@ void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
   GetFactories()[name] = factory;
 }
 
-Status SetDefaultTracingEngine(const char* name) {
+absl::Status SetDefaultTracingEngine(const char* name) {
   auto entry = GetFactories().find(name);
   if (entry != GetFactories().end()) {
     default_factory = GetFactories().find(name)->second;

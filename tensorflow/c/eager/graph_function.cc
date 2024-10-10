@@ -27,7 +27,7 @@ GraphFunction::GraphFunction(FunctionDef fdef)
     : AbstractFunction(kGraph),
       func_record_(new FunctionRecord(std::move(fdef), {}, true)) {}
 GraphFunction::~GraphFunction() {}
-Status GraphFunction::GetFunctionDef(const FunctionDef **fdef) {
+absl::Status GraphFunction::GetFunctionDef(const FunctionDef **fdef) {
   *fdef = &(func_record_->fdef());
   return absl::OkStatus();
 }
