@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_PRIORITY_FUSION_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_PRIORITY_FUSION_H_
 
-
 #include <memory>
 #include <utility>
 
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/threadpool.h"
@@ -66,6 +66,10 @@ class PriorityFusion : public HloModulePass {
   // Consumes a unit of compiler fuel and returns true if we should
   // continue with the transformation.
   bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
+
+  // Returns the decision if the constant can be fused into the user.
+  FusionDecision CanFuseConstant(const HloInstruction* constant,
+                                 const HloInstruction* user);
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;
