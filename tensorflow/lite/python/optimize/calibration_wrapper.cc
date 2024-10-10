@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 #include "tensorflow/lite/python/optimize/calibration_wrapper.h"
+#include <Python.h>
 // clang-format on
 
 // NOLINTBEGIN
@@ -693,6 +694,30 @@ PyObject* CalibrationWrapper::Calibrate() {
       MergeOffsetBuffer(updated_result_base_buffer, offset_buffer);
 
   return ConvertToPyString(result_buffer.data(), result_buffer.size());
+}
+
+PyObject* CalibrationWrapper::GetOpNames() {
+  std::unique_ptr<ModelT> model = CreateMutableModel(*model_->GetModel());
+  PyObject* py_list = PyList_New(0);
+  std::unordered_set<string> operator_names;
+
+  for (int32_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (int32_t tensor_idx = 0; tensor_idx < subgraph->tensors.size();
+         tensor_idx++) {
+      operator_names.insert(subgraph->tensors[tensor_idx]->name);
+    }
+  }
+
+  // Add strings to the Python list
+  for (const std::string& name : operator_names) {
+    PyObject* py_str = PyUnicode_FromString(name.c_str());
+    PyList_Append(py_list, py_str);
+    Py_DECREF(py_str);  // Release the temporary Python string
+  }
+
+  return py_list;
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
