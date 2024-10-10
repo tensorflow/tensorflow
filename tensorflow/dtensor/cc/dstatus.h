@@ -33,13 +33,14 @@ namespace dtensor {
 template <typename T>
 using StatusOr = tsl::StatusOr<T>;
 
-inline Status WithContext(const Status& ds, absl::string_view file,
-                          int line_number, absl::string_view context = "") {
+inline absl::Status WithContext(const absl::Status& ds, absl::string_view file,
+                                int line_number,
+                                absl::string_view context = "") {
   if (ds.ok()) {
     return ds;
   }
-  return Status(ds.code(), absl::StrCat(ds.message(), "\n", file, ":",
-                                        line_number, " :: ", context));
+  return absl::Status(ds.code(), absl::StrCat(ds.message(), "\n", file, ":",
+                                              line_number, " :: ", context));
 }
 
 template <class T>
@@ -49,9 +50,9 @@ inline StatusOr<T> WithContext(StatusOr<T>&& ds, absl::string_view file,
   if (ds.ok()) {
     return ds;
   }
-  return Status(ds.status().code(),
-                absl::StrCat(ds.status().message(), "\n", file, ":",
-                             line_number, " :: ", context));
+  return absl::Status(ds.status().code(),
+                      absl::StrCat(ds.status().message(), "\n", file, ":",
+                                   line_number, " :: ", context));
 }
 
 #define DT_CTX(dstatus, ...) \
