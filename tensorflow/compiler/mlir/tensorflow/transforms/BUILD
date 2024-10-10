@@ -556,7 +556,6 @@ cc_library(
         "tpu_resource_read_for_write.cc",
         "tpu_space_to_depth_pass.cc",
         "tpu_update_embedding_enqueue_op_inputs.cc",
-        "tpu_validate_inputs.cc",
         "update_control_dependencies.cc",
         "verify_suitable_for_graph_export_pass.cc",
         "xla_call_module_deserialization.cc",

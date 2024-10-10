@@ -23,14 +23,17 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/match.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -39,18 +42,50 @@ limitations under the License.
 #include "xla/client/sharding_builder.h"
 #include "xla/xla_data.pb.h"
 
-namespace mlir {
-namespace TFTPU {
+namespace tensorflow {
+namespace tf2xla {
+namespace internal {
 
 namespace {
 
 #define GEN_PASS_DEF_TPUVALIDATEINPUTSPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 constexpr char kXLAShardingAttr[] = "_XlaSharding";
 constexpr char kShardingAttr[] = "sharding";
 
-typedef std::unordered_map<std::string, TF::TPUReplicateMetadataOp> MetadataMap;
+using mlir::ModuleOp;
+using mlir::Operation;
+using mlir::OperationPass;
+using mlir::StringAttr;
+using mlir::StringRef;
+using mlir::Type;
+using mlir::TypeID;
+using mlir::func::FuncOp;
+using mlir::func::ReturnOp;
+using mlir::TF::AssertOp;
+using mlir::TF::ConstOp;
+using mlir::TF::kCompileDeviceTypeAttr;
+using mlir::TF::kTpuReplicateAttr;
+using mlir::TF::OutfeedEnqueueTupleOp;
+using mlir::TF::PartitionedCallOp;
+using mlir::TF::StatefulPartitionedCallOp;
+using mlir::TF::TPUPartitionedCallOp;
+using mlir::TF::TPUPartitionedInputOp;
+using mlir::TF::TPUPartitionedInputV2Op;
+using mlir::TF::TPUPartitionedOutputOp;
+using mlir::TF::TPUPartitionedOutputV2Op;
+using mlir::TF::TPUReplicatedInputOp;
+using mlir::TF::TPUReplicatedOutputOp;
+using mlir::TF::TPUReplicateMetadataOp;
+using mlir::TF::WhileOp;
+using mlir::TF::XlaSetDynamicDimensionSizeOp;
+using mlir::tf_executor::FetchOp;
+using mlir::tf_executor::GraphOp;
+using mlir::tf_executor::IslandOp;
+using mlir::tf_executor::YieldOp;
+
+typedef std::unordered_map<std::string, TPUReplicateMetadataOp> MetadataMap;
 
 struct TPUValidateInputsPass
     : public impl::TPUValidateInputsPassBase<TPUValidateInputsPass> {
@@ -60,21 +95,21 @@ bool IsTpuRegularOp(Operation* op) {
   static auto* ops = [] {
     llvm::SmallDenseSet<mlir::TypeID, 32>* ops_set =
         new llvm::SmallDenseSet<mlir::TypeID, 32>{
-            TypeID::get<mlir::ModuleOp>(),
-            TypeID::get<mlir::tf_executor::GraphOp>(),
-            TypeID::get<mlir::func::ReturnOp>(),
-            TypeID::get<mlir::func::FuncOp>(),
-            TypeID::get<mlir::tf_executor::YieldOp>(),
-            TypeID::get<mlir::tf_executor::IslandOp>(),
-            TypeID::get<TF::TPUReplicatedInputOp>(),
-            TypeID::get<TF::TPUReplicatedOutputOp>(),
-            TypeID::get<TF::TPUPartitionedInputOp>(),
-            TypeID::get<TF::TPUPartitionedInputV2Op>(),
-            TypeID::get<TF::TPUPartitionedOutputOp>(),
-            TypeID::get<TF::TPUPartitionedOutputV2Op>(),
-            TypeID::get<TF::TPUReplicateMetadataOp>(),
-            TypeID::get<mlir::tf_executor::FetchOp>(),
-            TypeID::get<TF::OutfeedEnqueueTupleOp>(),
+            TypeID::get<ModuleOp>(),
+            TypeID::get<GraphOp>(),
+            TypeID::get<ReturnOp>(),
+            TypeID::get<FuncOp>(),
+            TypeID::get<YieldOp>(),
+            TypeID::get<IslandOp>(),
+            TypeID::get<TPUReplicatedInputOp>(),
+            TypeID::get<TPUReplicatedOutputOp>(),
+            TypeID::get<TPUPartitionedInputOp>(),
+            TypeID::get<TPUPartitionedInputV2Op>(),
+            TypeID::get<TPUPartitionedOutputOp>(),
+            TypeID::get<TPUPartitionedOutputV2Op>(),
+            TypeID::get<TPUReplicateMetadataOp>(),
+            TypeID::get<FetchOp>(),
+            TypeID::get<OutfeedEnqueueTupleOp>(),
         };
     return ops_set;
   }();
@@ -87,10 +122,10 @@ bool IsIntersectionXlaNonXlaOps(Operation* op) {
   static auto* ops = [] {
     llvm::SmallDenseSet<mlir::TypeID, 32>* ops_set =
         new llvm::SmallDenseSet<mlir::TypeID, 32>{
-            TypeID::get<TF::ConstOp>(),
-            TypeID::get<TF::WhileOp>(),
-            TypeID::get<TF::AssertOp>(),
-            TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
+            TypeID::get<ConstOp>(),
+            TypeID::get<WhileOp>(),
+            TypeID::get<AssertOp>(),
+            TypeID::get<XlaSetDynamicDimensionSizeOp>(),
         };
     return ops_set;
   }();
@@ -103,9 +138,9 @@ bool IsPartitionedOp(Operation* op) {
   static auto* ops = [] {
     llvm::SmallDenseSet<mlir::TypeID, 32>* ops_set =
         new llvm::SmallDenseSet<mlir::TypeID, 32>{
-            TypeID::get<TF::StatefulPartitionedCallOp>(),
-            TypeID::get<TF::PartitionedCallOp>(),
-            TypeID::get<TF::TPUPartitionedCallOp>(),
+            TypeID::get<StatefulPartitionedCallOp>(),
+            TypeID::get<PartitionedCallOp>(),
+            TypeID::get<TPUPartitionedCallOp>(),
         };
     return ops_set;
   }();
@@ -140,12 +175,12 @@ llvm::SmallVector<Operation*> GetPredecessors(Operation* op) {
 
 bool CheckTpuReplicateAttr(Operation* op, StringAttr attr,
                            std::function<std::string()> errormsg) {
-  if (!op->hasAttr(TF::kTpuReplicateAttr)) {
+  if (!op->hasAttr(kTpuReplicateAttr)) {
     op->emitOpError("TF2XLA TPU bridge input check: " + errormsg() +
                     "missing _tpu_replicate attr");
     return false;
   }
-  auto opattr = op->getAttr(TF::kTpuReplicateAttr);
+  auto opattr = op->getAttr(kTpuReplicateAttr);
   if (opattr != attr) {
     op->emitOpError("TF2XLA TPU bridge input check: " + errormsg() +
                     "invalid _tpu_replicate attr.")
@@ -155,7 +190,7 @@ bool CheckTpuReplicateAttr(Operation* op, StringAttr attr,
   return true;
 }
 
-bool ValidateReplicatedInput(TF::TPUReplicatedInputOp rep, int num_replicas,
+bool ValidateReplicatedInput(TPUReplicatedInputOp rep, int num_replicas,
                              StringAttr attr) {
   int arity = rep.getInputs().size();
   if (rep.getIsPacked() && arity != 1) {
@@ -179,7 +214,7 @@ bool ValidateReplicatedInput(TF::TPUReplicatedInputOp rep, int num_replicas,
   }
   return true;
 }
-bool ValidateReplicatedOutput(TF::TPUReplicatedOutputOp rep, int num_replicas,
+bool ValidateReplicatedOutput(TPUReplicatedOutputOp rep, int num_replicas,
                               StringAttr attr) {
   int arity = rep.getOutputs().size();
   if (arity != num_replicas) {
@@ -198,7 +233,7 @@ bool ValidateReplicatedOutput(TF::TPUReplicatedOutputOp rep, int num_replicas,
   }
   return true;
 }
-bool ValidatePartitionedInput(TF::TPUPartitionedInputOp rep,
+bool ValidatePartitionedInput(TPUPartitionedInputOp rep,
                               int num_cores_per_replica) {
   int arity = rep.getInputs().size();
   if (arity != num_cores_per_replica) {
@@ -210,7 +245,7 @@ bool ValidatePartitionedInput(TF::TPUPartitionedInputOp rep,
   }
   return true;
 }
-bool ValidatePartitionedInputV2(TF::TPUPartitionedInputV2Op rep,
+bool ValidatePartitionedInputV2(TPUPartitionedInputV2Op rep,
                                 int num_cores_per_replica) {
   int arity = rep.getInputs().size();
   if (rep.getIsPacked() && arity != 1) {
@@ -241,33 +276,33 @@ bool ValidatePartitionedOutput(T rep, int num_cores_per_replica) {
   return true;
 }
 
-bool CheckReplicatedIOOp(Operation* op, TF::TPUReplicateMetadataOp metadata,
+bool CheckReplicatedIOOp(Operation* op, TPUReplicateMetadataOp metadata,
                          Operation* parent) {
   int num_replicas = metadata.getNumReplicas();
   int num_cores_per_replica = metadata.getNumCoresPerReplica();
   StringAttr tpu_replicate_attr =
-      metadata->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr);
-  if (auto repinput = dyn_cast<TF::TPUReplicatedInputOp>(op)) {
+      metadata->getAttrOfType<StringAttr>(kTpuReplicateAttr);
+  if (auto repinput = dyn_cast<TPUReplicatedInputOp>(op)) {
     if (!ValidateReplicatedInput(repinput, num_replicas, tpu_replicate_attr))
       return false;
   }
-  if (auto repoutput = dyn_cast<TF::TPUReplicatedOutputOp>(op)) {
+  if (auto repoutput = dyn_cast<TPUReplicatedOutputOp>(op)) {
     if (!ValidateReplicatedOutput(repoutput, num_replicas, tpu_replicate_attr))
       return false;
   }
-  if (auto partinput = dyn_cast<TF::TPUPartitionedInputOp>(op)) {
+  if (auto partinput = dyn_cast<TPUPartitionedInputOp>(op)) {
     if (!ValidatePartitionedInput(partinput, num_cores_per_replica))
       return false;
   }
-  if (auto partinput = dyn_cast<TF::TPUPartitionedInputV2Op>(op)) {
+  if (auto partinput = dyn_cast<TPUPartitionedInputV2Op>(op)) {
     if (!ValidatePartitionedInputV2(partinput, num_cores_per_replica))
       return false;
   }
-  if (auto partoutput = dyn_cast<TF::TPUPartitionedOutputOp>(op)) {
+  if (auto partoutput = dyn_cast<TPUPartitionedOutputOp>(op)) {
     if (!ValidatePartitionedOutput(partoutput, num_cores_per_replica))
       return false;
   }
-  if (auto partoutput = dyn_cast<TF::TPUPartitionedOutputV2Op>(op)) {
+  if (auto partoutput = dyn_cast<TPUPartitionedOutputV2Op>(op)) {
     if (!ValidatePartitionedOutput(partoutput, num_cores_per_replica))
       return false;
   }
@@ -277,8 +312,8 @@ bool CheckReplicatedIOOp(Operation* op, TF::TPUReplicateMetadataOp metadata,
 bool CheckClusterSuccessors(Operation* op, std::string cluster,
                             Operation* parent, MetadataMap& metadata_map) {
   std::string cluster_succ = "";
-  if (op->hasAttr(TF::kTpuReplicateAttr)) {
-    cluster_succ = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  if (op->hasAttr(kTpuReplicateAttr)) {
+    cluster_succ = op->getAttrOfType<StringAttr>(kTpuReplicateAttr).str();
   }
   if (cluster_succ.empty()) {
     // TODO (b/269195256#comment16): Change to error after resolving issue
@@ -304,7 +339,7 @@ bool CheckClusterSuccessors(Operation* op, std::string cluster,
 bool CheckNonClusterSuccessors(Operation* op, Operation* parent,
                                MetadataMap& metadata_map) {
   if (!IsTpuRegularOp(op)) {
-    if (isa<TF::TPUReplicatedOutputOp>(op)) {
+    if (isa<TPUReplicatedOutputOp>(op)) {
       op->emitOpError("TF2XLA TPU bridge input check: non-cluster op = ")
           << parent->getName()
           << " has invalid successor op = " << op->getName();
@@ -319,7 +354,7 @@ bool CheckNonClusterSuccessors(Operation* op, Operation* parent,
 bool CheckNonClusterPredecessors(Operation* op, Operation* parent,
                                  MetadataMap& metadata_map) {
   if (!IsTpuRegularOp(op)) {
-    if (isa<TF::TPUReplicatedInputOp>(op)) {
+    if (isa<TPUReplicatedInputOp>(op)) {
       op->emitOpError("TF2XLA TPU bridge input check: non-cluster op = ")
           << parent->getName()
           << " has invalid predecessor op = " << op->getName();
@@ -334,8 +369,8 @@ bool CheckNonClusterPredecessors(Operation* op, Operation* parent,
 bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
   bool is_cluster_op = false;
   std::string cluster = "";
-  if (op->hasAttr(TF::kTpuReplicateAttr)) {
-    cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  if (op->hasAttr(kTpuReplicateAttr)) {
+    cluster = op->getAttrOfType<StringAttr>(kTpuReplicateAttr).str();
     if (cluster.empty()) {
       op->emitOpError("TF2XLA TPU bridge input check: empty _tpu_replicate")
           << " attr for op = " << op->getName();
@@ -372,7 +407,7 @@ bool CheckOpsClusterIO(Operation* op, MetadataMap& metadata_map) {
 
 bool TypeMustBeNonXLA(const Type& type) {
   const Type elem = getElementTypeOrSelf(type);
-  return !mlir::isa<TF::ResourceType>(elem) &&
+  return !mlir::isa<mlir::TF::ResourceType>(elem) &&
          !tensorflow::TypeValidForXLA(type);
 }
 
@@ -397,34 +432,32 @@ bool IsMustBeXlaOp(Operation* op, MetadataMap metadata_map) {
   // All PartitionedCall are inlined-out before XLA.
   // So MustBeXLA should return false
   if (IsPartitionedOp(op)) return false;
-  if (!op->hasAttr(TF::kTpuReplicateAttr)) return false;
-  auto cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  if (!op->hasAttr(kTpuReplicateAttr)) return false;
+  auto cluster = op->getAttrOfType<StringAttr>(kTpuReplicateAttr).str();
   if (metadata_map.find(cluster) == metadata_map.end()) return false;
   auto metadata = metadata_map[cluster];
   if (!metadata.getAllowSoftPlacement() &&
-      !op->hasAttr(TF::kXlaOutsideCompilationAttr))
+      !op->hasAttr(mlir::TF::kXlaOutsideCompilationAttr))
     return true;
   std::string device = "";
-  if (op->hasAttr(TF::kDeviceAttr))
-    device = op->getAttrOfType<StringAttr>(TF::kDeviceAttr).str();
+  if (op->hasAttr(mlir::TF::kDeviceAttr))
+    device = op->getAttrOfType<StringAttr>(mlir::TF::kDeviceAttr).str();
   else
     return false;
-  if (absl::StrContains(device, TF::kTpuDevice)) return true;
+  if (absl::StrContains(device, mlir::TF::kTpuDevice)) return true;
   return false;
 }
 bool ValidateIntersectionXlaNonXlaOps(Operation* op, MetadataMap metadata_map) {
-  if (isa<TF::TPUReplicateMetadataOp>(op) ||
-      isa<TF::TPUReplicatedInputOp>(op) || isa<TF::TPUReplicatedOutputOp>(op) ||
-      isa<TF::TPUPartitionedInputOp>(op) ||
-      isa<TF::TPUPartitionedInputV2Op>(op) ||
-      isa<TF::TPUPartitionedOutputOp>(op) ||
-      isa<TF::TPUPartitionedOutputV2Op>(op))
+  if (isa<TPUReplicateMetadataOp>(op) || isa<TPUReplicatedInputOp>(op) ||
+      isa<TPUReplicatedOutputOp>(op) || isa<TPUPartitionedInputOp>(op) ||
+      isa<TPUPartitionedInputV2Op>(op) || isa<TPUPartitionedOutputOp>(op) ||
+      isa<TPUPartitionedOutputV2Op>(op))
     return true;
   if (IsMustBeXlaOp(op, metadata_map) && IsMustNotBeXlaOp(op)) {
     // TODO(b/269195256#comment19) change the warning for Identity op to error
     // when issue with input graph is resolved. Possible issue with python layer
     // inserting Identity op incorrectly.
-    if (isa<TF::IdentityOp>(op)) {
+    if (isa<mlir::TF::IdentityOp>(op)) {
       op->emitWarning("TF/XLA TPU bridge input check: found invalid op. ")
           << op->getName() << " can't be both xla and non-xla";
       return true;
@@ -488,7 +521,7 @@ bool IsValidShardingTupleForArity(Operation* op) {
 }
 
 bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
-  if (!op->hasAttr(TF::kTpuReplicateAttr)) return true;
+  if (!op->hasAttr(kTpuReplicateAttr)) return true;
   if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kShardingAttr)) {
     return true;
   }
@@ -498,7 +531,7 @@ bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
   // for it. These checks are already performed in CheckOpsClusterIO.
   // Also assuming that if there is sharding, then there must be
   // cluster and the metadata corresponding to it.
-  auto cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  auto cluster = op->getAttrOfType<StringAttr>(kTpuReplicateAttr).str();
   if (cluster.empty()) {
     return true;
   }
@@ -542,8 +575,8 @@ bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
 
 bool HasSingleCoreTpu(Operation* op) {
   if (auto compilation_attr =
-          op->getAttrOfType<mlir::StringAttr>(TF::kCompileDeviceTypeAttr)) {
-    if (compilation_attr.getValue().str() == TF::kTpuDevice) {
+          op->getAttrOfType<mlir::StringAttr>(kCompileDeviceTypeAttr)) {
+    if (compilation_attr.getValue().str() == mlir::TF::kTpuDevice) {
       op->emitOpError(
           "TF2XLA TPU bridge input check: found a single-core TPU graph");
       return true;
@@ -556,12 +589,12 @@ void TPUValidateInputsPass::runOnOperation() {
   ModuleOp module = getOperation();
   bool success = true;
   int num_metadata = 0;
-  TF::TPUReplicateMetadataOp metadata;
+  TPUReplicateMetadataOp metadata;
   MetadataMap metadata_map;
-  module.walk([&](TF::TPUReplicateMetadataOp meta) {
+  module.walk([&](TPUReplicateMetadataOp meta) {
     ++num_metadata;
     metadata = meta;
-    metadata_map[meta->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str()] =
+    metadata_map[meta->getAttrOfType<StringAttr>(kTpuReplicateAttr).str()] =
         meta;
   });
 
@@ -589,5 +622,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUValidateInputsPass() {
   return std::make_unique<TPUValidateInputsPass>();
 }
 
-}  // namespace TFTPU
-}  // namespace mlir
+}  // namespace internal
+}  // namespace tf2xla
+}  // namespace tensorflow

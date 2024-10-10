@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
@@ -148,7 +149,7 @@ void CreateReplicatedClusteringPipeline(OpPassManager &pm,
   // TF2-only passes should go here. However, this should be very rare and
   // new passes generally should go into the internal
   // AddReplicatedBridgeClusteringPipelinePasses.
-  pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
+  pm.addPass(tensorflow::tf2xla::internal::CreateTPUValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddReplicatedBridgeClusteringPipelinePasses(
