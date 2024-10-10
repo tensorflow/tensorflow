@@ -1217,8 +1217,8 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
-        "//xla/client:xla_builder",
-        "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_creation_utils",
@@ -1549,10 +1549,10 @@ xla_cc_test(
     deps = [
         ":dynamic_slice_fusion_rewriter",
         "//xla:shape_util",
-        "//xla/client:xla_builder",
-        "//xla/client/lib:constants",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
         "//xla/service:custom_call_target_registry",
