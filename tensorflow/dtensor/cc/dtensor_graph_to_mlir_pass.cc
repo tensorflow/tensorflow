@@ -140,7 +140,7 @@ DTensorMlirPassRunner::ImportGraphToMlir(
   return module_ref;
 }
 
-Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
+absl::Status DTensorMlirPassRunner::Run(mlir::ModuleOp module) {
   // Executes and collects results from the passes.
   mlir::StatusScopedDiagnosticHandler diag_handler(&context_);
 
