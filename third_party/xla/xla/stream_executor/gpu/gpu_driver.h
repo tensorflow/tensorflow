@@ -152,22 +152,6 @@ class GpuDriver {
   static absl::Status GetDeviceName(GpuDeviceHandle device,
                                     std::string* device_name);
 
-  // Given a device to create a context for, returns a context handle into the
-  // context outparam, which must not be null.
-  //
-  // N.B. CUDA contexts are weird. They are implicitly associated with the
-  // calling thread. Current documentation on contexts and their influence on
-  // userspace processes is given here:
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
-  static absl::Status CreateContext(int device_ordinal, GpuDeviceHandle device,
-                                    Context** context);
-
-  // Destroys the provided context via cuCtxDestroy.
-  // Don't do this while clients could still be using the context, per the docs
-  // bad things will happen.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g27a365aebb0eb548166309f58a1e8b8e
-  static void DestroyContext(Context* context);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
