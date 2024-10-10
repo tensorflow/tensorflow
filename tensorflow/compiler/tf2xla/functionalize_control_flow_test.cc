@@ -46,8 +46,8 @@ namespace {
 
 // Returns the names of the "then" and "else" functions for the If node in a
 // graph.
-Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
-                         NameAttrList* then_fn, NameAttrList* else_fn) {
+absl::Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
+                               NameAttrList* then_fn, NameAttrList* else_fn) {
   for (const NodeDef& node : graph.node()) {
     if (node.op() == "If") {
       *op_name = node.name();
@@ -249,7 +249,7 @@ void ConditionalTestFixture::RunTest() {
     cond_fn.set_name("cond_node");
     cond_fn.set_op("cond_fn");
     *(cond_fn.add_input()) = "source";
-    Status status;
+    absl::Status status;
     scope.graph()->AddNode(cond_fn, &status);
     TF_ASSERT_OK(status);
     TF_ASSERT_OK(scope.ToGraph(&graph));
@@ -308,8 +308,8 @@ void ConditionalTestFixture::RunTest() {
 
 // Returns the names of the "cond" and "body" functions for the While node
 // in a graph.
-Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
-                            NameAttrList* body) {
+absl::Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
+                                  NameAttrList* body) {
   for (const NodeDef& node : graph.node()) {
     if (node.op() == "While") {
       const NameAttrList* result;
@@ -463,7 +463,7 @@ FunctionDef GetNoinlineFunctionDef() {
 //   return [x + 1]
 // Define the above function, and add it to the given graph. It's used as the
 // while loop body in NoinlineLoopBody test.
-Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
+absl::Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
   FunctionDefLibrary fdef_lib;
   *(fdef_lib.add_function()) = GetNoinlineFunctionDef();
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdef_lib));
@@ -472,7 +472,7 @@ Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
   increment_fn.set_op("increment_fn");
   *increment_fn.add_input() = "while/Identity";
   *increment_fn.add_input() = "^while/Identity";
-  Status status;
+  absl::Status status;
   graph->AddNode(increment_fn, &status);
   return status;
 }
@@ -511,7 +511,7 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
     *next_iter.add_input() = noinline_node_name;
     (*next_iter.mutable_attr())["T"].set_type(DT_INT32);
 
-    Status status;
+    absl::Status status;
     Node* n = scope.graph()->AddNode(next_iter, &status);
     TF_ASSERT_OK(status);
 
@@ -563,7 +563,7 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
       *retval.add_input() = noinline_node_name;
       (*retval.mutable_attr())["T"].set_type(DT_INT32);
       (*retval.mutable_attr())["index"].set_i(0);
-      Status status;
+      absl::Status status;
       scope.graph()->AddNode(retval, &status);
       TF_ASSERT_OK(status);
 
@@ -600,7 +600,8 @@ TEST(FunctionalizeControlFlow, MissingFunctionDefInLibrary) {
   graph.ToGraphDef(&graph_def);
   graph_def.clear_library();
 
-  Status status = FunctionalizeControlFlowForGraphDef(&graph_def, &library);
+  absl::Status status =
+      FunctionalizeControlFlowForGraphDef(&graph_def, &library);
   EXPECT_EQ(tensorflow::error::NOT_FOUND, status.code());
 }
 
@@ -1105,9 +1106,10 @@ void ComplexTestFixture::RunTest() {
           ? [](const Node* n) { return n->attrs().Find("_tpu_replicate"); }
           : NodeFilter{};
 
-  Status status1 = FunctionalizeControlFlowForGraphDef(&optimized_graph_def,
-                                                       &library, node_filter);
-  Status status2 = FunctionalizeControlFlow(&graph, &library, node_filter);
+  absl::Status status1 = FunctionalizeControlFlowForGraphDef(
+      &optimized_graph_def, &library, node_filter);
+  absl::Status status2 =
+      FunctionalizeControlFlow(&graph, &library, node_filter);
   ASSERT_EQ(status1, status2);
   if (restrict_to_tpu_nodes_ && mark_outer_loop_tpu_ && !mark_inner_loop_tpu_) {
     // This case violates the precondition of `FunctionalizeControlFlow`, we
