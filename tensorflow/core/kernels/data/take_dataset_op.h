@@ -46,19 +46,20 @@ class TakeDataset : public DatasetBase {
 
   int64_t CardinalityInternal(CardinalityOptions options) const override;
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override;
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override;
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override;
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override;
 
-  Status CheckExternalState() const override;
+  absl::Status CheckExternalState() const override;
 
   absl::Status RandomIndexingCompatible() const override;
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override;
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override;
 
  private:
   class EmptyIterator;
