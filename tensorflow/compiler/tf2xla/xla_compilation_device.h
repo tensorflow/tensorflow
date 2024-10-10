@@ -54,11 +54,11 @@ class XlaCompilationDevice : public LocalDevice {
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
-  Status Sync() override;
+  absl::Status Sync() override;
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
 
  private:
   std::unique_ptr<XlaCompilationAllocator> allocator_;

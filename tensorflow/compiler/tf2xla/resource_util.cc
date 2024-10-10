@@ -41,7 +41,7 @@ const char kRetvalOp[] = "_Retval";
 
 const int kMaxCallDepth = 100;
 
-Status AnalyzeResourceUsage(
+absl::Status AnalyzeResourceUsage(
     const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
@@ -95,7 +95,7 @@ void PropagateFromStackOrTensorArraySourceOp(
   }
 }
 
-Status PropagateFromArgOp(
+absl::Status PropagateFromArgOp(
     const Node& n, const std::optional<std::string>& function_name,
     const absl::flat_hash_set<int>& resource_arg_indices,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
@@ -125,7 +125,7 @@ Status PropagateFromArgOp(
   return absl::OkStatus();
 }
 
-Status UpdateResourceUsageFromFunctionBodyAnalysis(
+absl::Status UpdateResourceUsageFromFunctionBodyAnalysis(
     const Node& call_node,
     const std::optional<absl::string_view>& caller_function_name,
     const FunctionBody& fbody,
@@ -179,7 +179,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
   return absl::OkStatus();
 }
 
-Status PropagateThroughCallOp(
+absl::Status PropagateThroughCallOp(
     const Node& n, const std::optional<std::string>& function_name,
     const int call_depth, FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
@@ -223,7 +223,7 @@ Status PropagateThroughCallOp(
 }
 
 // Analyzes pass through values for Identity and IdentityN ops.
-Status PropagateThroughIdentityOp(
+absl::Status PropagateThroughIdentityOp(
     const Node& n,
     absl::flat_hash_map<const Edge*, ResourceUsageAnalysis::NodeInfo>*
         user_to_source) {
@@ -249,7 +249,7 @@ Status PropagateThroughIdentityOp(
   return absl::OkStatus();
 }
 
-Status AnalyzeResourceUsage(
+absl::Status AnalyzeResourceUsage(
     const Graph* graph, const std::optional<std::string>& function_name,
     const int call_depth, const absl::flat_hash_set<int>& resource_arg_indices,
     FunctionLibraryRuntime* lib_runtime,
@@ -318,7 +318,7 @@ Status AnalyzeResourceUsage(
 
 }  // anonymous namespace
 
-/*Static*/ Status ResourceUsageAnalysis::Analyze(
+/*Static*/ absl::Status ResourceUsageAnalysis::Analyze(
     const Graph* graph, FunctionLibraryRuntime* lib_runtime,
     absl::flat_hash_map<NodeInfo, absl::flat_hash_set<NodeInfo>>*
         source_to_path) {

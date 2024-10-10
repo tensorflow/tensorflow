@@ -54,9 +54,10 @@ namespace {
 
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
-Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
-                         const tf2xla::Config& config, xla::Client* client,
-                         xla::XlaComputation* computation) {
+absl::Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
+                               const tf2xla::Config& config,
+                               xla::Client* client,
+                               xla::XlaComputation* computation) {
   XlaOpRegistry::RegisterCompilationKernels();
   for (Node* node : graph->nodes()) {
     node->set_assigned_device_name(
@@ -128,8 +129,8 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   return absl::OkStatus();
 }
 
-Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
-  auto update_var_handle_op_node = [](NodeDef& node) -> Status {
+absl::Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
+  auto update_var_handle_op_node = [](NodeDef& node) -> absl::Status {
     if (node.op() == "VarHandleOp") {
       node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
       const auto& it = node.attr().find("allowed_devices");
@@ -156,9 +157,10 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
 
 }  // namespace
 
-Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
-                            xla::Client* client,
-                            xla::XlaComputation* computation) {
+absl::Status ConvertGraphDefToXla(GraphDef graph_def,
+                                  const tf2xla::Config& config,
+                                  xla::Client* client,
+                                  xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
   TF_RETURN_IF_ERROR(ConvertVarHandlesToAotVarHandles(&graph_def));
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));

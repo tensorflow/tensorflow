@@ -30,14 +30,15 @@ namespace tensorflow {
 
 // Convert an XLA Shape into the equivalent TensorFlow shape. May fail since
 // not all XLA shapes can be represented as TensorShapes.
-Status XLAShapeToTensorShape(const xla::Shape& shape,
-                             TensorShape* tensor_shape);
+absl::Status XLAShapeToTensorShape(const xla::Shape& shape,
+                                   TensorShape* tensor_shape);
 
 // Convert a TensorShape into the equivalent XLA Shape proto. Unlike Tensorflow,
 // XLA shapes include the type. Not all `dtype` values can be represented by
 // XLA, so this conversion may fail.
-Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
-                             xla::Shape* shape);
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const TensorShape& tensor_shape,
+                                   xla::Shape* shape);
 
 absl::StatusOr<xla::Shape> TensorShapeToXLAShape(
     DataType dtype, const TensorShape& tensor_shape);
@@ -49,19 +50,18 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 
 // Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
 // with unknown rank is represented by an r1 with empty dimension.
-Status TensorShapeToXLAShape(DataType dtype,
-                             const PartialTensorShape& tensor_shape,
-                             xla::Shape* shape);
+absl::Status TensorShapeToXLAShape(DataType dtype,
+                                   const PartialTensorShape& tensor_shape,
+                                   xla::Shape* shape);
 
 // Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
 // with unknown rank is represented by an r1 with empty dimension.
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape);
 
-Status TensorShapeToBoundedXLAShape(DataType dtype,
-                                    const PartialTensorShape& tensor_shape,
-                                    const TensorShape& bound,
-                                    xla::Shape* shape);
+absl::Status TensorShapeToBoundedXLAShape(
+    DataType dtype, const PartialTensorShape& tensor_shape,
+    const TensorShape& bound, xla::Shape* shape);
 
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
@@ -77,7 +77,7 @@ absl::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
 // of the layouts, create the output shape by rewriting the input shape layouts.
 // If a layout is missing (has -1 values) for a matching tuple subshape, the
 // layout_func will be called, if not nullptr.
-Status GetShapeWithLayout(
+absl::Status GetShapeWithLayout(
     const xla::Shape& input_shape, absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* output_shape);

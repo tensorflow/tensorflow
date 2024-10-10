@@ -188,7 +188,7 @@ const xla::XlaComputation* XlaContext::LookupOrCreate(
   }
 }
 
-Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
+absl::Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
     const XlaCompilationResult& result) {
   if (result.collective_info) {
     return RecordCollectiveInfo(result.collective_info->group_key,

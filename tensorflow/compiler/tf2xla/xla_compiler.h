@@ -177,7 +177,8 @@ class XlaCompiler {
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
     // that can be accessed by XLA op kernels.
-    std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
+    std::function<absl::Status(ResourceMgr*)>* populate_resource_manager =
+        nullptr;
 
     // If not nullptr, this memory allocator can be used by the compiler for
     // temporary allocations it might want to make during compilation.
@@ -228,12 +229,12 @@ class XlaCompiler {
   static void PopulateArgumentFromResource(const XlaResource& resource,
                                            Argument* arg);
 
-  Status CompileFunction(const CompileOptions& options,
-                         const NameAttrList& fn_name_attrs,
-                         absl::Span<const Argument> args,
-                         CompilationResult* result);
+  absl::Status CompileFunction(const CompileOptions& options,
+                               const NameAttrList& fn_name_attrs,
+                               absl::Span<const Argument> args,
+                               CompilationResult* result);
 
-  Status CompileSingleOp(
+  absl::Status CompileSingleOp(
       const CompileOptions& options,
       const SingleOpCompileArgument& single_op_compile_argument,
       absl::Span<const Argument> args, CompilationResult* result);
@@ -241,15 +242,15 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  Status CompileGraph(
-      const CompileOptions& options, string const& name,
-      std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
-      CompilationResult* result);
+  absl::Status CompileGraph(const CompileOptions& options, string const& name,
+                            std::unique_ptr<Graph> graph,
+                            absl::Span<const Argument> args,
+                            CompilationResult* result);
 
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
-  Status XLAShapeForArgument(
+  absl::Status XLAShapeForArgument(
       const Argument& arg, bool is_entry_computation,
       const std::optional<xla::HloSharding>& arg_sharding,
       xla::Shape* xla_shape) const;
@@ -259,33 +260,33 @@ class XlaCompiler {
   // Channel handles can be used to communicate between different
   // computations. Computations that communicate should be compiled with the
   // same XlaCompiler.
-  Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
+  absl::Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
 
   // Retrieves the host-to-device channel handle associated with `key`.
   // Allocates a new channel handle if none exists.
-  Status GetHostToDeviceChannelHandle(const string& key,
-                                      xla::ChannelHandle* channel);
+  absl::Status GetHostToDeviceChannelHandle(const string& key,
+                                            xla::ChannelHandle* channel);
 
   // Retrieves the device-to-host channel handle associated with `key`.
   // Allocates a new channel handle if none exists.
-  Status GetDeviceToHostChannelHandle(const string& key,
-                                      xla::ChannelHandle* channel);
+  absl::Status GetDeviceToHostChannelHandle(const string& key,
+                                            xla::ChannelHandle* channel);
 
   // Sets the shapes and types for the device to host transfer associated with
   // 'key'.
-  Status SetDeviceToHostMetadata(const string& key,
-                                 absl::Span<const DataType> types,
-                                 absl::Span<const TensorShape> shapes);
+  absl::Status SetDeviceToHostMetadata(const string& key,
+                                       absl::Span<const DataType> types,
+                                       absl::Span<const TensorShape> shapes);
 
   // Gets the shapes the device to host transfer associated with 'key'.
-  Status GetDeviceToHostShapes(const string& key,
-                               std::vector<TensorShape>* shapes) const;
+  absl::Status GetDeviceToHostShapes(const string& key,
+                                     std::vector<TensorShape>* shapes) const;
 
   // Sets the shapes and types for the host to device transfer associated with
   // 'key'.
-  Status SetHostToDeviceMetadata(const string& key,
-                                 absl::Span<const DataType> types,
-                                 absl::Span<const TensorShape> shapes);
+  absl::Status SetHostToDeviceMetadata(const string& key,
+                                       absl::Span<const DataType> types,
+                                       absl::Span<const TensorShape> shapes);
 
   // In order to avoid deadlocks from dependencies in host computations, it can
   // be necessary to enforce a partial order on the execution of HostCompute
@@ -298,24 +299,24 @@ class XlaCompiler {
   // 'host_compute_name' can be any string the client wishes to use to identify
   // a given HostCompute Op as long as the names are unique within the
   // compilation.
-  Status GetHostComputeControlDependency(const string& host_compute_name,
-                                         xla::XlaOp* handle);
-  Status SetHostComputeControlDependency(const string& host_compute_name,
-                                         xla::XlaOp handle);
+  absl::Status GetHostComputeControlDependency(const string& host_compute_name,
+                                               xla::XlaOp* handle);
+  absl::Status SetHostComputeControlDependency(const string& host_compute_name,
+                                               xla::XlaOp handle);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
   void PushNodeTokenMapping();
-  Status PopNodeTokenMapping();
-  Status SetNodeToken(const string& node_name, xla::XlaOp op);
+  absl::Status PopNodeTokenMapping();
+  absl::Status SetNodeToken(const string& node_name, xla::XlaOp op);
   absl::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.
-  Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody,
-                          const ConfigProto** config_proto = nullptr);
+  absl::Status FindFunctionBody(const NameAttrList& function,
+                                const FunctionBody** fbody,
+                                const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.
@@ -323,15 +324,13 @@ class XlaCompiler {
 
   // Builds XLA computations for each of the arguments to the computation.
   // `args` are the arguments to the computation.
-  Status BuildArguments(const Graph& graph,
-                        const std::vector<XlaCompiler::Argument>& args,
-                        bool use_tuple_arg, xla::XlaBuilder* builder,
-                        XlaContext* context,
-                        const std::map<int, xla::OpSharding>& arg_shardings,
-                        std::vector<XlaExpression>* arg_expressions,
-                        std::vector<int>* input_to_args,
-                        std::vector<xla::Shape>* input_shapes,
-                        bool is_entry_computation);
+  absl::Status BuildArguments(
+      const Graph& graph, const std::vector<XlaCompiler::Argument>& args,
+      bool use_tuple_arg, xla::XlaBuilder* builder, XlaContext* context,
+      const std::map<int, xla::OpSharding>& arg_shardings,
+      std::vector<XlaExpression>* arg_expressions,
+      std::vector<int>* input_to_args, std::vector<xla::Shape>* input_shapes,
+      bool is_entry_computation);
 
   // Graph compiler needs to know how to get an optimized graph from a function
   // body.
@@ -341,7 +340,7 @@ class XlaCompiler {
   Options options_;
 
   // Status set to non-OK in the constructor if initialization fails.
-  Status initialization_status_;
+  absl::Status initialization_status_;
 
   // Returns the next step sequence number.
   int64_t NextStepId();

@@ -69,7 +69,7 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   return ::tensorflow::FloatLiteral(b, type, value);
 }
 
-/* static */ Status XlaHelpers::ReshapeLiteral(
+/* static */ absl::Status XlaHelpers::ReshapeLiteral(
     const xla::Literal& input, absl::Span<const int64_t> dimensions,
     xla::Literal* output) {
   if (input.shape().IsTuple()) {
@@ -90,10 +90,13 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   return absl::OkStatus();
 }
 
-Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
-                          DataType index_type, const TensorShape& indices_shape,
-                          const xla::XlaOp indices, const xla::XlaOp on_value,
-                          const xla::XlaOp off_value, xla::XlaOp* one_hot) {
+absl::Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth,
+                                int axis, DataType index_type,
+                                const TensorShape& indices_shape,
+                                const xla::XlaOp indices,
+                                const xla::XlaOp on_value,
+                                const xla::XlaOp off_value,
+                                xla::XlaOp* one_hot) {
   // Broadcast the linspace constant across the indices along the new axis,
   // and test equality at each position.
   std::vector<int64_t> broadcast_dims(indices_shape.dims());
@@ -147,7 +150,7 @@ XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn() {
       };
 }
 
-Status ResolveDeviceAssignment(
+absl::Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const XlaCompilationResult::CollectiveInfo& collective_info,
     xla::ExecutableRunOptions& run_options,
@@ -177,11 +180,11 @@ Status ResolveDeviceAssignment(
   VLOG(5) << "Using collective params to resolve device assignment: "
           << params->ToString();
 
-  Status st;
+  absl::Status st;
   absl::Notification n;
   ctx->collective_executor()->CompleteParamsAsync(
       ctx->device()->attributes(), params.get(), ctx->cancellation_manager(),
-      [&](const Status& s) {
+      [&](const absl::Status& s) {
         st = s;
         n.Notify();
       });
@@ -234,7 +237,7 @@ Status ResolveDeviceAssignment(
       const DeviceAttributes& device_attributes =
           params->group.members[device_idx].device;
       Device* resolved_device = nullptr;
-      Status lookup_status =
+      absl::Status lookup_status =
           device_mgr->LookupDevice(device_attributes.name(), &resolved_device);
       if (lookup_status.ok()) {
         // This is a local device, so include it in the mapping.
