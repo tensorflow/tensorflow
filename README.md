@@ -1,5 +1,5 @@
 --------------- UPDATE--------------
-# Sentiment Analysis using SVM
+# Sentiment Analysis using TensorFlow
 
 ## Description
 This feature implements sentiment analysis using a simple neural network model using TensorFlow and Keras for sentiment analysis. It processes text data to classify sentiment into positive or negative categories.
