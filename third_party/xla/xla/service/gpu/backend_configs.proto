@@ -124,6 +124,9 @@ message BitcastBackendConfig {
 message CollectiveBackendConfig {
   bool is_sync = 1;
   bool no_parallel_custom_call = 2;
+  // Determines whether the collective op of interested has been pipelined
+  // within a loop.
+  bool is_pipelined = 3;
 }
 
 // Backend config for cost model estimates.
