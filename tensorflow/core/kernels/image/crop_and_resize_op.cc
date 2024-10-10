@@ -56,9 +56,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 using Callback = std::function<void()>;
 
-static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
-                                           const Tensor& box_index,
-                                           int* num_boxes) {
+static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
+                                                 const Tensor& box_index,
+                                                 int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
     return absl::OkStatus();
