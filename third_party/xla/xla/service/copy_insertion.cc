@@ -1526,6 +1526,18 @@ class CopyRemover {
                     int64_t* region_analysis_limit) {
     VLOG(2) << "Trying to remove " << copy->name();
     CHECK_NE(region_analysis_limit, nullptr);
+    if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
+      if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
+          copy->operand(0)->shape().layout().memory_space() !=
+              Layout::kHostMemorySpace) {
+        return false;
+      }
+      if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
+          copy->operand(0)->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+        return false;
+      }
+    }
 
     if (!ContainsKey(copy_map_, copy)) {
       VLOG(2) << copy->name() << " is not removable";
