@@ -46,7 +46,7 @@ namespace {
 EagerContextPtr TestingEagerCtx() {
   SessionOptions opts;
   std::vector<std::unique_ptr<Device>> devices;
-  Status&& device_init_status = DeviceFactory::AddDevices(
+  absl::Status&& device_init_status = DeviceFactory::AddDevices(
       opts, "/job:localhost/replica:0/task:0", &devices);
   CHECK(device_init_status.ok());  // Crash OK
 
@@ -62,7 +62,7 @@ EagerContextPtr TestingEagerCtx() {
 }
 
 int IntValue(ImmediateExecutionTensorHandle& h) {
-  Status status;
+  absl::Status status;
   AbstractTensorPtr t(h.Resolve(&status));
   DCHECK(status.ok());
   switch (h.DataType()) {
