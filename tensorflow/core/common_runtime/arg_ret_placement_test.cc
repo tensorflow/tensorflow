@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -29,9 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 

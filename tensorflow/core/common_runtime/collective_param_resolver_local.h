@@ -23,10 +23,14 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 class CompleteGroupRequest;
