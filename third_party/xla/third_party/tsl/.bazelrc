@@ -84,6 +84,8 @@ build -c opt
 # Make Bazel print out all options from rc files.
 build --announce_rc
 
+# Test EXPORT_TO_GITHUB_PR tag
+
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --define=grpc_no_ares=true
 
