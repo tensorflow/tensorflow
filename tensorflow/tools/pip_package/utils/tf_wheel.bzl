@@ -83,3 +83,6 @@ tf_wheel = rule(
     },
     implementation = _tf_wheel_impl,
 )
+
+def tf_wheel_dep():
+    return ["@pypi_{}//:pkg".format(WHEEL_NAME)]
