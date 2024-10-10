@@ -131,7 +131,7 @@ TF_RendezvousDoneCallbackImpl ToC(
   using CallbackType = std::function<void(TF_RendezvousDoneCallback_Params*)>;
   auto c_callback = new CallbackType(
       [on_done](TF_RendezvousDoneCallback_Params* params) -> void {
-        Status status = tsl::StatusFromTF_Status(params->status);
+        absl::Status status = tsl::StatusFromTF_Status(params->status);
         // TODO: Pass args through.
         // auto sender_args = FromC(*params->sender_args);
         // auto recver_args = FromC(*params->recver_args);
@@ -211,20 +211,20 @@ class TfCThunkRendezvous final : public ::tensorflow::RendezvousInterface {
 
   ~TfCThunkRendezvous() override = default;
 
-  Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
-              bool is_dead) override;
+  absl::Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
+                    bool is_dead) override;
 
   void RecvAsync(const ParsedKey& key, const Args& args,
                  DoneCallback done) override;
 
-  void StartAbort(const Status& status) override;
+  void StartAbort(const absl::Status& status) override;
 
  private:
   const TF_RendezvousThunk thunk_;
 };
 
-Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
-                                const Tensor& val, const bool is_dead) {
+absl::Status TfCThunkRendezvous::Send(const ParsedKey& key, const Args& args,
+                                      const Tensor& val, const bool is_dead) {
   CHECK_OK_AND_ASSIGN(SendParamPtr params,
                       SendParamsToC(key, args, val, is_dead));
   thunk_.send_func(thunk_.rendezvous, params.get());
@@ -249,7 +249,7 @@ void TfCThunkRendezvous::RecvAsync(const ParsedKey& key, const Args& args,
   thunk_.async_recv_func(thunk_.rendezvous, params);
 }
 
-void TfCThunkRendezvous::StartAbort(const Status& status) {
+void TfCThunkRendezvous::StartAbort(const absl::Status& status) {
   std::unique_ptr<TF_Status, std::function<void(TF_Status*)>> c_status(
       TF_NewStatus(), &TF_DeleteStatus);
   tsl::Set_TF_Status_from_Status(c_status.get(), status);
