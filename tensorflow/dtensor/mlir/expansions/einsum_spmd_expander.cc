@@ -98,7 +98,7 @@ StatusOr<mlir::Operation*> EinsumSPMDExpander::ExpandOp(mlir::Operation* op) {
 // input_mappings: for each equation input, the map from the equation labels
 //   to the tensor dimension of that label.
 // output_mapping: as above, but for the equation output.
-Status ExtractEquationRelations(
+absl::Status ExtractEquationRelations(
     absl::string_view equation, absl::flat_hash_set<char>& reduced_dims,
     std::vector<absl::flat_hash_map<char, std::vector<int>>>& input_mappings,
     absl::flat_hash_map<char, std::vector<int>>& output_mapping) {
@@ -388,7 +388,7 @@ StatusOr<llvm::DenseMap<int, Layout>> EinsumSPMDExpander::ComputeLayoutBackward(
 //   for x is sharded. If both are sharded, we can compute the einsum on the
 //   diagonal machines in the mesh and 0s on the off diagonals and then all
 //   the much smaller matrix.
-Status EinsumSPMDExpander::MaybeRelayoutInputs(
+absl::Status EinsumSPMDExpander::MaybeRelayoutInputs(
     const std::vector<Layout>& input_layouts, mlir::Operation* op,
     const Layout& output_layout, absl::flat_hash_set<std::string>& reduce_dims,
     Layout& einsum_layout, std::vector<mlir::Value>& new_inputs) {

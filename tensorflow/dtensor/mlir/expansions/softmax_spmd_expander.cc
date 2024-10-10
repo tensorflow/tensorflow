@@ -115,11 +115,12 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
 
 // Takes a sharded logits and compute both the shifted exponentiation of the
 // logits and its sum. Assumes that builder's insertion point is after logits.
-Status ComputeExpAndSum(mlir::OpBuilder& builder, const mlir::Value& logits,
-                        const Layout& logits_layout,
-                        mlir::Value& shifted_logits,
-                        mlir::Value& exp_of_shifted_logits,
-                        mlir::Value& sum_of_exp) {
+absl::Status ComputeExpAndSum(mlir::OpBuilder& builder,
+                              const mlir::Value& logits,
+                              const Layout& logits_layout,
+                              mlir::Value& shifted_logits,
+                              mlir::Value& exp_of_shifted_logits,
+                              mlir::Value& sum_of_exp) {
   auto loc = logits.getLoc();
 
   if (logits_layout.rank() == 0)

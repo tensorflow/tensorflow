@@ -129,8 +129,8 @@ StatusOr<std::vector<slice_util::Token>> TokenizeOp(T strided_slice) {
 // this is the only meaningful change when a global Token vector is converted
 // to the local Token vector.
 template <typename T>
-Status UpdateOpFromTokens(T strided_slice,
-                          const std::vector<slice_util::Token>& tokens) {
+absl::Status UpdateOpFromTokens(T strided_slice,
+                                const std::vector<slice_util::Token>& tokens) {
   mlir::OpBuilder builder(strided_slice);
   llvm::SmallVector<int64_t, 4> end;
   end.reserve(tokens.size());

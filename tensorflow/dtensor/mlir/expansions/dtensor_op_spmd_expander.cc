@@ -52,8 +52,8 @@ namespace {
 // 3. Src/target layouts are from different mesh.
 // 4. One of scr/target layout is from host mesh cluster.
 // 5. CPU host cluster mesh has 1 device.
-Status ValidateSendRecvLayoutConfiguration(mlir::TF::DTensorSend dtensor_send,
-                                           mlir::TF::DTensorRecv dtensor_recv) {
+absl::Status ValidateSendRecvLayoutConfiguration(
+    mlir::TF::DTensorSend dtensor_send, mlir::TF::DTensorRecv dtensor_recv) {
   // If either one of the send/recv ops has already been lowered, then send/recv
   // configuration has already been verified.
   if (!dtensor_send || !dtensor_recv) return absl::OkStatus();

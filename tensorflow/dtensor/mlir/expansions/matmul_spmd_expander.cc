@@ -189,7 +189,7 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 // * The resulting layout of the matmul tensor, so we can insert an AllConcat/
 //   split to make the output have the desired layout.
 // * The left and right value for use as input to the matmul.
-Status MatMulSPMDExpander::MaybeRelayoutInputs(
+absl::Status MatMulSPMDExpander::MaybeRelayoutInputs(
     mlir::Operation* op, const Layout& left_layout, bool left_transposed,
     const Layout& right_layout, bool right_transposed,
     const Layout& output_layout, std::string& reduced_dim,
