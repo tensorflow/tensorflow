@@ -60,7 +60,7 @@ static std::unique_ptr<Graph> MakeOuterGraph(
                   .Attr("_variable_start_index", 4)
                   .Finalize(&def));
 
-  Status status;
+  absl::Status status;
   Node* launch = scope.graph()->AddNode(def, &status);
   TF_CHECK_OK(status);
   TF_CHECK_OK(scope.DoShapeInference(launch));

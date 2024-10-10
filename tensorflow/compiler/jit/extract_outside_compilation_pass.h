@@ -52,10 +52,11 @@ class RewriteOutsideCompilationSubgraphFn {
         xla_cluster_name_(xla_cluster_name),
         new_function_name_(new_function_name) {}
 
-  Status operator()(const std::vector<OutputTensor>&,
-                    std::unique_ptr<Graph>* graph,
-                    std::vector<int>* input_permutation,
-                    std::vector<int>* output_permutation, NodeDef* node_def);
+  absl::Status operator()(const std::vector<OutputTensor>&,
+                          std::unique_ptr<Graph>* graph,
+                          std::vector<int>* input_permutation,
+                          std::vector<int>* output_permutation,
+                          NodeDef* node_def);
 
  private:
   string xla_cluster_attr_name_;
@@ -86,7 +87,7 @@ class RewriteOutsideCompilationSubgraphFn {
 //   function names. These functions need to be rewritten later.
 // has_outside_compilation: a bool indicating whether this function has any
 //   outside compilation nodes.
-Status ExtractOutsideCompilationForFunction(
+absl::Status ExtractOutsideCompilationForFunction(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name, const string& xla_cluster_name,
     const NameAttrList& func_name_attrs, const string& new_func_name,
@@ -99,7 +100,7 @@ Status ExtractOutsideCompilationForFunction(
 // with XlaHostCompute, and moves those outside compilations into `g`. If shapes
 // of outside compilation outputs cannot be determined now, we will store shape
 // inference graph into `fld`.
-Status ExtractOutsideCompilation(
+absl::Status ExtractOutsideCompilation(
     const string& xla_cluster_attr_name,
     const string& outside_compilation_attr_name,
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,

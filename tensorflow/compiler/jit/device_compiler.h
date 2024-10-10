@@ -99,7 +99,7 @@ class DeviceCompiler : public ResourceBase {
   // `ExecutableType` and sets `out_executable` to point to it. The
   // resulting executable pointer may be null if the computation has no
   // non-constant outputs.
-  Status CompileIfNeeded(
+  absl::Status CompileIfNeeded(
       const XlaCompiler::Options& options, const NameAttrList& function,
       const std::vector<XlaCompiler::Argument>& args,
       const XlaCompiler::CompileOptions& compile_options,
@@ -108,7 +108,7 @@ class DeviceCompiler : public ResourceBase {
       ExecutableType** out_executable);
 
   // As above, but for a single op.
-  Status CompileSingleOpIfNeeded(
+  absl::Status CompileSingleOpIfNeeded(
       const XlaCompiler::Options& options,
       const std::vector<XlaCompiler::Argument>& args,
       const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
@@ -131,7 +131,7 @@ class DeviceCompiler : public ResourceBase {
  private:
   // Common implementation of Compile and CompileSingleOp. The `OpKernelContext`
   // parameter is always null for the former.
-  Status CompileImpl(
+  absl::Status CompileImpl(
       const XlaCompiler::CompileOptions& compile_options,
       const XlaCompiler::Options& options, const NameAttrList& function,
       const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
@@ -152,13 +152,13 @@ class DeviceCompiler : public ResourceBase {
       DeviceCompilationProfiler* profiler, mutex* mu)
       TF_EXCLUSIVE_LOCKS_REQUIRED(*mu);
 
-  Status CompileAsynchronous(const DeviceCompilationClusterSignature& sig,
-                             const XlaCompiler::CompileOptions& compile_options,
-                             const XlaCompiler::Options& options,
-                             const std::vector<XlaCompiler::Argument>& args,
-                             const NameAttrList& function, CompileScope scope,
-                             OpKernelContext* ctx,
-                             DeviceCompilationProfiler* profiler);
+  absl::Status CompileAsynchronous(
+      const DeviceCompilationClusterSignature& sig,
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::Options& options,
+      const std::vector<XlaCompiler::Argument>& args,
+      const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler);
 
   std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
       persistor_;
@@ -191,8 +191,8 @@ inline void LogOnceXlaCompiledFirstCluster() {
 }
 
 template <typename ExecutableType>
-inline Status EligibleToPersist(DeviceCompileState compile_state,
-                                const ExecutableType* executable) {
+inline absl::Status EligibleToPersist(DeviceCompileState compile_state,
+                                      const ExecutableType* executable) {
   if (compile_state != DeviceCompileState::kCompiled) {
     return errors::FailedPrecondition(
         "Cache entry to serialize is not compiled.");
@@ -244,7 +244,7 @@ string DeviceCompiler<ExecutableType, ClientType>::DebugString() const {
 }
 
 template <typename ExecutableType, typename ClientType>
-Status DeviceCompiler<ExecutableType, ClientType>::CompileIfNeeded(
+absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileIfNeeded(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options,
@@ -257,7 +257,8 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileIfNeeded(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status DeviceCompiler<ExecutableType, ClientType>::CompileSingleOpIfNeeded(
+absl::Status
+DeviceCompiler<ExecutableType, ClientType>::CompileSingleOpIfNeeded(
     const XlaCompiler::Options& options,
     const std::vector<XlaCompiler::Argument>& args,
     const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
@@ -350,7 +351,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
+absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
     const DeviceCompilationClusterSignature& signature,
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options,
@@ -395,7 +396,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
 }
 
 template <typename ExecutableType, typename ClientType>
-Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
+absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args, CompileScope scope,

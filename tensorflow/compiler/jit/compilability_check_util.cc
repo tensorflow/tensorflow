@@ -80,8 +80,9 @@ bool IsInOutsideCompilationCluster(const Node& n) {
   return n.attrs().Find(kXlaOutsideCompilationAttr) != nullptr;
 }
 
-Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
-                                 NodeDef* node_def) {
+absl::Status MakeCallNodeFromAttribute(const Node& node,
+                                       const std::string& attr_name,
+                                       NodeDef* node_def) {
   const NameAttrList* name_attr;
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
@@ -200,7 +201,8 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
     return false;
   }
 
-  Status s = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
+  absl::Status s =
+      FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
   if (!s.ok()) {
     *uncompilable_reason = s.message();
     return false;
@@ -322,7 +324,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status s;
+  absl::Status s;
   NameAttrList function;
   s = NameAndAttrsFromFunctionCall(call_def, &function);
   if (s.ok()) {
@@ -628,11 +630,10 @@ bool CanCreateXlaKernel(const NodeDef& node_def) {
   return HasBoolAttr(node_def, kXlaMustCompileAttr);
 }
 
-Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NameAttrList& function,
-                                       const FunctionBody** fbody,
-                                       std::vector<int>* constant_arg_indices,
-                                       std::vector<int>* resource_arg_indices) {
+absl::Status GetBodyAndConstantsAndResources(
+    FunctionLibraryRuntime* flr, const NameAttrList& function,
+    const FunctionBody** fbody, std::vector<int>* constant_arg_indices,
+    std::vector<int>* resource_arg_indices) {
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(
       flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));

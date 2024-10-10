@@ -50,7 +50,7 @@ namespace tensorflow {
 // In the future we will also translate StridedSlice and Pad a similar way.
 class IncreaseDynamismForAutoJitPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow
