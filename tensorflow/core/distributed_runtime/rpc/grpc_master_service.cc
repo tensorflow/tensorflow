@@ -32,6 +32,7 @@ limitations under the License.
 
 #include <string>
 
+#include "net/grpc/public/include/grpc/grpc.h"
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
@@ -54,6 +55,14 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
         is_shutdown_(false),
         default_session_config_(default_session_config) {
     builder->RegisterService(&master_service_);
+    // gRPC by default will cancel requests that sit in a completion queue for
+    // more than 30s. See
+    // https://github.com/grpc/grpc/blob/e52e48b7ef83feeff56ed0894ce39841ea8bd483/include/grpc/impl/channel_arg_names.h#L106-L111
+    // Extending this to 1 hour for Tensorflow since some graphs may have
+    // periods of heavy load which may cause the server to run into these
+    // cancellations.
+    builder->AddChannelArgument(
+        GRPC_ARG_SERVER_MAX_UNREQUESTED_TIME_IN_SERVER_SECONDS, 3600);
     cq_ = builder->AddCompletionQueue();
   }
 

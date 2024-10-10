@@ -211,7 +211,7 @@ tf_cuda_library(
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
         "@local_xla//xla/tsl/protobuf:rpc_options_proto_cc",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -262,7 +262,7 @@ cc_library(
         "//tensorflow/core/protobuf:master_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
 

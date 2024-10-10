@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "net/grpc/public/include/grpc/grpc.h"
 #include "grpcpp/alarm.h"
 #include "grpcpp/server_builder.h"
 #include "absl/container/flat_hash_map.h"
@@ -371,6 +372,14 @@ class GrpcWorkerService : public tsl::AsyncServiceInterface {
                     GrpcWorkerServiceOptions options)
       : is_shutdown_(false) {
     builder->RegisterService(&worker_service_);
+    // gRPC by default will cancel requests that sit in a completion queue for
+    // more than 30s. See
+    // https://github.com/grpc/grpc/blob/e52e48b7ef83feeff56ed0894ce39841ea8bd483/include/grpc/impl/channel_arg_names.h#L106-L111
+    // Extending this to 1 hour for Tensorflow since some graphs may have
+    // periods of heavy load which may cause the server to run into these
+    // cancellations.
+    builder->AddChannelArgument(
+        GRPC_ARG_SERVER_MAX_UNREQUESTED_TIME_IN_SERVER_SECONDS, 3600);
 
     for (int i = 0; i < options.num_serving_threads; i++) {
       threads_.emplace_back(new GrpcWorkerServiceThread(

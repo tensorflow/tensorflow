@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_grpc_dependencies")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -58,7 +58,7 @@ cc_library(
         "//tensorflow/core/protobuf:eager_service_proto_cc",
         "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
 )
 
 tf_cc_test(
