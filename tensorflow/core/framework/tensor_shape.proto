@@ -1,13 +1,13 @@
 // Protocol buffer representing the shape of tensors.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
+
+package tensorflow;
+
 option java_outer_classname = "TensorShapeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_shape_go_proto";
-
-package tensorflow;
 
 // Dimensions of a tensor.
 message TensorShapeProto {
@@ -22,7 +22,7 @@ message TensorShapeProto {
 
     // Optional name of the tensor dimension.
     string name = 2;
-  };
+  }
 
   // Dimensions of the tensor, such as {"input", 30}, {"output", 40}
   // for a 30 x 40 2D tensor.  If an entry has size -1, this
@@ -43,4 +43,4 @@ message TensorShapeProto {
   //
   // If true, "dim.size()" must be 0.
   bool unknown_rank = 3;
-};
+}
