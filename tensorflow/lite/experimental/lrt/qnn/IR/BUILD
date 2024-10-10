@@ -76,3 +76,18 @@ ungrte_cc_test_with_qnn(
         "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )
+
+ungrte_cc_test_with_qnn(
+    name = "compatibility_test",
+    srcs = ["compatibility_test.cc"],
+    deps = [
+        ":qnn_op",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/test:common",
+    ],
+)
