@@ -202,6 +202,47 @@ std::vector<HloInstruction*> MakePartitionOffsets(
   return offsets;
 }
 
+std::vector<HloInstruction*> MakePartitionOffsetsDiff(
+    const Shape& shape, const HloSharding& sharding_1,
+    const HloSharding& sharding_2, HloInstruction* partition_id, SpmdBuilder* b,
+    absl::Span<const int64_t> dims) {
+  CHECK(!shape.IsTuple());
+  CHECK_EQ(sharding_1.tile_assignment().num_elements(),
+           sharding_2.tile_assignment().num_elements());
+
+  auto shard_shape_1 = MakePartitionedShape(shape, sharding_1);
+  auto shard_shape_2 = MakePartitionedShape(shape, sharding_2);
+  auto const_zero =
+      b->AddInstruction(HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+  std::vector<HloInstruction*> offsets;
+
+  for (int64_t i = 0; i < shape.rank(); ++i) {
+    if (!dims.empty() && !absl::c_linear_search(dims, i)) {
+      offsets.push_back(const_zero);
+    } else {
+      std::vector<int32_t> offset_array(
+          sharding_1.tile_assignment().num_elements(), 0);
+      sharding_1.tile_assignment().Each(
+          [&](absl::Span<const int64_t> indices, int64_t device) {
+            offset_array[device] = indices[i] * shard_shape_1.dimensions(i);
+          });
+      sharding_2.tile_assignment().Each(
+          [&](absl::Span<const int64_t> indices, int64_t device) {
+            offset_array[device] -= indices[i] * shard_shape_2.dimensions(i);
+          });
+      if (absl::c_all_of(offset_array,
+                         [](int32_t offset) { return offset == 0; })) {
+        offsets.push_back(const_zero);
+      } else {
+        offsets.push_back(
+            TableLookup<int32_t>(offset_array, S32, partition_id, b));
+      }
+    }
+  }
+
+  return offsets;
+}
+
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsTileMaximal());
