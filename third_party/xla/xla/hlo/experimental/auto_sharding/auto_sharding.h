@@ -115,8 +115,10 @@ class AutoSharding : public HloModulePass {
 
   std::vector<int64_t> GetChosenDeviceMeshShape() { return chosen_mesh_shape_; }
 
- private:
+ protected:
   AutoShardingOption option_;
+
+ private:
   // Stores the optimal value of the objective the solver found.
   double solver_optimal_objective_value_ = -1.0;
   // Stores the optimal mesh shape found.

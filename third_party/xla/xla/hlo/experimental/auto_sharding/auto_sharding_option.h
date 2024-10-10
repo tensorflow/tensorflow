@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_OPTION_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,8 +25,12 @@ limitations under the License.
 
 namespace xla {
 
-static constexpr double kDeviceMeshAlpha = 1.0;
-static constexpr double kDeviceMeshBeta = 1.0;
+static constexpr double kIciDeviceMeshAlpha = 1.0;
+static constexpr double kIciDeviceMeshBeta = 1.0;
+// By default, assume that DCN communication is 10 times slower than ICI
+// communication
+static constexpr double kDcnDeviceMeshAlpha = 10.0;
+static constexpr double kDcnDeviceMeshBeta = 10.0;
 static constexpr double kOverbudgetCoeff = 1e6;
 
 // Options for the autosharding pass
@@ -201,6 +206,9 @@ struct AutoShardingOption {
   // TODO(b/365834709) Investigate the need for resharding reshapes across all
   // ops in a principled manner.
   bool insert_resharding_reshapes_for_non_dot_ops = false;
+
+  // The number of slices used
+  std::optional<int64_t> num_dcn_slices = std::nullopt;
 
   // Prints a debug string.
   std::string ToString() const;

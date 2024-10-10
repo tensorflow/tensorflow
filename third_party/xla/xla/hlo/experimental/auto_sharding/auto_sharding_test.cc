@@ -2928,6 +2928,39 @@ ENTRY matmul {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(AutoShardingTest, SimpleDCNTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+%func (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param0 = f32[32,8192]{1,0} parameter(0)
+  %param1 = f32[] parameter(1)
+  %reduce = f32[32]{0} reduce(f32[32,8192]{1,0} %param0, f32[] %param1), dimensions={1}, to_apply=%func
+  })";
+  AutoShardingOption option;
+  option.enable = true;
+  option.solve_nd_sharding_iteratively = false;
+  option.allow_mixed_mesh_shape = false;
+  option.device_mesh_shape = {8, 16};
+  option.num_dcn_slices = 8;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(5) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "reduce");
+  EXPECT_NE(slice, nullptr);
+  EXPECT_THAT(slice,
+              op::Sharding("{devices=[8,16]<=[128] last_tile_dim_replicate}"));
+}
+
 TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
   EdgeReshardingCostMatrix edge_cost(2, 2);
   edge_cost(0, 0).communication_cost = -100;
