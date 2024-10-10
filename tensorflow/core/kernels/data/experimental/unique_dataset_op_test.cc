@@ -37,13 +37,13 @@ class UniqueDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(UniqueDatasetOp::kInputDataset);
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attributes) const override {
+  absl::Status GetAttributes(AttributeVector* attributes) const override {
     *attributes = {{"output_types", output_dtypes_},
                    {"output_shapes", output_shapes_},
                    {"metadata", ""}};
