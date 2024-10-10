@@ -22,7 +22,7 @@ cc_binary(
     srcs = [
         "apply_plugin.cc",
         # TODO: b/366821557 - Support pre-compiled plugins as data dependencies.
-        "//tensorflow/lite/experimental/lrt/vendors/examples:mul_op_plugin_so",
+        "//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so",
     ],
     deps = [
         "//tensorflow/lite/experimental/lrt/core:algo",

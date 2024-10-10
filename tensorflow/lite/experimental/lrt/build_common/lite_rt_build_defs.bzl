@@ -14,38 +14,180 @@
 
 """Common LiteRT Build Utilities."""
 
-_HIDE_ABSL_LD_SCRIPT = "//tensorflow/lite/experimental/lrt/build_common:hide_absl.lds"
-_LRT_SO_TEMPLATE = "libLrt{}.so"
+####################################################################################################
+# Util
 
-def hide_absl_linkopt():
-    return "-Wl,--version-script=$(location {})".format(_HIDE_ABSL_LD_SCRIPT)
+_LRT_SO_PREFIX = "libLrt"
+_SO_EXT = ".so"
+_SHARED_LIB_SUFFIX = "_so"
 
-def lite_rt_cc_lib_and_so(**kwargs):
-    """Creates a cc_library target as well as a cc_shared_library target for LRT.
+# Public
 
-    Hides neccessary symbols from the .so. So target will the same name as
-    the library suffixed with "_so". Must pass "shared_lib_name" in additional to
-    standard cc_library kwargs, which will be prefixed with "libLrt" and given .so extension.
+def make_linkopt(opt):
+    return "-Wl,{}".format(opt)
+
+def make_rpaths(rpaths):
+    return make_linkopt("-rpath={}".format(":".join(rpaths)))
+
+def append_rule_kwargs(rule_kwargs, **append):
+    for k, v in append.items():
+        append_to = rule_kwargs.pop(k, [])
+        append_to += v
+        rule_kwargs[k] = append_to
+
+# Private
+
+def _valild_shared_lib_name(name):
+    return name.endswith(_SHARED_LIB_SUFFIX)
+
+def _valid_so_name(name):
+    return name.startswith(_LRT_SO_PREFIX) and name.endswith(_SO_EXT)
+
+def _make_target_ref(name):
+    return ":{}".format(name)
+
+def _make_script_linkopt(script):
+    return make_linkopt("--version-script=$(location {})".format(script))
+
+####################################################################################################
+# Explicitly Link System Libraries ("ungrte")
+
+_SYS_RPATHS = [
+    "/usr/lib/x86_64-linux-gnu",
+    "/lib/x86_64-linux-gnu",
+]
+_SYS_RPATHS_LINKOPT = make_rpaths(_SYS_RPATHS)
+
+_SYS_ELF_INTERPRETER = "/lib64/ld-linux-x86-64.so.2"
+_SYS_ELF_INTERPRETER_LINKOPT = make_linkopt("--dynamic-linker={}".format(_SYS_ELF_INTERPRETER))
+
+####################################################################################################
+# Symbol Hiding
+
+_EXPORT_LRT_ONLY_SCRIPT = "//tensorflow/lite/experimental/lrt/build_common:export_lrt_only.lds"
+_EXPORT_LRT_ONLY_LINKOPT = _make_script_linkopt(_EXPORT_LRT_ONLY_SCRIPT)
+
+####################################################################################################
+# Macros
+
+# Private
+
+def _lite_rt_base(
+        rule,
+        ungrte,
+        **cc_rule_kwargs):
+    """
+    Base rule for LiteRT targets.
 
     Args:
-        **kwargs: Starndard cc_library kwargs plus "shared_lib_name".
+      rule: The underlying rule to use (e.g., cc_test, cc_library).
+      ungrte: Whether to link against system libraries ("ungrte").
+      **cc_rule_kwargs: Keyword arguments to pass to the underlying rule.
     """
-    shared_lib_name = kwargs.pop("shared_lib_name")
+    if ungrte:
+        append_rule_kwargs(
+            cc_rule_kwargs,
+            linkopts = [
+                _SYS_ELF_INTERPRETER_LINKOPT,
+                _SYS_RPATHS_LINKOPT,
+            ],
+        )
+    rule(**cc_rule_kwargs)
 
-    kwargs["linkstatic"] = True
-    native.cc_library(**kwargs)
+# Public
 
-    vis = kwargs["visibility"]
-    cc_lib_name = kwargs["name"]
-    so_target_name = "{}_so".format(cc_lib_name)
-    cc_lib_target_label = ":{}".format(cc_lib_name)
-    shared_lib_name = _LRT_SO_TEMPLATE.format(shared_lib_name)
+def lite_rt_test(
+        ungrte = False,
+        use_sys_malloc = False,
+        **cc_test_kwargs):
+    """
+    LiteRT test rule.
+
+    Args:
+      ungrte: Whether to link against system libraries ("ungrte").
+      use_sys_malloc: Whether to use the system malloc.
+      **cc_test_kwargs: Keyword arguments to pass to the underlying rule.
+    """
+    if use_sys_malloc:
+        cc_test_kwargs["malloc"] = "//base:system_malloc"
+
+    append_rule_kwargs(
+        cc_test_kwargs,
+        deps = ["@com_google_googletest//:gtest_main"],
+    )
+
+    _lite_rt_base(
+        native.cc_test,
+        ungrte,
+        **cc_test_kwargs
+    )
+
+def lite_rt_lib(
+        ungrte = False,
+        **cc_lib_kwargs):
+    """
+    LiteRT library rule.
+
+    Args:
+      ungrte: Whether to link against system libraries ("ungrte").
+      **cc_lib_kwargs: Keyword arguments to pass to the underlying rule.
+    """
+    _lite_rt_base(
+        native.cc_library,
+        ungrte,
+        **cc_lib_kwargs
+    )
+
+def lite_rt_dynamic_lib(
+        name,
+        shared_lib_name,
+        so_name,
+        export_lrt_only = False,
+        ungrte = False,
+        **cc_lib_kwargs):
+    """
+    LiteRT dynamic library rule.
+
+    Args:
+      name: The name of the library.
+      shared_lib_name: The name of the shared library.
+      so_name: The name of the shared object file.
+      export_lrt_only: Whether to export only LiteRT symbols.
+      ungrte: Whether to link against system libraries ("ungrte").
+      **cc_lib_kwargs: Keyword arguments to pass to the underlying rule.
+    """
+    if not _valild_shared_lib_name(shared_lib_name):
+        fail("\"shared_lib_name\" must end with \"_so\"")
+    if not _valid_so_name(so_name):
+        fail("\"so_name\" must be \"libLrt*.so\"")
+
+    lib_name = name
+    cc_lib_kwargs["name"] = lib_name
+
+    lib_target_ref = _make_target_ref(lib_name)
+
+    vis = cc_lib_kwargs.get("visibility", None)
+
+    # Share tags for all targets.
+    tags = cc_lib_kwargs.get("tags", [])
+
+    lite_rt_lib(
+        ungrte = ungrte,
+        **cc_lib_kwargs
+    )
+
+    user_link_flags = []
+    additional_linker_inputs = []
+    if export_lrt_only:
+        user_link_flags.append(_EXPORT_LRT_ONLY_LINKOPT)
+        additional_linker_inputs.append(_EXPORT_LRT_ONLY_SCRIPT)
 
     native.cc_shared_library(
-        name = so_target_name,
-        shared_lib_name = shared_lib_name,
-        user_link_flags = [hide_absl_linkopt()],
+        name = shared_lib_name,
+        shared_lib_name = so_name,
+        user_link_flags = user_link_flags,
+        additional_linker_inputs = additional_linker_inputs,
+        tags = tags,
         visibility = vis,
-        deps = [cc_lib_target_label],
-        additional_linker_inputs = [_HIDE_ABSL_LD_SCRIPT],
+        deps = [lib_target_ref],
     )

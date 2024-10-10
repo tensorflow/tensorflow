@@ -12,26 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/qnn_sdk:ungrte_qnn.bzl", "ungrte_cc_library_with_qnn", "ungrte_cc_test_with_qnn")
+load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_lib", "lite_rt_test")
+load("//tensorflow/lite/experimental/lrt/vendors/qualcomm:qualcomm_build_defs.bzl", "lite_rt_lib_with_qnn")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
-ungrte_cc_library_with_qnn(
+lite_rt_lib(
     name = "log",
     srcs = ["log.cc"],
     hdrs = ["log.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
     deps = [
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
     ],
 )
 
-ungrte_cc_library_with_qnn(
+lite_rt_lib_with_qnn(
     name = "qnn_manager",
-    srcs = ["qnn_manager.cc"],
+    srcs = [
+        "qnn_manager.cc",
+    ],
     hdrs = ["qnn_manager.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    ungrte = True,
     deps = [
         ":log",
         "@com_google_absl//absl/strings:string_view",
@@ -43,11 +55,20 @@ ungrte_cc_library_with_qnn(
     ],
 )
 
-ungrte_cc_test_with_qnn(
-    name = "load_qnn_test",
-    srcs = ["load_qnn_test.cc"],
-    # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
-    tags = ["nosan"],
+lite_rt_test(
+    name = "qnn_manager_test",
+    srcs = ["qnn_manager_test.cc"],
+    linkstatic = True,
+    tags = [
+        # Tests with ungrte deps do not currently work on forge.
+        "no-remote-exec",
+        "notap",
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+        "nosan",
+    ],
     deps = [
         ":qnn_manager",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",

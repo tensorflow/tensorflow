@@ -12,16 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/qnn_sdk:ungrte_qnn.bzl", "ungrte_cc_library_with_qnn", "ungrte_cc_test_with_qnn")
+load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_dynamic_lib", "lite_rt_lib", "lite_rt_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-ungrte_cc_library_with_qnn(
+lite_rt_dynamic_lib(
     name = "qnn_compiler_plugin",
     srcs = ["qnn_compiler_plugin.cc"],
+    hdrs = ["//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h"],
+    export_lrt_only = True,
+    shared_lib_name = "qnn_compiler_plugin_so",
+    so_name = "libLrtQnnCompilerPlugin.so",
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    ungrte = True,
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
         ":qnn_compose_graph",
@@ -32,13 +41,23 @@ ungrte_cc_library_with_qnn(
     ],
 )
 
-ungrte_cc_test_with_qnn(
+lite_rt_test(
     name = "qnn_compiler_plugin_test",
     srcs = [
         "qnn_compiler_plugin_test.cc",
     ],
-    # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
-    tags = ["nosan"],
+    linkstatic = True,
+    tags = [
+        # Tests with ungrte deps do not currently work on forge.
+        "no-remote-exec",
+        "notap",
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+        "nosan",
+    ],
+    use_sys_malloc = True,
     deps = [
         ":qnn_compiler_plugin",  # buildcleaner: keep
         "@com_google_absl//absl/log:absl_check",
@@ -51,10 +70,14 @@ ungrte_cc_test_with_qnn(
     ],
 )
 
-ungrte_cc_library_with_qnn(
+lite_rt_lib(
     name = "qnn_compose_graph",
     srcs = ["qnn_compose_graph.cc"],
     hdrs = ["qnn_compose_graph.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
     deps = [
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
