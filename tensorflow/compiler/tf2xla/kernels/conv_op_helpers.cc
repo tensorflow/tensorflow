@@ -116,7 +116,7 @@ xla::XlaOp ReshapeFilterForDepthwiseConvolution(const xla::Shape& filter_shape,
 
 // Performs some basic checks on ConvOpAttrs that are true for all kinds of XLA
 // convolutions (as currently implemented).
-Status CheckConvAttrs(const ConvOpAttrs& attrs) {
+absl::Status CheckConvAttrs(const ConvOpAttrs& attrs) {
   const int num_dims = attrs.num_spatial_dims + 2;
   const int attrs_strides_size = attrs.strides.size();
   if (attrs_strides_size != num_dims) {
@@ -153,7 +153,7 @@ Status CheckConvAttrs(const ConvOpAttrs& attrs) {
 
 // Wrapper around ConvBackpropComputeDimensions that converts from XLA shapes
 // to TensorShapes.
-Status ConvBackpropComputeDimensionsV2XlaShapes(
+absl::Status ConvBackpropComputeDimensionsV2XlaShapes(
     StringPiece label, int num_spatial_dims, const xla::Shape& input_shape,
     const xla::Shape& filter_shape, const xla::Shape& out_backprop_shape,
     absl::Span<const int32> dilations, const std::vector<int32>& strides,

@@ -52,9 +52,9 @@ namespace {
 // the TensorArray with elements of `elem_shape`. For both initialized and
 // uninitialized TensorArrays, checks that the tensor has a type compatible with
 // 'dtype' and shape compatible with 'elem_shape'.
-Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
-                                  XlaResource* resource, DataType dtype,
-                                  const TensorShape& elem_shape) {
+absl::Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
+                                        XlaResource* resource, DataType dtype,
+                                        const TensorShape& elem_shape) {
   if (resource->kind() != XlaResource::kTensorArray) {
     return errors::InvalidArgument("Unexpected non-TensorArray resource");
   }
@@ -94,9 +94,9 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
 
 // Checks that the TensorArray 'resource' has been initialized, and has type
 // 'dtype'. Sets 'shape' to the shape
-Status CheckTensorArrayIsInitialized(const string& op_name,
-                                     const XlaResource* resource,
-                                     DataType dtype) {
+absl::Status CheckTensorArrayIsInitialized(const string& op_name,
+                                           const XlaResource* resource,
+                                           DataType dtype) {
   if (resource->kind() != XlaResource::kTensorArray) {
     return errors::InvalidArgument(
         "Unexpected non-TensorArray resource passed to ", op_name);
@@ -114,8 +114,8 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
   return absl::OkStatus();
 }
 
-Status GetTensorArrayShape(const XlaResource* resource,
-                           xla::XlaBuilder* builder, TensorShape* shape) {
+absl::Status GetTensorArrayShape(const XlaResource* resource,
+                                 xla::XlaBuilder* builder, TensorShape* shape) {
   *shape = resource->shape();
   shape->InsertDim(0, resource->max_array_size());
   return absl::OkStatus();
@@ -321,7 +321,7 @@ class TensorArrayGatherOp : public XlaOpKernel {
     // Look for the case where the gather takes a simple slice from the
     // tensor array (0, 1, 2, 3, 4, ..., N)
     std::vector<int64_t> const_indices;
-    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    absl::Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
     if (status.ok()) {
       bool gather_is_dense_slice = true;
       for (auto i = 0; i < const_indices.size(); i++) {
@@ -393,7 +393,7 @@ class TensorArrayScatterOp : public XlaOpKernel {
     // tensor array implementation allows for this to be a straight addition.
     bool scatter_all_elements_in_order = false;
     std::vector<int64_t> const_indices;
-    Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
+    absl::Status status = ctx->ConstantInputAsIntVector(1, &const_indices);
     if (status.ok() && num_indices == value_shape.dim_size(0)) {
       scatter_all_elements_in_order = true;
       for (auto i = 0; i < num_indices; i++) {

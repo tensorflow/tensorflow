@@ -59,7 +59,7 @@ class XlaCustomCallV2Op : public XlaOpKernel {
   }
 
  private:
-  Status CompileImpl(XlaOpKernelContext& ctx) const {
+  absl::Status CompileImpl(XlaOpKernelContext& ctx) const {
     std::vector<xla::XlaOp> operands(ctx.num_inputs());
     std::vector<xla::Shape> operand_shapes(ctx.num_inputs());
     for (int i = 0; i < ctx.num_inputs(); ++i) {

@@ -34,7 +34,7 @@ class ClipByValueOp : public XlaOpKernel {
     auto min = ctx->Input(1);
     auto max = ctx->Input(2);
 
-    auto shape_error = [&]() -> tensorflow::Status {
+    auto shape_error = [&]() -> absl::Status {
       return errors::InvalidArgument(
           "clip_value_min and clip_value_max must be either of "
           "the same shape as input, or a scalar. ",

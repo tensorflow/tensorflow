@@ -104,10 +104,10 @@ static absl::StatusOr<bool> PopulateTensorArrayGradients(
 }
 
 // Checks that shapes matches on both sides of the conditional.
-static Status ValidateShapes(XlaOpKernelContext* ctx,
-                             const XlaCompiler::CompilationResult& then_result,
-                             const XlaCompiler::CompilationResult& else_result,
-                             std::vector<PartialTensorShape>& output_shapes) {
+static absl::Status ValidateShapes(
+    XlaOpKernelContext* ctx, const XlaCompiler::CompilationResult& then_result,
+    const XlaCompiler::CompilationResult& else_result,
+    std::vector<PartialTensorShape>& output_shapes) {
   // Check that both branches have identical input shapes.
   if (then_result.xla_input_shapes.size() != 1) {
     return errors::FailedPrecondition("Expected one input shape");

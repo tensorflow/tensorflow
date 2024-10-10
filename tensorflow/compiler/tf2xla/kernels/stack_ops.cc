@@ -41,8 +41,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
-                     TensorShape* stack_shape) {
+absl::Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
+                           TensorShape* stack_shape) {
   auto shape_or_status = builder->GetShape(resource->value());
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
@@ -63,8 +63,9 @@ Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
 //
 // TODO(phawkins): consider changing the API of the stack operators to
 // allow an optional element shape at stack construction time.
-Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
-                            DataType dtype, const TensorShape& elem_shape) {
+absl::Status MaybeInitializeStack(xla::XlaBuilder* builder,
+                                  XlaResource* resource, DataType dtype,
+                                  const TensorShape& elem_shape) {
   if (resource->type() != dtype) {
     return errors::InvalidArgument(
         "Stack dtype is ", DataTypeString(resource->type()),

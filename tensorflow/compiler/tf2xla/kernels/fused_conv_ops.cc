@@ -116,7 +116,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
                                                  : ActivationMode::kRelu;
   }
 
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     XlaOp conv_input = ctx->Input(0);
     XlaOp filter = ctx->Input(1);
     XlaOp bias = ctx->Input(2);

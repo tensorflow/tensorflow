@@ -59,8 +59,8 @@ namespace tensorflow {
 namespace {
 
 // Verify that input resources are grouped in the end.
-Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
-                                      const NameAttrList& body_name_attr) {
+absl::Status VerifyResourceArgsGroupedAtEnd(
+    XlaOpKernelContext* ctx, const NameAttrList& body_name_attr) {
   const FunctionBody* body;
   TF_RETURN_IF_ERROR(ctx->compiler()->FindFunctionBody(body_name_attr, &body));
   bool has_seen_resource = false;
@@ -83,7 +83,7 @@ Status VerifyResourceArgsGroupedAtEnd(XlaOpKernelContext* ctx,
 }
 
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
-Status MakeXlaCompilerArgumentsFromInputs(
+absl::Status MakeXlaCompilerArgumentsFromInputs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
     bool* has_uninitialized_vars, bool* has_tensor_arrays,
     bool* has_uninitialized_tensor_lists) {
@@ -153,7 +153,7 @@ void GetLoopInvariants(XlaOpKernelContext* ctx,
 // Converts entries in `args` which are loop invariants and have compile time
 // constant inputs and need to be constants in order to be compilable to
 // constants so that they can be propagated in the loop body.
-Status ConvertLoopInvariantsToConst(
+absl::Status ConvertLoopInvariantsToConst(
     XlaOpKernelContext* ctx, const NameAttrList& body_name_attr,
     const NameAttrList& cond_name_attr,
     std::vector<XlaCompiler::Argument>* args,
@@ -191,7 +191,7 @@ Status ConvertLoopInvariantsToConst(
   return absl::OkStatus();
 }
 
-Status VerifyBodyInputAndOutputShapeMatch(
+absl::Status VerifyBodyInputAndOutputShapeMatch(
     XlaOpKernelContext* ctx,
     const std::vector<bool>& compile_time_const_arg_indices,
     const XlaCompiler::CompilationResult& body, bool has_token_input_output) {
