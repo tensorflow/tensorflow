@@ -333,6 +333,8 @@ cc_library(
     hdrs = ["status_to_from_proto.h"],
     deps = [
         ":status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
         "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ] + tf_platform_deps("status"),
