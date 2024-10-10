@@ -2023,6 +2023,13 @@ absl::StatusOr<int64_t> RematerializeInstructions(
     HloCloneContext context(computation->parent());
     HloInstruction* remat =
         computation->AddInstruction(best->Clone(/*suffix=*/"remat", &context));
+    if (remat->opcode() == HloOpcode::kFusion) {
+      // Update the scheduling names inside a cloned fused node
+      for (HloInstruction* instr :
+           remat->fused_instructions_computation()->instructions()) {
+        instr->set_metadata_scheduling_name(instr->name());
+      }
+    }
     for (auto& cloned_computation_pair : context.cloned_computations()) {
       if (!schedule->is_computation_scheduled(cloned_computation_pair.first)) {
         continue;
@@ -2034,6 +2041,9 @@ absl::StatusOr<int64_t> RematerializeInstructions(
       for (HloInstruction* instr : old_sequence.instructions()) {
         sequence.push_back(instr);
       }
+    }
+    for (auto* instruction : computation->instructions()) {
+      instruction->set_metadata_scheduling_name(instruction->name());
     }
     // Increment channel_id on channel instructions with a channel id.
     if (DynCast<HloChannelInstruction>(best) &&
