@@ -132,6 +132,10 @@ string DataTypeStringInternal(DataType dtype) {
       return "float8_e5m2";
     case DT_FLOAT8_E4M3FN:
       return "float8_e4m3fn";
+    case DT_FLOAT8_E5M2FNUZ:
+      return "float8_e5m2fnuz";
+    case DT_FLOAT8_E4M3FNUZ:
+      return "float8_e4m3fnuz";
     case DT_INT4:
       return "int4";
     case DT_UINT4:
@@ -236,6 +240,12 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "float8_e4m3fn") {
     *dt = DT_FLOAT8_E4M3FN;
     return true;
+  } else if (sp == "float8_e5m2fnuz") {
+    *dt = DT_FLOAT8_E5M2FNUZ;
+    return true;
+  } else if (sp == "float8_e4m3fnuz") {
+    *dt = DT_FLOAT8_E4M3FNUZ;
+    return true;
   } else if (sp == "int4") {
     *dt = DT_INT4;
     return true;
@@ -291,6 +301,8 @@ int DataTypeSize(DataType dt) {
     TF_CALL_quint16(CASE);
     TF_CALL_float8_e5m2(CASE);
     TF_CALL_float8_e4m3fn(CASE);
+    TF_CALL_float8_e5m2fnuz(CASE);
+    TF_CALL_float8_e4m3fnuz(CASE);
     TF_CALL_int4(CASE);
     TF_CALL_uint4(CASE);
 
@@ -327,6 +339,8 @@ DEFINE_DATATYPETOENUM_VALUE(bfloat16);
 DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
 DEFINE_DATATYPETOENUM_VALUE(float8_e5m2);
 DEFINE_DATATYPETOENUM_VALUE(float8_e4m3fn);
+DEFINE_DATATYPETOENUM_VALUE(float8_e5m2fnuz);
+DEFINE_DATATYPETOENUM_VALUE(float8_e4m3fnuz);
 DEFINE_DATATYPETOENUM_VALUE(int4);
 DEFINE_DATATYPETOENUM_VALUE(uint4);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);

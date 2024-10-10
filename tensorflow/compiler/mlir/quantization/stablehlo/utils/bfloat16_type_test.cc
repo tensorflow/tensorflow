@@ -36,6 +36,7 @@ TEST(IsLargeFloatTypeTest, scalars) {
   auto context = CreateContext();
 
   EXPECT_FALSE(IsLargeFloatType(Float8E4M3FNType::get(context.get())));
+  EXPECT_FALSE(IsLargeFloatType(Float8E4M3FNUZType::get(context.get())));
   EXPECT_FALSE(IsLargeFloatType(Float16Type::get(context.get())));
   EXPECT_FALSE(IsLargeFloatType(BFloat16Type::get(context.get())));
   EXPECT_TRUE(IsLargeFloatType(Float32Type::get(context.get())));
@@ -52,6 +53,8 @@ TEST(IsLargeFloatTypeTest, tensors) {
 
   EXPECT_FALSE(IsLargeFloatType(
       RankedTensorType::get({2, 2}, Float8E4M3FNType::get(context.get()))));
+  EXPECT_FALSE(IsLargeFloatType(
+      RankedTensorType::get({2, 2}, Float8E4M3FNUZType::get(context.get()))));
   EXPECT_FALSE(IsLargeFloatType(
       RankedTensorType::get({2, 2}, Float16Type::get(context.get()))));
   EXPECT_FALSE(IsLargeFloatType(
@@ -76,6 +79,8 @@ TEST(ToBfloat16TypeTest, scalars) {
 
   EXPECT_EQ(ToBfloat16Type(Float8E4M3FNType::get(context.get())),
             Float8E4M3FNType::get(context.get()));
+  EXPECT_EQ(ToBfloat16Type(Float8E4M3FNUZType::get(context.get())),
+            Float8E4M3FNUZType::get(context.get()));
   EXPECT_EQ(ToBfloat16Type(Float16Type::get(context.get())),
             Float16Type::get(context.get()));
   EXPECT_EQ(ToBfloat16Type(BFloat16Type::get(context.get())),
@@ -102,6 +107,10 @@ TEST(ToBfloat16TypeTest, tensors) {
       ToBfloat16Type(
           RankedTensorType::get({2, 2}, Float8E4M3FNType::get(context.get()))),
       RankedTensorType::get({2, 2}, Float8E4M3FNType::get(context.get())));
+  EXPECT_EQ(
+      ToBfloat16Type(RankedTensorType::get(
+          {2, 2}, Float8E4M3FNUZType::get(context.get()))),
+      RankedTensorType::get({2, 2}, Float8E4M3FNUZType::get(context.get())));
   EXPECT_EQ(ToBfloat16Type(
                 RankedTensorType::get({2, 2}, Float16Type::get(context.get()))),
             RankedTensorType::get({2, 2}, Float16Type::get(context.get())));

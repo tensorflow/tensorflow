@@ -21,6 +21,8 @@ limitations under the License.
 namespace tensorflow {
 typedef tsl::float8_e4m3fn float8_e4m3fn;
 typedef tsl::float8_e5m2 float8_e5m2;
+typedef tsl::float8_e4m3fnuz float8_e4m3fnuz;
+typedef tsl::float8_e5m2fnuz float8_e5m2fnuz;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_FLOAT8_H_

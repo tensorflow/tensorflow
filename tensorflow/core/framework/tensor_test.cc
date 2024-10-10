@@ -254,6 +254,28 @@ TEST(Tensor_Float8_E4m3fn, Simple) {
   TestCopies<float8_e4m3fn>(t);
 }
 
+TEST(Tensor_Float8_E5m2fnuz, Simple) {
+  Tensor t(DT_FLOAT8_E5M2FNUZ, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e5m2fnuz>()(a, b) = static_cast<float8_e5m2fnuz>(a * b);
+    }
+  }
+  TestCopies<float8_e5m2fnuz>(t);
+}
+
+TEST(Tensor_Float8_E4m3fnuz, Simple) {
+  Tensor t(DT_FLOAT8_E4M3FNUZ, TensorShape({5, 7}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({5, 7})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<float8_e4m3fnuz>()(a, b) = static_cast<float8_e4m3fnuz>(a * b);
+    }
+  }
+  TestCopies<float8_e4m3fnuz>(t);
+}
+
 TEST(Tensor_Float, Simple) {
   Tensor t(DT_FLOAT, TensorShape({10, 20}));
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
@@ -1729,6 +1751,24 @@ INSTANTIATE_TEST_SUITE_P(
          MkTensorNoInitList<float8_e5m2>(
              DT_FLOAT8_E5M2, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
          MkTensorNoInitList<float8_e5m2>(DT_FLOAT8_E5M2, TensorShape({0}), {})},
+        {"DT_FLOAT8_E4M3FNUZ",
+         MkTensorNoInitList<float8_e4m3fnuz>(DT_FLOAT8_E4M3FNUZ,
+                                             TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e4m3fnuz>(
+             DT_FLOAT8_E4M3FNUZ, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e4m3fnuz>(
+             DT_FLOAT8_E4M3FNUZ, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e4m3fnuz>(DT_FLOAT8_E4M3FNUZ,
+                                             TensorShape({0}), {})},
+        {"DT_FLOAT8_E5M2FNUZ",
+         MkTensorNoInitList<float8_e5m2fnuz>(DT_FLOAT8_E5M2FNUZ,
+                                             TensorShape({5}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e5m2fnuz>(
+             DT_FLOAT8_E5M2FNUZ, TensorShape({2, 2}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e5m2fnuz>(
+             DT_FLOAT8_E5M2FNUZ, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0}),
+         MkTensorNoInitList<float8_e5m2fnuz>(DT_FLOAT8_E5M2FNUZ,
+                                             TensorShape({0}), {})},
         {"DT_HALF",
          MkTensorNoInitList<Eigen::half>(DT_HALF, TensorShape({5}),
                                          {1, 2, 3, 4, 0}),

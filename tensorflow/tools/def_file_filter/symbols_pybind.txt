@@ -65,10 +65,14 @@ tsl::ml_dtypes::GetBfloat16Dtype
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzDtype
 tsl::ml_dtypes::GetFloat8E4m3fnDtype
 tsl::ml_dtypes::GetFloat8E5m2Dtype
+tsl::ml_dtypes::GetFloat8E4m3fnuzDtype
+tsl::ml_dtypes::GetFloat8E5m2fnuzDtype
 tsl::ml_dtypes::GetBfloat16TypeNum
 tsl::ml_dtypes::GetFloat8E4m3b11fnuzTypeNum
 tsl::ml_dtypes::GetFloat8E4m3fnTypeNum
 tsl::ml_dtypes::GetFloat8E5m2TypeNum
+tsl::ml_dtypes::GetFloat8E4m3fnuzTypeNum
+tsl::ml_dtypes::GetFloat8E5m2fnuzTypeNum
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline

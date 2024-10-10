@@ -40,13 +40,12 @@ enum DataType {
   DT_VARIANT = 21;  // Arbitrary C++ data types
   DT_UINT32 = 22;
   DT_UINT64 = 23;
-  DT_FLOAT8_E5M2 = 24;    // 5 exponent bits, 2 mantissa bits.
-  DT_FLOAT8_E4M3FN = 25;  // 4 exponent bits, 3 mantissa bits, finite-only, with
-                          // 2 NaNs (0bS1111111).
+  DT_FLOAT8_E5M2 = 24;     // 5 exponent bits, 2 mantissa bits.
+  DT_FLOAT8_E4M3FN = 25;   // 4 exponent bits, 3 mantissa bits, finite-only, with two NaNs and two Zeros.
+  DT_FLOAT8_E4M3FNUZ = 26; // 4 exponent bits, 3 mantissa bits, finite-only, with one NaN and one Zero.
   // TODO - b/299182407: Leaving room for remaining float8 types.
-  // DT_FLOAT8_E4M3FNUZ = 26;
   // DT_FLOAT8_E4M3B11FNUZ = 27;
-  // DT_FLOAT8_E5M2FNUZ = 28;
+  DT_FLOAT8_E5M2FNUZ = 28; // 5 exponent bits, 2 mantissa bits, finite-only, with one NaN and one Zero.
   DT_INT4 = 29;
   DT_UINT4 = 30;
 
@@ -78,10 +77,10 @@ enum DataType {
   DT_UINT64_REF = 123;
   DT_FLOAT8_E5M2_REF = 124;
   DT_FLOAT8_E4M3FN_REF = 125;
+  DT_FLOAT8_E4M3FNUZ_REF = 126;
   // TODO - b/299182407: Leaving room for remaining float8 types.
-  // DT_FLOAT8_E4M3FNUZ_REF = 126;
   // DT_FLOAT8_E4M3B11FNUZ_REF = 127;
-  // DT_FLOAT8_E5M2FNUZ_REF = 128;
+  DT_FLOAT8_E5M2FNUZ_REF = 128;
   DT_INT4_REF = 129;
   DT_UINT4_REF = 130;
 }
