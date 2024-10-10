@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 
-#include "absl/strings/str_format.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
