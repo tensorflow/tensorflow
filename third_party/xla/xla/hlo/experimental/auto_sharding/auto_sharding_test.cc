@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
