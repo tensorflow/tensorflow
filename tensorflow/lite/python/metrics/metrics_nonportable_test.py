@@ -473,13 +473,11 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     exported_error = metrics._gauge_conversion_errors.get_cell(
         'CONVERT_TF_TO_TFLITE_MODEL', 'CONVERT_SAVED_MODEL', 'tf.CustomAdd',
         'ERROR_NEEDS_CUSTOM_OPS').value()
-    self.assertContainsSubsequence(
-        exported_error,
+    self.assertIn(
         "'tf.CustomAdd' op is neither a custom op nor a flex op\n",
+        exported_error,
     )
-    self.assertContainsSubsequence(
-        exported_error, 'Error code: ERROR_NEEDS_CUSTOM_OPS'
-    )
+    self.assertIn('Error code: ERROR_NEEDS_CUSTOM_OPS', exported_error)
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(
