@@ -54,7 +54,7 @@ class ReduceDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back("input_dataset");
     for (int i = 0; i < initial_state_.size(); ++i) {
@@ -66,7 +66,7 @@ class ReduceDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     *attr_vector = {{"f", func_},
                     {"Tstate", type_state_},

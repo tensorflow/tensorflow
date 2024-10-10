@@ -47,7 +47,7 @@ class MapDefunOpParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
 
     input_names->reserve(arguments_.size() + captured_inputs_.size());
@@ -62,7 +62,7 @@ class MapDefunOpParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {
         {MapDefunOp::kTarguments, type_arguments_},
         {MapDefunOp::kTcaptured, type_captured_},
@@ -90,8 +90,9 @@ class MapDefunOpParams : public DatasetParams {
 class MapDefunOpTest : public DatasetOpsTestBase {
  protected:
   // Creates a new `MapDefun` op kernel
-  Status CreateMapDefunOpKernel(const MapDefunOpParams& params,
-                                std::unique_ptr<OpKernel>* map_defun_kernel) {
+  absl::Status CreateMapDefunOpKernel(
+      const MapDefunOpParams& params,
+      std::unique_ptr<OpKernel>* map_defun_kernel) {
     std::vector<string> input_namess;
     TF_RETURN_IF_ERROR(params.GetInputNames(&input_namess));
     AttributeVector attributes;
@@ -104,7 +105,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
   }
 
   // Creates a new `MapDefun` op kernel context.
-  Status CreateMapDefunContext(
+  absl::Status CreateMapDefunContext(
       OpKernel* const op_kernel,
       absl::InlinedVector<TensorValue, 4UL>* const inputs,
       std::unique_ptr<OpKernelContext>* context) {

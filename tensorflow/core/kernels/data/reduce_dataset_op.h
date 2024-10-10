@@ -30,7 +30,7 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
   explicit ReduceDatasetOp(OpKernelConstruction* ctx);
 
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  absl::Status DoCompute(OpKernelContext* ctx) override;
 
   std::shared_ptr<FunctionMetadata> func_metadata_ = nullptr;
   DataTypeVector output_types_;

@@ -62,7 +62,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {PaddedBatchDatasetOp::kInputDataset,
                     PaddedBatchDatasetOp::kBatchSize};
     // Create the input names for the input padded_shapes.
@@ -79,7 +79,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"parallel_copy", parallel_copy_},
                     {"Toutput_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
