@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package mlir.quant;
 
-option cc_enable_arenas = true;
-
 // Represents the quantization parameters for a list of named tensors.
 message QuantizationInfo {
   // min/max of the per axis value range. To quantize the value, the metadata
@@ -34,13 +32,16 @@ message QuantizationInfo {
 
   // The metadata defines the target properties.
   message Metadata {
-    //  Bit number of fixed-point data the target kernel supports.
+    // Bit number of fixed-point data the target kernel supports.
     int32 num_bits = 1;
-    //  The quantized axis index if it is per-axis quantization.
+
+    // The quantized axis index if it is per-axis quantization.
     int32 quantize_axis = 2;
+
     // The minimum allowed value of the fixed-point data range.
     // This can also be used to derive the sign of storage type.
     int32 range_min = 3;
+
     // The minimum allowed value of the fixed-point data range.
     int32 range_max = 4;
   }
