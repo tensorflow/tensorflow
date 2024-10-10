@@ -56,10 +56,10 @@ namespace {
 // taking from the Switch node was not necessarily the first output, but _Arg
 // nodes only have one output. By adding the Switch node to `squash_src_outputs`
 // we rewrite the src_output of the corresponding edge to be 0.
-Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
-                    std::vector<Node*> stack,
-                    const std::vector<bool>& squash_src_outputs,
-                    std::vector<Node*>* node_map, Graph* output) {
+absl::Status CopySubgraph(const Graph& graph, const WhileLoopFrame* frame,
+                          std::vector<Node*> stack,
+                          const std::vector<bool>& squash_src_outputs,
+                          std::vector<Node*>* node_map, Graph* output) {
   VLOG(3) << "Stack: " << NodesToString(stack);
   std::vector<bool> visited(graph.num_node_ids(), false);
   while (!stack.empty()) {
@@ -117,8 +117,8 @@ absl::StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
 }
 
 // Builds a graph for the loop condition.
-Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
-                          std::unique_ptr<Graph>* cond_output) {
+absl::Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
+                                std::unique_ptr<Graph>* cond_output) {
   VLOG(2) << "Building loop condition for " << frame->name;
   *cond_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = cond_output->get();
@@ -153,9 +153,9 @@ Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
 }
 
 // Builds a graph for the loop body.
-Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
-                     DataTypeVector* arg_types,
-                     std::unique_ptr<Graph>* body_output) {
+absl::Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
+                           DataTypeVector* arg_types,
+                           std::unique_ptr<Graph>* body_output) {
   VLOG(2) << "Building loop body for " << frame->name;
   *body_output = std::make_unique<Graph>(graph.op_registry());
   Graph* output = body_output->get();
@@ -209,9 +209,9 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   return absl::OkStatus();
 }
 
-Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
-                         FunctionLibraryDefinition* library,
-                         const NodeFilter& node_filter) {
+absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
+                               FunctionLibraryDefinition* library,
+                               const NodeFilter& node_filter) {
   if (node_filter && !frame->should_be_functionalized) {
     VLOG(2) << "Skipping functionalization for frame " << frame->name
             << " because it has control flow nodes that are filtered out by "
@@ -505,8 +505,9 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
 }
 }  // namespace
 
-Status FunctionalizeWhileLoop(Graph* graph, FunctionLibraryDefinition* library,
-                              const NodeFilter& node_filter) {
+absl::Status FunctionalizeWhileLoop(Graph* graph,
+                                    FunctionLibraryDefinition* library,
+                                    const NodeFilter& node_filter) {
   // Note: BuildControlFlowInfo() requires that the graph's source node is
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
