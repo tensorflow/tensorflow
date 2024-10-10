@@ -55,7 +55,7 @@ struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
 
 }  // end namespace functor
 
-Status CheckState(const Tensor& state) {
+absl::Status CheckState(const Tensor& state) {
   if (state.dtype() != STATE_ELEMENT_DTYPE) {
     return errors::InvalidArgument("dtype of RNG state variable must be ",
                                    DataTypeString(STATE_ELEMENT_DTYPE),
@@ -68,7 +68,7 @@ Status CheckState(const Tensor& state) {
   return absl::OkStatus();
 }
 
-Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
+absl::Status CheckPhiloxState(const Tensor& state, int64_t alg_tag_skip = 0) {
   static_assert(std::is_same<StateElementType, int64_t>::value,
                 "StateElementType must be int64");
   static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
@@ -113,7 +113,7 @@ absl::StatusOr<ConcreteRngAlgorithm> GetAlg(OpKernelContext* ctx,
 }
 
 template <typename Device, typename Distribution>
-Status UpdateVariableAndFill(
+absl::Status UpdateVariableAndFill(
     OpKernelContext* ctx, Distribution dist, int state_input_idx,
     bool read_alg_from_state, ConcreteRngAlgorithm alg, int64_t output_size,
     typename Distribution::ResultElementType* output_data) {
@@ -190,7 +190,7 @@ class StatefulRandomOp : public OpKernel {
 };
 
 template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
+absl::Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   auto dtype = DataTypeToEnum<T>::v();
   if (tensor.dims() != 0) {
     return errors::InvalidArgument("input ", std::to_string(input_idx),

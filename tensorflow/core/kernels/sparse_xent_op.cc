@@ -33,7 +33,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Index>
-Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
+absl::Status CheckInvalidLabelIndex(const Tensor& labels, int64_t max_index) {
   if (labels.NumElements() == 0) return absl::OkStatus();
   const auto label_values = labels.vec<Index>();
   int64_t bad_index;

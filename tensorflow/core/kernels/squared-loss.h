@@ -63,7 +63,7 @@ class SquaredLossUpdater : public DualLossUpdater {
   inline double SmoothnessConstant() const final { return 1.0; }
 
   // Labels don't require conversion for linear regression.
-  Status ConvertLabel(float* const example_label) const final {
+  absl::Status ConvertLabel(float* const example_label) const final {
     return absl::OkStatus();
   }
 };

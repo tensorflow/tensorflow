@@ -29,9 +29,9 @@ namespace {
 
 class StringFormatGraphTest : public OpsTestBase {
  protected:
-  Status Init(int num_inputs, DataType input_type,
-              const string& template_ = "%s", const string& placeholder = "%s",
-              int summarize = 3) {
+  absl::Status Init(int num_inputs, DataType input_type,
+                    const string& template_ = "%s",
+                    const string& placeholder = "%s", int summarize = 3) {
     TF_CHECK_OK(NodeDefBuilder("op", "StringFormat")
                     .Input(FakeInput(num_inputs, input_type))
                     .Attr("template", template_)

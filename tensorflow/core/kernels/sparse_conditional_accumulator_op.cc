@@ -43,7 +43,7 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
 
   // TODO(tanzheny): actually switch it to resource. You won't be able to use
   // it with cond2 otherwise.
-  Status CheckSignature(OpKernelContext* ctx) override {
+  absl::Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
     return absl::OkStatus();
   }

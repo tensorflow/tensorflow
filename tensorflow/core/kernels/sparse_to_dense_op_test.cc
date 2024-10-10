@@ -240,7 +240,7 @@ static void BM_SparseToDense(::testing::benchmark::State& state) {
                   .Input(FakeInput(DT_FLOAT))
                   .Finalize(&sparse_node_def));
 
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), sparse_node_def,
                                               TF_GRAPH_DEF_VERSION, &status));

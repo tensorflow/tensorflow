@@ -22,9 +22,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-inline Status CheckKeyCounterShape(int minimum_counter_size,
-                                   TensorShape const& key_shape,
-                                   TensorShape const& counter_shape) {
+inline absl::Status CheckKeyCounterShape(int minimum_counter_size,
+                                         TensorShape const& key_shape,
+                                         TensorShape const& counter_shape) {
   if (!(key_shape.dims() == 1 && key_shape.dim_size(0) == RNG_KEY_SIZE)) {
     return errors::InvalidArgument(
         "key must have shape [", RNG_KEY_SIZE, "], not ",

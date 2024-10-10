@@ -30,8 +30,8 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
-                   random::PhiloxRandom::ResultType* out_counter) {
+absl::Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
+                         random::PhiloxRandom::ResultType* out_counter) {
   // Grab the two seeds
   uint64 seed0;
   uint64 seed1;

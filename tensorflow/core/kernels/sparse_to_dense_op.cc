@@ -46,10 +46,10 @@ namespace tensorflow {
 
 namespace {
 
-Status CheckSparseToDenseShapes(const Tensor& indices,
-                                const Tensor& output_shape,
-                                const Tensor& sparse_values,
-                                const Tensor& default_value) {
+absl::Status CheckSparseToDenseShapes(const Tensor& indices,
+                                      const Tensor& output_shape,
+                                      const Tensor& sparse_values,
+                                      const Tensor& default_value) {
   // sparse_indices
   if (indices.dims() > 2) {
     return errors::InvalidArgument(

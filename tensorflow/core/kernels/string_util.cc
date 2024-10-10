@@ -19,7 +19,8 @@ limitations under the License.
 namespace tensorflow {
 
 // Sets unit value based on str.
-Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding) {
+absl::Status ParseUnicodeEncoding(const string& str,
+                                  UnicodeEncoding* encoding) {
   if (str == "UTF-8") {
     *encoding = UnicodeEncoding::UTF8;
   } else if (str == "UTF-16-BE") {
@@ -35,7 +36,7 @@ Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding) {
 }
 
 // Sets unit value based on str.
-Status ParseCharUnit(const string& str, CharUnit* unit) {
+absl::Status ParseCharUnit(const string& str, CharUnit* unit) {
   if (str == "BYTE") {
     *unit = CharUnit::BYTE;
   } else if (str == "UTF8_CHAR") {
