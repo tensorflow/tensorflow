@@ -469,6 +469,10 @@ proto::MtkNeuronSettings ConvertMtkNeuronSettings(
     proto_settings.set_neuron_config_path(settings.neuron_config_path()->str());
   }
 
+  proto_settings.set_real_time(settings.real_time());
+  proto_settings.set_inference_abort_time_ms(
+      settings.inference_abort_time_ms());
+
   return proto_settings;
 }
 

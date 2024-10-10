@@ -572,6 +572,8 @@ TEST_F(ConversionTest, MtkNeuronSettings) {
   input_settings->compile_options = {"TEST_COMPILE_OPTIONS"};
   input_settings->accelerator_names = {"TEST_ACCELERATOR_NAME"};
   input_settings->neuron_config_path = "TEST_NEURON_CONFIG_PATH";
+  input_settings->real_time = true;
+  input_settings->inference_abort_time_ms = 1;
 
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   const proto::MtkNeuronSettings& output_settings =
@@ -596,6 +598,8 @@ TEST_F(ConversionTest, MtkNeuronSettings) {
   EXPECT_EQ(output_settings.accelerator_names().size(), 1);
   EXPECT_EQ(output_settings.accelerator_names().at(0), "TEST_ACCELERATOR_NAME");
   EXPECT_EQ(output_settings.neuron_config_path(), "TEST_NEURON_CONFIG_PATH");
+  EXPECT_EQ(output_settings.real_time(), true);
+  EXPECT_EQ(output_settings.inference_abort_time_ms(), 1);
 }
 
 TEST_F(ConversionTest, MiniBenchmarkSettings) {

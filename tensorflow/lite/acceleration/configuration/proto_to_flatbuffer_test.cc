@@ -184,6 +184,8 @@ TEST(ConversionTest, MtkNeuronSettings) {
   const std::string kCompileOptions = "TEST_COMPILE_OPTIONS";
   const std::string kAcceleratorName = "TEST_ACCELERATOR_NAME";
   const std::string kNeuronConfigPath = "TEST_NEURON_CONFIG_PATH";
+  const bool kRealTime = true;
+  const int32_t kInferenceAbortTimeMs = 1;
 
   // Create the proto settings.
   proto::TFLiteSettings input_settings;
@@ -198,6 +200,8 @@ TEST(ConversionTest, MtkNeuronSettings) {
   mtk_neuron_settings->add_compile_options(kCompileOptions);
   mtk_neuron_settings->add_accelerator_names(kAcceleratorName);
   mtk_neuron_settings->set_neuron_config_path(kNeuronConfigPath);
+  mtk_neuron_settings->set_real_time(kRealTime);
+  mtk_neuron_settings->set_inference_abort_time_ms(kInferenceAbortTimeMs);
   flatbuffers::FlatBufferBuilder flatbuffers_builder;
 
   // Convert.
@@ -231,6 +235,9 @@ TEST(ConversionTest, MtkNeuronSettings) {
             kAcceleratorName);
   EXPECT_EQ(output_mtk_neuron_settings->neuron_config_path()->str(),
             kNeuronConfigPath);
+  EXPECT_EQ(output_mtk_neuron_settings->real_time(), kRealTime);
+  EXPECT_EQ(output_mtk_neuron_settings->inference_abort_time_ms(),
+            kInferenceAbortTimeMs);
 }
 
 }  // namespace

@@ -428,7 +428,8 @@ Offset<MtkNeuronSettings> ConvertMtkNeuronSettings(
                                     settings.compile_options().end()),
       builder.CreateVectorOfStrings(settings.accelerator_names().begin(),
                                     settings.accelerator_names().end()),
-      builder.CreateString(settings.neuron_config_path()));
+      builder.CreateString(settings.neuron_config_path()), settings.real_time(),
+      settings.inference_abort_time_ms());
 }
 
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
