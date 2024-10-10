@@ -28,8 +28,6 @@ import "xla/python/ifrt_proxy/common/types.proto";
 import "xla/tsl/protobuf/status.proto";
 import "xla/xla_data.proto";
 
-option cc_enable_arenas = true;
-
 message IfrtProxyVersion {
   int32 protocol_version = 1;
 }
@@ -57,6 +55,7 @@ message IfrtRequest {
     DeleteArrayRequest delete_array_request = 9;
     CopyArraysRequest copy_arrays_request = 24;
     ReshardRequest reshard_request = 10 [deprecated = true];
+
     FullyReplicatedShardRequest fully_replicated_shard_request = 20;
     IsArrayDeletedRequest is_array_deleted_request = 11;
     DestructArrayRequest destruct_array_request = 12;
@@ -104,6 +103,7 @@ message IfrtResponse {
     DeleteArrayResponse delete_array_response = 9;
     CopyArraysResponse copy_arrays_response = 24;
     ReshardResponse reshard_response = 10 [deprecated = true];
+
     FullyReplicatedShardResponse fully_replicated_shard_response = 20;
     IsArrayDeletedResponse is_array_deleted_response = 11;
     DestructArrayResponse destruct_array_response = 12;
@@ -186,7 +186,6 @@ message InitRequest {}
 // configuration requested by the InitRequest has been successfully applied.
 message InitResponse {
   uint64 session_id = 8;
-
   string platform_name = 1;     // == ifrt::Client::platform_name()
   string platform_version = 2;  // == ifrt::Client::platform_version()
   uint64 platform_id = 3;       // == ifrt::Client::platform_id()
@@ -203,7 +202,8 @@ message InitResponse {
     string debug_string = 4;
     string to_string = 5;
     map<string, proto.Variant> deprecated_attributes = 6
-        [deprecated = true];            // Deprecated since Version 4.
+        [deprecated = true];  // Deprecated since Version 4.
+
     AttributeMapProto attributes = 10;  // New in Version 4.
   }
 
@@ -233,6 +233,7 @@ message InitResponse {
 message CheckFutureRequest {
   fixed64 future_handle = 1;
 }
+
 message CheckFutureResponse {}
 
 // ================ Value-related operations ================
@@ -241,6 +242,7 @@ message CheckFutureResponse {}
 message CheckValueReadyRequest {
   repeated fixed64 value_handles = 1 [packed = false];
 }
+
 message CheckValueReadyResponse {}
 
 // ================ Array-related operations ================
@@ -258,6 +260,7 @@ message MakeArrayFromHostBufferRequest {
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
 }
+
 message MakeArrayFromHostBufferResponse {
   fixed64 array_handle = 1;
 }
@@ -270,6 +273,7 @@ message AssembleArrayFromSingleDeviceArraysRequest {
   repeated fixed64 single_device_array_handles = 3;
   proto.ArrayCopySemantics copy_semantics = 4;
 }
+
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;
 }
@@ -281,6 +285,7 @@ message RemapArraysRequest {
   repeated fixed64 array_handles = 2;
   proto.ArrayCopySemantics copy_semantics = 3;
 }
+
 message RemapArraysResponse {
   repeated fixed64 array_handles = 1;
 }
@@ -292,6 +297,7 @@ message CopyToHostBufferRequest {
   optional proto.ByteStrides byte_strides = 3;
   fixed64 host_buffer_handle = 1;
 }
+
 message CopyToHostBufferResponse {}
 
 // Breaks the given Array into its constituent per-device Arrays.
@@ -300,6 +306,7 @@ message DisassembleIntoSingleDeviceArraysRequest {
   fixed64 array_handle = 1;
   proto.ArrayCopySemantics copy_semantics = 2;
 }
+
 message DisassembleIntoSingleDeviceArraysResponse {
   repeated fixed64 single_device_array_handles = 1;
 }
@@ -310,6 +317,7 @@ message CopyArraysRequest {
   optional string memory_kind = 3;
   proto.ArrayCopySemantics copy_semantics = 4;
 }
+
 message CopyArraysResponse {
   repeated fixed64 array_handles = 1;
 }
@@ -319,6 +327,7 @@ message ReshardRequest {
   ShardingProto sharding = 2;
   proto.ArrayCopySemantics copy_semantics = 3;
 }
+
 message ReshardResponse {
   fixed64 array_handle = 1;
 }
@@ -327,6 +336,7 @@ message FullyReplicatedShardRequest {
   fixed64 array_handle = 1;
   proto.ArrayCopySemantics copy_semantics = 2;
 }
+
 message FullyReplicatedShardResponse {
   fixed64 array_handle = 1;
 }
@@ -339,6 +349,7 @@ message DeleteArrayRequest {
 
   repeated fixed64 array_handle = 2;
 }
+
 message DeleteArrayResponse {
   fixed64 deletion_future_handle = 1;
 }
@@ -346,6 +357,7 @@ message DeleteArrayResponse {
 message IsArrayDeletedRequest {
   fixed64 array_handle = 1;
 }
+
 message IsArrayDeletedResponse {
   bool deleted = 1;
 }
@@ -356,6 +368,7 @@ message DestructArrayRequest {
 
   repeated fixed64 array_handle = 2;
 }
+
 message DestructArrayResponse {}
 
 // ================ Compiler-related operations ================
@@ -366,6 +379,7 @@ message CompileRequest {
   xla.ifrt.Serialized compile_options = 2;
   repeated bytes host_callbacks = 3;
 }
+
 message CompileResponse {
   fixed64 loaded_executable_handle = 1;
   repeated fixed64 loaded_host_callback_handles = 8;
@@ -375,10 +389,12 @@ message CompileResponse {
   string name = 2;
   int32 num_devices = 3;
   repeated int32 addressable_device_ids = 5;
+
   oneof fingerprint {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
   }
+
   fixed64 ready_future_handle = 9;
 
   reserved 4;
@@ -392,6 +408,7 @@ message CompileResponse {
 message LoadedExecutableMetadataRequest {
   fixed64 loaded_executable_handle = 1;
 }
+
 message LoadedExecutableMetadataResponse {
   message ShardingList {
     repeated xla.OpSharding shardings = 1;
@@ -408,6 +425,7 @@ message LoadedExecutableMetadataResponse {
     LayoutList parameter_layouts_list = 4;
     tensorflow.StatusProto parameter_layouts_error = 5;
   }
+
   oneof output_layouts {
     LayoutList output_layouts_list = 6;
     tensorflow.StatusProto output_layouts_error = 7;
@@ -434,6 +452,7 @@ message LoadedExecutableExecuteRequest {
   xla.ifrt.ExecuteOptionsProto execute_options = 3;
   repeated int32 device_ids = 4;
 }
+
 message LoadedExecutableExecuteResponse {
   fixed64 status_handle = 1;
 
@@ -452,6 +471,7 @@ message LoadedExecutableExecuteResponse {
 message LoadedExecutableDeleteRequest {
   fixed64 loaded_executable_handle = 1;
 }
+
 message LoadedExecutableDeleteResponse {
   fixed64 future_handle = 1;
 }
@@ -460,6 +480,7 @@ message LoadedExecutableDeleteResponse {
 message LoadedExecutableIsDeletedRequest {
   fixed64 loaded_executable_handle = 1;
 }
+
 message LoadedExecutableIsDeletedResponse {
   bool is_deleted = 1;
 }
@@ -469,6 +490,7 @@ message LoadedExecutableIsDeletedResponse {
 message LoadedExecutableDestructRequest {
   fixed64 loaded_executable_handle = 1;
 }
+
 message LoadedExecutableDestructResponse {}
 
 // ================ LoadedHostCallback-related operations ================
@@ -481,6 +503,7 @@ message LoadedHostCallbackPollRequest {
   fixed64 loaded_host_callback_handle = 1;
   fixed64 operand_host_buffer_handle = 2;
 }
+
 message LoadedHostCallbackPollResponse {
   optional fixed64 host_callback_execution_handle = 1;
 }
@@ -491,11 +514,13 @@ message LoadedHostCallbackPollResponse {
 // handle.
 message LoadedHostCallbackReturnRequest {
   fixed64 host_callback_execution_handle = 1;
+
   oneof result {
     fixed64 result_host_buffer_handle = 3;
     tensorflow.StatusProto error = 2;
   }
 }
+
 message LoadedHostCallbackReturnResponse {}
 
 // =============  Operations supported by the IFRT `Client` class =============
@@ -505,6 +530,7 @@ message GetDefaultDeviceAssignmentRequest {
   fixed64 num_replicas = 1;
   fixed64 num_partitions = 2;
 }
+
 message GetDefaultDeviceAssignmentResponse {
   xla.DeviceAssignmentProto device_assignment = 1;
 }
