@@ -4738,11 +4738,9 @@ class Subgraph {
         logging_context, node, 2, 1, BuiltinOperator_SUM, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
-    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
-        logging_context, input_tensor, node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
-                                           node->inputs->data[0],
-                                           BuiltinOperator_SUM, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorNonDynamicAllocation(delegate, logging_context, input_tensor,
                                         node->inputs->data[0], node_index));
@@ -4760,41 +4758,65 @@ class Subgraph {
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
     const int num_reduction_axes = NumElements(&axes_tensor);
+    bool all_reductions_supported = false;
+    bool use_legacy_path = false;
+    if (input_tensor.type == kTfLiteFloat32) {
+      all_reductions_supported = true;
+      if (NumDimensions(&input_tensor) == 4) {
+        use_legacy_path = true;
+      }
+    } else {
+      TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+                                             node->inputs->data[0],
+                                             BuiltinOperator_MEAN, node_index));
+    }
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       node->outputs->data[0], node_index));
     switch (num_reduction_axes) {
       case 1:
         if (axes_data[0] != 2) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "unsupported SUM reduction along non-spatial "
-              "axis %d in node %d",
-              axes_data[0], node_index);
-          return kTfLiteError;
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "unsupported SUM reduction along non-spatial "
+                "axis %d in node %d",
+                axes_data[0], node_index);
+            return kTfLiteError;
+          }
         }
         break;
       case 2:
         if (std::min(axes_data[0], axes_data[1]) != 1 ||
             std::max(axes_data[0], axes_data[1]) != 2) {
-          TF_LITE_MAYBE_KERNEL_LOG(
-              logging_context,
-              "unsupported SUM reduction along non-spatial "
-              "axes %d and %d in node %d",
-              std::min(axes_data[0], axes_data[1]),
-              std::max(axes_data[0], axes_data[1]), node_index);
-          return kTfLiteError;
+          if (all_reductions_supported) {
+            use_legacy_path = false;
+          } else {
+            TF_LITE_MAYBE_KERNEL_LOG(
+                logging_context,
+                "unsupported SUM reduction along non-spatial "
+                "axes %d and %d in node %d",
+                std::min(axes_data[0], axes_data[1]),
+                std::max(axes_data[0], axes_data[1]), node_index);
+            return kTfLiteError;
+          }
         }
         break;
       default:
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "unsupported SUM reduction along %d axes in node %d",
-            SizeOfDimension(&axes_tensor, 0), node_index);
-        return kTfLiteError;
+        if (all_reductions_supported) {
+          use_legacy_path = false;
+        } else {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "unsupported SUM reduction along %d axes in node %d",
+              SizeOfDimension(&axes_tensor, 0), node_index);
+          return kTfLiteError;
+        }
     }
 
-    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
-    TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
     int expected_output_dims = 4;
     uint32_t flags = 0;
     if (!reducer_params->keep_dims) {
@@ -4802,9 +4824,15 @@ class Subgraph {
     } else {
       flags = XNN_FLAG_KEEP_DIMS;
     }
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, output_tensor, expected_output_dims,
-        node->outputs->data[0], BuiltinOperator_SUM, node_index));
+    if (NumDimensions(&output_tensor) != expected_output_dims) {
+      if (all_reductions_supported) {
+        use_legacy_path = false;
+      } else {
+        TF_LITE_ENSURE_STATUS(CheckTensorShape(
+            logging_context, output_tensor, expected_output_dims,
+            node->outputs->data[0], BuiltinOperator_SUM, node_index));
+      }
+    }
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         delegate, logging_context, output_tensor, node->outputs->data[0],
         node_index));
@@ -4814,30 +4842,47 @@ class Subgraph {
 
     if (subgraph != nullptr) {
       xnn_status status = xnn_status_success;
-      switch (num_reduction_axes) {
-        case 1:
-          status = xnn_define_global_sum_pooling_1d(
-              subgraph, output_min, output_max,
-              /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-              /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              flags);
-          break;
-        case 2:
-          status = xnn_define_global_sum_pooling_2d(
-              subgraph, output_min, output_max,
-              /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-              /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-              flags);
-          break;
-        default:
-          status = xnn_status_unsupported_parameter;
-          break;
-      }
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
-                           EnumNameBuiltinOperator(BuiltinOperator_SUM),
-                           node_index);
-        return kTfLiteError;
+      if (all_reductions_supported && !use_legacy_path) {
+        std::array<size_t, XNN_MAX_TENSOR_DIMS> reduction_axes;
+        for (int i = 0; i < num_reduction_axes; ++i) {
+          if (axes_data[i] < 0) {
+            reduction_axes[i] = axes_data[i] + NumDimensions(&input_tensor);
+          } else {
+            reduction_axes[i] = axes_data[i];
+          }
+        }
+        std::sort(&reduction_axes[0], &reduction_axes[num_reduction_axes]);
+        status = xnn_define_static_sum(
+            subgraph, num_reduction_axes, reduction_axes.data(),
+            /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            flags);
+      } else {
+        switch (num_reduction_axes) {
+          case 1:
+            status = xnn_define_global_sum_pooling_1d(
+                subgraph, output_min, output_max,
+                /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+                /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+                flags);
+            break;
+          case 2:
+            status = xnn_define_global_sum_pooling_2d(
+                subgraph, output_min, output_max,
+                /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+                /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+                flags);
+            break;
+          default:
+            status = xnn_status_unsupported_parameter;
+            break;
+        }
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(logging_context, "failed to delegate %s node #%d",
+                             EnumNameBuiltinOperator(BuiltinOperator_SUM),
+                             node_index);
+          return kTfLiteError;
+        }
       }
     }
 
