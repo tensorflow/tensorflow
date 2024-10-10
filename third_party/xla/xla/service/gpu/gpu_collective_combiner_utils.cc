@@ -17,13 +17,16 @@ limitations under the License.
 #include <functional>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
 
-namespace xla {
+namespace xla::gpu {
 
 using MemoryAwareScheduler = std::function<absl::StatusOr<HloSchedule>(
     const HloModule*, int64_t, int64_t*)>;
@@ -65,4 +68,11 @@ int64_t ComputeSuggestedCombinerThreshold(
   return base_limit * slop_factor / 100 - peak_memory_bytes;
 }
 
-}  // namespace xla
+absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
+  auto config = instr->backend_config<gpu::GpuBackendConfig>();
+  config->mutable_collective_backend_config()->set_is_pipelined(true);
+  TF_RETURN_IF_ERROR(instr->set_backend_config(*config));
+  return absl::OkStatus();
+}
+
+}  // namespace xla::gpu
