@@ -92,8 +92,8 @@ constexpr char kCompileFunctionComponent[] =
     "TF2XLA_XLA_COMPILER_COMPILE_FUNCTION";
 
 // Checks that arguments `args` match types `types`.
-Status CheckSignature(const DataTypeVector& types,
-                      absl::Span<const XlaCompiler::Argument> args) {
+absl::Status CheckSignature(const DataTypeVector& types,
+                            absl::Span<const XlaCompiler::Argument> args) {
   if (args.size() != types.size()) {
     return errors::Internal("Compilation arguments have ", args.size(),
                             " elements while function has ", types.size());
@@ -151,9 +151,9 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
 // cleaned up here need to change how resources are cleaned up in
 // graph_compiler_test.
 // LINT.IfChange(ExecuteGraph)
-Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
-                    XlaCompilationDevice* device, FunctionLibraryRuntime* flib,
-                    int64_t step_id) {
+absl::Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
+                          XlaCompilationDevice* device,
+                          FunctionLibraryRuntime* flib, int64_t step_id) {
   // Resource cleanup is a bit messy. XlaContext is a ref-countd resource; the
   // resource manager takes ownership via Create, and unrefs via Cleanup.  We
   // explicitly add a reference to ensure the refcount at entry is maintained at
@@ -162,7 +162,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   // The Executor requires us to use ScopedStepContainer. We wrap it in a
   // unique_ptr so we can capture the cleanup status in the end.
   xla_context->Ref();
-  Status status;
+  absl::Status status;
   auto step_container = std::make_unique<ScopedStepContainer>(
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
@@ -194,7 +194,7 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
 //   `resource_updates` is a ResourceUpdate, whose `index` is the index of a
 //   resource variable argument to the computation to be updated, and `type` is
 //   the type of the final output.
-Status BuildComputation(
+absl::Status BuildComputation(
     const std::vector<XlaCompiler::Argument>& args,
     const std::vector<XlaExpression>& retvals,
     const std::map<int, xla::OpSharding>& arg_shardings,
@@ -572,9 +572,9 @@ uint64 XlaCompiler::SignatureHash::operator()(
   return std::hash<string>()(signature.first);
 }
 
-static Status GetFunctionBody(const NameAttrList& function,
-                              FunctionLibraryRuntime* flib_runtime,
-                              const FunctionBody** fbody) {
+static absl::Status GetFunctionBody(const NameAttrList& function,
+                                    FunctionLibraryRuntime* flib_runtime,
+                                    const FunctionBody** fbody) {
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
       function.name(), AttrSlice(&function.attr()), &handle));
@@ -584,9 +584,9 @@ static Status GetFunctionBody(const NameAttrList& function,
   return absl::OkStatus();
 }
 
-Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
-                                     const FunctionBody** fbody,
-                                     const ConfigProto** config_proto) {
+absl::Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
+                                           const FunctionBody** fbody,
+                                           const ConfigProto** config_proto) {
   // The function may be in either the local_flib_runtime_ or flib_runtime_.
   // Look up the function in local first and if it is not found then look up the
   // function in flib_runtime_.
@@ -756,7 +756,7 @@ std::vector<std::string> GetValidControlRets(
   return valid_control_rets;
 }
 
-Status XlaCompiler::CompileSingleOp(
+absl::Status XlaCompiler::CompileSingleOp(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::SingleOpCompileArgument& single_op_compile_argument,
     absl::Span<const Argument> args, XlaCompiler::CompilationResult* result) {
@@ -767,7 +767,7 @@ Status XlaCompiler::CompileSingleOp(
                           single_op_compile_argument.output_dtypes));
 
   *result = {};
-  Status status = ADD_SOURCE_LOCATION(CompileGraph(
+  absl::Status status = ADD_SOURCE_LOCATION(CompileGraph(
       compile_options, node_def.name(), std::move(graph), args, result));
   if (status.ok()) {
     tensorflow::metrics::IncrementPhase2XlaCompilerCounter(
@@ -784,7 +784,7 @@ Status XlaCompiler::CompileSingleOp(
   return status;
 }
 
-Status XlaCompiler::CompileFunction(
+absl::Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options,
     const NameAttrList& fn_name_attrs,
     absl::Span<const XlaCompiler::Argument> args,
@@ -900,7 +900,7 @@ Status XlaCompiler::CompileFunction(
 }
 
 // Computes the XLA shape for argument 'arg'.
-Status XlaCompiler::XLAShapeForArgument(
+absl::Status XlaCompiler::XLAShapeForArgument(
     const XlaCompiler::Argument& arg, bool is_entry_computation,
     const std::optional<xla::HloSharding>& arg_sharding,
     xla::Shape* xla_shape) const {
@@ -1053,7 +1053,7 @@ XlaCompiler::SingleOpCompileArgument::SingleOpCompileArgument(
 
 // Builds XLA computations for each of the arguments to the computation.
 // `args` are the arguments to the computation.
-Status XlaCompiler::BuildArguments(
+absl::Status XlaCompiler::BuildArguments(
     const Graph& graph, const std::vector<XlaCompiler::Argument>& args,
     bool use_tuple_arg, xla::XlaBuilder* builder, XlaContext* context,
     const std::map<int, xla::OpSharding>& arg_shardings,
@@ -1280,8 +1280,8 @@ Status XlaCompiler::BuildArguments(
 namespace {
 
 // Check that the ops of all non-functional nodes have been registered.
-Status ValidateFunctionDef(const FunctionDef* fdef,
-                           const FunctionLibraryDefinition& flib_def) {
+absl::Status ValidateFunctionDef(const FunctionDef* fdef,
+                                 const FunctionLibraryDefinition& flib_def) {
   for (const NodeDef& node : fdef->node_def()) {
     const string& op = node.op();
     if (op == FunctionLibraryDefinition::kGradientOp || flib_def.Find(op)) {
@@ -1298,7 +1298,7 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
 // Returned pointer points to the internal string either in node's attributes
 // or in its NodeDef. This pointer is valid as long as the node has not been
 // modified.
-Status GetPotentialFunctionName(const Node& node, const string** name) {
+absl::Status GetPotentialFunctionName(const Node& node, const string** name) {
   if (node.IsPartitionedCall()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
@@ -1317,14 +1317,15 @@ Status GetPotentialFunctionName(const Node& node, const string** name) {
 
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
 // given device_type, invalid data type, missing attributes...)
-Status ValidateGraph(const Graph* graph,
-                     const FunctionLibraryDefinition& flib_def,
-                     const DeviceType& device_type, const string& name) {
+absl::Status ValidateGraph(const Graph* graph,
+                           const FunctionLibraryDefinition& flib_def,
+                           const DeviceType& device_type, const string& name) {
   // Make sure the XLA compilation kernels are registered.  This operation is
   // idempotent so it is fine if someone called it already.
   XlaOpRegistry::RegisterCompilationKernels();
 
-  auto maybe_error = [&](const Node* node, const Status& s) -> Status {
+  auto maybe_error = [&](const Node* node,
+                         const absl::Status& s) -> absl::Status {
     if (!s.ok()) {
       std::string errmsg = absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
@@ -1358,7 +1359,7 @@ Status ValidateGraph(const Graph* graph,
     const string* function_name;
     TF_RETURN_IF_ERROR(GetPotentialFunctionName(*node, &function_name));
     const FunctionDef* fdef = flib_def.Find(*function_name);
-    Status s;
+    absl::Status s;
     if (fdef) {
       s = ValidateFunctionDef(fdef, flib_def);
       TF_RETURN_IF_ERROR(maybe_error(node, s));
@@ -1443,11 +1444,10 @@ void IncreasePrecisionsToAvoidTF32(xla::HloModuleProto& module) {
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
-                                 string const& name,
-                                 std::unique_ptr<Graph> graph,
-                                 absl::Span<const XlaCompiler::Argument> args,
-                                 CompilationResult* result) {
+absl::Status XlaCompiler::CompileGraph(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
+    CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
   if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(name, kDebugGroupMain)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
@@ -1531,8 +1531,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
     }
   }
 
-  Status execute_status = ExecuteGraph(context, std::move(graph), device_,
-                                       flib_runtime_, NextStepId());
+  absl::Status execute_status = ExecuteGraph(context, std::move(graph), device_,
+                                             flib_runtime_, NextStepId());
   if (!execute_status.ok()) {
     VLOG(1) << "Failed executing graph " << name;
     return execute_status;
@@ -1609,8 +1609,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   return absl::OkStatus();
 }
 
-Status XlaCompiler::GetChannelHandle(const string& key,
-                                     xla::ChannelHandle* channel) {
+absl::Status XlaCompiler::GetChannelHandle(const string& key,
+                                           xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second, client()->CreateChannelHandle());
@@ -1620,8 +1620,8 @@ Status XlaCompiler::GetChannelHandle(const string& key,
   return absl::OkStatus();
 }
 
-Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
-                                                 xla::ChannelHandle* channel) {
+absl::Status XlaCompiler::GetHostToDeviceChannelHandle(
+    const string& key, xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second,
@@ -1632,8 +1632,8 @@ Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
   return absl::OkStatus();
 }
 
-Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
-                                                 xla::ChannelHandle* channel) {
+absl::Status XlaCompiler::GetDeviceToHostChannelHandle(
+    const string& key, xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
     TF_ASSIGN_OR_RETURN(result.first->second,
@@ -1660,7 +1660,7 @@ void SetTransfer(const string& key, absl::Span<const DataType> types,
 
 }  // namespace
 
-Status XlaCompiler::SetDeviceToHostMetadata(
+absl::Status XlaCompiler::SetDeviceToHostMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
@@ -1679,7 +1679,7 @@ Status XlaCompiler::SetDeviceToHostMetadata(
   return absl::OkStatus();
 }
 
-Status XlaCompiler::GetDeviceToHostShapes(
+absl::Status XlaCompiler::GetDeviceToHostShapes(
     const string& key, std::vector<TensorShape>* shapes) const {
   const auto iter = host_compute_sends_.find(key);
   if (iter == host_compute_sends_.end()) {
@@ -1694,7 +1694,7 @@ Status XlaCompiler::GetDeviceToHostShapes(
   return absl::OkStatus();
 }
 
-Status XlaCompiler::SetHostToDeviceMetadata(
+absl::Status XlaCompiler::SetHostToDeviceMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
   if (host_compute_recvs_.find(key) != host_compute_recvs_.end()) {
@@ -1713,7 +1713,7 @@ Status XlaCompiler::SetHostToDeviceMetadata(
   return absl::OkStatus();
 }
 
-Status XlaCompiler::GetHostComputeControlDependency(
+absl::Status XlaCompiler::GetHostComputeControlDependency(
     const string& host_compute_name, xla::XlaOp* handle) {
   const auto iter = host_compute_control_output_.find(host_compute_name);
   if (iter == host_compute_control_output_.end()) {
@@ -1726,7 +1726,7 @@ Status XlaCompiler::GetHostComputeControlDependency(
   return absl::OkStatus();
 }
 
-Status XlaCompiler::SetHostComputeControlDependency(
+absl::Status XlaCompiler::SetHostComputeControlDependency(
     const string& host_compute_name, const xla::XlaOp handle) {
   if (host_compute_control_output_.find(host_compute_name) !=
       host_compute_control_output_.end()) {
@@ -1742,7 +1742,7 @@ void XlaCompiler::PushNodeTokenMapping() {
   node_token_mapping_stack_.emplace(std::map<string, xla::XlaOp>{});
 }
 
-Status XlaCompiler::PopNodeTokenMapping() {
+absl::Status XlaCompiler::PopNodeTokenMapping() {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling PopNodeTokenMapping() when node_token_mapping_stack_ is "
@@ -1752,7 +1752,8 @@ Status XlaCompiler::PopNodeTokenMapping() {
   return absl::OkStatus();
 }
 
-Status XlaCompiler::SetNodeToken(const string& node_name, const xla::XlaOp op) {
+absl::Status XlaCompiler::SetNodeToken(const string& node_name,
+                                       const xla::XlaOp op) {
   if (node_token_mapping_stack_.empty()) {
     return errors::FailedPrecondition(
         "Calling SetNodeToken() when node_token_mapping_stack_ is "
