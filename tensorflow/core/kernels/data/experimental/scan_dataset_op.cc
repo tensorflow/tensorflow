@@ -114,21 +114,21 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       }
     }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
       return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override {
+    absl::Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
       return input_->CheckExternalState();
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       std::vector<Node*> initial_state_nodes;
@@ -173,16 +173,16 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
       bool SymbolicCheckpointCompatible() const override { return true; }
 
-      Status Initialize(IteratorContext* ctx) override {
+      absl::Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(
             ctx, &instantiated_captured_func_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
 
         std::vector<Tensor> next_element;
@@ -202,7 +202,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
 
-        Status s = instantiated_captured_func_->Run(
+        absl::Status s = instantiated_captured_func_->Run(
             ctx, std::move(args), &state_and_output, model_node());
         DCHECK(state_and_output.size() <=
                dataset()->state_types_.size() + output_dtypes().size());
@@ -261,8 +261,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
             dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
@@ -276,8 +276,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         int64_t size;

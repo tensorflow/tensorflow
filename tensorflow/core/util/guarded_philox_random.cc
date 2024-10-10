@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
+absl::Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   // Grab seed Attrs.
   int64_t seed, seed2;
   auto status = context->GetAttr("seed", &seed);
