@@ -36,11 +36,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_TYPES_H_
 
-#include <stdint.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"  // IWYU pragma: export
 
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
@@ -118,42 +118,6 @@ typedef enum TfLiteStatus {
   // done in place.
   kTfLiteOutputShapeNotKnown = 9,
 } TfLiteStatus;
-
-/// Types supported by tensor
-// LINT.IfChange
-typedef enum {
-  kTfLiteNoType = 0,
-  kTfLiteFloat32 = 1,
-  kTfLiteInt32 = 2,
-  kTfLiteUInt8 = 3,
-  kTfLiteInt64 = 4,
-  kTfLiteString = 5,
-  kTfLiteBool = 6,
-  kTfLiteInt16 = 7,
-  kTfLiteComplex64 = 8,
-  kTfLiteInt8 = 9,
-  kTfLiteFloat16 = 10,
-  kTfLiteFloat64 = 11,
-  kTfLiteComplex128 = 12,
-  kTfLiteUInt64 = 13,
-  kTfLiteResource = 14,
-  kTfLiteVariant = 15,
-  kTfLiteUInt32 = 16,
-  kTfLiteUInt16 = 17,
-  kTfLiteInt4 = 18,
-  kTfLiteBFloat16 = 19,
-} TfLiteType;
-// LINT.ThenChange(//tensorflow/lite/profiling/proto/model_runtime_info.proto:EdgeDataType)
-
-/// Legacy. Will be deprecated in favor of `TfLiteAffineQuantization`.
-/// If per-layer quantization is specified this field will still be populated in
-/// addition to `TfLiteAffineQuantization`.
-/// Parameters for asymmetric quantization. Quantized values can be converted
-/// back to float using: `real_value = scale * (quantized_value - zero_point)`
-typedef struct TfLiteQuantizationParams {
-  float scale;
-  int32_t zero_point;
-} TfLiteQuantizationParams;
 
 // --------------------------------------------------------------------------
 // Opaque types used by c_api.h, c_api_opaque.h and common.h.
