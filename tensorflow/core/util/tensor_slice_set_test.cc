@@ -18,10 +18,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/core/status.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 
