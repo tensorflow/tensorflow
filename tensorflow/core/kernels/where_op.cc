@@ -73,9 +73,9 @@ int64_t CountAccumulator<bool>(const bool* begin, const bool* end) {
 
 template <typename T>
 struct NumTrue<CPUDevice, T, int64_t> {
-  static Status Compute(OpKernelContext* ctx, const CPUDevice& d,
-                        typename TTypes<T>::ConstFlat input,
-                        TTypes<int64_t>::UnalignedScalar num_true) {
+  static absl::Status Compute(OpKernelContext* ctx, const CPUDevice& d,
+                              typename TTypes<T>::ConstFlat input,
+                              TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
     return absl::OkStatus();
   }
@@ -93,7 +93,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
     }
   }
 
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const CPUDevice& d,
       typename TTypes<T, DIMS>::ConstTensor input,
       typename TTypes<int64_t>::Matrix output, TIndex* found_true) {
@@ -143,7 +143,7 @@ class WhereCPUOp : public OpKernel {
     int64_t num_true;
     TTypes<int64_t>::UnalignedScalar num_true_t(&num_true);
 
-    Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
+    absl::Status s = functor::NumTrue<CPUDevice, T, int64_t>::Compute(
         context, context->eigen_device<CPUDevice>(), input.flat<T>(),
         num_true_t);
     OP_REQUIRES_OK(context, s);
