@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -124,6 +123,41 @@ TEST_F(CollectiveSendRecvCombinerTest, PartiallyPipelinedSendRecvNoTransform) {
   CollectiveSendRecvCombiner combiner;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
+  const char* kHloStr = R"(
+  ENTRY main {
+    data = f32[] constant(5)
+    recv-start = token[] after-all()
+    recv = (f32[], u32[], token[]) recv(recv-start), channel_id=1
+    send = (f32[], u32[], token[]) send(data, recv-start), channel_id=1
+    recv-done = (f32[], token[]) recv-done(recv), channel_id=1, control-predecessors={send}
+    send-done = token[] send-done(send), channel_id=1
+    ROOT out = f32[] get-tuple-element(recv-done), index=0
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule((kHloStr)));
+  CollectiveSendRecvCombiner combiner;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
+     CHECK: %[[DATA:.*]] = f32[] constant(5)
+     CHECK: %[[RECV_START:.*]] = token[] after-all()
+     CHECK: %[[SEND_ASYNC:.*]] = ((f32[], token[]), (f32[], u32[], token[]), s32[])
+      send-start(f32[] %[[DATA]], token[] %[[RECV_START:.*]])
+     CHECK: %[[RECV_ASYNC:.*]] = ((token[]), (f32[], u32[], token[]), s32[]) 
+      recv-start(token[] %[[RECV_START:.*]]), channel_id=1
+     CHECK: %[[RECV_DONE:.*]] = (f32[], u32[], token[])
+      recv-done(((token[]), (f32[], u32[], token[]), s32[]) %[[RECV_ASYNC:.*]])
+     CHECK: ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], u32[], token[])
+      %[[RECV_DONE:.*]]), index=0
+     CHECK: %[[SEND_DONE:.*]] = (f32[], u32[], token[])
+      send-done(((f32[], token[]), (f32[], u32[], token[]), s32[]) %[[SEND_ASYNC:.*]])
+  )")
+                  .value());
 }
 }  // namespace
 }  // namespace xla

@@ -56,6 +56,18 @@ HloInstruction* BuildWrappedComputationForAsyncStart(
       instruction->CloneWithNewOperands(instruction->shape(), operands));
 }
 
+absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
+                                       HloInstruction* new_instruction) {
+  if (!old_instruction->HasControlDependencies()) {
+    return absl::OkStatus();
+  }
+  for (auto predecessor : old_instruction->control_predecessors()) {
+    TF_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
+    TF_RETURN_IF_ERROR(new_instruction->AddControlDependencyTo(predecessor));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status CreateAsyncStartAndAsyncDone(
     HloInstruction* root, HloComputation::Builder& builder,
     HloInstruction* instruction, HloComputation* computation, HloModule* module,
@@ -76,6 +88,8 @@ absl::Status CreateAsyncStartAndAsyncDone(
             module->AddEmbeddedComputation(builder.Build(root))));
     auto async_done = computation->AddInstruction(
         HloInstruction::CreateAsyncDone(root->shape(), async_start));
+    TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction, async_start));
+    TF_RETURN_IF_ERROR(UpdateControlDependencies(instruction_user, async_done));
     TF_RETURN_IF_ERROR(
         instruction_user->ReplaceAllUsesWithDifferentShape(async_done));
     TF_RETURN_IF_ERROR(
@@ -95,9 +109,8 @@ absl::StatusOr<bool> CollectiveSendRecvCombiner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   int wrapped_computation_index = 0;
-  for (HloComputation* computation : module->MakeComputationPostOrder()) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kSend &&
           instruction->opcode() != HloOpcode::kRecv) {
         continue;
