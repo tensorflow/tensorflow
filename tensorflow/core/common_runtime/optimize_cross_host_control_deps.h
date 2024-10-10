@@ -26,24 +26,24 @@ namespace tensorflow {
 // `cross_host_edges_threshold` control output edges in one host, we create
 // a `NoOp` node in the destination host to proxy the control edges between the
 // oringal node and the destination control output nodes.
-Status OptimizeCrossHostControlOutputEdges(Graph* graph,
-                                           int cross_host_edges_threshold);
+absl::Status OptimizeCrossHostControlOutputEdges(
+    Graph* graph, int cross_host_edges_threshold);
 
 // Optimize the graph by reducing cross-host data output edges.
 // Once we find any nodes in the graph having not less than
 // `cross_host_edges_threshold` data output edges in one host, we create
 // a `IdentityN` node in the destination host to proxy the data edges between
 // the original node and the destination output nodes.
-Status OptimizeCrossHostDataOutputEdges(Graph* graph,
-                                        int cross_host_edges_threshold);
+absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
+                                              int cross_host_edges_threshold);
 
 // Optimize the graph by reducing cross-host control input edges.
 // Once we find any nodes in the graph having not less than
 // `cross_host_edges_threshold` control input edges in one host, we create
 // a `NoOp` node in the source host to proxy the control edges between the
 // source control input nodes and oringal node.
-Status OptimizeCrossHostControlInputEdges(Graph* graph,
-                                          int cross_host_edges_threshold);
+absl::Status OptimizeCrossHostControlInputEdges(Graph* graph,
+                                                int cross_host_edges_threshold);
 
 }  // namespace tensorflow
 
