@@ -30,10 +30,10 @@ class MlirXlaOpKernel : public XlaOpKernel {
   explicit MlirXlaOpKernel(OpKernelConstruction* ctx);
 
  private:
-  Status ContextToXlaArgs(XlaOpKernelContext* ctx,
-                          std::vector<XlaCompiler::Argument>& xla_args);
+  absl::Status ContextToXlaArgs(XlaOpKernelContext* ctx,
+                                std::vector<XlaCompiler::Argument>& xla_args);
   void Compile(XlaOpKernelContext* ctx) override;
-  Status ConstructXlaOp(XlaOpKernelContext* ctx);
+  absl::Status ConstructXlaOp(XlaOpKernelContext* ctx);
 };
 
 }  // namespace tensorflow
