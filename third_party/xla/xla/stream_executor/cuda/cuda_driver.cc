@@ -1255,22 +1255,6 @@ bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   return true;
 }
 
-bool GpuDriver::GetDeviceMemoryInfo(Context* context, int64_t* free_out,
-                                    int64_t* total_out) {
-  ScopedActivateContext activation(context);
-  size_t free = 0;
-  size_t total = 0;
-  auto status = cuda::ToStatus(cuMemGetInfo(&free, &total));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query device memory info: " << status;
-    return false;
-  }
-
-  *free_out = free;
-  *total_out = total;
-  return true;
-}
-
 bool GpuDriver::GetDeviceTotalMemory(CUdevice device, uint64_t* result) {
   size_t value{};
   auto status = cuda::ToStatus(cuDeviceTotalMem(&value, device));
