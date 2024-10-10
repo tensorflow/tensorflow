@@ -1,3 +1,4 @@
+load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -117,7 +118,7 @@ tf_python_pybind_extension(
     ],
 )
 
-tf_python_pybind_extension(
+tsl_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
     copts = tf_profiler_copts(),
@@ -134,13 +135,43 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":profiler_pywrap_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/core/framework:attr_value_proto_cc_impl",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/convert:repository",
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
+        "//tensorflow/python/lib/core:py_exception_registry",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:variant",
+        "@com_google_protobuf//:protobuf",
+        "@local_tsl//tsl/platform:env_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@local_tsl//tsl/profiler/lib:profiler_session_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc_impl",
+        "@local_tsl//tsl/profiler/utils:time_utils_impl",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc_impl",
+        "@local_tsl//tsl/protobuf:histogram_proto_cc_impl",
+        "@local_tsl//tsl/protobuf:rpc_options_proto_cc_impl",
+        "@local_xla//xla:autotuning_proto_cc_impl",
+        "@local_xla//xla:xla_data_proto_cc_impl",
+        "@local_xla//xla:xla_proto_cc_impl",
+        "@local_xla//xla/service:hlo_proto_cc_impl",
+        "@local_xla//xla/service/gpu:backend_configs_cc_impl",
+        "@local_xla//xla/tsl/framework:allocator_registry_impl",
+        "@local_xla//xla/tsl/lib/io:table",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_service_impl",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto_cc_impl",
+        "@local_xla//xla/tsl/protobuf:test_log_proto_cc_impl",
         "@pybind11",
     ],
 )
