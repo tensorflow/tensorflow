@@ -20,7 +20,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
