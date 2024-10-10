@@ -251,11 +251,10 @@ Status MlirFunctionOptimizationPass::Run(
       return module_ref_status.status();
     }
     // Do not fail, just keep the original TF graph unchanged in fallback mode.
-    LOG(WARNING) << "Failed to convert graph to MLIR: "
-                 << module_ref_status.status()
-                 << " , continuing without MlirOptimizationPass because "
-                    "fallback enabled.";
-    return absl::OkStatus();
+    LOG(ERROR) << "Failed to convert graph to MLIR: "
+               << module_ref_status.status()
+               << ", fallback mode is deprecated.";
+    return module_ref_status.status();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
@@ -327,10 +326,10 @@ Status MlirFunctionOptimizationPass::Run(
       //     error to the caller.
       //   Enabled - return error back to the caller.
       if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-        LOG(WARNING) << StringRefToView(name)
-                     << " pass failed, continuing without the pass because the "
-                        "pass has fallback enabled";
+        LOG(INFO) << StringRefToView(name)
+                  << " pass failed, fallback mode is deprecated.";
         mlir_function_pass_fallback_count->GetCell(kFailure)->IncrementBy(1);
+        return pass_status;
       } else if (pass_state == MlirOptimizationPassState::Enabled) {
         return pass_status;
       }
@@ -420,11 +419,10 @@ Status MlirV1CompatGraphOptimizationPass::Run(
     if (pass_state == MlirOptimizationPassState::Enabled) {
       return module_ref_status.status();
     }
-    LOG(WARNING) << "Failed to convert graph to MLIR: "
-                 << module_ref_status.status()
-                 << " , continuing without MlirOptimizationPass because "
-                    "fallback enabled.";
-    return absl::OkStatus();
+    LOG(ERROR) << "Failed to convert graph to MLIR: "
+               << module_ref_status.status()
+               << " , fallback mode is deprecated.";
+    return module_ref_status.status();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
@@ -450,12 +448,10 @@ Status MlirV1CompatGraphOptimizationPass::Run(
     if (pass_state == MlirOptimizationPassState::Enabled) return pass_status;
 
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
-      LOG(WARNING) << StringRefToView(name)
-                   << " pass failed, continuing without the pass because the "
-                      "pass has fallback enabled";
+      LOG(ERROR) << StringRefToView(name) << " fallback mode is deprecated.";
       mlir_graph_optimization_pass_fallback_count->GetCell(kFailure)
           ->IncrementBy(1);
-      return absl::OkStatus();
+      return pass_status;
     }
   } else {
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
