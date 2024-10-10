@@ -5,8 +5,6 @@ package tensorflow.quantization;
 import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
 import "tensorflow/core/framework/tensor.proto";
 
-option cc_enable_arenas = true;
-
 // This file contains the definition of TF GraphDef-level mixed-precision
 // quantization configuration. The configuration will be used in the
 // quantization path to determine the following factors:
@@ -95,9 +93,11 @@ message UnitWiseQuantizationSpec {
     // Type of the op, ex: Conv2D, MatMul, Einsum... The node_name field can
     // be omitted if it is intended to match all nodes with this type.
     string op_type = 1;
+
     // Name of the node. This field accepts re2 regex format. If the node name
     // has enough granularity, the op_type field can be omitted.
     string node_name = 2;
+
     // The function scope. If set, only ops and nodes under specified functions
     // are matched. Note that, Uniqueness of node name isn't guaranteed across
     // functions. But within each function, uniqueness is guaranteed. If users
@@ -105,6 +105,7 @@ message UnitWiseQuantizationSpec {
     // field accepts re2 regex format.
     string func_name = 3;
   }
+
   repeated QuantizationUnit unit = 5;
 
   // Quantization option information for the current unit.
@@ -118,13 +119,17 @@ message UnitWiseQuantizationSpec {
 // NEXT ID: 5
 enum OpSet {
   OP_SET_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
+
   // Uses TF ops that mimic quantization behavior. Used when the corresponding
   // integer op is not yet present.
   TF = 1;
+
   // Uses TF XLA ops
   XLA = 2;
+
   // Uses TF Uniform Quantized ops
   UNIFORM_QUANTIZED = 3;
+
   // Uses the StableHLO Quantizer. StableHLO Quantizer will be available as
   // an option in the TF Quantizer in StableHLO Quantizer v1.
   STABLEHLO = 4;
@@ -173,7 +178,6 @@ message QuantizationOptions {
   // the quantization configuration for units that are not specified in
   // unit-wise configurations.
   QuantizationMethod quantization_method = 1;
-
   OpSet op_set = 2;  // If not specified, it defaults to `XLA`.
 
   // Quantization spec for each unit. This quantization spec will override the
