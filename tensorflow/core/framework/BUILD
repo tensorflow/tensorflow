@@ -717,6 +717,7 @@ cc_library(
     name = "resource_base",
     hdrs = ["resource_base.h"],
     visibility = default_visibility + [
+        "//learning/brain/contrib/scam/kernels:__pkg__",
         "//learning/brain/experimental/jax_pst/grpc/tf:__pkg__",
         "//learning/brain/google/data/core/kernels:__pkg__",
         "//learning/deepmind/tensorflow/queues:__pkg__",
