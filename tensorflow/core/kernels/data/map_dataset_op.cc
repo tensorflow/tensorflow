@@ -88,18 +88,19 @@ class MapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     std::vector<Tensor> args;
     TF_RETURN_IF_ERROR(input_->Get(ctx, index, &args));
@@ -116,9 +117,9 @@ class MapDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -168,7 +169,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -178,17 +179,17 @@ class MapDatasetOp::Dataset : public DatasetBase {
     // NOTE(mrry): This method is thread-safe as long as `input_impl_` and `f`
     // are thread-safe. However, if multiple threads enter this method,
     // outputs may be observed in a non-deterministic order.
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       std::vector<Tensor> args;
       TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &args, end_of_sequence));
       if (*end_of_sequence) {
         return absl::OkStatus();
       }
 
-      Status s = instantiated_captured_func_->Run(ctx, std::move(args),
-                                                  out_tensors, model_node());
+      absl::Status s = instantiated_captured_func_->Run(
+          ctx, std::move(args), out_tensors, model_node());
       if (errors::IsOutOfRange(s)) {
         if (dataset()->preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of
@@ -215,16 +216,16 @@ class MapDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       return absl::OkStatus();
     }

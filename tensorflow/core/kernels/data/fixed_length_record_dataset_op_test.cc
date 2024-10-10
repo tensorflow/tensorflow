@@ -55,7 +55,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     *input_names = {FixedLengthRecordDatasetOp::kFileNames,
                     FixedLengthRecordDatasetOp::kHeaderBytes,
@@ -66,7 +66,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("metadata", "");
     return absl::OkStatus();
@@ -87,9 +87,9 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
 
 class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {};
 
-Status CreateTestFiles(const std::vector<tstring>& filenames,
-                       const std::vector<string>& contents,
-                       CompressionType compression_type) {
+absl::Status CreateTestFiles(const std::vector<tstring>& filenames,
+                             const std::vector<string>& contents,
+                             CompressionType compression_type) {
   if (filenames.size() != contents.size()) {
     return tensorflow::errors::InvalidArgument(
         "The number of files does not match with the contents");

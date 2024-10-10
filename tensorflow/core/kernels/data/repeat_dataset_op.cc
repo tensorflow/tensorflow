@@ -73,7 +73,7 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
     return true;
   }
   std::vector<const DatasetBase*> inputs;
-  Status s = dataset->InputDatasets(&inputs);
+  absl::Status s = dataset->InputDatasets(&inputs);
   if (!s.ok()) {
     return false;
   }
@@ -204,17 +204,18 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index % input_->Cardinality(), out_tensors);
   }
@@ -224,9 +225,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* count = nullptr;
@@ -243,9 +244,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       *end_of_sequence = true;
       return absl::OkStatus();
     }
@@ -257,12 +258,12 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       return absl::OkStatus();
     }
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       return absl::OkStatus();
     }
   };
@@ -274,15 +275,15 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       return dataset()->input_->MakeIterator(
           ctx, this, nested_prefix(prefix(), i_), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
@@ -341,8 +342,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -353,8 +354,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
@@ -414,15 +415,15 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       return dataset()->input_->MakeIterator(
           ctx, this, nested_prefix(prefix(), i_), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       do {
         if (!input_impl_) {
@@ -463,8 +464,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIteration, i_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -475,8 +476,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIteration, &i_));
       int64_t input_empty;
