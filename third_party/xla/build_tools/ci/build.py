@@ -350,10 +350,7 @@ _JAX_CPU_BUILD = Build(
     repo="google/jax",
     image_url=_DEFAULT_IMAGE,
     configs=(
-        "avx_posix",
-        "mkl_open_source_only",
-        "rbe_cpu_linux_py3.12",
-        "tensorflow_testing_rbe_linux",
+        "rbe_linux_x86_64",
     ),
     target_patterns=("//tests:cpu_tests", "//tests:backend_independent_tests"),
     test_env=dict(
@@ -361,7 +358,9 @@ _JAX_CPU_BUILD = Build(
         JAX_SKIP_SLOW_TESTS=1,
     ),
     options=dict(
-        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+        **_DEFAULT_BAZEL_OPTIONS,
+        override_repository="xla=/github/xla",
+        repo_env="HERMETIC_PYTHON_VERSION=3.12",
     ),
 )
 
@@ -370,10 +369,7 @@ _JAX_GPU_BUILD = Build(
     repo="google/jax",
     image_url=_DEFAULT_IMAGE,
     configs=(
-        "avx_posix",
-        "mkl_open_source_only",
-        "rbe_linux_cuda12.3_nvcc_py3.10",
-        "tensorflow_testing_rbe_linux",
+        "rbe_linux_x86_64_cuda",
     ),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
     build_tag_filters=("-multiaccelerator",),
@@ -384,7 +380,9 @@ _JAX_GPU_BUILD = Build(
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
     options=dict(
-        **_DEFAULT_BAZEL_OPTIONS, override_repository="xla=/github/xla"
+        **_DEFAULT_BAZEL_OPTIONS,
+        override_repository="xla=/github/xla",
+        repo_env="HERMETIC_PYTHON_VERSION=3.10",
     ),
 )
 
