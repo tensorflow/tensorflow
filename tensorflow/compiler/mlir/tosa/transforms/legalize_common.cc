@@ -706,14 +706,15 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
           (twice_max_input_scale * twice_max_input_scale) /
           ((static_cast<double>(1 << LEFT_SHIFT * 2)) * result_scale);
 
-      Value x_scaled = buildRescaleToInt32(
-          rewriter, op, x,
-          x_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          x_qtype.getZeroPoint());
-      Value y_scaled = buildRescaleToInt32(
-          rewriter, op, y,
-          y_rescale_scale * static_cast<double>(1 << LEFT_SHIFT),
-          y_qtype.getZeroPoint());
+      Value x_shift = buildRescaleToInt32(rewriter, op, x, (1 << LEFT_SHIFT),
+                                          x_qtype.getZeroPoint());
+      Value y_shift = buildRescaleToInt32(rewriter, op, y, (1 << LEFT_SHIFT),
+                                          y_qtype.getZeroPoint());
+
+      Value x_scaled =
+          buildRescaleToInt32(rewriter, op, x_shift, x_rescale_scale, 0);
+      Value y_scaled =
+          buildRescaleToInt32(rewriter, op, y_shift, y_rescale_scale, 0);
 
       auto sub_op = CreateOpAndInfer<tosa::SubOp>(
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
