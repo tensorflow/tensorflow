@@ -31,13 +31,13 @@ class DeviceResolverDistributed : public DeviceResolverInterface {
  public:
   explicit DeviceResolverDistributed(const DeviceMgr* dev_mgr);
 
-  Status GetDeviceAttributes(const string& device,
-                             DeviceAttributes* attributes) override;
+  absl::Status GetDeviceAttributes(const string& device,
+                                   DeviceAttributes* attributes) override;
 
-  Status GetAllDeviceAttributes(
+  absl::Status GetAllDeviceAttributes(
       const string& task, std::vector<DeviceAttributes>* attributes) override;
 
-  Status UpdateDeviceAttributes(
+  absl::Status UpdateDeviceAttributes(
       const std::vector<DeviceAttributes>& attributes) override;
 
  protected:
