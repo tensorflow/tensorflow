@@ -74,6 +74,7 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 option(TFLITE_ENABLE_METAL "Enable Metal delegate (iOS only)" OFF)
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
+cmake_dependent_option(TFLITE_ENABLE_GLES3 "Enable OpenGL ES 3 delegate" ON "TFLITE_ENABLE_GPU;ANDROID" OFF)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 
@@ -307,14 +308,88 @@ if(TFLITE_ENABLE_GPU)
   find_package(vulkan_headers REQUIRED)
   find_package(fp16_headers REQUIRED)
   # Android NDK already has OpenGL, EGL headers.
-  if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  if(TFLITE_ENABLE_GLES3)
+    find_path(OPENGL_EGL_INCLUDE_DIRS "EGL/egl.h" REQUIRED)
+    find_library(OPENGL_egl_LIBRARY NAMES EGL libEGL REQUIRED)
+    find_path(OPENGL_INCLUDE_DIR "GLES3/gl3.h" REQUIRED) # "version 310 es"
+    find_path(OPENGL_GLES3_INCLUDE_DIR "GLES3/gl3.h" REQUIRED)
+    find_library(OPENGL_gles3_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
+    find_library(OPENGL_gl_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
+    # OpenGL::GLES3 requires CMake 3.27
+    find_package(OpenGL REQUIRED COMPONENTS GLES3)
+    list(APPEND TFLITE_TARGET_DEPENDENCIES OpenGL::GLES3 ${OPENGL_egl_LIBRARY})
+  else()
     find_package(opengl_headers REQUIRED)
     find_package(egl_headers REQUIRED)
   endif()
-  populate_tflite_source_vars(
-    "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
-    FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
-  )
+  # see delegates/gpu/BUILD and search with //tensorflow:android
+  if(ANDROID)
+    populate_tflite_source_vars("delegates/utils" TFLITE_DELEGATES_UTILS_SRCS FILTER "(_test)\\.(cc|h)$")
+    populate_tflite_source_vars("async" TFLITE_ASYNC_SRCS FILTER "(_test)\\.(cc|h)$")
+    list(APPEND TFLITE_DELEGATES_GPU_SRCS
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/android_version.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/android_hardware_buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/async_buffers.cc
+      ${TFLITE_DELEGATES_UTILS_SRCS}
+      ${TFLITE_ASYNC_SRCS}
+    )
+    list(APPEND TFLITE_TARGET_DEPENDENCIES android nativewindow)
+  endif()
+  if(TFLITE_ENABLE_GLES3)
+    if(FLATBUFFERS_FLATC_EXECUTABLE)
+      set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+    else()
+      set(FLATC flatc)
+    endif()
+    # follow flatbuffer_cc_library of Bazel
+    add_custom_command(
+      OUTPUT
+        ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/common_generated.h
+        ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/metadata_generated.h
+        ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/workgroups_generated.h
+        ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/compiled_model_generated.h
+      WORKING_DIRECTORY ${TFLITE_SOURCE_DIR}/delegates/gpu/gl
+      COMMAND ${FLATC} --cpp --scoped-enums -I ${TENSORFLOW_SOURCE_DIR} common.fbs
+      COMMAND ${FLATC} --cpp --scoped-enums -I ${TENSORFLOW_SOURCE_DIR} metadata.fbs
+      COMMAND ${FLATC} --cpp --scoped-enums -I ${TENSORFLOW_SOURCE_DIR} workgroups.fbs
+      COMMAND ${FLATC} --cpp --scoped-enums -I ${TENSORFLOW_SOURCE_DIR} compiled_model.fbs
+    )
+    populate_tflite_source_vars("delegates/gpu/gl" TFLITE_DELEGATES_GPU_GL_SRCS FILTER "(_test)\\.(cc|h)$")
+    populate_tflite_source_vars("delegates/gpu/gl/compiler" TFLITE_DELEGATES_GPU_GL_COMPILER_SRCS FILTER "(_test)\\.(cc|h)$")
+    populate_tflite_source_vars("delegates/gpu/gl/converters" TFLITE_DELEGATES_GPU_GL_CONVERTERS_SRCS FILTER "(_test)\\.(cc|h)$")
+    populate_tflite_source_vars("delegates/gpu/gl/kernels" TFLITE_DELEGATES_GPU_GL_KERNELS_SRCS FILTER "(_test)\\.(cc|h)$")
+    populate_tflite_source_vars("delegates/gpu/gl/workgroups" TFLITE_DELEGATES_GPU_GL_WORKGROUPS_SRCS FILTER "(_test)\\.(cc|h)$")
+    list(APPEND TFLITE_DELEGATES_GPU_SRCS
+      ${TFLITE_DELEGATES_GPU_GL_SRCS}
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/common_generated.h
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/metadata_generated.h
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/workgroups_generated.h
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/compiled_model_generated.h
+      ${TFLITE_DELEGATES_GPU_GL_COMPILER_SRCS}
+      ${TFLITE_DELEGATES_GPU_GL_CONVERTERS_SRCS}
+      ${TFLITE_DELEGATES_GPU_GL_KERNELS_SRCS}
+      ${TFLITE_DELEGATES_GPU_GL_WORKGROUPS_SRCS}
+    )
+  endif()
+  # see delegates/gpu/cl/BUILD
+  if(NOT TFLITE_ENABLE_GLES3)
+    # config_setting: opencl_delegate_no_gl
+    populate_tflite_source_vars(
+      "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
+      FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
+    )
+    list(APPEND TFLITE_TARGET_PRIVATE_DEFINITIONS "CL_DELEGATE_NO_GL")
+  else()
+    # cc_library: egl_sync
+    populate_tflite_source_vars(
+      "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
+      FILTER "(_test)\\.(cc|h)$"
+    )
+    set_source_files_properties(delegates/gpu/cl/egl_sync.cc
+    PROPERTIES
+      COMPILE_DEFINITIONS "EGL_EGLEXT_PROTOTYPES"
+    )
+  endif()
   populate_tflite_source_vars(
     "delegates/gpu/cl/default" TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS
     FILTER "(_test)\\.(cc|h)$"
@@ -731,6 +806,9 @@ endif()
 target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)
+target_compile_definitions(tensorflow-lite
+  PRIVATE ${TFLITE_TARGET_PRIVATE_DEFINITIONS}
 )
 add_library(${PROJECT_NAME}::tensorflowlite ALIAS tensorflow-lite)
 
