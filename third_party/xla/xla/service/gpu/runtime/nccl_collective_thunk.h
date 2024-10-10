@@ -149,12 +149,12 @@ class NcclCollectiveThunk : public Thunk {
     friend class NcclCollectiveThunk;
     friend class NcclCollectiveDoneThunk;
 
-    absl::Status Initialize(se::StreamExecutor* executor);
+    absl::Status Initialize(const InitializeParams& params);
     absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
 
    private:
     absl::Mutex mu_;
-    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
+    absl::flat_hash_map<se::StreamExecutor*, se::Event*> events_
         ABSL_GUARDED_BY(mu_);
   };
 
