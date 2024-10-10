@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
@@ -96,7 +96,8 @@ DTensorMlirPassRunner::ImportGraphToMlir(
 
   // Imports GraphDef to TF MLIR.
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_ref =
-      ConvertGraphToMlir(graph, debug_info, flib_def, import_config, &context_);
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          graph, debug_info, flib_def, import_config, &context_);
 
   // Adds DTensor attributes to ModuleOp.
   mlir::ModuleOp module = module_ref.value().get();
