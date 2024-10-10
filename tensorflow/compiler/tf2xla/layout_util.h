@@ -64,7 +64,7 @@ class XlaShapeLayoutHelpers {
 XlaShapeLayoutHelpers::LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* xla_shape);
