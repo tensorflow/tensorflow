@@ -341,30 +341,6 @@ XlaOp Erfc(XlaOp x) {
   });
 }
 
-// Compute a rational approximation of the error function.
-static XlaOp ErfImpl32(XlaOp x) {
-  static const std::array<float, 5> kAlpha{
-      0.00022905065861350646f, 0.0034082910107109506f, 0.050955695062380861f,
-      0.18520832239976145f, 1.128379143519084f};
-
-  static const std::array<float, 7> kBeta{-1.1791602954361697e-7,
-                                          0.000023547966471313185f,
-                                          0.0010179625278914885f,
-                                          0.014070470171167667f,
-                                          0.11098505178285362f,
-                                          0.49746925110067538f,
-                                          1.0f};
-
-  // We clamp x to be within [-c;c] where c = erfinv(1-2^-23), outside of
-  // which x should be +/-1.
-  constexpr float kErfInvOneMinusHalfULP = 3.7439211627767994f;
-  x = Clamp(ScalarLike(x, -kErfInvOneMinusHalfULP), x,
-            ScalarLike(x, kErfInvOneMinusHalfULP));
-  auto x2 = x * x;
-  return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
-         EvaluatePolynomial<float>(x2, kBeta);
-}
-
 namespace {
 
 // Approximation for the inverse error function from
