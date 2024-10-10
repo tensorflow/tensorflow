@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/collective_combiner_utils.h"
+#include "xla/service/gpu/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
 
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-namespace xla {
+namespace xla::gpu {
 namespace {
 
 using CollectiveCombinerUtilsTest = HloTestBase;
@@ -137,4 +137,4 @@ TEST_F(
 }
 
 }  // namespace
-}  // namespace xla
+}  // namespace xla::gpu

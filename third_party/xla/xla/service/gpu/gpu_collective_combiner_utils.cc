@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/service/collective_utils.h"
 #include "xla/stream_executor/device_description.h"
 
-namespace xla {
+namespace xla::gpu {
 
 using MemoryAwareScheduler = std::function<absl::StatusOr<HloSchedule>(
     const HloModule*, int64_t, int64_t*)>;
@@ -65,4 +65,4 @@ int64_t ComputeSuggestedCombinerThreshold(
   return base_limit * slop_factor / 100 - peak_memory_bytes;
 }
 
-}  // namespace xla
+}  // namespace xla::gpu

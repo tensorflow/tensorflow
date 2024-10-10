@@ -3018,16 +3018,13 @@ xla_cc_test(
 
 cc_library(
     name = "collective_combiner_utils",
-    srcs = ["collective_combiner_utils.cc"],
     hdrs = ["collective_combiner_utils.h"],
     deps = [
-        ":collective_utils",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_reachability",
-        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
@@ -3036,26 +3033,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-    ],
-)
-
-xla_cc_test(
-    name = "collective_combiner_utils_test",
-    srcs = ["collective_combiner_utils_test.cc"],
-    deps = [
-        ":collective_combiner_utils",
-        ":collective_utils",
-        ":hlo_module_config",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:gpu_hlo_schedule",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
