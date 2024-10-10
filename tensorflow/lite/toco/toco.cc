@@ -16,9 +16,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
+#include "tensorflow/lite/toco/args.h"
 #include "tensorflow/lite/toco/model_cmdline_flags.h"
 #include "tensorflow/lite/toco/toco_cmdline_flags.h"
 #include "tensorflow/lite/toco/toco_convert.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 int main(int argc, char** argv) {
   std::string msg;
