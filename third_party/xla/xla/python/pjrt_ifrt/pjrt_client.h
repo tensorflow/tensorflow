@@ -169,10 +169,7 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) override;
 
-  absl::string_view runtime_type() const override {
-    DCHECK(this);
-    return PjRtRuntimeTypeString(pjrt_client_->runtime_type());
-  }
+  absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 
   absl::string_view platform_name() const override {
     DCHECK(this);

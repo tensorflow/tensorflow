@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
-#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
@@ -208,86 +207,89 @@ nb::list PyClient::LiveExecutables() {
 
 absl::Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  auto runtime_type = ifrt_client_->runtime_type();
-  if (runtime_type == PjRtRuntimeTypeString(PjRtRuntimeType::kTfrt)) {
+  ifrt::PlatformId platform_id = ifrt_client_->platform_id();
+  bool is_gpu_client = platform_id == CudaId() || platform_id == RocmId() ||
+                       platform_id == SyclId();
+
+  if (!is_gpu_client) {
     return pjrt_client()->Defragment();
-  } else if (runtime_type ==
-             PjRtRuntimeTypeString(PjRtRuntimeType::kStreamExecutor)) {
-    struct TmpBuffer {
-      // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
-      // can reference the same PjRtBuffer.
-      std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
-      // TODO(skyewm): maybe use py_buffer's HostValue
-      std::shared_ptr<Literal> host_copy;
-    };
+  }
 
-    // Synchronously copy all buffers to host
-    absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
+  struct TmpBuffer {
+    // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
+    // can reference the same PjRtBuffer.
+    std::vector<std::shared_ptr<PjRtBuffer>*> pjrt_buffer_ptrs;
+    // TODO(skyewm): maybe use py_buffer's HostValue
+    std::shared_ptr<Literal> host_copy;
+  };
 
-    for (PyArray_Storage* array = arrays_; array; array = array->next) {
-      // TODO(hyeontaek): Support non-PjRt Arrays.
-      // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
-      // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
-      if (array->ifrt_array == nullptr) {
+  // Synchronously copy all buffers to host
+  absl::flat_hash_map<PjRtBuffer*, TmpBuffer> pjrt_buf_to_tmp_buffer;
+
+  for (PyArray_Storage* array = arrays_; array; array = array->next) {
+    // TODO(hyeontaek): Support non-PjRt Arrays.
+    // TODO(hyeontaek): Re-construct ifrt::Array with new PjRtBuffer so that
+    // std::shared_ptr<PjRtBuffer> does not need to be updated in-place.
+    if (array->ifrt_array == nullptr) {
+      continue;
+    }
+    auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
+        array->ifrt_array.get());
+    if (arr == nullptr) {
+      throw XlaRuntimeError(
+          "This operation is implemented for a PjRt-compatible backend "
+          "only.");
+    }
+    TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
+                        arr->mutable_pjrt_buffers());
+    for (int i = 0; i < pjrt_buffers.size(); ++i) {
+      std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
+      if (pjrt_buf_ptr->IsDeleted()) {
         continue;
       }
-      auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(
-          array->ifrt_array.get());
-      if (arr == nullptr) {
-        throw XlaRuntimeError(
-            "This operation is implemented for a PjRt-compatible backend "
-            "only.");
+      auto [iter, inserted] =
+          pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
+      if (inserted) {
+        TF_ASSIGN_OR_RETURN(iter->second.host_copy,
+                            pjrt_buf_ptr->ToLiteralSync());
       }
-      TF_ASSIGN_OR_RETURN(absl::Span<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
-                          arr->mutable_pjrt_buffers());
-      for (int i = 0; i < pjrt_buffers.size(); ++i) {
-        std::shared_ptr<PjRtBuffer>& pjrt_buf_ptr = pjrt_buffers[i];
-        if (pjrt_buf_ptr->IsDeleted()) {
-          continue;
-        }
-        auto [iter, inserted] =
-            pjrt_buf_to_tmp_buffer.insert({pjrt_buf_ptr.get(), TmpBuffer()});
-        if (inserted) {
-          TF_ASSIGN_OR_RETURN(iter->second.host_copy,
-                              pjrt_buf_ptr->ToLiteralSync());
-        }
-        iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
-      }
+      iter->second.pjrt_buffer_ptrs.push_back(&pjrt_buf_ptr);
     }
-
-    // All buffers successfully copied to host, delete on-device copies.
-    //
-    // Use blocking delete operation to ensure all memory is actually cleared
-    // before we start rewriting buffers.
-    //
-    // Die instead of returning a bad status because program presumably can't
-    // continue if we fail to reconstitute device buffers.
-    for (const auto& it : pjrt_buf_to_tmp_buffer) {
-      PjRtBuffer* pjrt_buf = it.first;
-      TF_CHECK_OK(tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buf)
-                      ->Release(/*wait_for_operations_to_complete=*/true)
-                      .status());
-    }
-
-    // Copy host copies back to device and update PyArrays in-place.
-    for (auto& it : pjrt_buf_to_tmp_buffer) {
-      PjRtBuffer* pjrt_buf = it.first;
-      TmpBuffer& tmp_buffer = it.second;
-      std::unique_ptr<PjRtBuffer> new_copy =
-          pjrt_client()
-              ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
-              .value();
-      TF_CHECK_OK(new_copy->BlockHostUntilReady());
-
-      std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
-      for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
-           tmp_buffer.pjrt_buffer_ptrs) {
-        *pjrt_buffer_ptr = new_pjrt_buf_ptr;
-      }
-    }
-
-    // TODO(skyewm): delete executables?
   }
+
+  // All buffers successfully copied to host, delete on-device copies.
+  //
+  // Use blocking delete operation to ensure all memory is actually cleared
+  // before we start rewriting buffers.
+  //
+  // Die instead of returning a bad status because program presumably can't
+  // continue if we fail to reconstitute device buffers.
+  for (const auto& it : pjrt_buf_to_tmp_buffer) {
+    PjRtBuffer* pjrt_buf = it.first;
+    TF_CHECK_OK(pjrt_buf
+                    ->ReleaseDeviceMemoryOwnership(
+                        /*wait_for_operations_to_complete=*/true)
+                    .status());
+  }
+
+  // Copy host copies back to device and update PyArrays in-place.
+  for (auto& it : pjrt_buf_to_tmp_buffer) {
+    PjRtBuffer* pjrt_buf = it.first;
+    TmpBuffer& tmp_buffer = it.second;
+    std::unique_ptr<PjRtBuffer> new_copy =
+        pjrt_client()
+            ->BufferFromHostLiteral(*tmp_buffer.host_copy, pjrt_buf->device())
+            .value();
+    TF_CHECK_OK(new_copy->GetReadyFuture().Await());
+
+    std::shared_ptr<PjRtBuffer> new_pjrt_buf_ptr(new_copy.release());
+    for (std::shared_ptr<PjRtBuffer>* pjrt_buffer_ptr :
+         tmp_buffer.pjrt_buffer_ptrs) {
+      *pjrt_buffer_ptr = new_pjrt_buf_ptr;
+    }
+  }
+
+  // TODO(skyewm): delete executables?
   return absl::OkStatus();
 }
 
