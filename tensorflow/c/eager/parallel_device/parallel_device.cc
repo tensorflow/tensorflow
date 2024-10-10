@@ -210,7 +210,7 @@ void ParallelTensorDeallocator(void* data) {
 // number of dimensions of a parallel tensor.
 int ParallelTensorNumDims(void* data, TF_Status* status) {
   const std::vector<int64_t>* shape;
-  Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
+  absl::Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
     tsl::Set_TF_Status_from_Status(status, s);
     return -1;
@@ -222,7 +222,7 @@ int ParallelTensorNumDims(void* data, TF_Status* status) {
 // dimension of a parallel tensor.
 int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
   const std::vector<int64_t>* shape;
-  Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
+  absl::Status s = reinterpret_cast<ParallelTensor*>(data)->Shape(&shape);
   if (!s.ok()) {
     tsl::Set_TF_Status_from_Status(status, s);
     return -1;
@@ -233,7 +233,7 @@ int64_t ParallelTensorDim(void* data, int dim_index, TF_Status* status) {
 TF_Buffer* ParallelTensorSummarize(void* data, TF_Status* status) {
   ParallelTensor* parallel_tensor = reinterpret_cast<ParallelTensor*>(data);
   std::string summary;
-  Status cpp_status = parallel_tensor->SummarizeValue(summary);
+  absl::Status cpp_status = parallel_tensor->SummarizeValue(summary);
   if (!cpp_status.ok()) {
     tsl::Set_TF_Status_from_Status(status, cpp_status);
     return nullptr;

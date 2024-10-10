@@ -200,12 +200,12 @@ class ParallelTensor {
   // `shape` output argument. This blocks waiting for async tensors, may return
   // a delayed bad status encountered during async execution, and will return a
   // bad status unless all tensors have the same shape.
-  Status Shape(const std::vector<int64_t>** shape) const;
+  absl::Status Shape(const std::vector<int64_t>** shape) const;
   TF_DataType dtype() const { return dtype_; }
 
   // Sets its output argument to a summary of the values of this tensor on every
   // component device.
-  Status SummarizeValue(std::string& summary);
+  absl::Status SummarizeValue(std::string& summary);
 
   std::vector<TensorHandlePtr> release_tensors() { return std::move(tensors_); }
 
