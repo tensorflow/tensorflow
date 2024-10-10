@@ -1,3 +1,33 @@
+--------------- UPDATE--------------
+# Sentiment Analysis using SVM
+
+## Description
+This feature implements sentiment analysis using a simple neural network model using TensorFlow and Keras for sentiment analysis. It processes text data to classify sentiment into positive or negative categories.
+
+## Installation
+Make sure to install the required libraries if you haven't done so:
+python3 -m venv env
+source env/bin/activate
+pip install tensorflow
+pip install -r requirements.txt
+
+## Usage
+python sentiment_analysis.py
+## Features
+Model Architecture: Utilizes Keras to create a neural network with an embedding layer, a pooling layer, and fully connected layers.
+Training: The model is trained on a small sample dataset consisting of sentences labeled as positive or negative.
+Tokenization: Converts input sentences to sequences for training using Keras's built-in tokenizer.
+## Contributing 
+Guidelines for contributing to the project. 
+
+## License 
+This project is licensed under the MIT License. 
+
+## Acknowledgments 
+Acknowledge any contributors or resources used.
+-----------------------------------------
+
+
 <div align="center">
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
