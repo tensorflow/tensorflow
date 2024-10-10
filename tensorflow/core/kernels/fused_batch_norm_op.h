@@ -32,8 +32,8 @@ enum class FusedBatchNormActivationMode { kIdentity, kRelu };
 
 std::string ToString(FusedBatchNormActivationMode activation_mode);
 
-Status ParseActivationMode(OpKernelConstruction* context,
-                           FusedBatchNormActivationMode* activation_mode);
+absl::Status ParseActivationMode(OpKernelConstruction* context,
+                                 FusedBatchNormActivationMode* activation_mode);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

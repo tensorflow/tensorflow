@@ -70,9 +70,9 @@ string DumpProtoToFile(const string& name,
 // instead via DumpGraphToFile. As the custom dumper may not produce protobufs,
 // allow specifying a file suffix/extension too.
 void SetGraphDumper(
-    std::function<Status(const Graph& graph,
-                         const FunctionLibraryDefinition* flib_def,
-                         WritableFile*)>
+    std::function<absl::Status(const Graph& graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               WritableFile*)>
         dumper,
     string suffix = ".pbtxt");
 
@@ -81,7 +81,7 @@ void SetGraphDumper(
 // The dumper callback will be responsible for writing data to the file.
 string DumpToFile(const string& name, const string& dirname,
                   const string& suffix, absl::string_view type_name,
-                  std::function<Status(WritableFile*)> dumper);
+                  std::function<absl::Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow
 
