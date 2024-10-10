@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 package tensorflow;
-option cc_enable_arenas = true;
 
 // Protocol buffer representing the checkpoint state.
 message CheckpointState {
@@ -13,9 +12,11 @@ message CheckpointState {
   // Note that the value of model_checkpoint_path should be the last item in
   // this list.
   repeated string all_model_checkpoint_paths = 2;
+
   // Unix timestamps corresponding to all_model_checkpoint_paths, indicating
   // when each checkpoint was created.
   repeated double all_model_checkpoint_timestamps = 3;
+
   // Unix timestamp indicating the creation time for the last preserved
   // checkpoint.
   double last_preserved_timestamp = 4;
