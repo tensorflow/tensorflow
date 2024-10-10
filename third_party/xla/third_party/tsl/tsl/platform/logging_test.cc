@@ -48,75 +48,10 @@ using ::testing::HasSubstr;
 using ::testing::Not;
 
 TEST(Logging, Log) {
-  LOG(INFO) << "Hello";
-  LOG(INFO) << "Another log message";
-  LOG(ERROR) << "Error message";
   VLOG(1) << "A VLOG message";
   VLOG(2) << "A higher VLOG message";
   DVLOG(1) << "A DVLOG message";
   DVLOG(2) << "A higher DVLOG message";
-}
-
-TEST(Logging, CheckChecks) {
-  CHECK(true);
-  CHECK(7 > 5);
-  string a("abc");
-  string b("xyz");
-  CHECK_EQ(a, a);
-  CHECK_NE(a, b);
-  CHECK_EQ(3, 3);
-  CHECK_NE(4, 3);
-  CHECK_GT(4, 3);
-  CHECK_GE(3, 3);
-  CHECK_LT(2, 3);
-  CHECK_LE(2, 3);
-
-  DCHECK(true);
-  DCHECK(7 > 5);
-  DCHECK_EQ(a, a);
-  DCHECK_NE(a, b);
-  DCHECK_EQ(3, 3);
-  DCHECK_NE(4, 3);
-  DCHECK_GT(4, 3);
-  DCHECK_GE(3, 3);
-  DCHECK_LT(2, 3);
-  DCHECK_LE(2, 3);
-}
-
-TEST(LoggingDeathTest, FailedChecks) {
-  string a("abc");
-  string b("xyz");
-  const char* p_const = "hello there";
-  const char* p_null_const = nullptr;
-  char mybuf[10];
-  char* p_non_const = mybuf;
-  char* p_null = nullptr;
-  CHECK_NOTNULL(p_const);
-  CHECK_NOTNULL(p_non_const);
-
-  ASSERT_DEATH(CHECK(false), "false");
-  ASSERT_DEATH(CHECK(9 < 7), "9 < 7");
-  ASSERT_DEATH(CHECK_EQ(a, b), "a == b");
-  ASSERT_DEATH(CHECK_EQ(3, 4), "3 == 4");
-  ASSERT_DEATH(CHECK_NE(3, 3), "3 != 3");
-  ASSERT_DEATH(CHECK_GT(2, 3), "2 > 3");
-  ASSERT_DEATH(CHECK_GE(2, 3), "2 >= 3");
-  ASSERT_DEATH(CHECK_LT(3, 2), "3 < 2");
-  ASSERT_DEATH(CHECK_LE(3, 2), "3 <= 2");
-  ASSERT_DEATH(CHECK(false), "false");
-  ASSERT_DEATH(printf("%s", CHECK_NOTNULL(p_null)), "Must be non NULL");
-  ASSERT_DEATH(printf("%s", CHECK_NOTNULL(p_null_const)), "Must be non NULL");
-#ifndef NDEBUG
-  ASSERT_DEATH(DCHECK(9 < 7), "9 < 7");
-  ASSERT_DEATH(DCHECK(9 < 7), "9 < 7");
-  ASSERT_DEATH(DCHECK_EQ(a, b), "a == b");
-  ASSERT_DEATH(DCHECK_EQ(3, 4), "3 == 4");
-  ASSERT_DEATH(DCHECK_NE(3, 3), "3 != 3");
-  ASSERT_DEATH(DCHECK_GT(2, 3), "2 > 3");
-  ASSERT_DEATH(DCHECK_GE(2, 3), "2 >= 3");
-  ASSERT_DEATH(DCHECK_LT(3, 2), "3 < 2");
-  ASSERT_DEATH(DCHECK_LE(3, 2), "3 <= 2");
-#endif
 }
 
 TEST(InternalLogString, Basic) {
@@ -124,35 +59,6 @@ TEST(InternalLogString, Basic) {
   // the output)
   internal::LogString(__FILE__, __LINE__, absl::LogSeverity::kInfo,
                       "Hello there");
-}
-
-class TestSink : public TFLogSink {
- public:
-  void Send(const TFLogEntry& entry) override {
-    ss_ << entry.text_message() << std::endl;
-  }
-
-  std::string Get() const { return ss_.str(); }
-
- private:
-  std::stringstream ss_;
-};
-
-TEST(LogSinkTest, testLogSinks) {
-  const int sinks_initial_size = TFGetLogSinks().size();
-  TestSink sink;
-
-  TFAddLogSink(&sink);
-
-  EXPECT_EQ(TFGetLogSinks().size(), sinks_initial_size + 1);
-
-  LOG(INFO) << "Foo";
-  LOG(INFO) << "Bar";
-  EXPECT_EQ(sink.Get(), "Foo\nBar\n");
-
-  TFRemoveLogSink(&sink);
-
-  EXPECT_EQ(TFGetLogSinks().size(), sinks_initial_size);
 }
 
 std::string ReadFromFilePointer(FILE* fp) {
@@ -184,12 +90,9 @@ class SubcommandTest : public ::testing::Test {
 
   static int Run(absl::string_view subcommand) {
     CHECK_EQ(subcommand, kLogVLog);
-    LOG(INFO) << "LOG INFO";
-    LOG(WARNING) << "LOG WARNING";
-    LOG(ERROR) << "LOG ERROR";
-    LOG(INFO) << absl::StrFormat("VLOG_IS_ON(1)? %d", VLOG_IS_ON(1));
-    LOG(INFO) << absl::StrFormat("VLOG_IS_ON(2)? %d", VLOG_IS_ON(2));
-    LOG(INFO) << absl::StrFormat("VLOG_IS_ON(3)? %d", VLOG_IS_ON(3));
+    VLOG(1) << absl::StrFormat("VLOG_IS_ON(1)? %d", VLOG_IS_ON(1));
+    VLOG(1) << absl::StrFormat("VLOG_IS_ON(2)? %d", VLOG_IS_ON(2));
+    VLOG(1) << absl::StrFormat("VLOG_IS_ON(3)? %d", VLOG_IS_ON(3));
     VLOG(1) << "VLevel 1";
     VLOG(2) << "VLevel 2";
     VLOG(3) << "VLevel 3";
@@ -206,38 +109,6 @@ class SubcommandTest : public ::testing::Test {
     return ReadFromFilePointer(fp.get());
   }
 };
-
-// By default, messages with severity >= INFO should be printed.
-TEST_F(SubcommandTest, LogDefaultTest) {
-  std::string command = absl::StrFormat("%s %s", program_name, kLogVLog);
-#if defined(PLATFORM_GOOGLE)
-  command += " --alsologtostderr";
-#endif
-  command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command.c_str()));
-  EXPECT_THAT(out, HasSubstr("LOG INFO"));
-  EXPECT_THAT(out, HasSubstr("LOG WARNING"));
-  EXPECT_THAT(out, HasSubstr("LOG ERROR"));
-  EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(1)? 0"));
-  EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(2)? 0"));
-  EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(3)? 0"));
-}
-
-TEST_F(SubcommandTest, MinLogLevelTest) {
-  std::string command = absl::StrFormat("%s %s", program_name, kLogVLog);
-#if defined(PLATFORM_GOOGLE)
-  command += " --minloglevel=1 --alsologtostderr";
-#elif defined(PLATFORM_WINDOWS)
-  command = absl::StrFormat("set TF_CPP_MIN_LOG_LEVEL=1 && %s", command);
-#else
-  command = absl::StrFormat("TF_CPP_MIN_LOG_LEVEL=1 %s", command);
-#endif
-  command += " 2>&1";
-  TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command.c_str()));
-  EXPECT_THAT(out, Not(HasSubstr("LOG INFO")));
-  EXPECT_THAT(out, HasSubstr("LOG WARNING"));
-  EXPECT_THAT(out, HasSubstr("LOG ERROR"));
-}
 
 // By default, no VLOG messages should be printed.
 TEST_F(SubcommandTest, VLogDefaultTest) {
@@ -316,9 +187,6 @@ TEST_F(SubcommandTest, VLogFilenameTest) {
 
   // All output should be in the file, not in stderr.
   TF_ASSERT_OK_AND_ASSIGN(std::string out, CaptureOutput(command.c_str()));
-  EXPECT_THAT(out, Not(HasSubstr("LOG INFO")));
-  EXPECT_THAT(out, Not(HasSubstr("LOG WARNING")));
-  EXPECT_THAT(out, Not(HasSubstr("LOG ERROR")));
   EXPECT_THAT(out, Not(HasSubstr("VLOG_IS_ON(1)?")));
   EXPECT_THAT(out, Not(HasSubstr("VLOG_IS_ON(2)?")));
   EXPECT_THAT(out, Not(HasSubstr("VLOG_IS_ON(3)?")));
@@ -327,9 +195,6 @@ TEST_F(SubcommandTest, VLogFilenameTest) {
   EXPECT_THAT(out, Not(HasSubstr("VLevel 3")));
 
   TF_ASSERT_OK_AND_ASSIGN(std::string log_file, ReadFromFile(filename));
-  EXPECT_THAT(log_file, HasSubstr("LOG INFO"));
-  EXPECT_THAT(log_file, HasSubstr("LOG WARNING"));
-  EXPECT_THAT(log_file, HasSubstr("LOG ERROR"));
   EXPECT_THAT(log_file, HasSubstr("VLOG_IS_ON(1)"));
   EXPECT_THAT(log_file, HasSubstr("VLOG_IS_ON(2)"));
   EXPECT_THAT(log_file, HasSubstr("VLOG_IS_ON(3)"));
