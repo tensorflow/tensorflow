@@ -320,7 +320,7 @@ class GraphViewInternal {
  protected:
   explicit GraphViewInternal(GraphDefT* graph) : graph_(graph) {}
 
-  Status AddUniqueNode(NodeDefT* node) {
+  absl::Status AddUniqueNode(NodeDefT* node) {
     auto inserted = nodes_.emplace(node->name(), node);
     return inserted.second
                ? absl::OkStatus()
@@ -330,7 +330,7 @@ class GraphViewInternal {
 
   // TODO(ezhulenev): Remove this function.
   void AddUniqueNodeOrDie(NodeDefT* node) {
-    Status st = AddUniqueNode(node);
+    absl::Status st = AddUniqueNode(node);
     CHECK(st.ok()) << st.message();
   }
 

@@ -55,13 +55,14 @@ class GraphTopologyView {
   // computing graph topology. Example: Tensorflow runtime allows concurrent
   // execution of dequeue/enqueue ops from the same queue resource, but we might
   // want to enforce ordering between them for the purpose of graph analysis.
-  Status InitializeFromGraph(const GraphDef& graph,
-                             absl::Span<const GraphView::Edge> ephemeral_edges,
-                             bool ignore_control_edges);
-  Status InitializeFromGraph(const GraphDef& graph,
-                             absl::Span<const GraphView::Edge> ephemeral_edges);
-  Status InitializeFromGraph(const GraphDef& graph, bool ignore_control_edges);
-  Status InitializeFromGraph(const GraphDef& graph);
+  absl::Status InitializeFromGraph(
+      const GraphDef& graph, absl::Span<const GraphView::Edge> ephemeral_edges,
+      bool ignore_control_edges);
+  absl::Status InitializeFromGraph(
+      const GraphDef& graph, absl::Span<const GraphView::Edge> ephemeral_edges);
+  absl::Status InitializeFromGraph(const GraphDef& graph,
+                                   bool ignore_control_edges);
+  absl::Status InitializeFromGraph(const GraphDef& graph);
 
   bool is_initialized() const { return graph_ != nullptr; }
   int num_nodes() const { return num_nodes_; }
