@@ -77,9 +77,9 @@ struct EinsumHelper {
   // Record and validate the label to dimension mapping. Must be a named
   // (non-broadcasting) label as broadcasting labels don't have a fixed
   // dimension.
-  static Status RecordLabelToDimension(const int label, const int axis,
-                                       const Tensor& input,
-                                       LabelToDimSizes* label_to_dim_sizes) {
+  static absl::Status RecordLabelToDimension(
+      const int label, const int axis, const Tensor& input,
+      LabelToDimSizes* label_to_dim_sizes) {
     const int64_t input_dim = input.dim_size(axis);
     // We know that label_to_dim_sizes has the size to accommodate named labels.
     if (label_to_dim_sizes->at(label) != 0 &&
@@ -95,7 +95,7 @@ struct EinsumHelper {
 
   // Validate input dimensions and populate unnamed labels and their label
   // counts.
-  static Status ProcessDimensions(
+  static absl::Status ProcessDimensions(
       const OpInputList& inputs,
       const absl::InlinedVector<bool, 2UL>& input_has_ellipsis,
       const bool output_has_ellipsis, OperandLabels* input_labels,
@@ -192,8 +192,8 @@ struct EinsumHelper {
   }
 
   // Returns a reshaped input Tensor. The underlying buffer is not copied.
-  static Status CopyFrom(const Tensor& input, const TensorShape& shape,
-                         Tensor* output) {
+  static absl::Status CopyFrom(const Tensor& input, const TensorShape& shape,
+                               Tensor* output) {
     if (output->CopyFrom(input, shape)) return absl::OkStatus();
     return errors::Internal(
         "Encountered error while reshaping a Tensor of shape ",
@@ -214,9 +214,10 @@ struct EinsumHelper {
   // Transpose the input given a permutation. Returns a reference to the input
   // if transposing is not necessary.
   template <typename Device, typename T>
-  static Status TransposeOperand(OpKernelContext* ctx, const Tensor& input,
-                                 const std::vector<int>& permutation,
-                                 Tensor* output) {
+  static absl::Status TransposeOperand(OpKernelContext* ctx,
+                                       const Tensor& input,
+                                       const std::vector<int>& permutation,
+                                       Tensor* output) {
     if (!ShouldTranspose(input.shape(), permutation)) {
       return CopyFrom(input, input.shape(), output);
     }
@@ -240,10 +241,11 @@ struct EinsumHelper {
   // If there are repeated labels in either the input or output, then this
   // strides the input (e.g. iii->i) or inflates it (e.g. i->iii), respectively.
   template <typename Device, typename T>
-  static Status StrideOrInflate(OpKernelContext* ctx, const Tensor& input,
-                                const Labels& labels,
-                                const LabelCounts& label_counts,
-                                const bool should_inflate, Tensor* output) {
+  static absl::Status StrideOrInflate(OpKernelContext* ctx, const Tensor& input,
+                                      const Labels& labels,
+                                      const LabelCounts& label_counts,
+                                      const bool should_inflate,
+                                      Tensor* output) {
     // Return early if there are no repeated indices.
     if (absl::c_all_of(label_counts, [](int c) { return c <= 1; })) {
       return CopyFrom(input, input.shape(), output);
@@ -334,7 +336,7 @@ struct EinsumHelper {
   }
 
   template <typename Device, typename T>
-  static Status ReduceOperand(
+  static absl::Status ReduceOperand(
       OpKernelContext* ctx, const Tensor& input,
       const std::vector<EinsumDimensionType>& label_types,
       const LabelCounts& label_counts, Labels* labels, Labels* free_labels,
@@ -417,8 +419,8 @@ struct EinsumHelper {
   }
 
   // Reshapes a Tensor of shape [b0,b1...bk,N,M] to [prod(b0,b1...bk),N,M].
-  static Status ReshapeToRank3(const Tensor& input, int batch_size,
-                               Tensor* output) {
+  static absl::Status ReshapeToRank3(const Tensor& input, int batch_size,
+                                     Tensor* output) {
     const int rank = input.dims();
     TensorShape output_shape = {batch_size, input.dim_size(rank - 2),
                                 input.dim_size(rank - 1)};
@@ -433,10 +435,9 @@ struct EinsumHelper {
   // functor would be very inefficient. The functor should detect if this is the
   // case and perform componentwise multiplication functor instead.
   template <typename Device, typename T>
-  static Status ContractOperands(OpKernelContext* ctx,
-                                 absl::Span<const Tensor> inputs,
-                                 absl::Span<const bool> swap_free_and_contract,
-                                 Tensor* output) {
+  static absl::Status ContractOperands(
+      OpKernelContext* ctx, absl::Span<const Tensor> inputs,
+      absl::Span<const bool> swap_free_and_contract, Tensor* output) {
     if (inputs.size() == 1)
       return CopyFrom(inputs[0], inputs[0].shape(), output);
     MatMulBCast bcast(inputs[0].shape().dim_sizes(),
