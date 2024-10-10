@@ -37,15 +37,15 @@ static mutex* file_mutex = new mutex();
 
 // Appends the given data to the specified file. It will create the file if it
 // doesn't already exist.
-Status AppendStringToFile(const std::string& fname, StringPiece data,
-                          Env* env) {
+absl::Status AppendStringToFile(const std::string& fname, StringPiece data,
+                                Env* env) {
   // TODO(ckluk): If opening and closing on every log causes performance issues,
   // we can reimplement using reference counters.
   mutex_lock l(*file_mutex);
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
-  Status a = file->Append(data);
-  Status c = file->Close();
+  absl::Status a = file->Append(data);
+  absl::Status c = file->Close();
   return a.ok() ? c : a;
 }
 

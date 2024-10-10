@@ -44,10 +44,9 @@ void QueueOp::Compute(OpKernelContext* context) {
   }
 }
 
-Status QueueOp::VerifyResource(QueueInterface* queue) {
+absl::Status QueueOp::VerifyResource(QueueInterface* queue) {
   return queue->MatchesNodeDef(def());
 }
-
 
 QueueOpKernel::QueueOpKernel(OpKernelConstruction* context)
     : AsyncOpKernel(context) {}

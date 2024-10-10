@@ -56,18 +56,20 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);
+absl::Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);
 
-Status GetElementShapeFromInput(OpKernelContext* c,
-                                const TensorList& tensor_list, int index,
-                                PartialTensorShape* element_shape);
+absl::Status GetElementShapeFromInput(OpKernelContext* c,
+                                      const TensorList& tensor_list, int index,
+                                      PartialTensorShape* element_shape);
 
-Status GetInputList(OpKernelContext* c, int index, const TensorList** list);
+absl::Status GetInputList(OpKernelContext* c, int index,
+                          const TensorList** list);
 
-Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
-                                   int32_t output_index,
-                                   const TensorList& input_list,
-                                   TensorList** output_list);
+absl::Status ForwardInputOrCreateNewList(OpKernelContext* c,
+                                         int32_t input_index,
+                                         int32_t output_index,
+                                         const TensorList& input_list,
+                                         TensorList** output_list);
 
 // TODO(penporn): Move this to a proper place.
 inline bool IsPluggableDevice(OpKernelContext* c) {
@@ -825,8 +827,8 @@ class TensorListFromTensor : public OpKernel {
 
 // Scatters values in `value` into `list`. Assumes that `indices` are valid.
 template <typename Device, typename T>
-Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
-               TensorList* list) {
+absl::Status Scatter(OpKernelContext* c, const Tensor& value,
+                     const Tensor& indices, TensorList* list) {
   const auto copy_tensor = IsPluggableDevice(c) ? &CopyTensorPluggableDevice<T>
                                                 : &CopyTensor<Device, T>;
   for (int index = 0; index < indices.NumElements(); ++index) {
@@ -978,14 +980,14 @@ class TensorListScatter : public OpKernel {
 };
 
 template <typename Device>
-Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
-                           const TensorList& b, TensorList* out) {
+absl::Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
+                                 const TensorList& b, TensorList* out) {
   return TensorListBinaryAdd(c, a, b, out, BinaryAddTensors<Device>);
 }
 
 template <typename Device>
-Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
-                           TensorList* y) {
+absl::Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
+                                 TensorList* y) {
   return TensorListZerosLike(c, x, y, ZerosLikeTensor<Device>);
 }
 
