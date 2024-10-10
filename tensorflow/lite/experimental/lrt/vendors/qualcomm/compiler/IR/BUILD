@@ -12,81 +12,85 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_dynamic_lib", "lite_rt_lib", "lite_rt_test")
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler:__subpackages__"],
 )
 
-lite_rt_dynamic_lib(
-    name = "qnn_compiler_plugin",
-    srcs = ["qnn_compiler_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h"],
-    export_lrt_only = True,
-    shared_lib_name = "qnn_compiler_plugin_so",
-    so_name = "libLrtQnnCompilerPlugin.so",
+cc_library(
+    name = "qnn_tensor",
+    srcs = ["qnn_tensor.cc"],
+    hdrs = ["qnn_tensor.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
-    ungrte = True,
-    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
-        ":qnn_compose_graph",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
     ],
 )
 
-lite_rt_test(
-    name = "qnn_compiler_plugin_test",
-    srcs = [
-        "qnn_compiler_plugin_test.cc",
-    ],
-    linkstatic = True,
+cc_test(
+    name = "qnn_tensor_test",
+    srcs = ["qnn_tensor_test.cc"],
     tags = [
-        # Tests with ungrte deps do not currently work on forge.
-        "no-remote-exec",
-        "notap",
         # Don't build/test in OS until qnn is available.
         "nobuilder",
         "no_oss",
-        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
-        "nosan",
     ],
-    use_sys_malloc = True,
     deps = [
-        ":qnn_compiler_plugin",  # buildcleaner: keep
-        "@com_google_absl//absl/log:absl_check",
+        ":qnn_tensor",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/core:model",
-        "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
         "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )
 
-lite_rt_lib(
-    name = "qnn_compose_graph",
-    srcs = ["qnn_compose_graph.cc"],
-    hdrs = ["qnn_compose_graph.h"],
+cc_library(
+    name = "qnn_op",
+    srcs = ["qnn_op.cc"],
+    hdrs = ["qnn_op.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
     deps = [
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_op",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+    ],
+)
+
+cc_test(
+    name = "qnn_op_test",
+    srcs = ["qnn_op_test.cc"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+    ],
+    deps = [
+        ":qnn_op",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/qnn/IR:qnn_op",
-        "//tensorflow/lite/experimental/lrt/qnn/IR:qnn_tensor",
-        "//tensorflow/lite/experimental/lrt/qnn_sdk:qnn_manager",
+        "//tensorflow/lite/experimental/lrt/test:common",
     ],
 )

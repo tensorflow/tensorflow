@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/qnn_compose_graph.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/qnn_compose_graph.h"
 
 #include <alloca.h>
 #include <stdio.h>
@@ -29,16 +29,16 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_op.h"
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_tensor.h"
-#include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_op.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_tensor.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 #define LRT_RETURN_STATUS_IF_QNN_NOT_OK(expr) \
   if (QNN_SUCCESS != (expr)) {                \
     return kLrtStatusErrorNotFound;           \
   }
 
-namespace qnn {
+namespace lrt::qnn {
 
 namespace {
 
@@ -352,4 +352,4 @@ LrtStatus ComposeGraph(QnnManager& qnn, LrtSubgraph subgraph,
   return kLrtStatusOk;
 }
 
-}  // namespace qnn
+}  // namespace lrt::qnn

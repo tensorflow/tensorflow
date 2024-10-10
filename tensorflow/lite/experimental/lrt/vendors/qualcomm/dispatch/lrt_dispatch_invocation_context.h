@@ -27,7 +27,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/registry.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 class LrtDispatchDeviceContextT;
 
@@ -35,9 +35,9 @@ class LrtDispatchInvocationContextT {
  public:
   using Ptr = std::unique_ptr<LrtDispatchInvocationContextT>;
 
-  ~LrtDispatchInvocationContextT();
+  ~LrtDispatchInvocationContextT() = default;
 
-  static absl::StatusOr<Ptr> Create(const lrt::qnn::Qnn& qnn,
+  static absl::StatusOr<Ptr> Create(lrt::qnn::QnnManager& qnn_manager,
                                     LrtDispatchDeviceContextT& device_context,
                                     const void* exec_bytecode_ptr,
                                     size_t exec_bytecode_size,
@@ -58,18 +58,17 @@ class LrtDispatchInvocationContextT {
 
  private:
   LrtDispatchInvocationContextT(
-      const lrt::qnn::Qnn& qnn,
+      lrt::qnn::QnnManager& qnn_manager,
       const lrt::qnn::ContextBinaryInfo& context_binary_info,
       LrtDispatchDeviceContextT& device_context,
-      Qnn_ContextHandle_t context_handle, Qnn_ProfileHandle_t profile_handle,
-      int graph_index, Qnn_GraphHandle_t graph_handle);
+      Qnn_ProfileHandle_t profile_handle, int graph_index,
+      Qnn_GraphHandle_t graph_handle);
 
   absl::Status AttachBuffer(Qnn_Tensor_t& tensor,
                             LrtTensorBufferHandle tensor_buffer_handle);
 
-  const lrt::qnn::Qnn& qnn_;
+  lrt::qnn::QnnManager& qnn_manager_;
   LrtDispatchDeviceContextT& device_context_;
-  Qnn_ContextHandle_t context_handle_;
   Qnn_ProfileHandle_t profile_handle_;
   int graph_index_;
   Qnn_GraphHandle_t graph_handle_;

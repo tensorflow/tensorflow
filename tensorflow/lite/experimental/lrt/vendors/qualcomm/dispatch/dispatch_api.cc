@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <memory>
+#include <optional>
 
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
@@ -22,19 +23,27 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_api.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/lrt_dispatch_device_context.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/lrt_dispatch_invocation_context.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 namespace {
+
+using ::lrt::qnn::QnnManager;
+using ::lrt::qnn::SetupAll;
 
 static constexpr const int VERSION_MAJOR = 0;
 static constexpr const int VERSION_MINOR = 1;
 static constexpr const int VERSION_PATCH = 0;
 
-lrt::qnn::Qnn* TheQnn;
+QnnManager& Qnn() {
+  static QnnManager qnn_manager;
+  return qnn_manager;
+}
+
 char BuildId[256];
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -42,23 +51,19 @@ char BuildId[256];
 // /////////////////////////////////////////////////////////////////////////////
 
 LrtStatus Initialize() {
-  if (auto status = lrt::qnn::Qnn::Create(); !status.ok()) {
-    ABSL_LOG(ERROR) << "Initialization failure: " << status;
-    return kLrtStatusErrorRuntimeFailure;
-  } else {
-    TheQnn = status->release();
-  }
+  LRT_RETURN_STATUS_IF_NOT_OK(SetupAll(/*soc_model=*/std::nullopt, Qnn(),
+                                       /*load_system=*/true,
+                                       /*load_context=*/false));
 
   Qnn_ApiVersion_t qnn_api_version;
-  if (auto status =
-          TheQnn->qnn_interface().backendGetApiVersion(&qnn_api_version);
+  if (auto status = Qnn().Api()->backendGetApiVersion(&qnn_api_version);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get QNN API version: " << status;
     return kLrtStatusErrorRuntimeFailure;
   }
 
   const char* build_id;
-  if (auto status = TheQnn->qnn_interface().backendGetBuildId(&build_id);
+  if (auto status = Qnn().Api()->backendGetBuildId(&build_id);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get QNN build ID: " << status;
     return kLrtStatusErrorRuntimeFailure;
@@ -92,7 +97,7 @@ LrtStatus GetCapabilities(int* capabilities) {
 }
 
 LrtStatus DeviceContextCreate(LrtDispatchDeviceContext* device_context) {
-  if (auto status_or = LrtDispatchDeviceContextT::Create(*TheQnn);
+  if (auto status_or = LrtDispatchDeviceContextT::Create(Qnn());
       status_or.ok()) {
     *device_context = status_or->release();
     return kLrtStatusOk;
@@ -170,7 +175,7 @@ LrtStatus InvocationContextCreate(
     size_t exec_bytecode_size, const char* function_name, int num_inputs,
     int num_outputs, LrtDispatchInvocationContext* invocation_context) {
   auto context = LrtDispatchInvocationContextT::Create(
-      *TheQnn, *device_context, exec_bytecode_ptr, exec_bytecode_size,
+      Qnn(), *device_context, exec_bytecode_ptr, exec_bytecode_size,
       function_name);
   if (!context.ok()) {
     ABSL_LOG(ERROR) << "Failed to create context from context binary: "
