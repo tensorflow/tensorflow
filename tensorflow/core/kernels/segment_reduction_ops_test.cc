@@ -67,7 +67,7 @@ static void BM_UnsortedSegmentReduction(::testing::benchmark::State& state,
                   .Input(FakeInput(DT_INT32))
                   .Input(FakeInput(DT_INT32))
                   .Finalize(&reduction_node_def));
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> reduction_op(
       CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(),
                      reduction_node_def, TF_GRAPH_DEF_VERSION, &status));
@@ -131,7 +131,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
                   .Input(FakeInput(DT_FLOAT))
                   .Input(FakeInput(DataTypeToEnum<Index>::v()))
                   .Finalize(&reduction_node_def));
-  Status status;
+  absl::Status status;
   std::unique_ptr<OpKernel> reduction_op(
       CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(),
                      reduction_node_def, TF_GRAPH_DEF_VERSION, &status));

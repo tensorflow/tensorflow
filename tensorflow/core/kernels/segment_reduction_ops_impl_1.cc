@@ -19,8 +19,9 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 // Static routines not in the templated class to reduce code size
-Status ValidateSegmentReduction(OpKernelContext* context, const Tensor& input,
-                                const Tensor& segment_ids) {
+absl::Status ValidateSegmentReduction(OpKernelContext* context,
+                                      const Tensor& input,
+                                      const Tensor& segment_ids) {
   if (!TensorShapeUtils::IsVectorOrHigher(input.shape())) {
     return errors::InvalidArgument("input must be at least rank 1");
   }
@@ -38,11 +39,11 @@ Status ValidateSegmentReduction(OpKernelContext* context, const Tensor& input,
 }
 
 // check routines not in the templated class to reduce code size
-Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
-                                        OpKernelContext* context,
-                                        const Tensor& data,
-                                        const Tensor& segment_ids,
-                                        const Tensor& num_segments) {
+absl::Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
+                                              OpKernelContext* context,
+                                              const Tensor& data,
+                                              const Tensor& segment_ids,
+                                              const Tensor& num_segments) {
   if (!TensorShapeUtils::IsScalar(num_segments.shape())) {
     return errors::InvalidArgument(
         "num_segments should be a scalar, not shape ",
@@ -58,11 +59,11 @@ Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
   return absl::OkStatus();
 }
 
-Status ValidateSparseSegmentReduction(OpKernelContext* context,
-                                      const Tensor& input,
-                                      const Tensor& indices,
-                                      const Tensor& segment_ids,
-                                      bool has_num_segments) {
+absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
+                                            const Tensor& input,
+                                            const Tensor& indices,
+                                            const Tensor& segment_ids,
+                                            bool has_num_segments) {
   if (has_num_segments) {
     const Tensor& num_segments_t = context->input(3);
     if (!TensorShapeUtils::IsScalar(num_segments_t.shape())) {

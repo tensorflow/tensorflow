@@ -76,18 +76,18 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace internal {
 
-Status ValidateSegmentReduction(OpKernelContext* c, const Tensor& input,
-                                const Tensor& segment_ids);
-Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
-                                        OpKernelContext* context,
-                                        const Tensor& data,
-                                        const Tensor& segment_ids,
-                                        const Tensor& num_segments);
-Status ValidateSparseSegmentReduction(OpKernelContext* context,
-                                      const Tensor& input,
-                                      const Tensor& indices,
-                                      const Tensor& segment_ids,
-                                      bool has_num_segments);
+absl::Status ValidateSegmentReduction(OpKernelContext* c, const Tensor& input,
+                                      const Tensor& segment_ids);
+absl::Status ValidateUnsortedSegmentReduction(OpKernel* op_kernel,
+                                              OpKernelContext* context,
+                                              const Tensor& data,
+                                              const Tensor& segment_ids,
+                                              const Tensor& num_segments);
+absl::Status ValidateSparseSegmentReduction(OpKernelContext* context,
+                                            const Tensor& input,
+                                            const Tensor& indices,
+                                            const Tensor& segment_ids,
+                                            bool has_num_segments);
 }  // namespace internal
 
 // This operator handles reducing segments along the first dimension.
@@ -1363,9 +1363,9 @@ class SparseSegmentSqrtNGradOp
 template <typename Device, class T, typename Index, typename SegmentId>
 class SparseSegmentGradV2OpCommon {
  public:
-  Status operator()(OpKernelContext* context,
-                    SparseSegmentReductionOperation operation,
-                    typename AsyncOpKernel::DoneCallback done = nullptr) {
+  absl::Status operator()(OpKernelContext* context,
+                          SparseSegmentReductionOperation operation,
+                          typename AsyncOpKernel::DoneCallback done = nullptr) {
     const Tensor& input = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
