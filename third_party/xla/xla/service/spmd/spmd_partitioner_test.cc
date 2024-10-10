@@ -9634,10 +9634,12 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled =
-      AllOf(op::Shape("f32[4,4]"),
-            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
-                                      op::Subtract())));
+  auto table_look_up =
+      AllOf(op::Shape("s32[]"),
+            op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Constant(), table_look_up)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }

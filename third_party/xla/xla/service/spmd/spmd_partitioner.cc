@@ -1537,14 +1537,9 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
         i, padded_base_shape.dimensions(i) *
                temp_target_sharding.tile_assignment().dim(i));
   }
-  auto offsets = MakePartitionOffsets(padded_base_shape, temp_target_sharding,
-                                      state_.partition_id, state_.b);
-  auto old_offsets = MakePartitionOffsets(padded_base_shape, sharding(),
-                                          state_.partition_id, state_.b);
-  for (int64_t i = 0; i < offsets.size(); ++i) {
-    offsets[i] = state_.b->AddInstruction(HloInstruction::CreateBinary(
-        offsets[i]->shape(), HloOpcode::kSubtract, offsets[i], old_offsets[i]));
-  }
+  auto offsets =
+      MakePartitionOffsetsDiff(padded_base_shape, temp_target_sharding,
+                               sharding(), state_.partition_id, state_.b);
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
       shard_shape, padded_hlo.value(), offsets, shard_shape.dimensions()));
   slice->set_sharding(temp_target_sharding);
