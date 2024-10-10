@@ -67,7 +67,7 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
         worker_session_.get(), true, nullptr);
   }
 
-  Status ConstructFunctionGraphHelper(
+  absl::Status ConstructFunctionGraphHelper(
       const OpDef& sig, test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const FunctionLibraryDefinition& lib_def, GraphDef* g,
@@ -86,19 +86,20 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
                               local_handle, done);
   }
 
-  Status InstantiateAndRun(
+  absl::Status InstantiateAndRun(
       const string& function_name, const FunctionLibraryDefinition& lib_def,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    Status status;
+    absl::Status status;
     Notification instantiate_done;
-    cluster_flr_->Instantiate(function_name, lib_def, attrs, options, &handle,
-                              [&status, &instantiate_done](const Status& s) {
-                                status = s;
-                                instantiate_done.Notify();
-                              });
+    cluster_flr_->Instantiate(
+        function_name, lib_def, attrs, options, &handle,
+        [&status, &instantiate_done](const absl::Status& s) {
+          status = s;
+          instantiate_done.Notify();
+        });
     instantiate_done.WaitForNotification();
     if (!status.ok()) {
       return status;
@@ -108,7 +109,7 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     FunctionLibraryRuntime::Options opts;
     std::vector<Tensor> out;
     cluster_flr_->Run(opts, handle, args, &out,
-                      [&status, &done](const Status& s) {
+                      [&status, &done](const absl::Status& s) {
                         status = s;
                         done.Notify();
                       });
