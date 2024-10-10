@@ -39,7 +39,7 @@ class WorkerSession;
 class RemoteRendezvous : public Rendezvous {
  public:
   // Fully construct the RemoteRendezvous.
-  virtual Status Initialize(WorkerSession* session) = 0;
+  virtual absl::Status Initialize(WorkerSession* session) = 0;
 
   // In remote eager, set current instance as context default rendezvous which
   // will be used for eager op-by-op execution.
@@ -91,8 +91,9 @@ class RendezvousMgrInterface {
                               Rendezvous::DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvLocalAsync.
-  virtual Status RecvLocal(int64_t step_id, const Rendezvous::ParsedKey& parsed,
-                           Tensor* val, bool* is_dead) = 0;
+  virtual absl::Status RecvLocal(int64_t step_id,
+                                 const Rendezvous::ParsedKey& parsed,
+                                 Tensor* val, bool* is_dead) = 0;
 
   // Removes rendezvous for "step_id".
   //

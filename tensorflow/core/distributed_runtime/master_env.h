@@ -99,8 +99,8 @@ struct MasterEnv {
       std::vector<string> filtered_worker_list)>
       master_session_factory;
 
-  std::function<Status(const WorkerCacheFactoryOptions&,
-                       WorkerCacheInterface**)>
+  std::function<absl::Status(const WorkerCacheFactoryOptions&,
+                             WorkerCacheInterface**)>
       worker_cache_factory;
 
   // Generates per-step CollectiveExecutors and has access to utilities
