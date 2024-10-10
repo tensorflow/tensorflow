@@ -435,7 +435,7 @@ void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
     }                                                                        \
     break
 
-Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
+absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   // TODO(rmlarsen): Support more general shapes.
   // TODO(lyandy): Change `value` to be int64 once int64 -> qint32 is supported.
   if (tensor->NumElements() != 1) {
@@ -470,7 +470,7 @@ Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
 
 #undef HANDLE_CASE
 
-Status CheckAttrExists(const NodeDef& node, const string& key) {
+absl::Status CheckAttrExists(const NodeDef& node, const string& key) {
   if (!HasNodeAttr(node, key)) {
     return errors::InvalidArgument("Node '", node.name(), "' lacks '", key,
                                    "' attr: ", node.ShortDebugString());
@@ -478,14 +478,15 @@ Status CheckAttrExists(const NodeDef& node, const string& key) {
   return absl::OkStatus();
 }
 
-Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys) {
+absl::Status CheckAttrsExist(const NodeDef& node,
+                             absl::Span<const string> keys) {
   for (const string& key : keys) {
     TF_RETURN_IF_ERROR(CheckAttrExists(node, key));
   }
   return absl::OkStatus();
 }
 
-Status IsKernelRegisteredForNode(
+absl::Status IsKernelRegisteredForNode(
     absl::string_view node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, absl::string_view node_device,
@@ -500,7 +501,7 @@ Status IsKernelRegisteredForNode(
                        node_op, node_device, node_attrs, nullptr, nullptr);
 }
 
-Status IsKernelRegisteredForNode(const NodeDef& node) {
+absl::Status IsKernelRegisteredForNode(const NodeDef& node) {
   return IsKernelRegisteredForNode(node.name(),
                                    node.has_experimental_debug_info(),
                                    node.experimental_debug_info(), node.op(),

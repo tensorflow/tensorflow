@@ -379,10 +379,11 @@ int NumNonControlDataOutputs(const NodeDef& node, const NodeMap& node_map);
 void DedupControlInputs(NodeDef* node);
 
 // Returns an error if an attribute with the given key does not exist in node.
-Status CheckAttrExists(const NodeDef& node, const string& key);
+absl::Status CheckAttrExists(const NodeDef& node, const string& key);
 
 // Returns an error if attributes with the given keys do not exist in node.
-Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
+absl::Status CheckAttrsExist(const NodeDef& node,
+                             absl::Span<const string> keys);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
@@ -407,14 +408,14 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 
 // Returns OkStatus() if a kernel is registered for node.op() on the device
 // type corresponding to node.device().
-Status IsKernelRegisteredForNode(
+absl::Status IsKernelRegisteredForNode(
     absl::string_view node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, absl::string_view node_device,
     AttrSlice node_attrs);
-Status IsKernelRegisteredForNode(const NodeDef& node);
+absl::Status IsKernelRegisteredForNode(const NodeDef& node);
 
-Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
+absl::Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
 void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
 
