@@ -16,12 +16,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_PERSISTENT_COMPILATION_CACHE_H_
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -55,7 +58,19 @@ class IfrtPersistentCompilationCache {
               std::unique_ptr<xla::ifrt::CompileOptions> options)>
           value_fn);
 
+  // The implementation of this API should be thread-safe. It generates a key
+  // for looking up the Tf2HloResult in the persistent cache and it will return
+  // the Tf2HloResult if hits cache. Otherwise, it will call the `value_fn` to
+  // generate and return the Tf2HloResult.
+  virtual absl::StatusOr<Tf2HloResult> LookupTf2HloResultOrCreate(
+      mlir::ModuleOp mlir_module, absl::string_view main_func,
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      tsl::RCReference<xla::ifrt::DeviceList> device_list,
+      xla::ifrt::Client* client,
+      absl::AnyInvocable<absl::StatusOr<Tf2HloResult>()> value_fn);
+
   virtual bool IsXlaCompilationCacheEnabled() const { return false; }
+  virtual bool IsTf2HloCompilationCacheEnabled() const { return false; }
 };
 
 }  // namespace ifrt_serving
