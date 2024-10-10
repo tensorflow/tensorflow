@@ -69,25 +69,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
   static void DestroyStream(Context* context, GpuStreamHandle stream);
 
-  // CUDA/HIP events can explicitly disable event TSC retrieval for some
-  // presumed performance improvement if timing is unnecessary.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
-  enum class EventFlags { kDefault, kDisableTiming };
-
-  // Creates a new event associated with the given context.
-  // result is an outparam owned by the caller and must not be null.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g450687e75f3ff992fe01662a43d9d3db
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#cuda-driver-data-types
-  static absl::Status InitEvent(Context* context, GpuEventHandle* result,
-                                EventFlags flags);
-
-  // Destroys *event and turns it into a nullptr. event may not be null, but
-  // *event may be, via cuEventDestroy/hipEventDestroy
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1g593ec73a8ec5a5fc031311d3e4dca1ef
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#event-management
-  static absl::Status DestroyEvent(Context* context, GpuEventHandle* event);
-
   // Allocates a GPU memory space of size bytes associated with the given
   // context via cuMemAlloc/hipMalloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb82d2a09844a58dd9e744dc31e8aa467

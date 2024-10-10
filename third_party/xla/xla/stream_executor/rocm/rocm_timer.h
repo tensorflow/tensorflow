@@ -22,24 +22,29 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 
 namespace stream_executor::gpu {
 
 class RocmTimer : public EventBasedTimer {
  public:
-  RocmTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
-            std::unique_ptr<GpuEvent> stop_event, GpuStream* stream);
+  RocmTimer(RocmTimer&&) = default;
+  RocmTimer& operator=(RocmTimer&&) = default;
 
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
+  static absl::StatusOr<RocmTimer> Create(Context* context, GpuStream* stream);
+
  private:
+  RocmTimer(Context* context, RocmEvent start_event, RocmEvent stop_event,
+            GpuStream* stream);
+
   bool is_stopped_ = false;
   Context* context_;
   GpuStream* stream_;
-  std::unique_ptr<GpuEvent> start_event_;
-  std::unique_ptr<GpuEvent> stop_event_;
+  RocmEvent start_event_;
+  RocmEvent stop_event_;
 };
 }  // namespace stream_executor::gpu
 

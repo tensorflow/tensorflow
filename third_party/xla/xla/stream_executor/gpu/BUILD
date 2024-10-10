@@ -218,31 +218,6 @@ gpu_only_cc_library(
     ]),
 )
 
-gpu_only_cc_library(
-    name = "gpu_event_header",
-    hdrs = ["gpu_event.h"],
-    deps = [
-        ":context",
-        ":gpu_types_header",
-        "//xla/stream_executor:event",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-gpu_only_cc_library(
-    name = "gpu_event",
-    srcs = ["gpu_event.cc"],
-    hdrs = ["gpu_event.h"],
-    deps = [
-        ":context",
-        ":gpu_driver_header",
-        ":gpu_types_header",
-        "//xla/stream_executor:event",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
-    ],
-)
-
 cc_library(
     name = "gpu_executor_header",
     hdrs = ["gpu_executor.h"],
@@ -367,7 +342,6 @@ gpu_only_cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
     deps = [
-        ":gpu_event_header",
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor:device_memory",
@@ -390,7 +364,6 @@ gpu_only_cc_library(
     hdrs = ["gpu_stream.h"],
     deps = [
         ":gpu_driver_header",
-        ":gpu_event_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
         ":gpu_types_header",
