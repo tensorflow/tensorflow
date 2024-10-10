@@ -48,8 +48,10 @@ class XlaTensor {
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
   // is replaced and the managed memory deallocated.
-  Status AllocateShapedBuffer(DataType dtype, const xla::Shape& on_device_shape,
-                              xla::LocalClient* client, int device_ordinal);
+  absl::Status AllocateShapedBuffer(DataType dtype,
+                                    const xla::Shape& on_device_shape,
+                                    xla::LocalClient* client,
+                                    int device_ordinal);
 
   // Some Tensors can have complex on-device shapes, including tuple shapes. To
   // manage the memory for these tensors a ShapedBuffer may be required.
@@ -87,7 +89,7 @@ class XlaTensor {
 
   // Refresh the status of streams_defined_on_. Return the first not-OK stream's
   // status or OK.
-  Status RefreshStatusOfStreams();
+  absl::Status RefreshStatusOfStreams();
 
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);

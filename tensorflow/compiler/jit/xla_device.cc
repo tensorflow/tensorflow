@@ -65,7 +65,7 @@ namespace tensorflow {
 // Default PaddedShapeFn implementation that simply returns the unpadded
 // on-device shape. This is accurate for CPU and GPU devices that neither
 // transpose nor pad tensors.
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+absl::Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
   const tensorflow::XlaTensor* xla_tensor =
       tensorflow::XlaTensor::FromTensor(&tensor);
   if (xla_tensor == nullptr) {
@@ -169,7 +169,7 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return device_type_;
 }
 
-/*static*/ Status XlaDevice::GetMetadataFromDevice(
+/*static*/ absl::Status XlaDevice::GetMetadataFromDevice(
     DeviceBase* device, const XlaDevice::Metadata** metadata) {
   *metadata = nullptr;
   XlaDevice* xla_device = dynamic_cast<XlaDevice*>(device->UnderlyingDevice());
@@ -184,13 +184,13 @@ const DeviceType& XlaDevice::Metadata::jit_device_type() const {
   return absl::OkStatus();
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelContext* ctx,
-                                           const Metadata** metadata) {
+/* static */ absl::Status XlaDevice::GetMetadata(OpKernelContext* ctx,
+                                                 const Metadata** metadata) {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
-/* static */ Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
-                                           const Metadata** metadata) {
+/* static */ absl::Status XlaDevice::GetMetadata(OpKernelConstruction* ctx,
+                                                 const Metadata** metadata) {
   return GetMetadataFromDevice(ctx->device(), metadata);
 }
 
@@ -287,15 +287,14 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   return xla_allocator_;
 }
 
-Status XlaDevice::EnsureDeviceContextOk() {
+absl::Status XlaDevice::EnsureDeviceContextOk() {
   mutex_lock lock(mu_);
   return GetDeviceContextLocked().status();
 }
 
-Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
-                                       const string& name,
-                                       std::shared_ptr<se::Stream>* stream,
-                                       bool* stream_was_changed) {
+absl::Status XlaDevice::EnsureStreamOkLocked(
+    xla::Backend* backend, const string& name,
+    std::shared_ptr<se::Stream>* stream, bool* stream_was_changed) {
   if (!(*stream) || !(*stream)->ok()) {
     xla::StreamPool::Ptr ptr;
     TF_ASSIGN_OR_RETURN(ptr, backend->BorrowStream(device_ordinal_));
@@ -438,13 +437,13 @@ absl::StatusOr<DeviceContext*> XlaDevice::GetDeviceContextDefault() {
   return GetDeviceContextWithIndex(0);
 }
 
-Status XlaDevice::UseAcceleratorDeviceInfo() {
+absl::Status XlaDevice::UseAcceleratorDeviceInfo() {
   mutex_lock lock(mu_);
   use_accelerator_device_info_ = true;
   return GetDeviceContextLocked().status();
 }
 
-Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
+absl::Status XlaDevice::TryGetDeviceContext(DeviceContext** out_context) {
   TF_ASSIGN_OR_RETURN(auto device_context, GetDeviceContextDefault());
   device_context->Ref();
   *out_context = device_context;
@@ -482,7 +481,7 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
   op_kernel->ComputeAsync(context, done);
 }
 
-Status XlaDevice::Sync() {
+absl::Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
   tsl::profiler::TraceMe activity("XlaDevice::Sync",
                                   tsl::profiler::TraceMeLevel::kInfo);
@@ -493,7 +492,7 @@ Status XlaDevice::Sync() {
   }
   if (!stream) return absl::OkStatus();
 
-  Status status = stream->BlockHostUntilDone();
+  absl::Status status = stream->BlockHostUntilDone();
   TF_RETURN_IF_ERROR(status);
   if (!stream->ok()) {
     return errors::Internal("XlaDevice::Sync() failed.");
@@ -502,17 +501,16 @@ Status XlaDevice::Sync() {
   return absl::OkStatus();
 }
 
-Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
-                                      const TensorProto& tensor_proto,
-                                      const AllocatorAttributes alloc_attrs,
-                                      Tensor* tensor) {
+absl::Status XlaDevice::MakeTensorFromProto(
+    DeviceContext* device_context, const TensorProto& tensor_proto,
+    const AllocatorAttributes alloc_attrs, Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
     return errors::InvalidArgument("Cannot parse tensor from proto: ",
                                    tensor_proto.DebugString());
   }
 
-  Status status;
+  absl::Status status;
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
   } else {
@@ -530,9 +528,9 @@ Status XlaDevice::MakeTensorFromProto(DeviceContext* device_context,
   return status;
 }
 
-Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
-                                      const AllocatorAttributes alloc_attrs,
-                                      Tensor* tensor) {
+absl::Status XlaDevice::MakeTensorFromProto(
+    const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
+    Tensor* tensor) {
   VLOG(1) << "XlaDevice::MakeTensorFromProto";
   DeviceContext* device_context;
   TF_ASSIGN_OR_RETURN(device_context, GetDeviceContextDefault());
@@ -549,13 +547,14 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
-void XlaDevice::SetHandleDeviceErrorCallback(std::function<Status()> callback) {
+void XlaDevice::SetHandleDeviceErrorCallback(
+    std::function<absl::Status()> callback) {
   mutex_lock lock(mu_);
   device_error_callback_ = callback;
 }
 
-Status XlaDevice::HandleDeviceError() {
-  std::function<Status()> local_device_error_callback;
+absl::Status XlaDevice::HandleDeviceError() {
+  std::function<absl::Status()> local_device_error_callback;
   {
     mutex_lock lock(mu_);
     local_device_error_callback = device_error_callback_;
@@ -566,7 +565,7 @@ Status XlaDevice::HandleDeviceError() {
   return absl::OkStatus();
 }
 
-Status XlaDevice::RefreshStatus() {
+absl::Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -575,7 +574,7 @@ Status XlaDevice::RefreshStatus() {
   if (!stream) {
     return absl::OkStatus();
   }
-  Status status = stream->RefreshStatus();
+  absl::Status status = stream->RefreshStatus();
   if (!status.ok()) {
     // Ignore errors from HandleDeviceError, since by definition the status is
     // already non-ok, so there's nothing extra to report if HandleDeviceError

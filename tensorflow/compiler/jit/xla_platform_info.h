@@ -116,7 +116,7 @@ absl::StatusOr<DeviceType> GetCompilationDeviceType(
 // point to it. Uses flags from `MarkForCompilationPassFlags` for configuring
 // the persistor used in the DeviceCompiler. The platform ID from
 // `platform_info` must not be null in CPU case.
-Status BuildXlaDeviceCompiler(
+absl::Status BuildXlaDeviceCompiler(
     DeviceBase* dev, FunctionLibraryRuntime* flr,
     const XlaPlatformInfo& platform_info, DeviceType compilation_device_type,
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
@@ -132,7 +132,7 @@ Status BuildXlaDeviceCompiler(
 // non-XLA devices aren't supported yet. This is because:
 // 1. PjRtClient doesn't support data transfer for non-XLA devices yet
 // 2. Fetching the PjRtClient for non-XLA devices is also not supported yet
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
     FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
@@ -141,7 +141,7 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
 
 // Same as the above function but takes the resource manager `rm` instead of an
 // OpKernelContext.
-Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+absl::Status GetOrCreatePjRtDeviceCompilerAndProfiler(
     const XlaPlatformInfo& platform_info, ResourceMgr* rm,
     FunctionLibraryRuntime* flr,
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
