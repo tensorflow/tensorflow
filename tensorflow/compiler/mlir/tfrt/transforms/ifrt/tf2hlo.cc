@@ -180,11 +180,17 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
+  std::string device_type = "XLA_TPU_JIT";
+  if (ifrt_client.platform_name() == xla::CudaName()) {
+    device_type = "XLA_GPU_JIT";
+  }
+  VLOG(1) << "device_type: " << device_type;
+
   TF_ASSIGN_OR_RETURN(
       tensorflow::XlaCompiler::CompilationResult compilation_result,
       tensorflow::tf2xla::v2::LegalizeMlirToHlo(
-          mlir_to_hlo_args, compile_metadata, use_tuple_args,
-          /*device_type=*/"XLA_TPU_JIT", custom_legalization_passes,
+          mlir_to_hlo_args, compile_metadata, use_tuple_args, device_type,
+          custom_legalization_passes,
           /*shape_determination_fns=*/
           tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns(
               tensorflow::UseNoPreferenceLayoutFn(), shape_representation_fn),
