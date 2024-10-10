@@ -165,9 +165,7 @@ py_strict_library(
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -175,9 +173,7 @@ filegroup(
     srcs = [
         "converter_python_api.h",
     ],
-    visibility = [
-        "//tensorflow/python:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
