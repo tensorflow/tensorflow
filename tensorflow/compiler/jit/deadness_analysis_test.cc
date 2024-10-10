@@ -148,9 +148,8 @@ InductionVarInfo CreateInductionVariable(const Scope& root,
   Output next_iteration =
       ops::NextIteration(root.WithOpName(prefix + "/next_iteration"), iv_next);
 
-  CHECK(root.graph()
-            ->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1)
-            .ok());
+  CHECK_OK(
+      root.graph()->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1));
   root.graph()->AddControlEdge(iv.output.node(), increment_by.node());
   root.graph()->AddControlEdge(iv.output.node(), final_value.node());
 
@@ -211,9 +210,8 @@ DependentInductionVar CreateDependentLoopInvariantValue(
                            latch.output_false);
   Output next_iteration = ops::NextIteration(
       root.WithOpName(prefix + "/next_iteration"), latch.output_true);
-  CHECK(root.graph()
-            ->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1)
-            .ok());
+  CHECK_OK(
+      root.graph()->UpdateEdge(next_iteration.node(), 0, iv.output.node(), 1));
   return {iv.output, latch};
 }
 

@@ -56,7 +56,7 @@ void FlushAllListeners() {
     listener->Flush();
     return absl::OkStatus();
   });
-  CHECK(s.ok());
+  CHECK_OK(s);
 }
 }  // namespace
 
