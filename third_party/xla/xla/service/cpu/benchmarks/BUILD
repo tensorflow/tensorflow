@@ -21,7 +21,7 @@ cc_library(
     hdrs = ["hlo_benchmark_runner.h"],
     deps = [
         "//xla:literal",
-        "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:pjrt_client",

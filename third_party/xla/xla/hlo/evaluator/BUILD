@@ -134,7 +134,7 @@ xla_cc_test(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/client:xla_builder",
+        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:dynamic_dimension_inference",
