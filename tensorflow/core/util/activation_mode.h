@@ -38,8 +38,8 @@ enum ActivationMode {
 };
 
 // Specialization to parse an attribute directly into a ActivationMode enum.
-Status GetActivationModeFromString(const string& str_value,
-                                   ActivationMode* value);
+absl::Status GetActivationModeFromString(const string& str_value,
+                                         ActivationMode* value);
 
 inline absl::string_view ToString(ActivationMode mode) {
   switch (mode) {
