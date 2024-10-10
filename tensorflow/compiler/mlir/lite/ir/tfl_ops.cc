@@ -3970,6 +3970,78 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
   results.add<FoldPseudoConstOp>(context);
 }
 
+namespace {
+
+// TODO: b/351437662 - Make template parameter and add to all broadcast
+// ops, or as dialect canonicalizer.
+struct FoldBroadcastIntoBinaryElemntwise : public OpRewritePattern<EqualOp> {
+  using OpRewritePattern<EqualOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(EqualOp op,
+                                PatternRewriter& rewriter) const override {
+    bool changed = false;
+    // Check that the result shape is fully defined.
+    auto result_type = mlir::cast<ShapedType>(op.getType());
+    if (!result_type.hasStaticShape()) {
+      return failure();
+    }
+
+    for (int i = 0, e = op->getNumOperands(); i < e; ++i) {
+      auto broadcast = op->getOperands()[i].getDefiningOp<TFL::BroadcastToOp>();
+      if (!broadcast) {
+        continue;
+      }
+
+      // Check that the operand of the broadcast has fully defined shape.
+      auto broadcast_arg_type =
+          mlir::cast<ShapedType>(broadcast.getInput().getType());
+      if (!broadcast_arg_type.hasStaticShape()) {
+        continue;
+      }
+
+      // Check that the other argument has fully defined shape.
+      auto argument_type =
+          mlir::cast<ShapedType>(op->getOperands()[1 - i].getType());
+      if (!argument_type.hasStaticShape()) {
+        continue;
+      }
+
+      // Get the unbroadcasted shapes in the operand order.
+      llvm::SmallVector<llvm::ArrayRef<int64_t>, 2> operand_shapes(2);
+      operand_shapes[i] = broadcast_arg_type.getShape();
+      operand_shapes[1 - i] = argument_type.getShape();
+
+      // Check that the input of the broadcast and the other operand is
+      // broadcast compatible.
+      llvm::SmallVector<int64_t, 4> broadcasted_shape;
+      if (!OpTrait::util::getBroadcastedShape(
+              operand_shapes[0], operand_shapes[1], broadcasted_shape)) {
+        continue;
+      }
+
+      // Check that an implicit broadcast between the operand of the broadcast
+      // and the other argument would result in the same type as the result
+      // type.
+      if (broadcasted_shape != result_type.getShape()) {
+        continue;
+      }
+
+      // Update the operand of the op to be the operand of the broadcast.
+      rewriter.modifyOpInPlace(
+          op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
+      changed = true;
+    }
+    return changed ? success() : failure();
+  }
+};
+
+}  // namespace
+
+void EqualOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                          MLIRContext* context) {
+  results.add<FoldBroadcastIntoBinaryElemntwise>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
