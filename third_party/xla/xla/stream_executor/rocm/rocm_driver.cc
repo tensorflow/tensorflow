@@ -120,18 +120,6 @@ absl::Status GpuDriver::GetDevice(int device_ordinal, hipDevice_t* device) {
       absl::StrCat("failed call to hipDeviceGet: ", ToString(res)));
 }
 
-absl::Status GpuDriver::GetDeviceName(hipDevice_t device,
-                                      std::string* device_name) {
-  static const size_t kCharLimit = 64;
-  absl::InlinedVector<char, 4> chars(kCharLimit);
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
-               "Failed to get device name"));
-  chars[kCharLimit - 1] = '\0';
-  *device_name = chars.begin();
-  return absl::OkStatus();
-}
-
 absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(graph, /*flags=*/0),
@@ -948,14 +936,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::Status GpuDriver::GetComputeCapability(int* cc_major, int* cc_minor,
-                                             hipDevice_t device) {
-  return absl::InternalError(
-      absl::StrFormat("failed to get compute capability for device: %d "
-                      "(unsupported API on AMD Gpus)",
-                      device));
-}
-
 absl::Status GpuDriver::GetPointerAddressRange(hipDeviceptr_t dptr,
                                                hipDeviceptr_t* base,
                                                size_t* size) {
@@ -995,24 +975,6 @@ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
 
   return absl::InternalError(absl::StrCat(
       "failed to query device pointer for memory space: ", ToString(result)));
-}
-
-absl::Status GpuDriver::GetGpuISAVersion(int* version, hipDevice_t device) {
-  hipDeviceProp_t props;
-  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
-  if (result == hipSuccess) {
-    std::string gcnName = props.gcnArchName;
-    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
-    std::string amdgpu_version = gcnName;
-    if (!tokens.empty() && tokens[0].size() >= 3) {
-      amdgpu_version = tokens[0].substr(3);
-    }
-    *version = stoi(amdgpu_version);
-    return absl::OkStatus();
-  }
-  *version = 0;
-  return absl::InternalError(absl::StrFormat(
-      "failed to determine AMDGpu ISA version for device %d", device));
 }
 
 absl::Status GpuDriver::GetGpuGCNArchName(hipDevice_t device,
@@ -1115,11 +1077,6 @@ bool GpuDriver::GetDeviceProperties(hipDeviceProp_t* device_properties,
   }
 
   return true;
-}
-
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(
-    hipDeviceAttribute_t attribute, hipDevice_t device) {
-  return GetSimpleAttribute<int>(device, attribute);
 }
 
 bool GpuDriver::IsEccEnabled(hipDevice_t device, bool* result) {
