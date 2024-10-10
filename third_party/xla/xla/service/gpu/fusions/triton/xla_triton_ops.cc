@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
@@ -30,6 +31,23 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
 #include "mlir/IR/ValueRange.h"
 #include "xla/service/gpu/fusions/triton/xla_triton_dialect.cc.inc"
+#include "triton/Dialect/Triton/IR/Dialect.h"
+#include "triton/Dialect/Triton/IR/Types.h"
+
+using mlir::Dialect;
+using mlir::DictionaryAttr;
+using mlir::Location;
+using mlir::LogicalResult;
+using mlir::MLIRContext;
+using mlir::OpaqueProperties;
+using mlir::RankedTensorType;
+using mlir::RegionRange;
+using mlir::SmallVectorImpl;
+using mlir::TensorOrMemDesc;
+using mlir::Type;
+using mlir::ValueRange;
+using mlir::triton::DialectInferLayoutInterface;
+using mlir::triton::DotOp;
 
 namespace xla {
 namespace triton {
@@ -41,15 +59,70 @@ void XlaTritonDialect::initialize() {
       >();
 }
 
-::llvm::LogicalResult SparseDotOp::inferReturnTypes(
-    ::mlir::MLIRContext *context, ::std::optional<::mlir::Location> location,
-    ::mlir::ValueRange operands, ::mlir::DictionaryAttr attributes,
-    ::mlir::OpaqueProperties properties, ::mlir::RegionRange regions,
-    ::llvm::SmallVectorImpl<::mlir::Type> &inferredReturnTypes) {
-  return ::llvm::success();
+LogicalResult SparseDotOp::inferReturnTypes(
+    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  return DotOp::inferReturnTypes(context, location, operands, attributes,
+                                 properties, regions, inferredReturnTypes);
 }
 
-::llvm::LogicalResult SparseDotOp::verify() { return ::llvm::success(); }
+LogicalResult SparseDotOp::verify() {
+  // Implied properties of 2:4 sparse dots.
+  constexpr int kContractingFactor = 2;
+  constexpr int kMetadataElementsPerPackedValue = 8;
+  // Verify operand A.
+  auto aTensorTy = llvm::cast<TensorOrMemDesc>(getOperand(0).getType());
+  auto aElemTy = aTensorTy.getElementType();
+  if (!aElemTy.isF16() && !aElemTy.isBF16())
+    return emitError("element type of operand A is not supported");
+  auto aShape = aTensorTy.getShape();
+  if (aShape.size() != 2) return emitError("shape of operand A is incorrect");
+
+  // Verify operand B.
+  auto bTensorTy = llvm::cast<TensorOrMemDesc>(getOperand(1).getType());
+  auto bElemTy = bTensorTy.getElementType();
+  if (!bElemTy.isF16() && !bElemTy.isBF16())
+    return emitError("element type of operand B is not supported");
+  auto bShape = bTensorTy.getShape();
+  if (bShape.size() != 2) return emitError("shape of operand B is incorrect");
+
+  // Verify operand C.
+  auto cTensorTy = llvm::cast<RankedTensorType>(getOperand(2).getType());
+  auto cElemTy = cTensorTy.getElementType();
+  if (!cElemTy.isF32())
+    return emitError("element type of operand C is not supported");
+  auto cShape = cTensorTy.getShape();
+  if (cShape.size() != 2) return emitError("shape of operand C is incorrect");
+
+  // Check operand dependencies.
+  if (aShape[0] != cShape[0] || bShape[1] != cShape[1] ||
+      bShape[0] != aShape[1] * kContractingFactor)
+    return emitError("operand shape dimensions are incorrect");
+  if (aElemTy != bElemTy)
+    return emitError("operand element types do not match");
+
+  // Verify sparse metadata.
+  auto metaTy = llvm::cast<RankedTensorType>(getOperand(3).getType());
+  auto metaShape = metaTy.getShape();
+  if (!metaTy.getElementType().isInteger(16) || metaShape.size() != 2)
+    return emitError("sparse metadata tensor is invalid");
+  if (metaShape[0] != aShape[0] ||
+      metaShape[1] * kMetadataElementsPerPackedValue != aShape[1])
+    return emitError("sparse metadata shape dimensions are incorrect");
+
+  // Verify tensor encoding.
+  auto aEncoding = aTensorTy.getEncoding();
+  auto bEncoding = bTensorTy.getEncoding();
+  if (!aEncoding && !bEncoding) return mlir::success();
+  if (!aEncoding || !bEncoding)
+    return emitError("mismatching encoding between A and B operands");
+
+  Dialect &dialect = aEncoding.getDialect();
+  auto interface = llvm::cast<DialectInferLayoutInterface>(&dialect);
+  return interface->verifyDotOpEncodingCompatibility(getOperation(), aEncoding,
+                                                     bEncoding);
+}
 
 }  // namespace triton
 }  // namespace xla
