@@ -29,9 +29,9 @@ SqliteQueryConnection::~SqliteQueryConnection() {
   if (db_ != nullptr) db_->Unref();
 }
 
-Status SqliteQueryConnection::Open(const string& data_source_name,
-                                   const string& query,
-                                   const DataTypeVector& output_types) {
+absl::Status SqliteQueryConnection::Open(const string& data_source_name,
+                                         const string& query,
+                                         const DataTypeVector& output_types) {
   if (db_ != nullptr) {
     return errors::FailedPrecondition(
         "Failed to open query connection: Connection already opened.");
@@ -43,16 +43,16 @@ Status SqliteQueryConnection::Open(const string& data_source_name,
   return absl::OkStatus();
 }
 
-Status SqliteQueryConnection::Close() {
+absl::Status SqliteQueryConnection::Close() {
   stmt_ = SqliteStatement();
   db_->Unref();
   db_ = nullptr;
   return absl::OkStatus();
 }
 
-Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
-                                      std::vector<Tensor>* out_tensors,
-                                      bool* end_of_sequence) {
+absl::Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
+                                            std::vector<Tensor>* out_tensors,
+                                            bool* end_of_sequence) {
   if (!stmt_) TF_RETURN_IF_ERROR(PrepareQuery());
   TF_RETURN_IF_ERROR(stmt_.Step(end_of_sequence));
   if (!*end_of_sequence) {
@@ -66,7 +66,7 @@ Status SqliteQueryConnection::GetNext(IteratorContext* ctx,
   return absl::OkStatus();
 }
 
-Status SqliteQueryConnection::PrepareQuery() {
+absl::Status SqliteQueryConnection::PrepareQuery() {
   TF_RETURN_IF_ERROR(db_->Prepare(query_, &stmt_));
   int column_count = stmt_.ColumnCount();
   if (column_count != static_cast<int>(output_types_.size())) {

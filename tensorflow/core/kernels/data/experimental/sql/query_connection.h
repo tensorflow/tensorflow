@@ -48,10 +48,10 @@ class QueryConnection {
   // The client must call `Close()` to release the connection resources, even
   // if `Open()` fails. `Close()` must be called before making another call
   // to `Open()`.
-  virtual Status Open(const string& data_source_name, const string& query,
-                      const DataTypeVector& output_types) = 0;
+  virtual absl::Status Open(const string& data_source_name, const string& query,
+                            const DataTypeVector& output_types) = 0;
   // Closes an opened connection.
-  virtual Status Close() = 0;
+  virtual absl::Status Close() = 0;
   // Retrieves the next row of the result set of the query from the most recent
   // call to `Open()`.
   //
@@ -61,8 +61,9 @@ class QueryConnection {
   // If there are no more rows in the result set, then instead `true` will be
   // stored in `*end_of_sequence`, and the content of `*out_tensors` will be
   // undefined.
-  virtual Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) = 0;
+  virtual absl::Status GetNext(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) = 0;
 };
 
 }  // namespace sql
