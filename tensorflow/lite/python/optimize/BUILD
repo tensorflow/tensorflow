@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
@@ -52,6 +53,7 @@ pybind_extension(
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
