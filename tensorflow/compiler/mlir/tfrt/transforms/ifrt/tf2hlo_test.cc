@@ -38,8 +38,10 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
