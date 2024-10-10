@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
 #include <unistd.h>
@@ -637,11 +638,12 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<GpuEvent>> RocmExecutor::CreateGpuEvent(
+absl::StatusOr<std::unique_ptr<RocmEvent>> RocmExecutor::CreateGpuEvent(
     bool allow_timing) {
-  auto gpu_event = std::make_unique<RocmEvent>(gpu_context());
-  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
-  return std::move(gpu_event);
+  TF_ASSIGN_OR_RETURN(
+      auto event,
+      RocmEvent::Create(gpu_context(), /*allow_timing=*/allow_timing));
+  return std::make_unique<RocmEvent>(std::move(event));
 }
 
 absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
@@ -650,7 +652,8 @@ absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
+  TF_ASSIGN_OR_RETURN(auto event,
+                      RocmEvent::Create(gpu_context(), /*allow_timing=*/false));
   TF_ASSIGN_OR_RETURN(auto stream,
                       RocmStream::Create(this, std::move(event), priority));
   absl::MutexLock l(&alive_gpu_streams_mu_);

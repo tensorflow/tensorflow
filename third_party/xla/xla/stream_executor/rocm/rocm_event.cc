@@ -18,7 +18,11 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/casts.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/context.h"
@@ -26,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -38,11 +43,56 @@ absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
                "could not wait stream on event"));
   return absl::OkStatus();
 }
+
+enum class EventFlags { kDefault, kDisableTiming };
+absl::StatusOr<hipEvent_t> InitEvent(Context* context, EventFlags flags) {
+  int hipflags;
+  switch (flags) {
+    case EventFlags::kDefault:
+      hipflags = hipEventDefault;
+      break;
+    case EventFlags::kDisableTiming:
+      hipflags = hipEventDisableTiming | hipEventReleaseToSystem;
+      break;
+    default:
+      LOG(FATAL) << "impossible event flags: " << int(hipflags);
+  }
+
+  ScopedActivateContext activated{context};
+  hipEvent_t event;
+  hipError_t res = wrap::hipEventCreateWithFlags(&event, hipflags);
+
+  if (res == hipSuccess) {
+    return event;
+  }
+  if (res == hipErrorMemoryAllocation) {
+    return absl::ResourceExhaustedError(
+        "could not create ROCM event: out of device memory");
+  }
+  return absl::FailedPreconditionError(
+      absl::StrCat("could not create ROCM event: ", ToString(res)));
+}
+
+void DestroyEvent(Context* context, hipEvent_t event) {
+  if (event == nullptr) {
+    return;
+  }
+
+  ScopedActivateContext activated{context};
+  hipError_t res = wrap::hipEventDestroy(event);
+
+  if (res != hipSuccess) {
+    LOG(ERROR) << absl::StrFormat(
+        "error destroying ROCM event in device %d: %s",
+        context->device_ordinal(), ToString(res));
+  }
+}
+
 }  // namespace
 
 Event::Status RocmEvent::PollForStatus() {
-  ScopedActivateContext activated(context());
-  hipError_t res = wrap::hipEventQuery(gpu_event());
+  ScopedActivateContext activated(context_);
+  hipError_t res = wrap::hipEventQuery(handle_);
 
   if (res == hipSuccess) {
     return Event::Status::kComplete;
@@ -54,9 +104,40 @@ Event::Status RocmEvent::PollForStatus() {
 }
 
 absl::Status RocmEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
-  return WaitStreamOnEvent(context(), absl::bit_cast<hipStream_t>(stream),
-                           gpu_event());
+  return WaitStreamOnEvent(context_, absl::bit_cast<hipStream_t>(stream),
+                           handle_);
 }
 
+absl::StatusOr<RocmEvent> RocmEvent::Create(Context* context,
+                                            bool allow_timing) {
+  TF_ASSIGN_OR_RETURN(
+      hipEvent_t event_handle,
+      InitEvent(context, allow_timing ? EventFlags::kDefault
+                                      : EventFlags::kDisableTiming));
+
+  return RocmEvent(context, event_handle);
+}
+
+RocmEvent::~RocmEvent() { DestroyEvent(context_, handle_); }
+
+RocmEvent::RocmEvent(RocmEvent&& other)
+    : context_(other.context_), handle_(other.handle_) {
+  other.context_ = nullptr;
+  other.handle_ = nullptr;
+}
+
+RocmEvent& RocmEvent::operator=(RocmEvent&& other) {
+  if (this == &other) {
+    return *this;
+  }
+
+  DestroyEvent(context_, handle_);
+
+  context_ = other.context_;
+  handle_ = other.handle_;
+  other.context_ = nullptr;
+  other.handle_ = nullptr;
+  return *this;
+}
 }  // namespace gpu
 }  // namespace stream_executor

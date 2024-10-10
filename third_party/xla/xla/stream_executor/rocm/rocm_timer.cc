@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -53,8 +53,8 @@ absl::StatusOr<float> GetEventElapsedTime(Context* context, hipEvent_t start,
 }
 }  // namespace
 
-RocmTimer::RocmTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
-                     std::unique_ptr<GpuEvent> stop_event, GpuStream* stream)
+RocmTimer::RocmTimer(Context* context, std::unique_ptr<RocmEvent> start_event,
+                     std::unique_ptr<RocmEvent> stop_event, GpuStream* stream)
     : context_(context),
       stream_(stream),
       start_event_(std::move(start_event)),
@@ -66,8 +66,8 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
   }
   TF_RETURN_IF_ERROR(stream_->RecordEvent(stop_event_.get()));
   TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
-                      GetEventElapsedTime(context_, start_event_->gpu_event(),
-                                          stop_event_->gpu_event()));
+                      GetEventElapsedTime(context_, start_event_->GetHandle(),
+                                          stop_event_->GetHandle()));
   is_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
 }

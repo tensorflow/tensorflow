@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
@@ -796,11 +795,11 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<GpuEvent>> CudaExecutor::CreateGpuEvent(
+absl::StatusOr<std::unique_ptr<CudaEvent>> CudaExecutor::CreateGpuEvent(
     bool allow_timing) {
-  auto gpu_event = std::make_unique<CudaEvent>(gpu_context());
-  TF_RETURN_IF_ERROR(gpu_event->Init(allow_timing));
-  return std::move(gpu_event);
+  TF_ASSIGN_OR_RETURN(auto event,
+                      CudaEvent::Create(gpu_context(), allow_timing));
+  return std::make_unique<CudaEvent>(std::move(event));
 }
 
 absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
@@ -809,7 +808,8 @@ absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  TF_ASSIGN_OR_RETURN(auto event, CreateGpuEvent(/*allow_timing=*/false));
+  TF_ASSIGN_OR_RETURN(auto event,
+                      CudaEvent::Create(gpu_context(), /*allow_timing=*/false));
   TF_ASSIGN_OR_RETURN(auto stream,
                       CudaStream::Create(this, std::move(event), priority));
   absl::MutexLock l(&alive_gpu_streams_mu_);

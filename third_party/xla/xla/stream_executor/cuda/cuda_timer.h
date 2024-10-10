@@ -18,20 +18,19 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
 namespace stream_executor::gpu {
 class CudaTimer : public EventBasedTimer {
  public:
-  CudaTimer(Context* context, std::unique_ptr<GpuEvent> start_event,
-            std::unique_ptr<GpuEvent> stop_event, GpuStream* stream,
+  CudaTimer(Context* context, std::unique_ptr<CudaEvent> start_event,
+            std::unique_ptr<CudaEvent> stop_event, GpuStream* stream,
             GpuSemaphore semaphore);
   ~CudaTimer() override;
 
@@ -42,8 +41,8 @@ class CudaTimer : public EventBasedTimer {
   bool is_stopped_ = false;
   Context* context_;
   GpuStream* stream_;
-  std::unique_ptr<GpuEvent> start_event_;
-  std::unique_ptr<GpuEvent> stop_event_;
+  std::unique_ptr<CudaEvent> start_event_;
+  std::unique_ptr<CudaEvent> stop_event_;
 };
 
 }  // namespace stream_executor::gpu
