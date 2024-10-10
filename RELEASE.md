@@ -11577,5 +11577,6 @@ answered questions, and were part of inspiring discussions.
 # Release 0.5.0
 
 Initial release of TensorFlow.
+Test if macos github check run on the exported_pr_ branch
 
 <!-- mdformat global-off(b/169948621#comment2) -->
