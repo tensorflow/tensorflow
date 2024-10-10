@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_op.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_op.h"
 
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
@@ -25,7 +25,7 @@
 #define STRINGIFY(x) #x
 #define QNN_OP_NAME(prefix) STRINGIFY(prefix##__COUNTER)
 
-namespace qnn {
+namespace lrt::qnn {
 
 using ::lrt::LrtOpManager;
 
@@ -71,4 +71,4 @@ LrtStatus LegalizeOp(LrtOp src, Qnn_OpConfig_t& dest) {
   return kLrtStatusOk;
 }
 
-}  // namespace qnn
+}  // namespace lrt::qnn

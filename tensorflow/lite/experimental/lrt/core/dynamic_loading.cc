@@ -15,10 +15,13 @@
 #include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"
 
 #include <dlfcn.h>
+
+#include <ostream>
+#ifndef __ANDROID__
 #include <link.h>
+#endif
 
 #include <iostream>
-#include <sstream>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -27,12 +30,17 @@
 
 namespace lrt {
 
-// TODO make this return a status and have handle be output param.
 LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
+#ifdef __ANDROID__
+  void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL);
+#else
   void* res = ::dlopen(so_path.data(), RTLD_NOW | RTLD_LOCAL | RTLD_DEEPBIND);
+#endif
+
   if (res == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to load .so at path: %s, with error: %s",
-                so_path, ::dlerror());
+    LITE_RT_LOG(LRT_ERROR,
+                "Failed to load .so at path: %s, with error:\n\t %s\n", so_path,
+                ::dlerror());
 
     return kLrtStatusDynamicLoadErr;
   }
@@ -40,9 +48,13 @@ LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
   return kLrtStatusOk;
 }
 
-void DumpLibInfo(void* lib_handle) {
-  std::stringstream dump;
-  dump << "--- Lib Info ---\n";
+void DumpLibInfo(void* lib_handle, std::ostream& out) {
+#ifndef __ANDROID__
+  out << "\n--- Lib Info ---\n";
+  if (lib_handle == nullptr) {
+    out << "Handle is nullptr\n";
+    return;
+  }
 
   Lmid_t dl_ns_idx;
   if (0 != ::dlinfo(lib_handle, RTLD_DI_LMID, &dl_ns_idx)) {
@@ -60,27 +72,28 @@ void DumpLibInfo(void* lib_handle) {
     return;
   }
 
-  dump << "Lib Namespace: " << dl_ns_idx << "\n";
-  dump << "Lib Origin: " << dl_origin << "\n";
+  out << "Lib Namespace: " << dl_ns_idx << "\n";
+  out << "Lib Origin: " << dl_origin << "\n";
 
-  dump << "loaded objects:\n";
+  out << "loaded objects:\n";
 
   auto* forward = lm->l_next;
   auto* backward = lm->l_prev;
 
   while (forward != nullptr) {
-    dump << "  " << forward->l_name << "\n";
+    out << "  " << forward->l_name << "\n";
     forward = forward->l_next;
   }
 
-  dump << "***" << lm->l_name << "\n";
+  out << "***" << lm->l_name << "\n";
 
   while (backward != nullptr) {
-    dump << "  " << backward->l_name << "\n";
+    out << "  " << backward->l_name << "\n";
     backward = backward->l_prev;
   }
 
-  LITE_RT_LOG(LRT_INFO, "%s", dump.str().c_str());
+  out << "\n";
+#endif
 }
 
 }  // namespace lrt

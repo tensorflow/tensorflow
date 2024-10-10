@@ -12,32 +12,109 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_lib", "lite_rt_test")
+load("//tensorflow/lite/experimental/lrt/vendors/qualcomm:qualcomm_build_defs.bzl", "lite_rt_lib_with_qnn")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
 cc_library(
-    name = "qnn",
-    srcs = [
-        "context_binary_info.cc",
-        "qnn.cc",
-        "qnn_tensor.cc",
+    name = "common",
+    hdrs = ["common.h"],
+    deps = [
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
     ],
-    hdrs = [
-        "context_binary_info.h",
-        "qnn.h",
-        "qnn_tensor.h",
+)
+
+lite_rt_lib(
+    name = "qnn_log",
+    srcs = ["qnn_log.cc"],
+    hdrs = ["qnn_log.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
     ],
     deps = [
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+    ],
+)
+
+lite_rt_lib_with_qnn(
+    name = "qnn_manager",
+    srcs = [
+        "qnn_manager.cc",
+    ],
+    hdrs = ["qnn_manager.h"],
+    include_system = True,
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    ungrte = True,
+    deps = [
+        ":common",
+        ":qnn_log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
+        "//tensorflow/lite/experimental/lrt/core:logging",
+    ],
+)
+
+lite_rt_test(
+    name = "qnn_manager_test",
+    srcs = ["qnn_manager_test.cc"],
+    linkstatic = True,
+    tags = [
+        # Tests with ungrte deps do not currently work on forge.
+        "no-remote-exec",
+        "notap",
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
+        "nosan",
+    ],
+    deps = [
+        ":qnn_manager",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/test:common",
+    ],
+)
+
+cc_library(
+    name = "context_binary_info",
+    srcs = ["context_binary_info.cc"],
+    hdrs = ["context_binary_info.h"],
+    deps = [
+        ":qnn_manager",
+        ":qnn_tensor",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/core:logging",
+    ],
+)
+
+cc_library(
+    name = "qnn_tensor",
+    srcs = ["qnn_tensor.cc"],
+    hdrs = ["qnn_tensor.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
     ],
 )

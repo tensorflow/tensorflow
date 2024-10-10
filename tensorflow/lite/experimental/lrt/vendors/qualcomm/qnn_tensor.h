@@ -37,11 +37,11 @@ class QnnTensor {
   QnnTensor& operator=(const QnnTensor&) = delete;
   QnnTensor& operator=(QnnTensor&&) = delete;
 
-  Qnn_Tensor_t& qnn_tensor() { return tensor_; }
-  const Qnn_Tensor_t& qnn_tensor() const { return tensor_; }
+  Qnn_Tensor_t& Tensor() { return tensor_; }
+  const Qnn_Tensor_t& Tensor() const { return tensor_; }
 
-  size_t rank() const { return dimensions_.size(); }
-  const uint32_t* dimensions() const { return dimensions_.data(); }
+  size_t Rank() const { return dimensions_.size(); }
+  const uint32_t* Dimensions() const { return dimensions_.data(); }
 
  private:
   explicit QnnTensor(const Qnn_Tensor_t& tensor) : tensor_(tensor) {}
