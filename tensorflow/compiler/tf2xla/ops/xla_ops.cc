@@ -49,7 +49,7 @@ namespace {
 
 // Helper shape function for operators that return an output with the same rank
 // as their first input.
-Status UnchangedRank(shape_inference::InferenceContext* c) {
+absl::Status UnchangedRank(shape_inference::InferenceContext* c) {
   if (c->RankKnown(c->input(0))) {
     c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
   } else {
@@ -215,7 +215,7 @@ preferred_element_type: type of the tensor.
 batch_group_count: number of batch groups or grouped filters.
 )doc");
 
-static Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
+static absl::Status XlaDotShapeFunction(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle lhs_shape_handle = c->input(0);
   shape_inference::ShapeHandle rhs_shape_handle = c->input(1);
   if (!c->RankKnown(lhs_shape_handle) || !c->RankKnown(rhs_shape_handle)) {
@@ -395,7 +395,7 @@ REGISTER_OP("XlaDynamicSlice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       shape_inference::ShapeHandle size_indices_shape = c->input(2);
       if (!c->RankKnown(size_indices_shape)) {
         return UnchangedRank(c);
@@ -1297,7 +1297,7 @@ scatter_dimension: Dimension to scatter.
 reduce_op: Reduction computation.
 )doc");
 
-Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
+absl::Status OptimizationBarrierShape(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_inputs(); ++i) {
     c->set_output(i, c->input(i));
   }
