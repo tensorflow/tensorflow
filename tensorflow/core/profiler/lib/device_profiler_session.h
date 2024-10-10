@@ -49,7 +49,7 @@ class DeviceProfilerSession {
 
   // Stops tracing and converts the data to StepStats format.
   // Should be called at most once.
-  Status CollectData(StepStats* step_stats) {
+  absl::Status CollectData(StepStats* step_stats) {
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented("Profiling not supported on mobile platform.");
 #else
