@@ -293,7 +293,8 @@ class HloTestBase : public ::testing::Test {
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
@@ -307,6 +308,7 @@ class HloTestBase : public ::testing::Test {
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
 
   // Same as above, except that the module will be executed without Hlo
@@ -319,7 +321,8 @@ class HloTestBase : public ::testing::Test {
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
   [[nodiscard]] ::testing::AssertionResult Run(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
+      std::unique_ptr<HloModule> module, bool run_hlo_passes,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
@@ -327,6 +330,7 @@ class HloTestBase : public ::testing::Test {
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
   [[nodiscard]] ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,

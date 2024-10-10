@@ -53,7 +53,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   void Release() override { delete this; }
 
   void Clear() override;
-  Status Reset(const char* op, const char* raw_device_name) override {
+  absl::Status Reset(const char* op, const char* raw_device_name) override {
     return Reset(op, raw_device_name, false, nullptr);
   }
 
@@ -73,7 +73,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   // This also resets the internal device pointer, unless the given name refers
   // to a known custom device, in which case the internal device pointer is
   // updated to that device.
-  Status SetDeviceName(const char* name) override;
+  absl::Status SetDeviceName(const char* name) override;
 
   void SetDevice(VariantDevice device) {
     device_ = device;
@@ -87,51 +87,56 @@ class EagerOperation : public ImmediateExecutionOperation {
     last_set_device_name_ = "\177";  // DEL (an invalid value)
   }
 
-  Status SetAttrValue(const char* attr_name, const AttrValue& value);
+  absl::Status SetAttrValue(const char* attr_name, const AttrValue& value);
 
-  Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
-  Status SetInput(size_t index, ImmediateExecutionTensorHandle* input) override;
+  absl::Status AddInput(AbstractTensorHandle* input) override;
+  absl::Status AddInputList(
+      absl::Span<AbstractTensorHandle* const> inputs) override;
+  absl::Status SetInput(size_t index,
+                        ImmediateExecutionTensorHandle* input) override;
   absl::Span<ImmediateExecutionTensorHandle* const> GetInputs() const override;
   bool HasCustomDeviceInput() const override {
     return custom_device_tensor_handles_count_ > 0;
   }
-  Status Execute(absl::Span<AbstractTensorHandle*> retvals,
-                 int* num_retvals) override;
+  absl::Status Execute(absl::Span<AbstractTensorHandle*> retvals,
+                       int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };
 
-  Status SetAttrString(const char* attr_name, const char* data,
-                       size_t length) override;
-  Status SetAttrInt(const char* attr_name, int64_t value) override;
-  Status SetAttrFloat(const char* attr_name, float value) override;
-  Status SetAttrBool(const char* attr_name, bool value) override;
-  Status SetAttrType(const char* attr_name, DataType value) override;
-  Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      int num_dims) override;
-  Status SetAttrFunction(const char* attr_name,
-                         const AbstractOperation* value) override;
-  Status SetAttrFunctionName(const char* attr_name, const char* data,
+  absl::Status SetAttrString(const char* attr_name, const char* data,
                              size_t length) override;
-  Status SetAttrTensor(const char* attr_name,
-                       AbstractTensorInterface* tensor) override;
-  Status SetAttrStringList(const char* attr_name, const void* const* values,
-                           const size_t* lengths, int num_values) override;
-  Status SetAttrFloatList(const char* attr_name, const float* values,
-                          int num_values) override;
-  Status SetAttrIntList(const char* attr_name, const int64_t* values,
-                        int num_values) override;
-  Status SetAttrTypeList(const char* attr_name, const DataType* values,
-                         int num_values) override;
-  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
-                         int num_values) override;
-  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
-                          const int* num_dims, int num_values) override;
-  Status SetAttrFunctionList(
+  absl::Status SetAttrInt(const char* attr_name, int64_t value) override;
+  absl::Status SetAttrFloat(const char* attr_name, float value) override;
+  absl::Status SetAttrBool(const char* attr_name, bool value) override;
+  absl::Status SetAttrType(const char* attr_name, DataType value) override;
+  absl::Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                            int num_dims) override;
+  absl::Status SetAttrFunction(const char* attr_name,
+                               const AbstractOperation* value) override;
+  absl::Status SetAttrFunctionName(const char* attr_name, const char* data,
+                                   size_t length) override;
+  absl::Status SetAttrTensor(const char* attr_name,
+                             AbstractTensorInterface* tensor) override;
+  absl::Status SetAttrStringList(const char* attr_name,
+                                 const void* const* values,
+                                 const size_t* lengths,
+                                 int num_values) override;
+  absl::Status SetAttrFloatList(const char* attr_name, const float* values,
+                                int num_values) override;
+  absl::Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                              int num_values) override;
+  absl::Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                               int num_values) override;
+  absl::Status SetAttrBoolList(const char* attr_name,
+                               const unsigned char* values,
+                               int num_values) override;
+  absl::Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                                const int* num_dims, int num_values) override;
+  absl::Status SetAttrFunctionList(
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override;
 
-  Status InputLength(const char* input_name, int* length) override;
-  Status OutputLength(const char* output_name, int* length) override;
+  absl::Status InputLength(const char* input_name, int* length) override;
+  absl::Status OutputLength(const char* output_name, int* length) override;
 
   const AbstractOpAttrs* GetOpAttrs() const override;
   void AddAttrs(const AbstractOpAttrs* op_attrs) override;
@@ -144,7 +149,7 @@ class EagerOperation : public ImmediateExecutionOperation {
     return stack_trace_;
   }
 
-  Status Reset(
+  absl::Status Reset(
       const char* op, const char* device_name, bool remote,
       EagerExecutor* executor,
       absl::optional<EagerFunctionParams> eager_func_params = std::nullopt);
@@ -177,9 +182,9 @@ class EagerOperation : public ImmediateExecutionOperation {
   // TensorHandleInputs and MutableTensorHandleInputs first check that all
   // inputs are TensorHandles, i.e. that there are no custom device inputs. They
   // return a bad status otherwise.
-  Status TensorHandleInputs(
+  absl::Status TensorHandleInputs(
       const absl::InlinedVector<TensorHandle*, 4>** inputs) const;
-  Status MutableTensorHandleInputs(
+  absl::Status MutableTensorHandleInputs(
       absl::InlinedVector<TensorHandle*, 4>** inputs);
 
   const absl::InlinedVector<ImmediateExecutionTensorHandle*, 4>& Inputs()
@@ -254,7 +259,7 @@ class EagerOperation : public ImmediateExecutionOperation {
  private:
   void AddTensorHandle(ImmediateExecutionTensorHandle* h);
 
-  const tensorflow::OpDef* GetOpDef(Status* status);
+  const tensorflow::OpDef* GetOpDef(absl::Status* status);
 
   void ClearInferenceState() {
     op_def_ = nullptr;
@@ -262,8 +267,9 @@ class EagerOperation : public ImmediateExecutionOperation {
     inference_attrs_.clear_no_resize();
   }
 
-  Status MaybeInferSingleInputAttrs(ImmediateExecutionTensorHandle* handle);
-  Status InferInputListAttrs(int num_inputs);
+  absl::Status MaybeInferSingleInputAttrs(
+      ImmediateExecutionTensorHandle* handle);
+  absl::Status InferInputListAttrs(int num_inputs);
 
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                      DataType dtype, int num_inputs);

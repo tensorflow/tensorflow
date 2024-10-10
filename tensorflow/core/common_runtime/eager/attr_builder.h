@@ -43,18 +43,18 @@ namespace tensorflow {
 typedef std::unordered_map<string, uint32> AttrTypeMap;
 
 // Look up OpDef for `op_name`.
-Status OpDefForOp(const string& op_name, const OpDef** op_def);
+absl::Status OpDefForOp(const string& op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
 // If op_name is not registered in global op registry, AttrTypeMapForOp assumes
 // the op to be a function and returns the default attributes for a function.
 // `is_function` is set to true in this case.
-Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
-                        bool* is_function);
+absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
+                              bool* is_function);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
+absl::Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+                            TF_AttrType* out, unsigned char* is_list);
 
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
@@ -139,7 +139,7 @@ class AttrBuilder : public AbstractOpAttrs {
   // value type in this Node. This is not an issue, because Get is used rarely
   // and nodes have a small number of attributes.
   template <class T>
-  Status Get(StringPiece attr_name, T* value) const {
+  absl::Status Get(StringPiece attr_name, T* value) const {
     // Common attributes are stored in AttrVecs. This Get() template
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
@@ -178,7 +178,7 @@ class AttrBuilder : public AbstractOpAttrs {
   bool GetBool(absl::string_view attr_name, bool* result) const override;
   bool GetType(absl::string_view attr_name,
                tensorflow::DataType* result) const override;
-  Status GetTypeList(
+  absl::Status GetTypeList(
       absl::string_view attr_name,
       absl::InlinedVector<DataType, 4>* type_list) const override;
 
@@ -210,14 +210,14 @@ class AttrBuilder : public AbstractOpAttrs {
 };
 
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, int* value) const;
+absl::Status AttrBuilder::Get(StringPiece attr_name, int* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, float* value) const;
+absl::Status AttrBuilder::Get(StringPiece attr_name, float* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
+absl::Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
 template <>
-Status AttrBuilder::Get(StringPiece attr_name,
-                        tensorflow::DataType* value) const;
+absl::Status AttrBuilder::Get(StringPiece attr_name,
+                              tensorflow::DataType* value) const;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_
