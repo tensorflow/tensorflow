@@ -92,8 +92,8 @@ void RangePush(ProfilerDomainHandle domain, StringHandle title,
   attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
   attrs.message.registered = reinterpret_cast<nvtxStringHandle_t>(title);
-  NVTX_PAYLOAD_EVTATTR_SET(attrs, schema_id, payload, payload_size);
-  nvtxDomainRangePushEx(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs);
+  nvtxPayloadRangePush(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs,
+                       schema_id, payload, payload_size);
 }
 }  // namespace detail
 
