@@ -144,22 +144,21 @@ class CSRSparseMatrix {
     return *this;
   }
 
-  static Status CreateCSRSparseMatrix(DataType dtype,
-                                      const Tensor& dense_shape,     // on host
-                                      const Tensor& batch_pointers,  // on host
-                                      const Tensor& row_pointers,
-                                      const Tensor& col_indices,
-                                      const Tensor& values,
-                                      CSRSparseMatrix* matrix) {
+  static absl::Status CreateCSRSparseMatrix(
+      DataType dtype,
+      const Tensor& dense_shape,     // on host
+      const Tensor& batch_pointers,  // on host
+      const Tensor& row_pointers, const Tensor& col_indices,
+      const Tensor& values, CSRSparseMatrix* matrix) {
     *matrix = CSRSparseMatrix(dtype, dense_shape, batch_pointers, row_pointers,
                               col_indices, values);
-    Status s = matrix->Validate();
+    absl::Status s = matrix->Validate();
     matrix->metadata_.validated = s.ok();
     matrix->SetupVecs();
     return s;
   }
 
-  Status Validate() const {
+  absl::Status Validate() const {
     return ValidateTypesAndShapes(metadata_.dtype, dense_shape_,
                                   batch_pointers_, row_pointers_, col_indices_,
                                   values_);
@@ -349,8 +348,8 @@ class CSRSparseMatrix {
     Tensor values(p.tensors_[4]);
 
     // Check that the validated bool is consistent with the data.
-    Status s = ValidateTypesAndShapes(dtype, dense_shape, batch_pointers,
-                                      row_pointers, col_indices, values);
+    absl::Status s = ValidateTypesAndShapes(dtype, dense_shape, batch_pointers,
+                                            row_pointers, col_indices, values);
     if (s.ok() != validated) return false;
 
     // Save to this object.
@@ -381,7 +380,7 @@ class CSRSparseMatrix {
 
   // This static method copies CSRSparseMatrices in all directions:
   //   Host->Device, Device->Host, and Device->Device.
-  static Status DeviceCopy(
+  static absl::Status DeviceCopy(
       const CSRSparseMatrix& from, CSRSparseMatrix* to,
       const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
     VLOG(2) << "DeviceCopy from type: " << DataTypeString(from.dtype())
@@ -423,12 +422,12 @@ class CSRSparseMatrix {
     col_indices_vec_.reset();
   }
 
-  static Status ValidateTypesAndShapes(DataType dtype,
-                                       const Tensor& dense_shape,
-                                       const Tensor& batch_pointers,
-                                       const Tensor& row_pointers,
-                                       const Tensor& col_indices,
-                                       const Tensor& values) {
+  static absl::Status ValidateTypesAndShapes(DataType dtype,
+                                             const Tensor& dense_shape,
+                                             const Tensor& batch_pointers,
+                                             const Tensor& row_pointers,
+                                             const Tensor& col_indices,
+                                             const Tensor& values) {
     // TODO(ebrevdo): Consider adding support for other floating point types
     // (namely, float16).
     if (dtype != DT_FLOAT && dtype != DT_DOUBLE && dtype != DT_COMPLEX64 &&
@@ -547,10 +546,10 @@ class CSRSparseMatrix {
 // where T depends on a.dtype().  T will be one of: float, double,
 // complex64, complex128.
 template <typename Device, template <typename, typename> class BinaryFunctor>
-Status CSRSparseMatrixBinaryHelper(OpKernelContext* ctx,
-                                   const CSRSparseMatrix& a,
-                                   const CSRSparseMatrix& b,
-                                   CSRSparseMatrix* c) {
+absl::Status CSRSparseMatrixBinaryHelper(OpKernelContext* ctx,
+                                         const CSRSparseMatrix& a,
+                                         const CSRSparseMatrix& b,
+                                         CSRSparseMatrix* c) {
   DataType dt = a.dtype();
   if (dt != b.dtype()) {
     return errors::InvalidArgument(
@@ -587,9 +586,9 @@ Status CSRSparseMatrixBinaryHelper(OpKernelContext* ctx,
 // where T depends on a.dtype().  T will be one of: float, double,
 // complex64, complex128.
 template <typename Device, template <typename, typename> class UnaryFunctor>
-Status CSRSparseMatrixUnaryHelper(OpKernelContext* ctx,
-                                  const CSRSparseMatrix& a,
-                                  CSRSparseMatrix* b) {
+absl::Status CSRSparseMatrixUnaryHelper(OpKernelContext* ctx,
+                                        const CSRSparseMatrix& a,
+                                        CSRSparseMatrix* b) {
   DataType dt = a.dtype();
   switch (dt) {
     case DT_FLOAT: {
@@ -632,8 +631,8 @@ struct CSRComponent {
 };
 
 template <typename T>
-Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
-                               const T** value) {
+absl::Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
+                                     const T** value) {
   const Tensor& input_t = ctx->input(index);
   if (!TensorShapeUtils::IsScalar(input_t.shape())) {
     return errors::InvalidArgument(
