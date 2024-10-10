@@ -21,17 +21,17 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
-const Status& ThreadSafeStatus::status() const& {
+const absl::Status& ThreadSafeStatus::status() const& {
   tf_shared_lock lock(mutex_);
   return status_;
 }
 
-Status ThreadSafeStatus::status() && {
+absl::Status ThreadSafeStatus::status() && {
   tf_shared_lock lock(mutex_);
   return std::move(status_);
 }
 
-void ThreadSafeStatus::Update(const Status& new_status) {
+void ThreadSafeStatus::Update(const absl::Status& new_status) {
   if (new_status.ok()) {
     return;
   }
@@ -40,12 +40,12 @@ void ThreadSafeStatus::Update(const Status& new_status) {
   status_.Update(new_status);
 }
 
-void ThreadSafeStatus::Update(Status&& new_status) {
+void ThreadSafeStatus::Update(absl::Status&& new_status) {
   if (new_status.ok()) {
     return;
   }
 
   mutex_lock lock(mutex_);
-  status_.Update(std::forward<Status>(new_status));
+  status_.Update(std::forward<absl::Status>(new_status));
 }
 }  // namespace tensorflow

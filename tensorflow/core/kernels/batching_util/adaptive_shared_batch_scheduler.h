@@ -136,7 +136,7 @@ class AdaptiveSharedBatchScheduler
 
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
-  static Status Create(
+  static absl::Status Create(
       const Options& options,
       std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>>* scheduler);
 
@@ -164,9 +164,10 @@ class AdaptiveSharedBatchScheduler
     // success, the caller can assume that all output_tasks will be scheduled.
     // Including this option allows the scheduler to pack batches better and
     // should usually improve overall throughput.
-    std::function<Status(std::unique_ptr<TaskType>* input_task, int first_size,
-                         int max_batch_size,
-                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+    std::function<absl::Status(
+        std::unique_ptr<TaskType>* input_task, int first_size,
+        int max_batch_size,
+        std::vector<std::unique_ptr<TaskType>>* output_tasks)>
         split_input_task_func;
 
     // If true, the padding will not be appended.
@@ -176,9 +177,9 @@ class AdaptiveSharedBatchScheduler
   using BatchProcessor = std::function<void(std::unique_ptr<Batch<TaskType>>)>;
 
   // Adds queue (and its callback) to be managed by this scheduler.
-  Status AddQueue(const QueueOptions& options,
-                  BatchProcessor process_batch_callback,
-                  std::unique_ptr<BatchScheduler<TaskType>>* queue);
+  absl::Status AddQueue(const QueueOptions& options,
+                        BatchProcessor process_batch_callback,
+                        std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
   double in_flight_batches_limit() {
     mutex_lock l(mu_);
@@ -308,7 +309,7 @@ class ASBSQueue : public BatchScheduler<TaskType> {
   // Adds task to current batch. Fails if the task size is larger than the batch
   // size or if the current batch is full and this queue's number of outstanding
   // batches is at its maximum.
-  Status Schedule(std::unique_ptr<TaskType>* task) override;
+  absl::Status Schedule(std::unique_ptr<TaskType>* task) override;
 
   // Number of tasks waiting to be scheduled.
   size_t NumEnqueuedTasks() const override;
@@ -381,7 +382,7 @@ template <typename TaskType>
 constexpr double AdaptiveSharedBatchScheduler<TaskType>::kMinStepSizeMultiplier;
 
 template <typename TaskType>
-Status AdaptiveSharedBatchScheduler<TaskType>::Create(
+absl::Status AdaptiveSharedBatchScheduler<TaskType>::Create(
     const Options& options,
     std::shared_ptr<AdaptiveSharedBatchScheduler<TaskType>>* scheduler) {
   if (options.num_batch_threads < 1) {
@@ -446,7 +447,7 @@ AdaptiveSharedBatchScheduler<TaskType>::AdaptiveSharedBatchScheduler(
 }
 
 template <typename TaskType>
-Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
+absl::Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
     const QueueOptions& options, BatchProcessor process_batch_callback,
     std::unique_ptr<BatchScheduler<TaskType>>* queue) {
   if (options.max_batch_size <= 0) {
@@ -729,7 +730,7 @@ ASBSQueue<TaskType>::~ASBSQueue() {
 }
 
 template <typename TaskType>
-Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+absl::Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   size_t size = (*task)->size();
   if (options_.split_input_task_func == nullptr &&
       size > options_.max_batch_size) {
