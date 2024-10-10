@@ -46,7 +46,13 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     _TFCI_OUTPUT_DIR_WIN=$(replace_drive_letter_with_c "$TFCI_OUTPUT_DIR")
     sed -iE 's|^TFCI_OUTPUT_DIR=.*|TFCI_OUTPUT_DIR='"$_TFCI_OUTPUT_DIR_WIN"'|g' $env_file
     WORKING_DIR=$(replace_drive_letter_with_c "$TFCI_GIT_DIR")
-    echo "GCE_METADATA_HOST=$IP_ADDR" > $env_file
+    echo "GCE_METADATA_HOST=$IP_ADDR" >> $env_file
+    echo 'BAZEL_LLVM="C:\tools\LLVM"' >> $env_file
+    echo 'BAZEL_SH="C:\tools\msys64\usr\bin\bash.exe"' >> $env_file
+    echo 'BAZEL_VS="C:\Program Files\Microsoft Visual Studio\2022\BuildTools"' >> $env_file
+    echo 'MSYS_NO_PATHCONV=1' >> $env_file
+    echo 'PYTHON_VERSION=3.12.3' >> $env_file
+    echo 'BAZEL_VC_FULL_VERSION=' >> $env_file
   fi
 
   docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
