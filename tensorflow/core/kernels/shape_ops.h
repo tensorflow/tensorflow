@@ -31,8 +31,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace shape_op_helpers {
-inline Status GetShape(OpKernelContext* ctx, int input_index,
-                       TensorShape* shape) {
+inline absl::Status GetShape(OpKernelContext* ctx, int input_index,
+                             TensorShape* shape) {
   *shape = ctx->input(input_index).shape();
   return absl::OkStatus();
 }

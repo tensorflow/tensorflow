@@ -171,7 +171,7 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   }
   struct {
     mutex mu;
-    Status value TF_GUARDED_BY(mu);
+    absl::Status value TF_GUARDED_BY(mu);
   } train_step_status;
   std::atomic<std::int64_t> atomic_index(-1);
   auto train_step = [&](const int64_t begin, const int64_t end) {
@@ -183,7 +183,7 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
       const float dual = example_state_data(example_index, 0);
       const float example_weight = example.example_weight();
       float example_label = example.example_label();
-      const Status conversion_status =
+      const absl::Status conversion_status =
           options.loss_updater->ConvertLabel(&example_label);
       if (!conversion_status.ok()) {
         mutex_lock l(train_step_status.mu);

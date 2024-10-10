@@ -22,9 +22,9 @@ limitations under the License.
 namespace tensorflow {
 
 // Validates the input shapes for the ScatterNdUpdateOp<scatter_nd_op::UpdateOp>
-Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
-                                    const TensorShape& indices_shape,
-                                    const TensorShape& updates_shape);
+absl::Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
+                                          const TensorShape& indices_shape,
+                                          const TensorShape& updates_shape);
 
 inline bool DisableScatterOpDeterminism() {
   static bool cached_disable = [] {

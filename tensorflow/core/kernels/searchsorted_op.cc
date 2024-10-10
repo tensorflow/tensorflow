@@ -35,11 +35,12 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 template <typename T, typename OutType>
 struct UpperBoundFunctor<CPUDevice, T, OutType> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        int batch_size, int num_inputs, int num_values,
-                        typename TTypes<OutType, 1>::Tensor* output) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
+      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
+      int num_inputs, int num_values,
+      typename TTypes<OutType, 1>::Tensor* output) {
     auto work_fn = [&](int64_t first, int64_t last) {
       for (int b = 0; b < batch_size; ++b) {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
@@ -64,11 +65,12 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
 
 template <typename T, typename OutType>
 struct LowerBoundFunctor<CPUDevice, T, OutType> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
-                        const typename TTypes<T, 1>::ConstTensor& values,
-                        int batch_size, int num_inputs, int num_values,
-                        typename TTypes<OutType, 1>::Tensor* output) {
+  static absl::Status Compute(
+      OpKernelContext* context,
+      const typename TTypes<T, 1>::ConstTensor& sorted_inputs,
+      const typename TTypes<T, 1>::ConstTensor& values, int batch_size,
+      int num_inputs, int num_values,
+      typename TTypes<OutType, 1>::Tensor* output) {
     auto work_fn = [&](int64_t first, int64_t last) {
       for (int b = 0; b < batch_size; ++b) {
         const T* sorted_inputs_ptr = sorted_inputs.data() + b * num_inputs;
@@ -117,13 +119,13 @@ class UpperBoundOp : public OpKernel {
                     values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(absl::StatusCode::kInvalidArgument,
-                       "Leading dim_size of both tensors must match."));
+                absl::Status(absl::StatusCode::kInvalidArgument,
+                             "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(absl::StatusCode::kInvalidArgument,
-                       "values tensor size must less than INT_MAX"));
+                absl::Status(absl::StatusCode::kInvalidArgument,
+                             "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_t.shape(), &output_t));
@@ -180,13 +182,13 @@ class LowerBoundOp : public OpKernel {
                     values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(absl::StatusCode::kInvalidArgument,
-                       "Leading dim_size of both tensors must match."));
+                absl::Status(absl::StatusCode::kInvalidArgument,
+                             "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(absl::StatusCode::kInvalidArgument,
-                       "values tensor size must less than INT_MAX"));
+                absl::Status(absl::StatusCode::kInvalidArgument,
+                             "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_t.shape(), &output_t));

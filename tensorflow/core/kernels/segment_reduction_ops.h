@@ -138,11 +138,12 @@ struct Highest {
 
 template <typename T, typename Index, typename SegmentId>
 struct SparseSegmentReductionFunctor {
-  Status operator()(OpKernelContext* context, bool is_mean, bool is_sqrtn,
-                    T default_value, typename TTypes<T, 2>::ConstTensor input,
-                    typename TTypes<Index>::ConstVec indices,
-                    typename TTypes<SegmentId>::ConstVec segment_ids,
-                    typename TTypes<T, 2>::Tensor output);
+  absl::Status operator()(OpKernelContext* context, bool is_mean, bool is_sqrtn,
+                          T default_value,
+                          typename TTypes<T, 2>::ConstTensor input,
+                          typename TTypes<Index>::ConstVec indices,
+                          typename TTypes<SegmentId>::ConstVec segment_ids,
+                          typename TTypes<T, 2>::Tensor output);
 };
 
 template <class Device, typename T, typename Index, typename SegmentId>

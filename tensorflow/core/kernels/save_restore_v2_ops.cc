@@ -296,7 +296,7 @@ class MergeV2Checkpoints : public OpKernel {
       for (const string& input_prefix : input_prefixes) {
         const string dirname(io::Dirname(input_prefix));
         if (dirname == merged_dir) continue;
-        Status status = env->DeleteDir(dirname);
+        absl::Status status = env->DeleteDir(dirname);
         // For sharded save, only the first delete will go through and all
         // others will hit NotFound.  Use vlog to be less verbose.
         if (!status.ok()) VLOG(1) << status;

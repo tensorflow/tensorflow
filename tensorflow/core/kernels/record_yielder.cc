@@ -44,7 +44,7 @@ RecordYielder::~RecordYielder() {
   delete thread_;
 }
 
-Status RecordYielder::YieldOne(tstring* value) {
+absl::Status RecordYielder::YieldOne(tstring* value) {
   mutex_lock l(mu_);
   while (!BufEnough() && status_.ok()) {
     buf_enough_.wait(l);
@@ -72,17 +72,17 @@ struct RecordYielder::Shard {
   int index;                      // Shard index.
   std::vector<tstring> filenames;  // File names given to this shard.
   Notification done;              // Notified when this shard is done.
-  Status status;                  // Shard status.
+  absl::Status status;            // Shard status.
 };
 
-bool RecordYielder::ShouldFinish(const Status& s) {
+bool RecordYielder::ShouldFinish(const absl::Status& s) {
   mutex_lock l(mu_);
   status_.Update(s);
   return stop_ || !status_.ok();
 }
 
-static Status MatchFiles(const string& patterns,
-                         std::vector<string>* filenames) {
+static absl::Status MatchFiles(const string& patterns,
+                               std::vector<string>* filenames) {
   for (const auto& file_pattern : str_util::Split(patterns, ',')) {
     std::vector<string> tmp_filenames;
     TF_RETURN_IF_ERROR(
@@ -102,7 +102,7 @@ void RecordYielder::MainLoop() {
 
     // Finds all files.
     std::vector<string> filenames;
-    Status s = MatchFiles(opts_.file_pattern, &filenames);
+    absl::Status s = MatchFiles(opts_.file_pattern, &filenames);
 
     if (filenames.empty()) {
       s = errors::NotFound("Found no files at ", opts_.file_pattern);
@@ -201,7 +201,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
   for (const string& filename : shard->filenames) {
     std::unique_ptr<RandomAccessFile> file;
     if (ShouldFinish(absl::OkStatus())) break;
-    Status s = Env::Default()->NewRandomAccessFile(filename, &file);
+    absl::Status s = Env::Default()->NewRandomAccessFile(filename, &file);
     if (!s.ok()) {
       shard->status = errors::InvalidArgument("Can't open ", filename);
       break;
@@ -213,7 +213,7 @@ void RecordYielder::ShardLoop(Shard* shard) {
     uint64 offset = 0;
     tstring record;
     while (true) {
-      Status s = rdr.ReadRecord(&offset, &record);
+      absl::Status s = rdr.ReadRecord(&offset, &record);
       if (s.ok()) {
         values.emplace_back(std::move(record));
         if (values.size() >= kRecords && Add(&values)) {

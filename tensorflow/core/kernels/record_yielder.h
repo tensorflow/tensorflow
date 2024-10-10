@@ -90,7 +90,7 @@ class RecordYielder {
   RecordYielder& operator=(const RecordYielder&) = delete;
 
   // Yields one 'value'.
-  Status YieldOne(tstring* value);
+  absl::Status YieldOne(tstring* value);
 
   // Returns the current epoch number.
   int64_t current_epoch() const { return epoch_; }
@@ -110,7 +110,7 @@ class RecordYielder {
 
   // Turned to true when this is deleted.
   bool stop_ TF_GUARDED_BY(mu_) = false;
-  Status status_ TF_GUARDED_BY(mu_);
+  absl::Status status_ TF_GUARDED_BY(mu_);
 
   // PRG used for randomization.
   std::mt19937_64 rnd_ TF_GUARDED_BY(mu_);
@@ -151,7 +151,7 @@ class RecordYielder {
   void MainLoop();
   struct Shard;
   void ShardLoop(Shard* shard);
-  bool ShouldFinish(const Status& s);
+  bool ShouldFinish(const absl::Status& s);
   bool Add(std::vector<string>* values);
 };
 

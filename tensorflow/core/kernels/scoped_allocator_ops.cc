@@ -56,7 +56,7 @@ class ScopedAllocatorOp : public OpKernel {
     }
     Tensor* backing_tensor = nullptr;
     AllocatorAttributes attr = context->output_alloc_attr(0);
-    Status s =
+    absl::Status s =
         context->allocate_output(0, {num_elements_}, &backing_tensor, attr);
     VLOG(1) << "_ScopedAllocatorOp " << context->op_kernel().name()
             << " new backing tensor size " << backing_tensor->TotalBytes()

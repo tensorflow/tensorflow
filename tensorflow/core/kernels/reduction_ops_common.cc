@@ -58,8 +58,8 @@ absl::InlinedVector<int32, 8> ReductionHelper::permutation() {
 }
 
 template <typename Tperm>
-Status SimplifyHelper(const Tensor& data, const Tensor& axis,
-                      absl::InlinedVector<bool, 4>& bitmap) {
+absl::Status SimplifyHelper(const Tensor& data, const Tensor& axis,
+                            absl::InlinedVector<bool, 4>& bitmap) {
   auto axis_vec = axis.flat<Tperm>();
   for (int64_t i = 0; i < axis.NumElements(); ++i) {
     Tperm index = axis_vec(i);
@@ -79,8 +79,8 @@ Status SimplifyHelper(const Tensor& data, const Tensor& axis,
   return absl::OkStatus();
 }
 
-Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
-                                 const bool keep_dims) {
+absl::Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
+                                       const bool keep_dims) {
   // bitmap[i] indicates whether to reduce data along i-th axis.
   absl::InlinedVector<bool, 4> bitmap(data.dims(), false);
   if (axis.dtype() == DT_INT32) {
