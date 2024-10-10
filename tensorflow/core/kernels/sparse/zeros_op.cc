@@ -65,9 +65,9 @@ class CSRZerosOp : public OpKernel {
 namespace {
 
 template <typename Device>
-Status CSRSparseMatrixZerosLikeHelper(OpKernelContext* ctx,
-                                      const CSRSparseMatrix& x,
-                                      CSRSparseMatrix* y) {
+absl::Status CSRSparseMatrixZerosLikeHelper(OpKernelContext* ctx,
+                                            const CSRSparseMatrix& x,
+                                            CSRSparseMatrix* y) {
   functor::CSRSparseMatrixZeros<Device> csr_sparse_matrix_zeros;
   return csr_sparse_matrix_zeros(ctx, x.dtype(), x.dense_shape(), y);
 }

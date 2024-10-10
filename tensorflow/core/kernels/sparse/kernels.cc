@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
+absl::Status SparseTensorToCSRSparseMatrixCPUFunctor::operator()(
     int64_t batch_size, int num_rows, int num_cols,
     TTypes<int64_t>::ConstMatrix indices, TTypes<int32>::Vec batch_ptr,
     TTypes<int32>::Vec csr_row_ptr, TTypes<int32>::Vec csr_col_ind) {

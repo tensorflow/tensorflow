@@ -50,8 +50,8 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-Status ValidateTransposeInputs(const ConstCSRComponent<T>& input,
-                               const CSRComponent<T>& output) {
+absl::Status ValidateTransposeInputs(const ConstCSRComponent<T>& input,
+                                     const CSRComponent<T>& output) {
   const int rank = input.dense_shape_host.size();
   const int64_t nnz = input.col_ind.size();
   const int num_rows = input.row_ptr.size() - 1;
@@ -144,7 +144,7 @@ REGISTER_TRANSPOSE(GPU, complex128)
 namespace functor {
 
 template <typename Device, typename T>
-Status CSRSparseMatrixTranspose<Device, T>::operator()(
+absl::Status CSRSparseMatrixTranspose<Device, T>::operator()(
     OpKernelContext* ctx, bool conjugate, const CSRSparseMatrix& input_matrix,
     CSRSparseMatrix* output_matrix) {
   const int rank = input_matrix.dims();
@@ -213,8 +213,9 @@ template <typename T>
 struct CSRSparseMatrixTransposeComponent<CPUDevice, T> {
   using SparseMatrix = Eigen::SparseMatrix<T, Eigen::RowMajor>;
 
-  Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& input,
-                    CSRComponent<T>* output) {
+  absl::Status operator()(OpKernelContext* ctx,
+                          const ConstCSRComponent<T>& input,
+                          CSRComponent<T>* output) {
     TF_RETURN_IF_ERROR(ValidateTransposeInputs(input, *output));
 
     const int rank = input.dense_shape_host.size();
