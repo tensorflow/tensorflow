@@ -17,9 +17,6 @@ limitations under the License.
 #include <functional>
 #include <numeric>
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
