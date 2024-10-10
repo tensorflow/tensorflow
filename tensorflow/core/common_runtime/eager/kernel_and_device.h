@@ -89,7 +89,8 @@ class EagerKernelArgs : public FunctionArgsInterface {
   bool HasRemoteOrPackedInputs() const override { return false; };
   TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
-  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
+  absl::Status GetLocalArg(const FunctionArgIndex& index,
+                           Tensor* val) const override;
 
   std::vector<Tensor> GetLocalTensors() const override;
 
@@ -118,7 +119,7 @@ class KernelAndDevice : public core::RefCounted {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(
+  virtual absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
       const absl::optional<EagerFunctionParams>& eager_func_params) = 0;
@@ -146,7 +147,7 @@ class KernelAndDevice : public core::RefCounted {
   virtual bool IsCrossProcess() { return false; }
 
   // TODO(ashankar): Handle list-valued inputs.
-  virtual Status Run(
+  virtual absl::Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
@@ -222,12 +223,12 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   ~KernelAndDeviceOp() override = default;
 
-  Status Init(
+  absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
       const absl::optional<EagerFunctionParams>& eager_func_params) override;
 
-  Status Run(
+  absl::Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
@@ -325,17 +326,17 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsCrossProcess() override { return is_cross_process_; }
 
-  Status InstantiateFunc(
+  absl::Status InstantiateFunc(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
       const absl::optional<EagerFunctionParams>& eager_func_params);
 
-  Status Init(
+  absl::Status Init(
       bool log_device_placement, const NodeDef& ndef,
       GraphCollector* graph_collector,
       const absl::optional<EagerFunctionParams>& eager_func_params) override;
 
-  Status Run(
+  absl::Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<EagerKernelRet>* outputs,
       CancellationManager* cancellation_manager,
