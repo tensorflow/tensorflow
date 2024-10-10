@@ -53,15 +53,15 @@ struct GraphConstructorOptions {
   // value to the Node when they are missing from the NodeDef.
   bool add_default_attributes = true;
 };
-extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                     const GraphDef& gdef, Graph* g);
-extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                                     GraphDef&& gdef, Graph* g);
+extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                           const GraphDef& gdef, Graph* g);
+extern absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                           GraphDef&& gdef, Graph* g);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
 // TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
-extern Status ConvertNodeDefsToGraph(
+extern absl::Status ConvertNodeDefsToGraph(
     const GraphConstructorOptions& opts, absl::Span<const NodeDef> nodes,
     Graph* g, const GraphDebugInfo* debug_info = nullptr);
 
@@ -194,10 +194,10 @@ struct ImportGraphDefResults {
 //
 // TODO(ashankar): Push this mechanism and get rid of Session::Extend()
 // as a means of enhancing an existing Graph.
-extern Status ImportGraphDef(const ImportGraphDefOptions& opts,
-                             const GraphDef& gdef, Graph* g,
-                             ShapeRefiner* refiner,
-                             ImportGraphDefResults* results = nullptr);
+extern absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
+                                   const GraphDef& gdef, Graph* g,
+                                   ShapeRefiner* refiner,
+                                   ImportGraphDefResults* results = nullptr);
 
 // Make a copy of "src" into "*dest".
 //

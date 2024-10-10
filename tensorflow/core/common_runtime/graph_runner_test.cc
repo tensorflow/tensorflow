@@ -46,7 +46,8 @@ TEST(GraphRunnerTest, SingleConst) {
   auto c = ops::Const(root, 42.0f);
   GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name()}, &outputs);
+  absl::Status s =
+      graph_runner.Run(root.graph(), nullptr, {}, {c.name()}, &outputs);
   TF_ASSERT_OK(s);
   test::ExpectEqual(test::AsScalar(42.0f), outputs[0]);
 }
@@ -71,7 +72,7 @@ TEST(GraphRunnerTest, DeepCopy) {
   std::vector<Tensor> outputs;
   {
     GraphRunner graph_runner(Env::Default());
-    Status s =
+    absl::Status s =
         graph_runner.Run(root.graph(), nullptr, inputs, {"add:0"}, &outputs);
     TF_ASSERT_OK(s);
   }
@@ -84,8 +85,8 @@ TEST(GraphRunnerTest, MultiFetchConst) {
   auto pi = ops::Const(root, 3.14f);
   GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name(), pi.name()},
-                              &outputs);
+  absl::Status s = graph_runner.Run(root.graph(), nullptr, {},
+                                    {c.name(), pi.name()}, &outputs);
   TF_ASSERT_OK(s);
   test::ExpectEqual(test::AsScalar(42.0f), outputs[0]);
   test::ExpectEqual(test::AsScalar(3.14f), outputs[1]);
@@ -106,7 +107,7 @@ TEST(GraphRunnerTest, FeedAndFetch) {
 
   GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s =
+  absl::Status s =
       graph_runner.Run(root.graph(), nullptr, inputs, {"add:0"}, &outputs);
   TF_ASSERT_OK(s);
   test::ExpectEqual(test::AsScalar(3.0f), outputs[0]);

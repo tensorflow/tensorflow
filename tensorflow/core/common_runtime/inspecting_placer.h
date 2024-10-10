@@ -76,8 +76,8 @@ class InspectingPlacer {
 
   // `node` must be
   // PlacerInspectionRequiredOpsChecker::IsPlacerInspectionRequired.
-  Status ComputeIOColocationGroups(const Node& node,
-                                   IOColocationGroups* groups);
+  absl::Status ComputeIOColocationGroups(const Node& node,
+                                         IOColocationGroups* groups);
 
  private:
   const FunctionStack stack_;

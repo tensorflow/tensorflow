@@ -18,7 +18,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status GraphDefBuilderToGraph(const GraphDefBuilder& builder, Graph* graph) {
+absl::Status GraphDefBuilderToGraph(const GraphDefBuilder& builder,
+                                    Graph* graph) {
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(builder.ToGraphDef(&graph_def));
   GraphConstructorOptions opts;

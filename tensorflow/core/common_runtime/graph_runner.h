@@ -59,10 +59,10 @@ class GraphRunner {
   // REQUIRES: `graph`, `env`, and `outputs` are not nullptr.
   // `function_library` may be nullptr.
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
-  Status Run(Graph* graph, FunctionLibraryRuntime* function_library,
-             const NamedTensorList& inputs,
-             const std::vector<string>& output_names,
-             std::vector<Tensor>* outputs);
+  absl::Status Run(Graph* graph, FunctionLibraryRuntime* function_library,
+                   const NamedTensorList& inputs,
+                   const std::vector<string>& output_names,
+                   std::vector<Tensor>* outputs);
 
  private:
   std::unique_ptr<Device> device_deleter_;

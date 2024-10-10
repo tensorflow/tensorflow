@@ -39,7 +39,7 @@ void FuzzGraphEndToEndSimpleFixedInput(const GraphDef& graph_def) {
   // Load an arbitrary graph and run a session on it using simple input.
   ImportGraphDefOptions options;
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status =
+  absl::Status status =
       ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
   if (!status.ok()) {
     return;
@@ -77,7 +77,7 @@ void FuzzGraphEndToEndAllStatic(const GraphDef& graph_def) {
   // to explore any arbitrary graph computation.
   ImportGraphDefOptions options;
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status status =
+  absl::Status status =
       ImportGraphDef(options, graph_def, graph.get(), nullptr, nullptr);
   if (!status.ok()) {
     return;
@@ -353,7 +353,7 @@ void FuzzGraphEndToEndFDP(std::vector<uint8_t> data) {
   }
 
   std::unique_ptr<Graph> graph = std::make_unique<Graph>(OpRegistry::Global());
-  Status s = ImportGraphDef(opts, gdef_, graph.get(), nullptr, nullptr);
+  absl::Status s = ImportGraphDef(opts, gdef_, graph.get(), nullptr, nullptr);
   if (!s.ok()) {
     return;
   }

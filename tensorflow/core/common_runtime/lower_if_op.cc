@@ -44,18 +44,18 @@ class CondBuilder {
               Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
-  Status CreatePivotNodes();
+  absl::Status CreatePivotNodes();
 
   // Adds the inputs from the if node to the merge nodes of the lowered if.
-  Status AddInputs();
+  absl::Status AddInputs();
 
   // Adds the outputs from the if node to the merge nodes of the lowered if.
   // Note: no inputs can be added once outputs are added as the then and else
   // nodes are finalized while adding outputs.
-  Status AddOutputs();
+  absl::Status AddOutputs();
 
   // Builds an identity node with the same outputs as If.
-  Status BuildLoweredIfOutput();
+  absl::Status BuildLoweredIfOutput();
 
  private:
   // Returns unique name containing the name of the If op being rewritten
@@ -63,12 +63,12 @@ class CondBuilder {
   string NewName(const string& infix);
 
   // Adds input to both the then and else nodes from src:src_output.
-  Status AddInput(Node* src, int src_output);
+  absl::Status AddInput(Node* src, int src_output);
 
   // Finalizes the node described by `node_builder`. If `coloc_attr_` is not
   // nullptr, adds the colocation attr to the node before finalizing it.
-  Status SetColocationAndFinalize(NodeBuilder node_builder, Graph* graph,
-                                  Node** created_node);
+  absl::Status SetColocationAndFinalize(NodeBuilder node_builder, Graph* graph,
+                                        Node** created_node);
 
   // The merged outputs of the then and else nodes.
   std::vector<NodeOut> outputs_;
@@ -136,16 +136,16 @@ CondBuilder::CondBuilder(Node* if_op, const NameAttrList& then_fn,
   }
 }
 
-Status CondBuilder::SetColocationAndFinalize(NodeBuilder node_builder,
-                                             Graph* graph,
-                                             Node** created_node) {
+absl::Status CondBuilder::SetColocationAndFinalize(NodeBuilder node_builder,
+                                                   Graph* graph,
+                                                   Node** created_node) {
   if (coloc_attr_ != nullptr) {
     node_builder = node_builder.Attr(kColocationAttrName, *coloc_attr_);
   }
   return node_builder.Finalize(graph, created_node);
 }
 
-Status CondBuilder::CreatePivotNodes() {
+absl::Status CondBuilder::CreatePivotNodes() {
   // Construct the basic cond body (consisting of feeding in the predicate to
   // create pivot nodes).
   Node* switch_pred;
@@ -176,7 +176,7 @@ string CondBuilder::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-Status CondBuilder::AddInput(Node* src, int src_output) {
+absl::Status CondBuilder::AddInput(Node* src, int src_output) {
   Node* input;
   NodeDebugInfo debug_info(*src);
   // Colocate the Switch node with the `src` node.
@@ -205,7 +205,7 @@ Status CondBuilder::AddInput(Node* src, int src_output) {
   return absl::OkStatus();
 }
 
-Status CondBuilder::AddInputs() {
+absl::Status CondBuilder::AddInputs() {
   // Add input data edges.
   std::vector<const Edge*> edges;
   TF_RETURN_IF_ERROR(if_op_->input_edges(&edges));
@@ -223,7 +223,7 @@ Status CondBuilder::AddInputs() {
   return absl::OkStatus();
 }
 
-Status CondBuilder::AddOutputs() {
+absl::Status CondBuilder::AddOutputs() {
   // Construct the then and else nodes.
   // NOTE(rachelim): Here, we don't use `CondBuilder::SetColocationAndFinalize`
   // because the colocation for branch nodes is applied in python.
@@ -279,7 +279,7 @@ Status CondBuilder::AddOutputs() {
   return absl::OkStatus();
 }
 
-Status CondBuilder::BuildLoweredIfOutput() {
+absl::Status CondBuilder::BuildLoweredIfOutput() {
   // If outputs are empty, it means that we might have only output control
   // edges (already connected to the `branch_executed_node`). Furthermore it's
   // illegal to have an IdentityN with empty inputs.
@@ -297,7 +297,7 @@ Status CondBuilder::BuildLoweredIfOutput() {
 
 }  // namespace
 
-Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
+absl::Status RewriteIfNode(Node* n, Graph* g, bool keep_node_fetchable) {
   VLOG(2) << "Lower If node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
 
