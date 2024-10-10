@@ -32,6 +32,12 @@ if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
    tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
    tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH"  --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+   if [ "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" != "windows_x86_cpu" ]; then
+     tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --config=cuda_wheel //tensorflow/tools/pip_package:wheel
+     tfrun mkdir ./dist
+     tfrun find ./bazel-bin/tensorflow/tools/pip_package -iname "*.whl" -exec cp {} ./dist \;
+     tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_api_test"
+   fi
 fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
