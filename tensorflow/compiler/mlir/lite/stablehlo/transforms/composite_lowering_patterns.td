@@ -120,3 +120,9 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         [(HasRank<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlGather : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $data, $indices),
+          ConstantStrAttr<StrAttr, "odml.gather">, $attrs, $_, $_),
+        (TFL_GatherOp $data, $indices,  (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs), (GetCompositeAttributeAs<"batch_dims", "IntegerAttr"> $attrs))>;

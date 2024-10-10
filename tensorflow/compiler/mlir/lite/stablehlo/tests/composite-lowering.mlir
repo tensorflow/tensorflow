@@ -388,3 +388,34 @@ func.func private @XlaCallModule_odml.embedding_lookup.impl_0(%arg0: tensor<1xi3
 // CHECK:           return %[[VAL_1]] : tensor<1x2048xf32>
 // CHECK:         }
 
+
+
+func.func @gather(%arg0: tensor<1x77x768xf32>, %arg1: tensor<1xi32>) ->  tensor<1x768xf32> {
+  %0 = mhlo.composite "odml.gather" %arg0, %arg1 {composite_attributes = {axis = 1 : i32, batch_dims = 0 : i32}, decomposition = @XlaCallModule_odml.gather.impl_0} : (tensor<1x77x768xf32>, tensor<1xi32>) -> tensor<1x768xf32>
+  return %0 :  tensor<1x768xf32>
+}
+
+func.func private @XlaCallModule_odml.gather.impl_0(%arg0: tensor<1x77x768xf32>, %arg1: tensor<1xi32>) -> tensor<1x768xf32> {
+    %0 = mhlo.constant dense<77> : tensor<i32>
+    %1 = mhlo.constant dense<1> : tensor<i32>
+    %2 = mhlo.constant dense<0> : tensor<i32>
+    %3 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<1xi32>
+    %4 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<1xi32>
+    %5 = mhlo.compare  LT, %3, %4,  SIGNED : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    %6 = "mhlo.broadcast_in_dim"(%1) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<1xi32>
+    %7 = mhlo.add %3, %6 : tensor<1xi32>
+    %8 = mhlo.select %5, %7, %3 : tensor<1xi1>, tensor<1xi32>
+    %9 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<1xi32>
+    %10 = mhlo.compare  LT, %arg1, %9,  SIGNED : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi1>
+    %11 = "mhlo.broadcast_in_dim"(%0) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<i32>) -> tensor<1xi32>
+    %12 = mhlo.add %arg1, %11 : tensor<1xi32>
+    %13 = mhlo.select %10, %12, %arg1 : tensor<1xi1>, tensor<1xi32>
+    %14 = "mhlo.broadcast_in_dim"(%8) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<1xi32>) -> tensor<1x1xi32>
+    %15 = "mhlo.broadcast_in_dim"(%13) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<1xi32>) -> tensor<1x1xi32>
+    %16 = "mhlo.concatenate"(%14, %15) <{dimension = 1 : i64}> : (tensor<1x1xi32>, tensor<1x1xi32>) -> tensor<1x2xi32>
+    %17 = "mhlo.gather"(%arg0, %16) <{dimension_numbers = #mhlo.gather<offset_dims = [1], collapsed_slice_dims = [0, 1], start_index_map = [0, 1], index_vector_dim = 1>, slice_sizes = dense<[1, 1, 768]> : tensor<3xi64>}> : (tensor<1x77x768xf32>, tensor<1x2xi32>) -> tensor<1x768xf32>
+    return %17 : tensor<1x768xf32>
+}
+
+// CHECK: %0 = "tfl.gather"(%arg0, %arg1) <{axis = 1 : i32, batch_dims = 0 : i32}> : (tensor<1x77x768xf32>, tensor<1xi32>) -> tensor<1x768xf32>
+// CHECK: return %0 : tensor<1x768xf32>
