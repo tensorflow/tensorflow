@@ -24,10 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/base/const_init.h"  // NOLINT incorrectly flagged as unused
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -64,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -91,6 +94,7 @@ namespace tensorflow {
 
 namespace {
 
+const char* const kDeviceNameGpu = "GPU";
 const char* const kTfCallbackCustomCall = "GenericTfCallbackGPU";
 
 // Each unique TfCallbackData in a call to Compile() generates a new
@@ -230,6 +234,41 @@ static absl::StatusOr<Tensor> TensorFromProto(const TensorProto& proto) {
   return out;
 }
 
+static absl::StatusOr<bool> ShouldCopyToHost(
+    const XlaOpKernelContext& ctx,
+    const absl::flat_hash_set<std::string>& host_memory_inputs,
+    const NodeDef& node_def, const OpDef& op_def, int port_index) {
+  if (host_memory_inputs.empty()) return false;
+
+  // The port index refers to the nth tensor of the node, while the arg index
+  // refers to the nth arg of the op. The 2 differ if the op takes inputs that
+  // are sequences of tensors. In that case, each tensor in the sequence
+  // occupies its own a port index, while all tensors in the same sequence share
+  // the same arg index.
+  const int arg_idx = OpPortIdToArgId(node_def, op_def.input_arg(), port_index);
+  if (arg_idx < 0) return false;  // The arg cannot be found in the node.
+
+  if (arg_idx >= op_def.input_arg_size()) {
+    return tsl::errors::Internal(
+        absl::StrCat("Arg with ID ", arg_idx, " is out of bounds: Op only has ",
+                     op_def.input_arg_size(), " args"));
+  }
+  // Copy if this input is on device and should be moved to host.
+  return host_memory_inputs.contains(op_def.input_arg(arg_idx).name()) &&
+         ctx.op_kernel().input_memory_types()[port_index] != HOST_MEMORY;
+}
+
+static absl::StatusOr<Tensor> CopyToHost(se::Stream* stream,
+                                         const Tensor& device_tensor) {
+  Tensor host_tensor(device_tensor.dtype(), device_tensor.shape());
+  TF_RETURN_IF_ERROR(stream->MemcpyD2H(
+      se::DeviceMemory<uint8>::MakeFromByteSize(device_tensor.data(),
+                                                device_tensor.AllocatedBytes()),
+      absl::MakeSpan(absl::bit_cast<uint8*>(host_tensor.data()),
+                     device_tensor.AllocatedBytes())));
+  return host_tensor;
+}
+
 Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     int graph_def_version, const NodeDef& node_def, XlaOpKernelContext* ctx) {
   const OpRegistrationData* data = OpRegistry::Global()->LookUp(node_def.op());
@@ -248,11 +287,21 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
   TfCallbackData callback_data;
   *callback_data.mutable_op() = node_def;
 
+  const OpDef& op_def = data->op_def;
   TF_ASSIGN_OR_RETURN(
       std::vector<int> constant_inputs,
-      XlaOpRegistry::CompileTimeConstantInputs(node_def, data->op_def));
+      XlaOpRegistry::CompileTimeConstantInputs(node_def, op_def));
   VLOG(1) << "Constant inputs we got: " << absl::StrJoin(constant_inputs, ", ");
 
+  // Find all input tensors to be stored on host memory. They must be copied to
+  // host if they do not already reside on host.
+  const KernelDef* kernel_def;
+  absl::flat_hash_set<std::string> host_memory_inputs;
+  if (FindKernelDef(DeviceType(kDeviceNameGpu), node_def, &kernel_def, nullptr)
+          .ok()) {
+    const auto& host_args = kernel_def->host_memory_arg();
+    host_memory_inputs.insert(host_args.cbegin(), host_args.cend());
+  }
   std::vector<xla::Shape> operand_shapes_with_layout;
   std::vector<xla::XlaOp> operands;
   for (int i = 0; i < num_inputs; ++i) {
@@ -284,6 +333,12 @@ Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
       operands.push_back(ctx->Input(i));
       operand_shapes_with_layout.push_back(xla_shape);
       xla::LayoutUtil::SetToDefaultLayout(&operand_shapes_with_layout.back());
+
+      TF_ASSIGN_OR_RETURN(
+          const bool should_copy,
+          ShouldCopyToHost(*ctx, host_memory_inputs, node_def, op_def, i));
+      input_description.mutable_buffer_description()
+          ->set_should_be_copied_to_host_memory(should_copy);
     }
 
     *callback_data.add_inputs() = input_description;
@@ -689,7 +744,16 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
       // forced to be constant at compile time.
       input_allocators.emplace_back(buffers[i - constant_offset], input_size,
                                     absl::StrCat("input-", i));
-      input_tensors.emplace_back(&input_allocators[i], dt, shape);
+      if (callback_data.inputs(i)
+              .buffer_description()
+              .should_be_copied_to_host_memory()) {
+        // Copy the input from device to host memory.
+        Tensor device_t(&input_allocators[i], dt, shape);
+        TF_ASSIGN_OR_RETURN(const Tensor host_t, CopyToHost(stream, device_t));
+        input_tensors.emplace_back(host_t);
+      } else {
+        input_tensors.emplace_back(&input_allocators[i], dt, shape);
+      }
     }
     inputs.emplace_back(&input_tensors.back());
   }
