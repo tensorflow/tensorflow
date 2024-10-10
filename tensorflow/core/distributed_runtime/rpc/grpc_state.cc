@@ -60,8 +60,7 @@ void Exchange::Complete(Status status) {
       status.Update(errors::Internal("could not parse rpc response"));
     }
   }
-  VLOG(3) << "Completing exchange " << DebugString() << " with "
-          << status.ToString();
+  VLOG(3) << "Completing exchange " << DebugString() << " with " << status;
   cb_(status);
 }
 
