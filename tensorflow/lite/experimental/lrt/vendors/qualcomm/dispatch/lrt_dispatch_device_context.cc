@@ -160,6 +160,10 @@ absl::StatusOr<Qnn_MemHandle_t> LrtDispatchDeviceContextT::RegisterTensorBuffer(
   uint32_t tensor_rank = tensor_type.layout.rank;
   uint32_t* tensor_dimensions = reinterpret_cast<uint32_t*>(
       const_cast<int32_t*>(tensor_type.layout.dimensions));
+  auto* tensor_strides = tensor_type.layout.strides;
+  if (tensor_strides != nullptr) {
+    return absl::InternalError("Tensor strides are not supported by QNN");
+  }
 
   void* fastrpc_buffer_addr;
   int fastrpc_buffer_fd;

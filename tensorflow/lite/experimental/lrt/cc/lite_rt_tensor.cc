@@ -29,6 +29,14 @@ absl::Span<const int32_t> LrtTensorManager::Dims() const {
   return absl::MakeConstSpan(ranked_tensor_type_.layout.dimensions, Rank());
 }
 
+absl::Span<const uint32_t> LrtTensorManager::Strides() const {
+  if (ranked_tensor_type_.layout.strides) {
+    return absl::MakeConstSpan(ranked_tensor_type_.layout.strides, Rank());
+  } else {
+    return {};
+  }
+}
+
 uint32_t LrtTensorManager::Rank() const {
   return ranked_tensor_type_.layout.rank;
 }

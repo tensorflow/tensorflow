@@ -54,7 +54,7 @@ absl::StatusOr<Ratio> GetElementSize(LrtElementType element_type) {
   }
 }
 
-absl::StatusOr<size_t> GetNumBytes(const LrtRankedTensorType& type) {
+absl::StatusOr<size_t> GetNumPackedBytes(const LrtRankedTensorType& type) {
   auto element_size = GetElementSize(type.element_type);
   if (!element_size.ok()) {
     return element_size.status();

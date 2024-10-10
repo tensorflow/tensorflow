@@ -43,6 +43,8 @@ LrtStatus LegalizeElementType(LrtElementType src, Qnn_DataType_t& dest) {
 }
 
 LrtStatus LegalizeShapeInfo(const LrtTensorManager& src, Qnn_Tensor_t& dest) {
+  LRT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
+
   dest.v2.rank = src.Rank();
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {

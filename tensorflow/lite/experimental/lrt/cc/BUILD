@@ -49,6 +49,7 @@ cc_test(
         ":lite_rt_tensor",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",

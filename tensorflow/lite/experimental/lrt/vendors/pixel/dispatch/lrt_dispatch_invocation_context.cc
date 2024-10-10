@@ -35,6 +35,11 @@ inline constexpr auto Pad(auto x, auto align) {
 
 absl::StatusOr<LrtTensorBufferRequirements> GetTensorBufferRequirements(
     const LrtRankedTensorType& tensor_type) {
+  auto* tensor_strides = tensor_type.layout.strides;
+  if (tensor_strides != nullptr) {
+    return absl::InternalError("Tensor strides are not supported on Pixel");
+  }
+
   LrtTensorBufferType supported_tensor_buffer_types[] = {
       kLrtTensorBufferTypeAhwb,
   };
@@ -42,7 +47,7 @@ absl::StatusOr<LrtTensorBufferRequirements> GetTensorBufferRequirements(
       sizeof(supported_tensor_buffer_types) /
       sizeof(supported_tensor_buffer_types[0]);
 
-  auto buffer_size = lrt::internal::GetNumBytes(tensor_type);
+  auto buffer_size = lrt::internal::GetNumPackedBytes(tensor_type);
   if (!buffer_size.ok()) {
     return buffer_size.status();
   }

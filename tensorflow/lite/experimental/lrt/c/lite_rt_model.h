@@ -77,6 +77,8 @@ typedef struct {
   // TODO: b/365299994 - Decide on canonical type(s) for indices({s}32/64). Also
   // representation of dynamic dim.
   const int32_t* dimensions;
+  // Strides for a nomimal NWHC layout. NULL if unused.
+  const uint32_t* strides;
 } LrtLayout;
 
 // Tensor whose rank is dynamic.

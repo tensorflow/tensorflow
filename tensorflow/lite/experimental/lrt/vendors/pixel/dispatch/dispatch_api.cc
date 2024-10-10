@@ -217,6 +217,19 @@ LrtStatus RegisterTensorBuffer(LrtDispatchDeviceContext device_context,
     }
   }
 
+  LrtRankedTensorType tensor_type;
+  if (auto status = LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type);
+      status != kLrtStatusOk) {
+    ABSL_LOG(ERROR) << "Failed to get tensor buffer's type: " << status;
+    return kLrtStatusErrorRuntimeFailure;
+  }
+
+  auto* tensor_strides = tensor_type.layout.strides;
+  if (tensor_strides != nullptr) {
+    ABSL_LOG(ERROR) << "Tensor strides are not supported by Pixel";
+    return kLrtStatusErrorRuntimeFailure;
+  }
+
   AHardwareBuffer* ahwb;
 #if LRT_HAS_AHWB_SUPPORT
   if (auto status = LrtGetTensorBufferAhwb(tensor_buffer, &ahwb);

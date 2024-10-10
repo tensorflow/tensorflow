@@ -48,6 +48,11 @@ class LrtTensorManager {
 
   absl::Span<const int32_t> Dims() const;
 
+  bool HasStrides() const {
+    return ranked_tensor_type_.layout.strides != nullptr;
+  }
+  absl::Span<const uint32_t> Strides() const;
+
   LrtElementType ElementType() const;
 
   bool IsSubgraphOutput() const;

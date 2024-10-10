@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <iterator>
 #include <utility>
+#include <vector>
 
 #if LRT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
@@ -36,6 +37,18 @@
 #include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/utils.h"
 
+namespace {
+
+template <typename T>
+void Copy(size_t array_size, const T*& array, std::vector<T>& vec) {
+  vec.clear();
+  vec.reserve(array_size);
+  std::copy(array, array + array_size, std::back_inserter(vec));
+  array = vec.data();
+}
+
+}  // namespace
+
 LrtTensorBufferT::LrtTensorBufferT(const LrtRankedTensorType& tensor_type,
                                    LrtTensorBufferType buffer_type,
                                    size_t buffer_size, size_t buffer_offset)
@@ -44,11 +57,10 @@ LrtTensorBufferT::LrtTensorBufferT(const LrtRankedTensorType& tensor_type,
       buffer_size_(buffer_size),
       buffer_offset_(buffer_offset) {
   // Copy local memory passed by the caller.
-  dimensions_.reserve(tensor_type.layout.rank);
-  std::copy(tensor_type.layout.dimensions,
-            tensor_type.layout.dimensions + tensor_type.layout.rank,
-            std::back_inserter(dimensions_));
-  tensor_type_.layout.dimensions = dimensions_.data();
+  Copy(tensor_type_.layout.rank, tensor_type_.layout.dimensions, dimensions_);
+  if (tensor_type_.layout.strides) {
+    Copy(tensor_type_.layout.rank, tensor_type_.layout.strides, strides_);
+  }
 }
 
 LrtTensorBufferT::~LrtTensorBufferT() {
@@ -298,7 +310,7 @@ absl::Status LrtTensorBufferT::IsValid() const {
   }
 
   // Check for sufficient size.
-  if (auto num_bytes = lrt::internal::GetNumBytes(tensor_type_);
+  if (auto num_bytes = lrt::internal::GetNumPackedBytes(tensor_type_);
       !num_bytes.ok()) {
     return num_bytes.status();
   } else if (*num_bytes > buffer_size() - buffer_offset()) {

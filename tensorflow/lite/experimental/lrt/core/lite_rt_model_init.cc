@@ -209,10 +209,11 @@ LrtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
 
   auto& ranked_tensor = target->type_detail.ranked_tensor_type;
 
-  ranked_tensor.layout.dimensions = tensor.shape.data();
-  ranked_tensor.layout.rank = tensor.shape.size();
-
   ranked_tensor.element_type = kLrtElementTypeFloat32;
+  ranked_tensor.layout.rank = tensor.shape.size();
+  ranked_tensor.layout.dimensions = tensor.shape.data();
+  ranked_tensor.layout.strides =
+      nullptr;  // TFL tensors don't support strides yet.
 
   return kLrtStatusOk;
 }
@@ -395,6 +396,9 @@ LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
   for (int i = 0; i < type.layout.rank; ++i) {
     target.shape.push_back(type.layout.dimensions[i]);
   }
+
+  // TFL tensors don't support strides yet.
+  DCHECK(type.layout.strides == nullptr);
 
   DCHECK(tensor->weights.fb_buffer != nullptr) << "Submitting a null buffer";
   target.buffer = SubmitBuffer(std::move(tensor->weights.fb_buffer));

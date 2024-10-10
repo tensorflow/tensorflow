@@ -33,8 +33,13 @@ struct Ratio {
 };
 
 absl::StatusOr<Ratio> GetElementSize(LrtElementType element_type);
+
 absl::StatusOr<size_t> GetNumElements(const LrtRankedTensorType& tensor_type);
-absl::StatusOr<size_t> GetNumBytes(const LrtRankedTensorType& tensor_type);
+
+// Get the number of bytes necessary to represent a tensor type, ignoring any
+// stride information.
+absl::StatusOr<size_t> GetNumPackedBytes(
+    const LrtRankedTensorType& tensor_type);
 
 }  // namespace internal
 }  // namespace lrt

@@ -131,6 +131,7 @@ class LrtTensorBufferT {
 
   LrtRankedTensorType tensor_type_;
   std::vector<std::decay_t<decltype(LrtLayout::dimensions[0])>> dimensions_;
+  std::vector<std::decay_t<decltype(LrtLayout::strides[0])>> strides_;
   LrtTensorBufferType buffer_type_;
   size_t buffer_size_;
   size_t buffer_offset_;
