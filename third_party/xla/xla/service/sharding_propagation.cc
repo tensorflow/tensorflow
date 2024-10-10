@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -63,6 +64,33 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+// Remove stale shard group instructions after a module has been changed.
+void RemoveStaleShardGroupInstructions(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+        shard_group_id_to_shard_group) {
+  absl::flat_hash_map<HloInstruction*, int64_t> instruction_to_shard_group_id;
+  absl::flat_hash_set<HloInstruction*> not_stale;
+  for (auto& [shard_group_id, shard_group] : shard_group_id_to_shard_group) {
+    for (HloInstruction* instruction : shard_group) {
+      instruction_to_shard_group_id[instruction] = shard_group_id;
+    }
+  }
+  for (auto computation : module->computations(execution_threads)) {
+    for (auto instruction : computation->instructions()) {
+      if (instruction_to_shard_group_id.contains(instruction)) {
+        not_stale.insert(instruction);
+      }
+    }
+  }
+  for (auto& [instruction, shard_group_id] : instruction_to_shard_group_id) {
+    if (!not_stale.contains(instruction)) {
+      shard_group_id_to_shard_group[shard_group_id].erase(instruction);
+    }
+  }
+}
 
 // Returning the improved sharding of an instruction from some other sharding.
 std::optional<HloSharding> ReturnImprovedSharding(
@@ -3333,6 +3361,10 @@ absl::StatusOr<bool> ShardingPropagation::Run(
                       shard_group_id_to_shard_like_group, iterations));
     any_changed = any_changed || changed;
   }
+  RemoveStaleShardGroupInstructions(module, execution_threads,
+                                    shard_group_id_to_shard_as_group);
+  RemoveStaleShardGroupInstructions(module, execution_threads,
+                                    shard_group_id_to_shard_like_group);
 
   // Align the shardings from the same shard_as group so that they will adopt
   // the same sharding.
