@@ -1658,7 +1658,8 @@ absl::Status TransformLoopForward(
     int64_t level_to_operate_on, bool pipeline_use_tree,
     bool process_different_sized_ops, HloPredicate should_process,
     HloPredicate acceptable_formatting, HloPredicate reuse_output_buffer,
-    int64_t& next_channel_id) {
+    int64_t& next_channel_id,
+    CollectivePipeliner::HloPostprocessor post_processing_fn) {
   // Defining some maps/sets to keep track of instructions duplicated.
   InstructionMap while_body_to_peeled;
   absl::flat_hash_set<HloInstruction*> to_skip_set;
@@ -1881,7 +1882,8 @@ absl::Status TransformLoopForward(
         base->shape(), base, to_insert, indices));
   };
   auto process_slice =
-      [&next_channel_id, insert_non_alias_custom_call, level_to_operate_on](
+      [&next_channel_id, &post_processing_fn, insert_non_alias_custom_call,
+       level_to_operate_on](
           HloInstruction* stacked_data,
           const InstructionMap& pipelined_values_map,
           const WhileMoveInfo& move_info) -> absl::StatusOr<HloInstruction*> {
@@ -1897,6 +1899,10 @@ absl::Status TransformLoopForward(
           HloInstruction::CreateCustomCall(
               processed->shape(), {processed, level},
               CollectivePipeliner::kInsertedByPreviousStep));
+    }
+
+    if (post_processing_fn.has_value()) {
+      TF_RETURN_IF_ERROR((*post_processing_fn)(processed));
     }
 
     InstructionMap cloned_map = pipelined_values_map;
@@ -2619,7 +2625,8 @@ static absl::Status TransformLoopBackward(
     HloPredicate should_process, HloPredicate acceptable_formatting,
     CollectivePipeliner::HloPostprocessor postprocess_peeled,
     CollectivePipeliner::HloPostprocessor postprocess_rotated,
-    int64_t& next_channel_id) {
+    int64_t& next_channel_id,
+    CollectivePipeliner::HloPostprocessor post_processing_fn) {
   // Defining some maps/sets to keep track of instructions duplicated.
   absl::flat_hash_map<HloInstruction*, HloInstruction*> while_body_to_peeled;
   absl::flat_hash_map<HloInstruction*, int64_t> collective_to_move_map;
@@ -2718,6 +2725,9 @@ static absl::Status TransformLoopBackward(
                            *loop_analysis.GetLoopIterationIdx(),
                            next_channel_id));
 
+    if (post_processing_fn.has_value()) {
+      TF_RETURN_IF_ERROR((*post_processing_fn)(new_init_operands[idx]));
+    }
     if (postprocess_peeled.has_value()) {
       TF_RETURN_IF_ERROR(postprocess_peeled.value()(new_init_operands[idx]));
     }
@@ -2769,6 +2779,9 @@ static absl::Status TransformLoopBackward(
                              *loop_analysis.GetLoopIterationIdx(),
                              next_channel_id, &loop_variant_parameter_info));
 
+      if (post_processing_fn.has_value()) {
+        TF_RETURN_IF_ERROR((*post_processing_fn)(cloned_instr));
+      }
       if (postprocess_rotated.has_value()) {
         TF_RETURN_IF_ERROR(postprocess_rotated.value()(cloned_instr));
       }
@@ -2995,7 +3008,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, config_.acceptable_formatting,
-          config_.reuse_pipelined_op_buffer, next_channel_id));
+          config_.reuse_pipelined_op_buffer, next_channel_id,
+          config_.postprocess_pipelined_ops));
     } else if (config_.pipelining_direction ==
                PipeliningDirection::kForwardSink) {
       TF_RETURN_IF_ERROR(TransformLoopForwardSink(
@@ -3008,7 +3022,8 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
           config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
-          config_.postprocess_backward_rotated_op, next_channel_id));
+          config_.postprocess_backward_rotated_op, next_channel_id,
+          config_.postprocess_pipelined_ops));
     }
     ++transformed_loops;
     changed = true;

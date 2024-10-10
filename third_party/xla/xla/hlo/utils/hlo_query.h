@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/util.h"
 
 namespace xla {
 
@@ -82,7 +83,8 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
 
-// Applies `fn` to a collection of instruction for a given `computation`.
+// Applies `fn` to a collection of instruction with `opcode` for a given
+// `computation`.
 template <typename Fn>
 void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
                                   Fn&& fn) {
@@ -93,12 +95,34 @@ void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
   }
 }
 
-// Applies `fn` to a collection of instruction for a given `module`.
+// Applies `fn` to a collection of instruction with `opcode` for a given
+// `module`.
 template <typename Fn>
 void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
                                   Fn&& fn) {
   for (HloComputation* computation : module.computations()) {
     ForEachInstructionWithOpcode(*computation, opcode, fn);
+  }
+}
+
+// Applies `fn` to a collection of instruction satisfying `pred` for a given
+// `computation`.
+template <typename Fn>
+void ForEachInstructionWithPred(HloComputation& computation, HloPredicate pred,
+                                Fn&& fn) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (pred(instr)) {
+      fn(instr);
+    }
+  }
+}
+
+// Applies `fn` to a collection of instruction satisfying `pred` for a given
+// `module`.
+template <typename Fn>
+void ForEachInstructionWithPred(HloModule& module, HloPredicate pred, Fn&& fn) {
+  for (HloComputation* computation : module.computations()) {
+    ForEachInstructionWithPred(*computation, pred, fn);
   }
 }
 
