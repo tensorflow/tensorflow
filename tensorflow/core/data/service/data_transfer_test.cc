@@ -35,7 +35,7 @@ namespace {
 class TestDataTransferServer : public DataTransferServer {
  public:
   explicit TestDataTransferServer(bool* called) : called_(called) {}
-  Status Start(const experimental::WorkerConfig& unused_config) override {
+  absl::Status Start(const experimental::WorkerConfig& unused_config) override {
     *called_ = true;
     return absl::OkStatus();
   }

@@ -25,9 +25,9 @@ namespace data {
 
 // Verifies the datasets with the same ID have the same metadata. If the
 // metadata differs, returns an invalid argument error.
-Status ValidateMatchingDataset(const std::string& dataset_id,
-                               const DataServiceMetadata& metadata1,
-                               const DataServiceMetadata& metadata2);
+absl::Status ValidateMatchingDataset(const std::string& dataset_id,
+                                     const DataServiceMetadata& metadata1,
+                                     const DataServiceMetadata& metadata2);
 
 }  // namespace data
 }  // namespace tensorflow

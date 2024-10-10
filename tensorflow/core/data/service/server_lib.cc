@@ -54,7 +54,7 @@ GrpcDataServerBase::GrpcDataServerBase(
       bound_port_(port),
       server_options_(std::move(options)) {}
 
-Status GrpcDataServerBase::Start() {
+absl::Status GrpcDataServerBase::Start() {
   if (stopped_) {
     return errors::FailedPrecondition(
         "Server cannot be started after it has been stopped.");
@@ -127,13 +127,13 @@ void DispatchGrpcDataServer::AddDataServiceToBuilder(
   service_ = std::make_unique<GrpcDispatcherImpl>(config_, builder).release();
 }
 
-Status DispatchGrpcDataServer::StartServiceInternal() {
+absl::Status DispatchGrpcDataServer::StartServiceInternal() {
   return service_->Start();
 }
 
 void DispatchGrpcDataServer::StopServiceInternal() { service_->Stop(); }
 
-Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
+absl::Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
   ::grpc::ServerContext ctx;
@@ -145,7 +145,7 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   return absl::OkStatus();
 }
 
-Status DispatchGrpcDataServer::SnapshotStreams(
+absl::Status DispatchGrpcDataServer::SnapshotStreams(
     const std::string& path, std::vector<SnapshotStreamInfoWrapper>* streams) {
   GetSnapshotStreamsRequest req;
   req.set_path(path);
@@ -192,9 +192,9 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
       config_.data_transfer_protocol() == kGrpcTransferProtocol) {
     return;
   }
-  Status s = DataTransferServer::Build(config_.data_transfer_protocol(),
-                                       service_->get_element_getter(),
-                                       &transfer_server_);
+  absl::Status s = DataTransferServer::Build(config_.data_transfer_protocol(),
+                                             service_->get_element_getter(),
+                                             &transfer_server_);
   if (!s.ok()) {
     LOG(ERROR) << "failed to build " << config_.data_transfer_protocol()
                << " server for worker " << config_.worker_address() << ": "
@@ -232,7 +232,7 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
   transfer_servers.push_back(alternative_transfer_server);
 }
 
-Status WorkerGrpcDataServer::StartServiceInternal() {
+absl::Status WorkerGrpcDataServer::StartServiceInternal() {
   std::string base_address = config_.worker_address();
   if (base_address.empty()) {
     base_address = absl::StrCat("localhost:", kPortPlaceholder);
@@ -251,7 +251,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
 
 void WorkerGrpcDataServer::StopServiceInternal() { service_->Stop(); }
 
-Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
+absl::Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   GetWorkerTasksRequest req;
   GetWorkerTasksResponse resp;
   ::grpc::ServerContext ctx;
@@ -263,7 +263,7 @@ Status WorkerGrpcDataServer::NumTasks(int* num_tasks) {
   return absl::OkStatus();
 }
 
-Status WorkerGrpcDataServer::SnapshotTaskProgresses(
+absl::Status WorkerGrpcDataServer::SnapshotTaskProgresses(
     std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses) {
   GetSnapshotTaskProgressesRequest req;
   GetSnapshotTaskProgressesResponse resp;
@@ -284,14 +284,16 @@ ServerStateExport WorkerGrpcDataServer::ExportState() const {
   return server_state_export;
 }
 
-Status NewDispatchServer(const experimental::DispatcherConfig& config,
-                         std::unique_ptr<DispatchGrpcDataServer>& out_server) {
+absl::Status NewDispatchServer(
+    const experimental::DispatcherConfig& config,
+    std::unique_ptr<DispatchGrpcDataServer>& out_server) {
   out_server = std::make_unique<DispatchGrpcDataServer>(config);
   return absl::OkStatus();
 }
 
-Status NewWorkerServer(const experimental::WorkerConfig& config,
-                       std::unique_ptr<WorkerGrpcDataServer>& out_server) {
+absl::Status NewWorkerServer(
+    const experimental::WorkerConfig& config,
+    std::unique_ptr<WorkerGrpcDataServer>& out_server) {
   out_server = std::make_unique<WorkerGrpcDataServer>(config);
   return absl::OkStatus();
 }

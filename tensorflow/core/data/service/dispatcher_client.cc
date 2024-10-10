@@ -46,7 +46,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status DataServiceDispatcherClient::Initialize() {
+absl::Status DataServiceDispatcherClient::Initialize() {
   mutex_lock l(mu_);
   if (stub_) {
     return absl::OkStatus();
@@ -96,7 +96,7 @@ DataServiceDispatcherClient::WorkerHeartbeat(
   return response;
 }
 
-Status DataServiceDispatcherClient::WorkerUpdate(
+absl::Status DataServiceDispatcherClient::WorkerUpdate(
     const std::string& worker_address,
     std::vector<TaskProgress>& task_progress) {
   WorkerUpdateRequest req;
@@ -113,8 +113,8 @@ Status DataServiceDispatcherClient::WorkerUpdate(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
-                                                  DatasetDef& dataset_def) {
+absl::Status DataServiceDispatcherClient::GetDatasetDef(
+    const std::string& dataset_id, DatasetDef& dataset_def) {
   GetDatasetDefRequest req;
   req.set_dataset_id(dataset_id);
   GetDatasetDefResponse resp;
@@ -127,11 +127,11 @@ Status DataServiceDispatcherClient::GetDatasetDef(const std::string& dataset_id,
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
-                                             int64_t repetition,
-                                             int64_t split_provider_index,
-                                             Tensor& split,
-                                             bool& end_of_splits) {
+absl::Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
+                                                   int64_t repetition,
+                                                   int64_t split_provider_index,
+                                                   Tensor& split,
+                                                   bool& end_of_splits) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetSplitRequest req;
   req.set_iteration_id(iteration_id);
@@ -152,7 +152,7 @@ Status DataServiceDispatcherClient::GetSplit(int64_t iteration_id,
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::Snapshot(
+absl::Status DataServiceDispatcherClient::Snapshot(
     const DatasetDef& dataset, const std::string& path,
     const experimental::DistributedSnapshotMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -171,7 +171,7 @@ Status DataServiceDispatcherClient::Snapshot(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetSnapshotSplit(
+absl::Status DataServiceDispatcherClient::GetSnapshotSplit(
     const std::string& worker_address, const std::string& base_path,
     int64_t stream_index, int64_t source_index, int64_t repetition_index,
     Tensor& split, int64_t& local_split_index, bool& end_of_splits) {
@@ -200,7 +200,7 @@ Status DataServiceDispatcherClient::GetSnapshotSplit(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::RegisterDataset(
+absl::Status DataServiceDispatcherClient::RegisterDataset(
     const DatasetDef& dataset, const DataServiceMetadata& metadata,
     const std::optional<std::string>& requested_dataset_id,
     std::string& dataset_id) {
@@ -222,7 +222,7 @@ Status DataServiceDispatcherClient::RegisterDataset(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetOrCreateJob(
+absl::Status DataServiceDispatcherClient::GetOrCreateJob(
     const std::string& dataset_id, const ProcessingModeDef& processing_mode,
     const std::optional<std::string>& job_name,
     std::optional<int64_t> num_consumers, bool use_cross_trainer_cache,
@@ -252,7 +252,7 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetOrCreateIteration(
+absl::Status DataServiceDispatcherClient::GetOrCreateIteration(
     int64_t job_id, int64_t repetition, int64_t& iteration_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateIterationRequest req;
@@ -271,7 +271,7 @@ Status DataServiceDispatcherClient::GetOrCreateIteration(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::ReleaseIterationClient(
+absl::Status DataServiceDispatcherClient::ReleaseIterationClient(
     int64_t iteration_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   ReleaseIterationClientRequest req;
@@ -288,10 +288,8 @@ Status DataServiceDispatcherClient::ReleaseIterationClient(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
-                                                    int64_t consumer_index,
-                                                    int64_t round,
-                                                    bool& removed) {
+absl::Status DataServiceDispatcherClient::MaybeRemoveTask(
+    int64_t task_id, int64_t consumer_index, int64_t round, bool& removed) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   MaybeRemoveTaskRequest req;
   req.set_task_id(task_id);
@@ -307,7 +305,7 @@ Status DataServiceDispatcherClient::MaybeRemoveTask(int64_t task_id,
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::ClientHeartbeat(
+absl::Status DataServiceDispatcherClient::ClientHeartbeat(
     ClientHeartbeatRequest& req, ClientHeartbeatResponse& resp) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   grpc::ClientContext ctx;
@@ -318,7 +316,7 @@ Status DataServiceDispatcherClient::ClientHeartbeat(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetWorkers(
+absl::Status DataServiceDispatcherClient::GetWorkers(
     std::vector<WorkerInfo>& workers) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetWorkersRequest req;
@@ -335,7 +333,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetDataServiceMetadata(
+absl::Status DataServiceDispatcherClient::GetDataServiceMetadata(
     const std::string& dataset_id, DataServiceMetadata& metadata) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDataServiceMetadataRequest req;
@@ -350,7 +348,7 @@ Status DataServiceDispatcherClient::GetDataServiceMetadata(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::GetDataServiceConfig(
+absl::Status DataServiceDispatcherClient::GetDataServiceConfig(
     DataServiceConfig& config) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetDataServiceConfigRequest request;
@@ -364,7 +362,7 @@ Status DataServiceDispatcherClient::GetDataServiceConfig(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
+absl::Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
     const std::string& dataset_id, bool disable_compression_at_runtime,
     DisableCompressionAtRuntimeResponse& response) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -380,7 +378,7 @@ Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
   return absl::OkStatus();
 }
 
-Status DataServiceDispatcherClient::EnsureInitialized() {
+absl::Status DataServiceDispatcherClient::EnsureInitialized() {
   return grpc_util::Retry([this] { return Initialize(); },
                           "Initialize dispatcher client",
                           /*deadline_micros=*/kint64max);

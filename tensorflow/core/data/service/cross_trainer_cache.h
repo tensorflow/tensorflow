@@ -115,7 +115,7 @@ class CrossTrainerCache {
   // Cancels the cache with `status` and notifies the readers. After cancelling,
   // all `Get` calls will return `status`.
   // REQUIRES: !status.ok()
-  void Cancel(Status status);
+  void Cancel(absl::Status status);
 
   // Returns true if the cache has been cancelled.
   bool IsCancelled() const;
@@ -143,7 +143,7 @@ class CrossTrainerCache {
       const std::string& trainer_id);
 
   // Reads a new element and writes it into the cache.
-  Status ExtendCache();
+  absl::Status ExtendCache();
 
   // Frees old elements to keep the cache size below `max_cache_size_bytes_`.
   // `new_element_size_bytes` is the size of the new element being inserted.
@@ -163,7 +163,7 @@ class CrossTrainerCache {
 
   // If `status_` is non-OK, the cache is cancelled, and all method calls will
   // return this status.
-  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
+  absl::Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
 
   // `cache_` stores the cached elements.
   std::deque<std::shared_ptr<const ElementType>> cache_ TF_GUARDED_BY(mu_);
@@ -235,7 +235,7 @@ CrossTrainerCache<ElementType>::GetCacheQueryResult(
     }
 
     if (should_extend_cache) {
-      Status s = ExtendCache();
+      absl::Status s = ExtendCache();
       mutex_lock l(mu_);
       extending_cache_ = false;
       cv_.notify_all();
@@ -278,7 +278,8 @@ size_t CrossTrainerCache<ElementType>::GetElementIndex(
 }
 
 template <class ElementType>
-Status CrossTrainerCache<ElementType>::ExtendCache() TF_LOCKS_EXCLUDED(mu_) {
+absl::Status CrossTrainerCache<ElementType>::ExtendCache()
+    TF_LOCKS_EXCLUDED(mu_) {
   TF_ASSIGN_OR_RETURN(ElementType element, cachable_sequence_->GetNext());
   size_t new_element_size_bytes =
       cachable_sequence_->GetElementSizeBytes(element);
@@ -317,7 +318,7 @@ void CrossTrainerCache<ElementType>::FreeSpace(size_t new_element_size_bytes)
 }
 
 template <class ElementType>
-void CrossTrainerCache<ElementType>::Cancel(Status status)
+void CrossTrainerCache<ElementType>::Cancel(absl::Status status)
     TF_LOCKS_EXCLUDED(mu_) {
   DCHECK(!status.ok())
       << "Cancelling CrossTrainerCache requires a non-OK status. Got "

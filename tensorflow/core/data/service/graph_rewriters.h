@@ -89,7 +89,7 @@ class WorkerIndexResolver {
   // Validates `worker_address`. Returns an error if the `worker_addresses` list
   // is non-empty and `worker_address` is not specified in the worker addresses
   // list (with optional port replacement).
-  Status ValidateWorker(absl::string_view worker_address) const;
+  absl::Status ValidateWorker(absl::string_view worker_address) const;
 
   // Processes a worker at address `worker_address`. Its index can be retrieved
   // by calling `GetWorkerIndex`.

@@ -67,9 +67,9 @@ class TestCluster {
 
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.
-  Status Initialize();
+  absl::Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker(
+  absl::Status AddWorker(
       std::optional<int> port = std::nullopt,
       std::optional<std::string> data_transfer_protocol = std::nullopt);
   // Returns the number of workers in this cluster.

@@ -34,7 +34,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
                               ::grpc::ServerBuilder& server_builder);
   ~GrpcDispatcherImpl() override { Stop(); }
 
-  Status Start();
+  absl::Status Start();
   void Stop();
 
   size_t NumActiveIterations();
