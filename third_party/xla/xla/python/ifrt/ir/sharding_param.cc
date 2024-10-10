@@ -97,16 +97,6 @@ absl::Status ShardingParam::MinorToMajor::verify() const {
   return absl::OkStatus();
 }
 
-mlir::LogicalResult ShardingParam::MinorToMajor::verify(
-    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const {
-  auto status = verify();
-  if (status.ok()) {
-    return mlir::success();
-  } else {
-    return emit_error() << status.message();
-  }
-}
-
 void ShardingParam::MinorToMajor::ToDeviceList(
     llvm::SmallVectorImpl<int>& out_devices) const {
   llvm::SmallVector<int, 4> cum_sizes;
