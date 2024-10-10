@@ -107,4 +107,5 @@ target_include_directories(benchmark_model
 )
 target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}
+    absl::log
 )

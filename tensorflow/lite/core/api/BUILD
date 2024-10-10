@@ -25,7 +25,6 @@ filegroup(
 cc_library(
     name = "api",
     srcs = [
-        "flatbuffer_conversions.cc",
         "tensor_utils.cc",
     ],
     hdrs = [
@@ -43,10 +42,12 @@ cc_library(
         ":op_resolver",
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite:builtin_op_data",
         # TODO(b/158301698): consider moving internal:compatibility to a more
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/core/api:flatbuffer_conversions",
     ],
 )
 
@@ -144,22 +145,5 @@ cc_test(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "flatbuffer_conversions_test",
-    size = "small",
-    srcs = ["flatbuffer_conversions_test.cc"],
-    deps = [
-        ":api",
-        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
-        "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
     ],
 )

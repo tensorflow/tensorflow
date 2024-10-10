@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,26 +12,107 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/versioning/op_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 
-#include <algorithm>
-#include <string>
-#include <utility>
-#include <vector>
+#include <cstdint>
+#include <cstdlib>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
+#include "absl/log/log.h"
+#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/core/c/builtin_op_data.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
 
-namespace tflite {
+namespace tflite_migration {
+using tflite::BuiltinOperator_ABS;
+using tflite::BuiltinOperator_ADD;
+using tflite::BuiltinOperator_ARG_MAX;
+using tflite::BuiltinOperator_ARG_MIN;
+using tflite::BuiltinOperator_AVERAGE_POOL_2D;
+using tflite::BuiltinOperator_BATCH_MATMUL;
+using tflite::BuiltinOperator_BATCH_TO_SPACE_ND;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::BuiltinOperator_BROADCAST_TO;
+using tflite::BuiltinOperator_CAST;
+using tflite::BuiltinOperator_CONCATENATION;
+using tflite::BuiltinOperator_CONV_2D;
+using tflite::BuiltinOperator_DEPTH_TO_SPACE;
+using tflite::BuiltinOperator_DEPTHWISE_CONV_2D;
+using tflite::BuiltinOperator_DEQUANTIZE;
+using tflite::BuiltinOperator_DIV;
+using tflite::BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+using tflite::BuiltinOperator_EMBEDDING_LOOKUP;
+using tflite::BuiltinOperator_EQUAL;
+using tflite::BuiltinOperator_EXP;
+using tflite::BuiltinOperator_FAKE_QUANT;
+using tflite::BuiltinOperator_FILL;
+using tflite::BuiltinOperator_FLOOR_DIV;
+using tflite::BuiltinOperator_FLOOR_MOD;
+using tflite::BuiltinOperator_FULLY_CONNECTED;
+using tflite::BuiltinOperator_GATHER;
+using tflite::BuiltinOperator_GATHER_ND;
+using tflite::BuiltinOperator_GELU;
+using tflite::BuiltinOperator_GREATER;
+using tflite::BuiltinOperator_GREATER_EQUAL;
+using tflite::BuiltinOperator_L2_NORMALIZATION;
+using tflite::BuiltinOperator_LEAKY_RELU;
+using tflite::BuiltinOperator_LESS;
+using tflite::BuiltinOperator_LESS_EQUAL;
+using tflite::BuiltinOperator_LOG;
+using tflite::BuiltinOperator_LOG_SOFTMAX;
+using tflite::BuiltinOperator_LOGISTIC;
+using tflite::BuiltinOperator_LSTM;
+using tflite::BuiltinOperator_MAX_POOL_2D;
+using tflite::BuiltinOperator_MAXIMUM;
+using tflite::BuiltinOperator_MEAN;
+using tflite::BuiltinOperator_MINIMUM;
+using tflite::BuiltinOperator_MIRROR_PAD;
+using tflite::BuiltinOperator_MUL;
+using tflite::BuiltinOperator_NOT_EQUAL;
+using tflite::BuiltinOperator_PACK;
+using tflite::BuiltinOperator_PAD;
+using tflite::BuiltinOperator_PADV2;
+using tflite::BuiltinOperator_QUANTIZE;
+using tflite::BuiltinOperator_RANGE;
+using tflite::BuiltinOperator_REDUCE_MAX;
+using tflite::BuiltinOperator_REDUCE_MIN;
+using tflite::BuiltinOperator_REDUCE_PROD;
+using tflite::BuiltinOperator_RELU;
+using tflite::BuiltinOperator_RELU6;
+using tflite::BuiltinOperator_RESIZE_BILINEAR;
+using tflite::BuiltinOperator_RESIZE_NEAREST_NEIGHBOR;
+using tflite::BuiltinOperator_REVERSE_V2;
+using tflite::BuiltinOperator_RNN;
+using tflite::BuiltinOperator_RSQRT;
+using tflite::BuiltinOperator_SELECT;
+using tflite::BuiltinOperator_SELECT_V2;
+using tflite::BuiltinOperator_SIGN;
+using tflite::BuiltinOperator_SLICE;
+using tflite::BuiltinOperator_SOFTMAX;
+using tflite::BuiltinOperator_SPACE_TO_BATCH_ND;
+using tflite::BuiltinOperator_SPACE_TO_DEPTH;
+using tflite::BuiltinOperator_SPARSE_TO_DENSE;
+using tflite::BuiltinOperator_SPLIT;
+using tflite::BuiltinOperator_SPLIT_V;
+using tflite::BuiltinOperator_SQUARED_DIFFERENCE;
+using tflite::BuiltinOperator_SQUEEZE;
+using tflite::BuiltinOperator_STRIDED_SLICE;
+using tflite::BuiltinOperator_SUB;
+using tflite::BuiltinOperator_SUM;
+using tflite::BuiltinOperator_SVDF;
+using tflite::BuiltinOperator_TANH;
+using tflite::BuiltinOperator_TILE;
+using tflite::BuiltinOperator_TOPK_V2;
+using tflite::BuiltinOperator_TRANSPOSE;
+using tflite::BuiltinOperator_TRANSPOSE_CONV;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
+using tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN;
+using tflite::BuiltinOperator_UNPACK;
+using tflite::BuiltinOperator_WHERE;
+
 namespace {
 
 bool NeedBroadcastForBinaryInputs(const OpSignature& op_sig) {
@@ -150,8 +231,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_EMBEDDING_LOOKUP: {
-      if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
-          op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4) {
         return 4;
       }
       return 1;
@@ -1101,18 +1181,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 }
 
 void UpdateOpVersion(uint8_t* model_buffer_pointer) {
-  auto model = GetMutableModel(model_buffer_pointer);
+  auto model = tflite::GetMutableModel(model_buffer_pointer);
   auto subgraphs = model->subgraphs();
 
-  for (int i = 0; i < subgraphs->Length(); ++i) {
-    const SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
-      const Operator* op = subgraph->operators()->Get(j);
-      OperatorCode* op_code =
+  for (int i = 0; i < subgraphs->size(); ++i) {
+    const tflite::SubGraph* subgraph = subgraphs->Get(i);
+    for (int j = 0; j < subgraph->operators()->size(); ++j) {
+      const tflite::Operator* op = subgraph->operators()->Get(j);
+      tflite::OperatorCode* op_code =
           model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
 
       auto builtin_code = GetBuiltinCode(op_code);
-      if (builtin_code != BuiltinOperator_CUSTOM) {
+      if (builtin_code != tflite::BuiltinOperator_CUSTOM) {
         OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
         // Update builtin operator version.
         int32_t op_ver = GetBuiltinOperatorVersion(op_sig);
@@ -1135,4 +1215,4 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
   }
 }
 
-}  // namespace tflite
+}  // namespace tflite_migration

@@ -436,7 +436,7 @@ test_suite(
 test_suite(
     name = "builtin_op_data_test",
     tests = [
-        "//tensorflow/lite/core/c:builtin_op_data_test",
+        "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data_test",
     ],
 )
 

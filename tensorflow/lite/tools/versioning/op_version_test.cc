@@ -12,18 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/versioning/op_version.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+
+using tflite_migration::OpSignature;
+using tflite_migration::OpSignatureTensorSpec;
+
 namespace {
 
 // Creates vector of OpSignatureTensorSpec with the given TfLiteType vector.
