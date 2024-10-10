@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LINALG_MATRIX_SET_DIAG_OP_H_
 #define TENSORFLOW_CORE_KERNELS_LINALG_MATRIX_SET_DIAG_OP_H_
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
