@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_TRANSFER_GUARD_LIB_H_
-#define XLA_PYTHON_TRANSFER_GUARD_LIB_H_
+#ifndef XLA_PYTHON_GUARD_LIB_H_
+#define XLA_PYTHON_GUARD_LIB_H_
 
 #include <optional>
 #include <string>
@@ -45,7 +45,17 @@ enum class TransferGuardLevel {
   kDisallowExplicit,
 };
 
-// Flags for transfer guard levels are controlled by:
+// Garbage collection guard level chose by the user code.
+enum class GarbageCollectionGuardLevel {
+  // Silently allow the object to be garbage collected.
+  kAllow,
+  // Log and allow the object to be garbage collected.
+  kLog,
+  // Fatal crash on object garbage collection.
+  kFatal,
+};
+
+// Flags for guard levels are controlled by:
 // - a global flag value,
 //   e.g., associated to --jax_transfer_guard_device_to_host
 //   which defaults to TransferGuardLevel::kAllow.
@@ -54,12 +64,14 @@ enum class TransferGuardLevel {
 //   implement context managers that locally override the global state.
 //
 // Explicit device_put/device_get contexts are tracked by context managers.
-struct TransferGuardState {
+struct GuardState {
   std::optional<TransferGuardLevel> host_to_device;
   std::optional<TransferGuardLevel> device_to_device;
   std::optional<TransferGuardLevel> device_to_host;
   bool explicit_device_put = false;
   bool explicit_device_get = false;
+
+  std::optional<GarbageCollectionGuardLevel> garbage_collect_array;
 };
 
 // Resulting action for a transfer given the transfer guard level and the
@@ -91,9 +103,13 @@ absl::Status ApplyTransferGuardToDeviceToDevice(
 absl::Status ApplyTransferGuardToDeviceToHost(
     absl::FunctionRef<std::string()> formatter);
 
+// Returns the garbage collection guard level for "jax.Array" objects.
+// REQUIRES: Python GIL.
+GarbageCollectionGuardLevel GetGarbageCollectArrayGuard();
+
 // The function to call in `xla.cc` to add the bindings for this module.
-void BuildTransferGuardSubmodule(nanobind::module_& m);
+void BuildGuardSubmodule(nanobind::module_& m);
 
 }  // namespace jax
 
-#endif  // XLA_PYTHON_TRANSFER_GUARD_LIB_H_
+#endif  // XLA_PYTHON_GUARD_LIB_H_

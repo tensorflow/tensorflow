@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/primitive_util.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -82,7 +83,6 @@ limitations under the License.
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/python/types.h"
 #include "xla/python/util.h"
 #include "xla/shape.h"
@@ -310,6 +310,35 @@ extern "C" int PyArray_tp_traverse(PyObject* self, visitproc visit, void* arg) {
 
 // dynamic_attr: Allow the GC to clear the dictionary.
 extern "C" int PyArray_tp_clear(PyObject* self) {
+  switch (auto guard_level = jax::GetGarbageCollectArrayGuard(); guard_level) {
+    case jax::GarbageCollectionGuardLevel::kAllow:
+      break;
+    case jax::GarbageCollectionGuardLevel::kLog:
+    case jax::GarbageCollectionGuardLevel::kFatal: {
+      auto* obj = reinterpret_cast<PyArrayObject*>(self);
+      std::string traceback_str;
+      if (obj->initialized) {
+        auto traceback = GetPyArrayStorageFromObject(obj)->traceback;
+        if (traceback.has_value()) {
+          traceback_str = traceback.value()->ToString();
+        }
+      }
+      auto error_msg = absl::StrCat(
+          "`jax.Array` was deleted by the Python garbage collector "
+          "instead of reference counting. Break the reference cycle "
+          "that delays the deletion of this `jax.Array` to avoid hogging "
+          "memory. Traceback: \n",
+          traceback_str.empty() ? "not available" : traceback_str);
+      if (guard_level == jax::GarbageCollectionGuardLevel::kFatal) {
+        Py_FatalError(error_msg.c_str());
+      } else {
+        PyErr_SetString(PyExc_RuntimeError, error_msg.c_str());
+        PyErr_Print();
+        PyErr_Clear();
+      }
+      break;
+    }
+  }
 #if PY_VERSION_HEX < 0x030C0000
   PyObject*& dict = *_PyObject_GetDictPtr(self);
   Py_CLEAR(dict);

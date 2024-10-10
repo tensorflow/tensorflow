@@ -1,4 +1,4 @@
-/* Copyright 2022 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This files implements the configuration management for transfer guards.
-// C++ backends responsible for enforcing transfer guard levels.
+// This files implements the configuration management for different types of
+// guards.
+// C++ backends are responsible for enforcing transfer guard levels.
 
-#include "xla/python/transfer_guard_lib.h"
+#include "xla/python/guard_lib.h"
 
 #include <optional>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "nanobind/nanobind.h"
 #include "nanobind/stl/optional.h"  // IWYU pragma: keep
@@ -34,12 +37,16 @@ namespace nb = ::nanobind;
 namespace {
 
 // Protected by the GIL.
-TransferGuardState& global_state = *new TransferGuardState();
+GuardState& global_state = *new GuardState();
 
-ABSL_CONST_INIT thread_local TransferGuardState thread_local_state;
+ABSL_CONST_INIT thread_local GuardState thread_local_state;
 
 // The default transfer guard level.
 constexpr TransferGuardLevel kDefaultGuardLevel = TransferGuardLevel::kAllow;
+
+// The default garbage collection guard level.
+constexpr GarbageCollectionGuardLevel kDefaultGarbageCollectionGuardLevel =
+    GarbageCollectionGuardLevel::kAllow;
 
 // Returns the transfer guard action for a transfer.
 TransferGuardAction GetTransferGuardAction(TransferGuardLevel guard_level,
@@ -144,33 +151,45 @@ absl::Status ApplyTransferGuardToDeviceToHost(
   return absl::OkStatus();
 }
 
-void BuildTransferGuardSubmodule(nb::module_& m) {
-  nb::module_ tglib = m.def_submodule("transfer_guard_lib",
-                                      "Jax transfer guard support library");
+GarbageCollectionGuardLevel GetGarbageCollectArrayGuard() {
+  return thread_local_state.garbage_collect_array.value_or(
+      global_state.garbage_collect_array.value_or(
+          kDefaultGarbageCollectionGuardLevel));
+}
 
-  nb::enum_<TransferGuardLevel> tglevel(tglib, "TransferGuardLevel");
+void BuildGuardSubmodule(nb::module_& m) {
+  nb::module_ glib =
+      m.def_submodule("guard_lib", "Jax support library for guards");
+
+  nb::enum_<TransferGuardLevel> tglevel(glib, "TransferGuardLevel");
   tglevel.value("ALLOW", TransferGuardLevel::kAllow);
   tglevel.value("LOG", TransferGuardLevel::kLog);
   tglevel.value("DISALLOW", TransferGuardLevel::kDisallow);
   tglevel.value("LOG_EXPLICIT", TransferGuardLevel::kLogExplicit);
   tglevel.value("DISALLOW_EXPLICIT", TransferGuardLevel::kDisallowExplicit);
 
-  nb::class_<TransferGuardState> tgstate(tglib, "TransferGuardState");
-  tgstate.def_rw("host_to_device", &TransferGuardState::host_to_device,
-                 nb::arg().none());
-  tgstate.def_rw("device_to_device", &TransferGuardState::device_to_device,
-                 nb::arg().none());
-  tgstate.def_rw("device_to_host", &TransferGuardState::device_to_host,
-                 nb::arg().none());
-  tgstate.def_rw("explicit_device_put",
-                 &TransferGuardState::explicit_device_put);
-  tgstate.def_rw("explicit_device_get",
-                 &TransferGuardState::explicit_device_get);
+  nb::enum_<GarbageCollectionGuardLevel> gcglevel(
+      glib, "GarbageCollectionGuardLevel");
+  gcglevel.value("ALLOW", GarbageCollectionGuardLevel::kAllow);
+  gcglevel.value("LOG", GarbageCollectionGuardLevel::kLog);
+  gcglevel.value("FATAL", GarbageCollectionGuardLevel::kFatal);
 
-  tglib.def(
+  nb::class_<GuardState> tgstate(glib, "GuardState");
+  tgstate.def_rw("host_to_device", &GuardState::host_to_device,
+                 nb::arg().none());
+  tgstate.def_rw("device_to_device", &GuardState::device_to_device,
+                 nb::arg().none());
+  tgstate.def_rw("device_to_host", &GuardState::device_to_host,
+                 nb::arg().none());
+  tgstate.def_rw("explicit_device_put", &GuardState::explicit_device_put);
+  tgstate.def_rw("explicit_device_get", &GuardState::explicit_device_get);
+  tgstate.def_rw("garbage_collect_array", &GuardState::garbage_collect_array,
+                 nb::arg().none());
+
+  glib.def(
       "global_state", [&]() { return &global_state; },
       nb::rv_policy::reference);
-  tglib.def(
+  glib.def(
       "thread_local_state", [&]() { return &thread_local_state; },
       nb::rv_policy::reference);
 }

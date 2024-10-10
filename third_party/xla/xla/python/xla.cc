@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/logging.h"  // IWYU pragma: keep
 #include "xla/python/mlir.h"
@@ -114,7 +115,6 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/python/weakref_lru_cache.h"
 #include "xla/python/xla_compiler.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
@@ -591,10 +591,10 @@ NB_MODULE(xla_extension, m_nb) {
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
   BuildPytreeSubmodule(m_nb);
+  jax::BuildGuardSubmodule(m_nb);
   jax::BuildJaxjitSubmodule(m_nb);
   jax::BuildPmapSubmodule(m_nb);
   jax::BuildPjitSubmodule(m_nb);
-  jax::BuildTransferGuardSubmodule(m_nb);
   BuildTracebackSubmodule(m_nb);
   BuildMlirSubmodule(m_nb);
   BuildCustomCallShardingPybindAPI(m_nb);

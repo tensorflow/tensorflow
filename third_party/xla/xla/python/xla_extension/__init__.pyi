@@ -37,6 +37,7 @@ from typing import (
 
 import numpy as np
 
+from . import guard_lib
 from . import ifrt_programs
 from . import ifrt_proxy
 from . import jax_jit
@@ -45,7 +46,6 @@ from . import ops
 from . import pmap_lib
 from . import profiler
 from . import pytree
-from . import transfer_guard_lib
 
 _LiteralSlice = Any
 _Status = Any
