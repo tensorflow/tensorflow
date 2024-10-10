@@ -3189,7 +3189,7 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
     const HloInstruction* instruction = instruction_sequence[i];
     int64_t reserved_scoped_memory =
         std::min(options_.reserved_scoped_memory_fn(
-                     instruction, /*operands_in_alternate_memory=*/{},
+                     instruction, /*prefetched_operands=*/{},
                      /*outputs_in_alternate_memory=*/{}),
                  options_.max_size_in_bytes);
     if (reserved_scoped_memory != 0) {
@@ -3590,7 +3590,7 @@ void MsaAlgorithm::UpdateReservedScopedAllocationSize() {
   for (int i = 0; i < instruction_sequence.size(); ++i) {
     const HloInstruction* instruction = instruction_sequence[i];
     reserved_scoped_memory_map[i] = options_.reserved_scoped_memory_fn(
-        instruction, operands_in_alternate_memory_map_[instruction],
+        instruction, prefetched_operands_map_[instruction],
         outputs_in_alternate_memory_map_[instruction]);
   }
   // Update scoped allocation sizes.
@@ -3873,7 +3873,7 @@ void MsaAlgorithm::FinalizeAllocations(
       if ((allocation->memory_space() == MemorySpace::kAlternate) &&
           (!allocation->is_scoped_allocation())) {
         for (const HloUse& use : allocation->uses()) {
-          operands_in_alternate_memory_map_[use.instruction].insert(
+          prefetched_operands_map_[use.instruction].insert(
               std::make_pair(use.operand_number, use.operand_index));
         }
         if (!allocation->is_copy_like_allocation()) {

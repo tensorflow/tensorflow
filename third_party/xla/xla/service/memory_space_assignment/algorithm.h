@@ -1211,11 +1211,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // A map to look up the loop-optimized allocation info by use.
   absl::flat_hash_map<HloUse, LoopOptimizedAllocationInfo>
       loop_optimized_allocations_map_;
-  // A map to look the operands of each instruction that are assigned in
-  // alternate memory.
+  // A map to look the operands of each instruction that have been prefetched.
+  // They include both fully prefetched or window prefetched.
   absl::flat_hash_map<const HloInstruction*,
                       absl::flat_hash_set<std::pair<int, ShapeIndex>>>
-      operands_in_alternate_memory_map_;
+      prefetched_operands_map_;
   // A map to look the outputs of each instruction that are assigned in
   // alternate memory.
   absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<ShapeIndex>>
