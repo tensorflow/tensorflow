@@ -16,6 +16,10 @@ limitations under the License.
 
 #include <string>
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
