@@ -463,6 +463,9 @@ dtensor_test(
         TPU_V3_DONUT_BACKEND,
         GPU_2DEVS_BACKEND,
     ],
+    env = {
+        "TF_FORCE_GPU_ALLOW_GROWTH": "true",
+    },
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:config",
