@@ -51,7 +51,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
     FunctionLibraryRuntime::DoneCallback done) {
   auto target = options.target;
   auto released_op = std::make_unique<EagerOperation>(ctx_);
-  Status s =
+  absl::Status s =
       released_op->Reset(function_name.c_str(), target.c_str(), true, nullptr);
   if (!s.ok()) {
     done(s);
@@ -100,7 +100,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
       /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
        target, ret_indices, eager_client = eager_client.get(),
-       done](const Status& s) {
+       done](const absl::Status& s) {
         {
           mutex_lock l(mu_);
           *handle = function_data_.size();
@@ -121,8 +121,8 @@ void EagerClusterFunctionLibraryRuntime::Run(
   }
   std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
   Run(opts, handle, function_args, function_rets,
-      [rets, function_rets, done = std::move(done)](const Status& s) {
-        Status status = s;
+      [rets, function_rets, done = std::move(done)](const absl::Status& s) {
+        absl::Status status = s;
         if (status.ok()) {
           for (const auto& t : *function_rets) {
             if (t.index() == 0) {
@@ -223,7 +223,7 @@ void EagerClusterFunctionLibraryRuntime::Run(
   eager_client->RunComponentFunctionAsync(
       call_opts.get(), request.get(), response.get(),
       [request, response, rets, call_opts, cm, token,
-       done = std::move(done)](const Status& s) {
+       done = std::move(done)](const absl::Status& s) {
         if (cm != nullptr) {
           cm->TryDeregisterCallback(token);
         }
@@ -280,7 +280,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
   eager_client->EnqueueAsync(
       /*call_opts=*/nullptr, request.get(), response.get(),
-      [request, response, done](const Status& status) { done(status); });
+      [request, response, done](const absl::Status& status) { done(status); });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

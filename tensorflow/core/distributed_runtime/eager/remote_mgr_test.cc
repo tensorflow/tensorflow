@@ -169,7 +169,7 @@ TEST_F(RemoteMgrTest, ErrorSourcesShouldExist) {
   TF_ASSERT_OK(remote_mgr.DeleteTensorHandle(remote_handle_internal));
 
   // Now that the tensor has been deleted, we cannot access the remote handle.
-  Status s = remote_mgr.DeleteTensorHandle(remote_handle_internal);
+  absl::Status s = remote_mgr.DeleteTensorHandle(remote_handle_internal);
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(s.GetPayload(kErrorSource).has_value());
 
