@@ -24,20 +24,20 @@ include "triton/Dialect/Triton/IR/TritonTypeInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
 
 def XlaTritonDialect : Dialect {
-  let name = "xla_triton";
+  let name = "triton_xla";
 
   let description = [{
     This dialect contains ops included in the xla extension point for Triton.
   }];
 
-  let cppNamespace = "::xla::triton";
+  let cppNamespace = "::mlir::triton::xla";
 }
 
-class XT_Op<string mnemonic, list<Trait> traits = []> :
+class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {
 }
 
-def XT_SparseDotOp : XT_Op<"sparse_dot", [
+def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
         Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>,
         TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
     let summary = "sparse dot";

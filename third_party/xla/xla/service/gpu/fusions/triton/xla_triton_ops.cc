@@ -46,11 +46,8 @@ using mlir::SmallVectorImpl;
 using mlir::TensorOrMemDesc;
 using mlir::Type;
 using mlir::ValueRange;
-using mlir::triton::DialectInferLayoutInterface;
-using mlir::triton::DotOp;
 
-namespace xla {
-namespace triton {
+namespace mlir::triton::xla {
 
 void XlaTritonDialect::initialize() {
   addOperations<
@@ -124,8 +121,7 @@ LogicalResult SparseDotOp::verify() {
                                                      bEncoding);
 }
 
-}  // namespace triton
-}  // namespace xla
+}  // namespace mlir::triton::xla
 
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/triton/xla_triton_ops.cc.inc"

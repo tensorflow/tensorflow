@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllExtensions(registry);
   registerTritonDialects(registry);  // This registers all passes as well.
-  registry.insert<xla::triton::XlaTritonDialect>();
+  registry.insert<mlir::triton::xla::XlaTritonDialect>();
   xla::gpu::registerTritonFusionTransformsPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
 
