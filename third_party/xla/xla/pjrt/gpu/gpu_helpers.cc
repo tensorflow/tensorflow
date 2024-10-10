@@ -122,7 +122,7 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
                                 : total_memory * memory_fraction;
   // If gpu_system_memory_size is set, use it instead of default value.
   if (gpu_system_memory_size.has_value()) {
-    allocator_memory = gpu_system_memory_size.value();
+    allocator_memory = total_memory - gpu_system_memory_size.value();
   }
 
   if (preallocate) {
