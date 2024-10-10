@@ -50,15 +50,15 @@ void MergeDebugInfo(const NodeDef& from, NodeDef* to);
 // space, the returned `NameRangeMap` objects borrow the input/output
 // argument names from `op_def`. The `op_def` must outlive the
 // returned `NameRangeMap` objects.
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs);
+absl::Status NameRangesForNode(const Node& node, const OpDef& op_def,
+                               NameRangeMap* inputs, NameRangeMap* outputs);
 
 // Returns "status" with formatted Node attached as additional text
 // in the error message. If 'allow_multiple_formatted_node' is false and there
 // is already a formatted Node present in 'status', we simply attach the name
 // of the Node instead of the formatted string.
-Status AttachDef(const Status& status, const Node& node,
-                 bool allow_multiple_formatted_node = false);
+absl::Status AttachDef(const absl::Status& status, const Node& node,
+                       bool allow_multiple_formatted_node = false);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPH_GRAPH_NODE_UTIL_H_

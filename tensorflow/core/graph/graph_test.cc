@@ -118,7 +118,7 @@ class GraphTest : public ::testing::Test {
     NodeDef node_def;
     TF_CHECK_OK(builder.Finalize(&node_def));
 
-    Status s;
+    absl::Status s;
     Node* node = graph_.AddNode(node_def, &s);
     TF_CHECK_OK(s);
     return node;
@@ -280,7 +280,7 @@ TEST_F(GraphTest, NodeByIndex) {
   graph_.RemoveNode(a);
 
   // 'c's input_node entry should be invalidated.
-  Status s = c->input_node(0, &a_copy);
+  absl::Status s = c->input_node(0, &a_copy);
   EXPECT_FALSE(s.ok());
 
   // Add two new nodes.
@@ -446,7 +446,7 @@ TEST_F(GraphTest, IsValidNode) {
   TF_CHECK_OK(NodeBuilder("g2_node2", "NoOp").Finalize(&graph2, &g2_node2));
 
   // nullptr
-  Status s = graph_.IsValidNode(nullptr);
+  absl::Status s = graph_.IsValidNode(nullptr);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(string("Node is null"), s.message());
 
@@ -586,7 +586,7 @@ TEST_F(GraphTest, UpdateEdge) {
   EXPECT_EQ("0->1;0->2;2->1;2->3;2->4;2->5;4->1;", EdgeIter(graph_));
 
   // Update a's 1st output which is out of range.
-  Status s = graph_.UpdateEdge(a, 1, d, 0);
+  absl::Status s = graph_.UpdateEdge(a, 1, d, 0);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
       s.message(),
@@ -652,7 +652,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
   FunctionDefLibrary error_proto = proto;
   *error_proto.mutable_function(0)->add_node_def() =
       error_proto.function(0).node_def(0);
-  Status s = graph_.AddFunctionLibrary(error_proto);
+  absl::Status s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
@@ -744,7 +744,7 @@ TEST_F(GraphTest, NodeShrinkTypeOutput) {
   NodeDef node_def;
   TF_CHECK_OK(builder.Finalize(&node_def));
 
-  Status s;
+  absl::Status s;
   Node* node = graph_.AddNode(node_def, &s);
   TF_CHECK_OK(s);
 
@@ -792,7 +792,7 @@ TEST_F(GraphTest, NodeShrinkTypeInput) {
   NodeDef node_def;
   TF_CHECK_OK(builder.Finalize(&node_def));
 
-  Status s;
+  absl::Status s;
   Node* node = graph_.AddNode(node_def, &s);
   TF_CHECK_OK(s);
 

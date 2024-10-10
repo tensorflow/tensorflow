@@ -117,7 +117,7 @@ class SubgraphTest : public ::testing::Test {
         str_util::Split(targets_str, ',', str_util::SkipEmpty());
 
     subgraph::RewriteGraphMetadata metadata;
-    Status s = subgraph::RewriteGraphForExecution(
+    absl::Status s = subgraph::RewriteGraphForExecution(
         subgraph, fed, fetch, targets, device_info_, use_function_convention,
         &metadata);
     if (!s.ok()) {
