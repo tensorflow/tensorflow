@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -46,6 +48,8 @@ namespace {
 
 using mlir::DialectRegistry;
 using mlir::MLIRContext;
+
+constexpr char kGraphWithFlibDefFileName[] = "graph_with_flib_def.txt";
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
@@ -106,7 +110,7 @@ TEST_F(
   GraphDebugInfo debug_info;
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
-  GraphDef graph_def = CreateGraphDef("graph_with_flib_def.txt");
+  GraphDef graph_def = CreateGraphDef(kGraphWithFlibDefFileName);
   GraphConstructorOptions opts;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   GraphImportConfig specs;
@@ -127,7 +131,7 @@ TEST_F(
   GraphDebugInfo debug_info;
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
-  GraphDef graph_def = CreateGraphDef("graph_with_flib_def.txt");
+  GraphDef graph_def = CreateGraphDef(kGraphWithFlibDefFileName);
   GraphConstructorOptions opts;
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   GraphImportConfig specs;
@@ -140,6 +144,34 @@ TEST_F(
   // should equal main + 2 functions referenced by nodes in the graph via the
   // "f" attr.
   ASSERT_EQ(CountNumberOfFunctionsInModule(result->get()), 3);
+}
+
+TEST_F(GraphToTfExecutorTest,
+       ConvertGraphToTfExecutorPopulatesTfNameToMlirNameMap) {
+  Graph graph(OpRegistry::Global());
+  GraphDebugInfo debug_info;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                     FunctionDefLibrary());
+  GraphDef graph_def = CreateGraphDef(kGraphWithFlibDefFileName);
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  GraphImportConfig specs;
+  std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
+
+  TF_ASSERT_OK(ConvertGraphToTfExecutor(graph, debug_info, graph.flib_def(),
+                                        specs, &context_,
+                                        &tf_name_to_mlir_name));
+
+  std::unordered_set<std::string> result_set;
+  for (const auto& pair : tf_name_to_mlir_name) {
+    result_set.insert(pair.first);
+  }
+  // Converted functions referenced by nodes in the graph via the
+  // "f" attr. These are before they are converted to their corresponding MLIR
+  // name.
+  std::unordered_set<std::string> expected_set = {
+      "__inference__traced_save_45", "__inference__traced_restore_57"};
+  EXPECT_EQ(result_set, expected_set);
 }
 
 }  // namespace
