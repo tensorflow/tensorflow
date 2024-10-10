@@ -5,7 +5,6 @@ package tensorflow.tf2xla;
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "Tf2XlaProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.tf2xla";
