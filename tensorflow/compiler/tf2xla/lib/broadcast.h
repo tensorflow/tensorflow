@@ -30,7 +30,7 @@ absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
                                        absl::Span<int64_t const> output_dims);
 
 // Forwards to xla::BroadcastOpsToSame.
-Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs);
+absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_
