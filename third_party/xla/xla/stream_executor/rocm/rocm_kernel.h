@@ -26,7 +26,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
