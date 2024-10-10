@@ -123,6 +123,10 @@ static absl::Status EnsureOperandIsRealFp(absl::string_view op_name,
   return absl::OkStatus();
 }
 
+XlaOp PredFalse(XlaBuilder* builder, const Shape& shape) {
+  return Broadcast(ConstantR0<bool>(builder, false), shape.dimensions());
+}
+
 XlaOp IsPosInf(XlaOp operand) {
   auto& b = *operand.builder();
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -130,7 +134,9 @@ XlaOp IsPosInf(XlaOp operand) {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
     // to be correct for all types, we'd need to Gt(MaxFiniteValue).
-    return Eq(operand, MaxValue(&b, shape.element_type()));
+    return primitive_util::HasInfinity(shape.element_type())
+               ? Eq(operand, MaxValue(&b, shape.element_type()))
+               : PredFalse(&b, shape);
   });
 }
 
@@ -141,7 +147,9 @@ XlaOp IsNegInf(XlaOp operand) {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
     // to be correct for all types, we'd need to Lt(MinFiniteValue).
-    return Eq(operand, MinValue(&b, shape.element_type()));
+    return primitive_util::HasInfinity(shape.element_type())
+               ? Eq(operand, MinValue(&b, shape.element_type()))
+               : PredFalse(&b, shape);
   });
 }
 
@@ -180,9 +188,6 @@ XlaOp IsNegZero(XlaOp operand) {
       case F8E4M3:
       case F8E5M2:
       case F8E4M3FN:
-      case F8E4M3B11FNUZ:
-      case F8E5M2FNUZ:
-      case F8E4M3FNUZ:
       case F16:
       case BF16:
         // Not all XLA backends handle U16 well, so we convert to F32/U32.
@@ -190,6 +195,12 @@ XlaOp IsNegZero(XlaOp operand) {
         // backends that *do* support it.
         return Eq(BitcastConvertType(ConvertElementType(operand, F32), U32),
                   ConstantR0WithType(&b, U32, uint32_t{1} << 31));
+      case F8E4M3B11FNUZ:
+      case F8E5M2FNUZ:
+      case F8E4M3FNUZ: {
+        // FP8 types with no unsigned zero representation.
+        return PredFalse(&b, shape);
+      }
       default:
         LOG(FATAL) << "Expected real fp type.";
     }
