@@ -18,6 +18,7 @@
 #include <iostream>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/qairt/include/QNN/QnnCommon.h"
 #include "third_party/qairt/include/QNN/QnnInterface.h"
