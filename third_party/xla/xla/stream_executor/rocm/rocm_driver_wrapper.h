@@ -20,8 +20,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_WRAPPER_H_
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
 #include "tsl/platform/dso_loader.h"

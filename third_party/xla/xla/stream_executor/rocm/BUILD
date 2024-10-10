@@ -59,6 +59,7 @@ cc_library(
         "rocm_driver.h",
         "rocm_driver_wrapper.h",
     ],
+    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     tags = [
         "gpu",
         "rocm-only",
@@ -676,6 +677,7 @@ cc_library(
         "hip_blas_utils.h",
         "hipblaslt_wrapper.h",
     ],
+    defines = {"__HIP_DISABLE_CPP_FUNCTIONS__": "1"},
     tags = [
         "gpu",
         "rocm-only",

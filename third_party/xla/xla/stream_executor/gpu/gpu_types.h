@@ -24,8 +24,6 @@ limitations under the License.
 
 #elif TENSORFLOW_USE_ROCM
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"
 
