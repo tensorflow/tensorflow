@@ -49,14 +49,14 @@ class RefCountedIntraProcessRendezvous : public Rendezvous {
   // no other references to the RefCountedIntraProcessRendezvous object.
   // If the caller intend to keep a longer life time then it shall keep its own
   // reference to the RefCountedIntraProcessRendezvous.
-  Status Send(const ParsedKey& key, const Rendezvous::Args& args,
-              const Tensor& val, const bool is_dead) override;
+  absl::Status Send(const ParsedKey& key, const Rendezvous::Args& args,
+                    const Tensor& val, const bool is_dead) override;
   void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
                  DoneCallback done) override;
-  void StartAbort(const Status& status) override;
+  void StartAbort(const absl::Status& status) override;
 
   // Returns the member LocalRendezvous' status.
-  Status GetLocalRendezvousStatus();
+  absl::Status GetLocalRendezvousStatus();
 
   inline void UpdateDeviceManager(DeviceMgr* device_mgr) {
     device_mgr_ = device_mgr;
@@ -87,11 +87,11 @@ class PrivateIntraProcessRendezvous : public RendezvousInterface {
   ~PrivateIntraProcessRendezvous() override;
 
   // Implementation of RendezvousInterface methods.
-  Status Send(const ParsedKey& key, const Rendezvous::Args& args,
-              const Tensor& val, const bool is_dead) override;
+  absl::Status Send(const ParsedKey& key, const Rendezvous::Args& args,
+                    const Tensor& val, const bool is_dead) override;
   void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
                  DoneCallback done) override;
-  void StartAbort(const Status& status) override;
+  void StartAbort(const absl::Status& status) override;
 
  private:
   const DeviceMgr* device_mgr_;
