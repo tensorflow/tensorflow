@@ -20,8 +20,11 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/log/log.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/ctc/ctc_beam_scorer.h"
+#include "tensorflow/core/util/ctc/ctc_decoder.h"
 
 namespace {
 
