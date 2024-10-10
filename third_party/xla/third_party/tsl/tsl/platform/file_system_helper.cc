@@ -19,16 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/platform.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace internal {
