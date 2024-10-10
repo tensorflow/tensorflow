@@ -52,8 +52,8 @@ class DatasetHashUtilsTest : public ::testing::Test {
     return hash;
   }
 
-  Status CheckEqual(const FunctionDefLibrary& library, const FunctionDef& fn1,
-                    const FunctionDef& fn2) {
+  absl::Status CheckEqual(const FunctionDefLibrary& library,
+                          const FunctionDef& fn1, const FunctionDef& fn2) {
     // Construct nodes with a function as an attr.
     GraphDef graph_def;
     *graph_def.mutable_library() = library;
@@ -132,7 +132,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentFunctions) {
 
   // The second op in `f2` is changed to "Add"
   EXPECT_NE(GetHash(fl, *f1), GetHash(fl, *f2));
-  Status s = CheckEqual(fl, *f1, *f2);
+  absl::Status s = CheckEqual(fl, *f1, *f2);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(s.message(), ContainsRegex("Add"));
 }
@@ -274,7 +274,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
   uint64 hash2 = GetHash(gd, *n4);
   // We expect different hashes because the op has changed.
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
+  absl::Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(s.message(), ContainsRegex("Add"));
   EXPECT_THAT(s.message(), ContainsRegex("Mul"));
@@ -435,7 +435,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
   uint64 hash2 = GetHash(gd, *n4);
   // We expect different hashes because the inputs of n3 are swapped.
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
+  absl::Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(s.message(), ContainsRegex("AttrValues are different"));
 }
@@ -474,7 +474,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
   // We expect different hashes because the input ports for nodes used by n3
   // has changed.
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
+  absl::Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(s.message(), ContainsRegex("Node inputs"));
 }
@@ -702,7 +702,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
   uint64 hash1 = GetHash(gd, *n2);
   uint64 hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
+  absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
       s.message(),
@@ -773,7 +773,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
   uint64 hash1 = GetHash(gd, *n2);
   uint64 hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
+  absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
       s.message(),
@@ -846,7 +846,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionLists) {
   uint64 hash1 = GetHash(gd, *n2);
   uint64 hash2 = GetHash(gd, *n3);
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
+  absl::Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
       s.message(),
@@ -892,7 +892,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
   uint64 hash1 = GetHash(gd, *n4);
   uint64 hash2 = GetHash(gd, *n5);
   EXPECT_NE(hash1, hash2);
-  Status s = CheckSubgraphsEqual(gd, n4, gd, n5);
+  absl::Status s = CheckSubgraphsEqual(gd, n4, gd, n5);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(s.message(), ContainsRegex("Control dependencies are different"));
 }

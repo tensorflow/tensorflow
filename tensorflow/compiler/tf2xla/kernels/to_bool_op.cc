@@ -38,7 +38,7 @@ class ToBoolOp : public XlaOpKernel {
   }
 
  private:
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     auto input = ctx->Input(0);
 
     // If the input is a scalar, then non-zero value returns True.

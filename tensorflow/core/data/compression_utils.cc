@@ -61,8 +61,8 @@ class Iov {
   size_t num_bytes_;
 };
 
-Status CompressElement(const std::vector<Tensor>& element,
-                       CompressedElement* out) {
+absl::Status CompressElement(const std::vector<Tensor>& element,
+                             CompressedElement* out) {
   // First pass: preprocess the non`memcpy`able tensors.
   size_t num_string_tensors = 0;
   size_t num_string_tensor_strings = 0;
@@ -135,8 +135,8 @@ Status CompressElement(const std::vector<Tensor>& element,
   return absl::OkStatus();
 }
 
-Status UncompressElement(const CompressedElement& compressed,
-                         std::vector<Tensor>* out) {
+absl::Status UncompressElement(const CompressedElement& compressed,
+                               std::vector<Tensor>* out) {
   if (compressed.version() != kCompressedElementVersion) {
     return errors::Internal("Unsupported compressed element version: ",
                             compressed.version());

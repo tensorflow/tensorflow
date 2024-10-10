@@ -97,7 +97,8 @@ class MaxOp : public XlaReductionOp {
     OP_REQUIRES_OK(ctx, PrimitiveTypeCheck(xla_reduction_type_));
   }
 
-  static Status PrimitiveTypeCheck(xla::PrimitiveType xla_reduction_type) {
+  static absl::Status PrimitiveTypeCheck(
+      xla::PrimitiveType xla_reduction_type) {
     if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
         xla_reduction_type == xla::TUPLE ||
         xla_reduction_type == xla::OPAQUE_TYPE) {

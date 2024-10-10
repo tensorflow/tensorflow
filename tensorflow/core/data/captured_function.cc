@@ -118,8 +118,8 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   int64_t processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
-Status GetCapturedInput(const CapturedFunction* const func, int index,
-                        const Tensor** out) {
+absl::Status GetCapturedInput(const CapturedFunction* const func, int index,
+                              const Tensor** out) {
   if (TF_PREDICT_FALSE(index >= func->captured_inputs().size())) {
     return errors::OutOfRange(
         "Out of range access to captured inputs for function ",
@@ -130,10 +130,10 @@ Status GetCapturedInput(const CapturedFunction* const func, int index,
   return absl::OkStatus();
 }
 
-Status RunShortCircuit(const ShortCircuitInfo& info,
-                       const std::vector<Tensor>& args,
-                       const CapturedFunction* const func,
-                       std::vector<Tensor>* rets) {
+absl::Status RunShortCircuit(const ShortCircuitInfo& info,
+                             const std::vector<Tensor>& args,
+                             const CapturedFunction* const func,
+                             std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   const int num_args = args.size();
   rets->reserve(info.indices.size());
@@ -150,9 +150,10 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
   return absl::OkStatus();
 }
 
-Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
-                       const CapturedFunction* const func,
-                       std::vector<Tensor>* rets) {
+absl::Status RunShortCircuit(const ShortCircuitInfo& info,
+                             std::vector<Tensor>&& args,
+                             const CapturedFunction* const func,
+                             std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
   const int num_args = args.size();
   rets->reserve(info.indices.size());
@@ -173,16 +174,16 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
   return absl::OkStatus();
 }
 
-Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
-                              const NameAttrList& func,
-                              ShortCircuitInfo* info) {
+absl::Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
+                                    const NameAttrList& func,
+                                    ShortCircuitInfo* info) {
   auto& indices = info->indices;
 
   FunctionLibraryRuntime::Handle fn_handle;
   TF_RETURN_IF_ERROR(ctx->function_library()->Instantiate(
       func.name(), AttrSlice(&func.attr()), &fn_handle));
   auto cleanup = gtl::MakeCleanup([ctx, fn_handle]() {
-    Status s = ctx->function_library()->ReleaseHandle(fn_handle);
+    absl::Status s = ctx->function_library()->ReleaseHandle(fn_handle);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to release handle: " << s.message();
     }
@@ -232,7 +233,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
   return absl::OkStatus();
 }
 
-Status CreateFunctionLibraryDefinition(
+absl::Status CreateFunctionLibraryDefinition(
     const FunctionLibraryDefinition* lib_def, const string& func_name,
     std::unique_ptr<FunctionLibraryDefinition>* result) {
   DCHECK(lib_def != nullptr);
@@ -246,8 +247,8 @@ Status CreateFunctionLibraryDefinition(
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
 
-Status LookupFunction(const FunctionLibraryDefinition& lib_def,
-                      const string& name, const FunctionDef** fdef) {
+absl::Status LookupFunction(const FunctionLibraryDefinition& lib_def,
+                            const string& name, const FunctionDef** fdef) {
   *fdef = lib_def.Find(name);
   if (*fdef == nullptr) {
     return errors::InvalidArgument(
@@ -263,7 +264,7 @@ class CallFrameBase : public CallFrameInterface {
       : ret_types_(ret_types), retvals_(ret_types.size()) {}
 
   // Caller methods.
-  Status ConsumeRetvals(std::vector<Tensor>* retvals) {
+  absl::Status ConsumeRetvals(std::vector<Tensor>* retvals) {
     retvals->reserve(retvals_.size());
     int i = 0;
     for (auto&& val : retvals_) {
@@ -279,7 +280,7 @@ class CallFrameBase : public CallFrameInterface {
   size_t num_retvals() const override { return retvals_.size(); }
 
   // Callee methods.
-  Status SetRetval(int index, const Tensor& val) override {
+  absl::Status SetRetval(int index, const Tensor& val) override {
     const int retvals_size = retvals_.size();
     if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
@@ -320,7 +321,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, const Tensor** val) override {
+  absl::Status GetArg(int index, const Tensor** val) override {
     const int args_size = args_.size();
     const int captured_inputs_size = captured_inputs_->size();
     if (index < args_size) {
@@ -364,7 +365,7 @@ class BorrowedArgsCallFrame : public CallFrameBase {
   }
 
   // Callee methods.
-  Status GetArg(int index, const Tensor** val) override {
+  absl::Status GetArg(int index, const Tensor** val) override {
     const int args_size = args_.size();
     const int captured_inputs_size = captured_inputs_->size();
     if (index < args_size) {
@@ -385,7 +386,7 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status MakeIteratorFromInputElement(
+absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
@@ -395,7 +396,7 @@ Status MakeIteratorFromInputElement(
                                       /*node=*/nullptr);
 }
 
-Status MakeIteratorFromInputElement(
+absl::Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
@@ -431,7 +432,7 @@ Status MakeIteratorFromInputElement(
 }
 
 /* static */
-Status FunctionMetadata::Create(
+absl::Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,
     std::shared_ptr<FunctionMetadata>* out_metadata) {
   NameAttrList func;
@@ -439,7 +440,7 @@ Status FunctionMetadata::Create(
   return Create(ctx, std::move(func), params, out_metadata);
 }
 
-Status FunctionMetadata::Create(
+absl::Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, NameAttrList&& func, Params params,
     std::shared_ptr<FunctionMetadata>* out_metadata) {
   out_metadata->reset(new FunctionMetadata(std::move(func), params));
@@ -483,7 +484,7 @@ Status FunctionMetadata::Create(
 }
 
 /* static */
-Status CapturedFunction::Create(
+absl::Status CapturedFunction::Create(
     OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
@@ -495,7 +496,7 @@ Status CapturedFunction::Create(
 }
 
 /* static */
-Status CapturedFunction::Create(
+absl::Status CapturedFunction::Create(
     OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor>&& captured_inputs,
     std::unique_ptr<CapturedFunction>* out_function) {
@@ -504,7 +505,7 @@ Status CapturedFunction::Create(
   return absl::OkStatus();
 }
 
-Status CapturedFunction::AddToGraph(
+absl::Status CapturedFunction::AddToGraph(
     SerializationContext* ctx, DatasetBase::DatasetGraphDefBuilder* b,
     std::vector<Node*>* other_arguments,
     DataTypeVector* other_arguments_types) const {
@@ -527,7 +528,7 @@ Status CapturedFunction::AddToGraph(
   return absl::OkStatus();
 }
 
-Status CapturedFunction::Instantiate(
+absl::Status CapturedFunction::Instantiate(
     IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
                               instantiated_captured_function) {
   return CapturedFunction::Instantiate(InstantiateCapturedFunctionParams(ctx),
@@ -536,7 +537,7 @@ Status CapturedFunction::Instantiate(
 
 // TODO(b/190831948): Check whether the function creates a resource and if so,
 // produce a warning.
-Status CapturedFunction::Instantiate(
+absl::Status CapturedFunction::Instantiate(
     InstantiateCapturedFunctionParams params,
     std::unique_ptr<InstantiatedCapturedFunction>*
         instantiated_captured_function) {
@@ -686,7 +687,7 @@ Status CapturedFunction::Instantiate(
   return absl::OkStatus();
 }
 
-Status CapturedFunction::CheckExternalState() const {
+absl::Status CapturedFunction::CheckExternalState() const {
   for (const auto& name : lib_def()->ListFunctionNames()) {
     TF_RETURN_IF_ERROR(
         IsFunctionStateful(*lib_def(), *(lib_def()->Find(name))));
@@ -700,8 +701,8 @@ CapturedFunction::CapturedFunction(
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
 
-Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
-                                       bool* is_multi_device) const {
+absl::Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
+                                             bool* is_multi_device) const {
   if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
     return absl::OkStatus();
@@ -786,13 +787,13 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       captured_func_(captured_func),
       is_multi_device_(is_multi_device) {}
 
-Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
-                                         std::vector<Tensor>&& args,
-                                         std::vector<Tensor>* rets) const {
+absl::Status InstantiatedCapturedFunction::Run(
+    IteratorContext* ctx, std::vector<Tensor>&& args,
+    std::vector<Tensor>* rets) const {
   return Run(ctx, std::move(args), rets, /*node=*/nullptr);
 }
 
-Status InstantiatedCapturedFunction::Run(
+absl::Status InstantiatedCapturedFunction::Run(
     IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
     const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
@@ -849,13 +850,13 @@ Status InstantiatedCapturedFunction::Run(
   return frame.ConsumeRetvals(rets);
 }
 
-Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
+absl::Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
     std::vector<Tensor>* ret) const {
   return RunWithBorrowedArgs(ctx, args, ret, /*node=*/nullptr);
 }
 
-Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
+absl::Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     IteratorContext* ctx, const std::vector<Tensor>& args,
     std::vector<Tensor>* rets, const std::shared_ptr<model::Node>& node) const {
   auto& info = captured_func_->short_circuit_info();
@@ -911,7 +912,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   return frame.ConsumeRetvals(rets);
 }
 
-Status InstantiatedCapturedFunction::RunInstantiated(
+absl::Status InstantiatedCapturedFunction::RunInstantiated(
     const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
   auto& info = captured_func_->short_circuit_info();
   if (!info.indices.empty()) {
@@ -953,7 +954,8 @@ void InstantiatedCapturedFunction::RunAsync(
     // Run the `done` callback on a threadpool thread, because it will
     // potentially do a non-trivial amount of (e.g. copying) work, and we may
     // want to run that concurrently with the next invocation.
-    Status s = RunShortCircuit(info, std::move(args), captured_func_, rets);
+    absl::Status s =
+        RunShortCircuit(info, std::move(args), captured_func_, rets);
     runner(
         std::bind([s](FunctionLibraryRuntime::DoneCallback& done) { done(s); },
                   std::move(done)));
@@ -996,7 +998,7 @@ void InstantiatedCapturedFunction::RunAsync(
           const FunctionLibraryRuntime::DoneCallback& done,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
-          Status s) {
+          absl::Status s) {
         delete step_container;
         delete raw_cancellation_manager;
         if (s.ok()) {

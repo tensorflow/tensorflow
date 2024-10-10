@@ -131,7 +131,7 @@ class InvertPermutationOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     DataType dtype = ctx->expected_output_dtype(0);
-    Status status;
+    absl::Status status;
     switch (dtype) {
       case DT_INT32:
         InvertPermutation<int32>(ctx);
