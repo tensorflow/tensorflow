@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
@@ -976,6 +977,104 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
       bool filecheck_matched,
       RunFileCheck(optimized_module->ToString(options), kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
+  return fusion->opcode() == HloOpcode::kFusion &&
+         fusion->has_backend_config() &&
+         fusion->backend_config<GpuBackendConfig>().ok() &&
+         fusion->backend_config<GpuBackendConfig>()
+             ->fusion_backend_config()
+             .has_block_level_fusion_config();
+}
+
+TEST_F(GpuCompilerTest,
+       LoopFusionRootedInTransposeIsRewrittenToBlockLevelByDefaultPostAmpere) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  constexpr absl::string_view transpose_fusion_module = R"(
+transpose {
+  p0 = f32[1024,1024,1024] parameter(0)
+  ROOT transpose = f32[1024,1024,1024] transpose(p0), dimensions={2,1,0}
+}
+
+ENTRY main {
+  p0 = f32[1024,1024,1024] parameter(0)
+  ROOT fusion = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=transpose
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      ParseAndReturnVerifiedModule(transpose_fusion_module));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+
+  if (cc.IsAtLeastAmpere()) {
+    EXPECT_TRUE(HasBlockLevelFusionConfig(
+        optimized_module->entry_computation()->root_instruction()));
+  } else {
+    EXPECT_FALSE(HasBlockLevelFusionConfig(
+        optimized_module->entry_computation()->root_instruction()));
+  }
+}
+
+TEST_F(
+    GpuCompilerTest,
+    FusionBlockLevelRewriterRewritesKLoopTransposeWithBitcastIfTheSmallMinorDimIsAPowerOfTwo) {  // NOLINT(whitespace/line_length)
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
+  }
+
+  // If this test starts failing, then it's likely that this no longer generates
+  // a kLoop transpose. That's great---it probably means the rewrite in question
+  // is no longer necessary!
+  //
+  // The small minor dimension here is a power of two, so the rewrite should
+  // succeed.
+  constexpr absl::string_view rewritable_transpose_string = R"(
+ENTRY main {
+  p0 = f32[1024,4096]{1,0} parameter(0)
+  reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
+  ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> rewritable_transpose_module,
+      ParseAndReturnVerifiedModule(rewritable_transpose_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> rewritable_transpose_optimized_module,
+      GetOptimizedModule(std::move(rewritable_transpose_module)));
+  EXPECT_TRUE(HasBlockLevelFusionConfig(
+      rewritable_transpose_optimized_module->entry_computation()
+          ->root_instruction()));
+
+  // The small minor dimension here is not a power of two, so the rewrite should
+  // fail.
+  constexpr absl::string_view unrewritable_transpose_string = R"(
+ENTRY main {
+  p0 = f32[1024,6144]{1,0} parameter(0)
+  reshape = f32[1024,1024,6]{2,1,0} reshape(p0)
+  ROOT transpose = f32[6,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> unrewritable_transpose_module,
+      ParseAndReturnVerifiedModule(unrewritable_transpose_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> unrewritable_transpose_optimized_module,
+      GetOptimizedModule(std::move(unrewritable_transpose_module)));
+  EXPECT_FALSE(HasBlockLevelFusionConfig(
+      unrewritable_transpose_optimized_module->entry_computation()
+          ->root_instruction()));
 }
 
 using GpuCompilerPassTest = GpuCompilerTest;

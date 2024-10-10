@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -61,7 +60,9 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -121,6 +122,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
+#include "xla/service/gpu/fusion_dispatch_pipeline.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -160,7 +162,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
-#include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
@@ -1733,18 +1734,17 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
-  // This needs to run after every pass affecting fusions, which includes
-  // `CopyFusion`, which itself must run in the `PrepareHloModuleForIrEmitting`
-  // pipeline.
-  if (module->config()
-          .debug_options()
-          .xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
-    // Even though this is a single pass, we need to create a pipeline in order
-    // to make sure the pass's run is recorded in the `HloModuleMetadata`.
-    HloPassPipeline pipeline("fusion-block-level-rewriter-pipeline");
-    pipeline.AddPass<FusionBlockLevelRewriter>(
-        gpu_target_config.device_description, ShapeSizeBytesFunction());
-    TF_RETURN_IF_ERROR(pipeline.Run(module.get()).status());
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &gpu_target_config.device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+    // This needs to run after every pass affecting fusions, which includes
+    // `CopyFusion`, which itself must run in the
+    // `PrepareHloModuleForIrEmitting` pipeline.
+    TF_RETURN_IF_ERROR(
+        FusionDispatchPipeline(gpu_target_config.device_description,
+                               ShapeSizeBytesFunction())
+            .Run(module.get())
+            .status());
   }
 
   uint64_t end_usecs = tsl::Env::Default()->NowMicros();
