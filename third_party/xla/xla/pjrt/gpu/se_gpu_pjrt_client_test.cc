@@ -196,6 +196,51 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
 }
 
+// TODO(b/372735047): Fix and reenable.
+TEST(StreamExecutorGpuClientTest, DISABLED_DonateWithControlDependency) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  absl::Status input_error = absl::InvalidArgumentError("input error");
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateErrorBuffer(
+          input_error, shape,
+          *client->addressable_devices()[0]->default_memory_space()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result,
+      executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto another_buffer,
+      client->CreateErrorBuffer(
+          input_error, shape,
+          *client->addressable_devices()[0]->default_memory_space()));
+  TF_ASSERT_OK_AND_ASSIGN(another_buffer,
+                          another_buffer->DonateWithControlDependency(
+                              result[0][0]->GetReadyFuture()));
+  EXPECT_EQ(another_buffer->GetReadyFuture().Await(), input_error);
+}
+
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
