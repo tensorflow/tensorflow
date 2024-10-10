@@ -39,7 +39,7 @@ class Int32FulltypePass {
   // eager execution).
   //
   // This method is not thread-safe.
-  Status ProcessGraph(Graph* graph, bool ints_on_device);
+  absl::Status ProcessGraph(Graph* graph, bool ints_on_device);
 
   // Update full type information for int32 tensors that are in HOST_MEMORY
   // to use TFT_SHAPE_TENSOR. The type_id of TENSOR_T is expected to be
@@ -51,9 +51,9 @@ class Int32FulltypePass {
   // of a node, so it does have an outer TFT_PRODUCT. NODE and OUTPUT_IDX are
   // optional and only used in an error message to say that the tensor is output
   // OUTPUT_IDX of node NODE.
-  Status Int32FullTypeForTensor(DataType dtype, FullTypeDef* tensor_t,
-                                bool set_only_int32, Node* node = nullptr,
-                                int output_idx = 0);
+  absl::Status Int32FullTypeForTensor(DataType dtype, FullTypeDef* tensor_t,
+                                      bool set_only_int32, Node* node = nullptr,
+                                      int output_idx = 0);
 
  private:
   // Location of where annotations were added for debug messages.

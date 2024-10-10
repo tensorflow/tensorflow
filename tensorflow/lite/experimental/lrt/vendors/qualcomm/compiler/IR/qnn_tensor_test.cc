@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_tensor.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,7 +24,7 @@
 namespace {
 
 TEST(TestInitQnnTensor, BuildDefaultTensor) {
-  Qnn_Tensor_t tensor = qnn::BuildDefaultTensor();
+  Qnn_Tensor_t tensor = lrt::qnn::BuildDefaultTensor();
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.dataFormat, QNN_TENSOR_DATA_FORMAT_DENSE);
   EXPECT_EQ(tensor.v2.rank, 0);
@@ -33,7 +33,7 @@ TEST(TestInitQnnTensor, BuildDefaultTensor) {
 }
 
 TEST(TestInitQnnTensor, BuildDefaultTensorWithId) {
-  Qnn_Tensor_t tensor = qnn::BuildDefaultTensor(2);
+  Qnn_Tensor_t tensor = lrt::qnn::BuildDefaultTensor(2);
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.dataFormat, QNN_TENSOR_DATA_FORMAT_DENSE);
   EXPECT_EQ(tensor.v2.rank, 0);
@@ -42,7 +42,7 @@ TEST(TestInitQnnTensor, BuildDefaultTensorWithId) {
 }
 
 TEST(TestInitQnnTensor, BuildDefaultInputTensor) {
-  Qnn_Tensor_t tensor = qnn::BuildInputTensor();
+  Qnn_Tensor_t tensor = lrt::qnn::BuildInputTensor();
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_WRITE);
   EXPECT_EQ(tensor.v2.memType, QNN_TENSORMEMTYPE_RAW);
@@ -50,8 +50,8 @@ TEST(TestInitQnnTensor, BuildDefaultInputTensor) {
 }
 
 TEST(TestInitQnnTensor, SetInputTensor) {
-  Qnn_Tensor_t tensor = qnn::BuildDefaultTensor();
-  qnn::SetInputTensorAttrs(tensor);
+  Qnn_Tensor_t tensor = lrt::qnn::BuildDefaultTensor();
+  lrt::qnn::SetInputTensorAttrs(tensor);
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_WRITE);
   EXPECT_EQ(tensor.v2.memType, QNN_TENSORMEMTYPE_RAW);
@@ -59,26 +59,26 @@ TEST(TestInitQnnTensor, SetInputTensor) {
 }
 
 TEST(TestInitQnnTensor, BuildDefaultOutputTensor) {
-  Qnn_Tensor_t tensor = qnn::BuildOutputTensor();
+  Qnn_Tensor_t tensor = lrt::qnn::BuildOutputTensor();
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_READ);
 }
 
 TEST(TestInitQnnTensor, SetOutputTensor) {
-  Qnn_Tensor_t tensor = qnn::BuildDefaultTensor();
-  qnn::SetOutputTensorAttrs(tensor);
+  Qnn_Tensor_t tensor = lrt::qnn::BuildDefaultTensor();
+  lrt::qnn::SetOutputTensorAttrs(tensor);
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_READ);
 }
 
 TEST(TestInitQnnTensor, MoveToId) {
-  Qnn_Tensor_t tensor = qnn::BuildDefaultTensor(2);
+  Qnn_Tensor_t tensor = lrt::qnn::BuildDefaultTensor(2);
 
-  qnn::SetOutputTensorAttrs(tensor);
+  lrt::qnn::SetOutputTensorAttrs(tensor);
   ASSERT_EQ(tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_APP_READ);
 
-  EXPECT_EQ(qnn::MoveToId(tensor), 2);
+  EXPECT_EQ(lrt::qnn::MoveToId(tensor), 2);
   EXPECT_EQ(tensor.v2.id, 2);
   EXPECT_EQ(tensor.v2.type, QNN_TENSOR_TYPE_UNDEFINED);
 }
@@ -90,8 +90,8 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   ASSERT_RESULT_OK_ASSIGN(auto outputs,
                           ::graph_tools::GetSubgraphOutputs(subgraph));
 
-  auto qnn_tensor = qnn::BuildDefaultTensor();
-  ASSERT_STATUS_OK(qnn::LegalizeTensor(outputs[0], qnn_tensor));
+  auto qnn_tensor = lrt::qnn::BuildDefaultTensor();
+  ASSERT_STATUS_OK(lrt::qnn::LegalizeTensor(outputs[0], qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -102,7 +102,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensorSubgraphInput) {
   EXPECT_THAT(absl::MakeConstSpan(qnn_tensor.v2.dimensions, 2),
               ::testing::ElementsAreArray({2, 2}));
 
-  qnn::ResetTensor(qnn_tensor);
+  lrt::qnn::ResetTensor(qnn_tensor);
 }
 
 TEST(TestLegalizeTensor, SimpleSupportedTensor) {
@@ -113,8 +113,8 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
   ASSERT_RESULT_OK_ASSIGN(auto op_outs, ::graph_tools::GetOpOuts(ops[1]));
 
-  auto qnn_tensor = qnn::BuildDefaultTensor();
-  ASSERT_STATUS_OK(qnn::LegalizeTensor(op_outs[0], qnn_tensor));
+  auto qnn_tensor = lrt::qnn::BuildDefaultTensor();
+  ASSERT_STATUS_OK(lrt::qnn::LegalizeTensor(op_outs[0], qnn_tensor));
 
   ASSERT_EQ(qnn_tensor.version, QNN_TENSOR_VERSION_2);
   EXPECT_EQ(qnn_tensor.v2.dataType, QNN_DATATYPE_FLOAT_32);
@@ -125,7 +125,7 @@ TEST(TestLegalizeTensor, SimpleSupportedTensor) {
   EXPECT_THAT(absl::MakeConstSpan(qnn_tensor.v2.dimensions, 2),
               ::testing::ElementsAreArray({2, 2}));
 
-  qnn::ResetTensor(qnn_tensor);
+  lrt::qnn::ResetTensor(qnn_tensor);
 }
 
 }  // namespace

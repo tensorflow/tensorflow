@@ -67,10 +67,11 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 //   consumer
 class LowerWhileHelper {
  public:
-  static Status Run(Node* while_op, const NameAttrList& cond_fn,
-                    const NameAttrList& body_fn, int parallel_iterations,
-                    Graph* graph, const FunctionLibraryDefinition* flib_def,
-                    bool keep_node_fetchable) {
+  static absl::Status Run(Node* while_op, const NameAttrList& cond_fn,
+                          const NameAttrList& body_fn, int parallel_iterations,
+                          Graph* graph,
+                          const FunctionLibraryDefinition* flib_def,
+                          bool keep_node_fetchable) {
     LowerWhileHelper helper(while_op, cond_fn, body_fn, parallel_iterations,
                             graph, flib_def, keep_node_fetchable);
     return helper.RunInternal();
@@ -85,49 +86,49 @@ class LowerWhileHelper {
                    Graph* graph, const FunctionLibraryDefinition* flib_def,
                    bool keep_node_fetchable);
 
-  Status RunInternal();
+  absl::Status RunInternal();
 
   void InitializeInputOutputToLoweredNodeMap();
 
   // Creates an Enter node for each `while_op_` input and adds them to
   // `enter_nodes_`. If the `while_op_` has an incoming control edge from a
   // `src` node we add a control edge from `src` to each Enter node.
-  Status CreateEnterNodes();
+  absl::Status CreateEnterNodes();
 
   // Creates a Merge node for each Enter node and adds to `merge_nodes_`.
   // Initially now both inputs of a Merge node are the Enter node. Input at
   // index 1 is later updated to the output of NextIteration node in
   // `UpdateMergeNodes`.
-  Status CreateMergeNodes();
+  absl::Status CreateMergeNodes();
 
   // Creates the call node for cond func and stores in `cond_call_node_`.
-  Status CreateCondFuncCallNode();
+  absl::Status CreateCondFuncCallNode();
 
   // Creates a Switch node for each loop var and adds to `switch_nodes_`.
   // Output at index 1(true) of a Switch node is fed into the loop body.
   // Output at index 0(false) of a Switch node is fed into the Exit nodes.
-  Status CreateSwitchNodes();
+  absl::Status CreateSwitchNodes();
 
   // Creates the call node for body func and stores in `body_call_node_`.
-  Status CreateBodyFuncCallNode();
+  absl::Status CreateBodyFuncCallNode();
 
   // Creates an Exit node for each loop var and adds to `exit_nodes_`. These
   // are fed into the consumers of the `while_op_`.
-  Status CreateExitNodes();
+  absl::Status CreateExitNodes();
 
   // Creates an NextIteration node for each loop var and adds to
   // `next_iteration_nodes_`.
-  Status CreateNextIterationNodes();
+  absl::Status CreateNextIterationNodes();
 
   // Updates input at index 1 of each merge node created in `CreateMergeNodes`
   // to use the output of NextIteration node created in
   // `CreateNextIterationNodes` instead.
-  Status UpdateMergeNodes();
+  absl::Status UpdateMergeNodes();
 
   // Updates consumers of the original `while_op_` to instead use the outputs
   // from the exit nodes in `exit_nodes_`. Also updates any outgoing control
   // edges to depend on `lowered_while_executed_` instead.
-  Status UpdateConsumers();
+  absl::Status UpdateConsumers();
 
   // Returns unique name containing the name of the While op being rewritten
   // (name_), infix and a suffix to ensure it is unique within the graph.
@@ -225,7 +226,7 @@ LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
           .enable_colocation_key_propagation_in_while_op_lowering.value();
 }
 
-Status LowerWhileHelper::RunInternal() {
+absl::Status LowerWhileHelper::RunInternal() {
   InitializeInputOutputToLoweredNodeMap();
   TF_RETURN_IF_ERROR(CreateEnterNodes());
   TF_RETURN_IF_ERROR(CreateMergeNodes());
@@ -248,7 +249,7 @@ void LowerWhileHelper::InitializeInputOutputToLoweredNodeMap() {
   }
 }
 
-Status LowerWhileHelper::CreateEnterNodes() {
+absl::Status LowerWhileHelper::CreateEnterNodes() {
   // Note: `Node::input_edge` runs in  O(num_inputs) so we use
   // `Node::input_edges` instead so that below loop runs in O(num_inputs) time
   // and not O(num_inputs^2).
@@ -304,7 +305,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateMergeNodes() {
+absl::Status LowerWhileHelper::CreateMergeNodes() {
   for (Node* enter_node : enter_nodes_) {
     bool is_constant = enter_node->attrs().FindByString("is_constant")->b();
     if (is_constant && enter_node->output_type(0) == DT_RESOURCE) {
@@ -328,7 +329,7 @@ Status LowerWhileHelper::CreateMergeNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateCondFuncCallNode() {
+absl::Status LowerWhileHelper::CreateCondFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     if (IsLoopCarriedResource(i)) {
       cond_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
@@ -357,7 +358,7 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateSwitchNodes() {
+absl::Status LowerWhileHelper::CreateSwitchNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     if (IsLoopCarriedResource(i)) {
       continue;
@@ -393,7 +394,7 @@ Status LowerWhileHelper::CreateSwitchNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateBodyFuncCallNode() {
+absl::Status LowerWhileHelper::CreateBodyFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     if (IsLoopCarriedResource(i)) {
       body_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
@@ -431,7 +432,7 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateExitNodes() {
+absl::Status LowerWhileHelper::CreateExitNodes() {
   std::vector<NodeOut> outputs;
   outputs.reserve(num_loop_inputs_);
   for (int i = 0; i < num_loop_inputs_; i++) {
@@ -507,7 +508,7 @@ Status LowerWhileHelper::CreateExitNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::CreateNextIterationNodes() {
+absl::Status LowerWhileHelper::CreateNextIterationNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     Node* next_iteration;
     if (IsLoopCarriedResource(i)) {
@@ -533,7 +534,7 @@ Status LowerWhileHelper::CreateNextIterationNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::UpdateMergeNodes() {
+absl::Status LowerWhileHelper::UpdateMergeNodes() {
   for (int i = 0; i < merge_nodes_.size(); i++) {
     TF_RETURN_IF_ERROR(
         graph_->UpdateEdge(next_iterations_nodes_[i], 0, merge_nodes_[i], 1));
@@ -541,7 +542,7 @@ Status LowerWhileHelper::UpdateMergeNodes() {
   return absl::OkStatus();
 }
 
-Status LowerWhileHelper::UpdateConsumers() {
+absl::Status LowerWhileHelper::UpdateConsumers() {
   for (const Edge* e : while_op_->out_edges()) {
     if (e->IsControlEdge()) {
       graph_->AddControlEdge(lowered_while_executed_, e->dst());
@@ -587,9 +588,9 @@ bool LowerWhileHelper::IsLoopCarriedResource(int index) {
 
 }  // namespace
 
-Status RewriteWhileNode(Node* n, Graph* g,
-                        const FunctionLibraryDefinition* flib_def,
-                        bool keep_node_fetchable) {
+absl::Status RewriteWhileNode(Node* n, Graph* g,
+                              const FunctionLibraryDefinition* flib_def,
+                              bool keep_node_fetchable) {
   VLOG(2) << "Lower While node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
 

@@ -66,7 +66,7 @@ class Int32FulltypeTest : public ::testing::Test {
 
   // Builds the given graph, and (if successful) indexes the node
   // names for use in placement, and later lookup.
-  Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
+  absl::Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
     TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
     RebuildNodeNameMap(*out_graph);
     return absl::OkStatus();
@@ -87,7 +87,8 @@ class Int32FulltypeTest : public ::testing::Test {
   // Invokes the automatic annotator on "graph"
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Int32FulltypeAnnotate(Graph* graph, bool ints_on_device = false) {
+  absl::Status Int32FulltypeAnnotate(Graph* graph,
+                                     bool ints_on_device = false) {
     Int32FulltypePass int32_fulltype;
     return int32_fulltype.ProcessGraph(graph, ints_on_device);
   }

@@ -27,14 +27,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
-                                                 FullTypeDef* tensor_t,
-                                                 bool set_only_int32,
-                                                 Node* node, int output_idx) {
+absl::Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
+                                                       FullTypeDef* tensor_t,
+                                                       bool set_only_int32,
+                                                       Node* node,
+                                                       int output_idx) {
   if (tensor_t->type_id() == TFT_TENSOR) {
     if (tensor_t->args_size() != 1) {
       if (node != nullptr) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", node->name(), "' (op='",
                          node->op_def().name(), "') in '", debug_location_,
@@ -42,10 +43,11 @@ Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
                          tensor_t->args_size(), " args instead of 1.\n got:\n",
                          tensor_t->DebugString()));
       } else {
-        return Status(absl::StatusCode::kInvalidArgument,
-                      absl::StrCat("TFT_TENSOR has ", tensor_t->args_size(),
-                                   " args instead of 1.\n got:\n",
-                                   tensor_t->DebugString()));
+        return absl::Status(
+            absl::StatusCode::kInvalidArgument,
+            absl::StrCat("TFT_TENSOR has ", tensor_t->args_size(),
+                         " args instead of 1.\n got:\n",
+                         tensor_t->DebugString()));
       }
     }
     if (tensor_t->args(0).type_id() == TFT_INT32) {
@@ -65,7 +67,8 @@ static bool is_host_memory_int32(MemoryType mtype, DataType dtype) {
   return (mtype == HOST_MEMORY) && (dtype == DT_INT32);
 }
 
-Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
+absl::Status Int32FulltypePass::ProcessGraph(Graph* graph,
+                                             bool ints_on_device) {
   for (Node* n : graph->op_nodes()) {
     auto output_types = n->output_types();
     bool needs_annotation = false;
@@ -83,7 +86,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
     if (n->def().has_experimental_type()) {
       FullTypeDef* node_t = n->mutable_def()->mutable_experimental_type();
       if (node_t->type_id() != TFT_PRODUCT) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", n->name(), "' (op='",
                          n->op_def().name(),
@@ -91,7 +94,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
                          node_t->DebugString()));
       }
       if (node_t->args_size() != output_types.size()) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", n->name(), "' (op='",
                          n->op_def().name(), "') has ", node_t->args_size(),

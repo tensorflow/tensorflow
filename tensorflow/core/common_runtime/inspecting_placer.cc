@@ -94,7 +94,7 @@ class ColocationGraphToIOColocationGroups {
     }
   }
 
-  Status FillGroups(std::vector<PossibleDevices>* group_devices) {
+  absl::Status FillGroups(std::vector<PossibleDevices>* group_devices) {
     group_devices->resize(group_ids_.size());
     for (const auto& it : group_ids_) {
       int assigned_group_id = it.second;
@@ -125,8 +125,8 @@ InspectingPlacer::InspectingPlacer(const FunctionStack& stack,
       allow_soft_placement_(allow_soft_placement),
       log_device_placement_(log_device_placement) {}
 
-Status InspectingPlacer::ComputeIOColocationGroups(const Node& node,
-                                                   IOColocationGroups* groups) {
+absl::Status InspectingPlacer::ComputeIOColocationGroups(
+    const Node& node, IOColocationGroups* groups) {
   core::RefCountPtr<FunctionRecord> fdef;
   NameAttrList func;
   TF_RETURN_IF_ERROR(GetFunctionDefAndAttrs(flib_def_, node, &fdef, &func));

@@ -78,12 +78,12 @@ class ImmutableExecutorState {
       : params_(p), gview_() {}
   ~ImmutableExecutorState();
 
-  Status Initialize(const Graph& graph);
+  absl::Status Initialize(const Graph& graph);
 
   // Process all Nodes in the current graph, attempting to infer the
   // memory allocation attributes to be used wherever they may allocate
   // a tensor buffer.
-  Status SetAllocAttrs();
+  absl::Status SetAllocAttrs();
 
   const LocalExecutorParams& params() const { return params_; }
   const GraphView& graph_view() const { return gview_; }
@@ -122,8 +122,8 @@ class ImmutableExecutorState {
     std::vector<string> frame_names;
   };
 
-  static Status BuildControlFlowInfo(const Graph* graph,
-                                     ControlFlowInfo* cf_info);
+  static absl::Status BuildControlFlowInfo(const Graph* graph,
+                                           ControlFlowInfo* cf_info);
   void InitializePending(const Graph* graph, const ControlFlowInfo& cf_info);
 
   FrameInfo* EnsureFrameInfo(const string& fname);

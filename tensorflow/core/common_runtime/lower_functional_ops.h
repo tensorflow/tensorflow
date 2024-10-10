@@ -34,7 +34,7 @@ class LowerFunctionalOpsPass : public GraphOptimizationPass {
  public:
   LowerFunctionalOpsPass() = default;
 
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 
   static constexpr const char* const kLowerUsingSwitchMergeAttr =
       LowerFunctionalOpsConstants::kLowerUsingSwitchMergeAttr;

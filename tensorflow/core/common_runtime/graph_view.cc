@@ -203,10 +203,10 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   // Check ScopedAllocatorAttrs and forward_from.  Also assign output_types.
   {
     std::vector<int> forward_input;
-    Status fwd_status =
+    absl::Status fwd_status =
         GetNodeAttr(n->attrs(), "_forward_input", &forward_input);
     std::vector<int> scoped_allocator_attrs;
-    Status sa_status =
+    absl::Status sa_status =
         GetNodeAttr(n->attrs(), "_scoped_allocator", &scoped_allocator_attrs);
 
     int* forward_from = item->forward_from_base();
@@ -244,7 +244,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   return ptr;
 }
 
-Status GraphView::Initialize(const Graph* g) {
+absl::Status GraphView::Initialize(const Graph* g) {
   CHECK(node_offsets_ == nullptr);
   const int num_nodes = g->num_node_ids();
   num_nodes_ = num_nodes;
@@ -323,8 +323,8 @@ void GraphView::SetScopedAllocatorAttrs(
       NodeItem* item = node(use_node->id());
       AllocatorAttributes* use_attrs = item->output_attr_base();
       std::vector<int> scoped_allocator_attrs;
-      Status s = GetNodeAttr(use_node->attrs(), "_scoped_allocator",
-                             &scoped_allocator_attrs);
+      absl::Status s = GetNodeAttr(use_node->attrs(), "_scoped_allocator",
+                                   &scoped_allocator_attrs);
       if (!s.ok()) {
         VLOG(2) << "Failed to find expected ScopedAllocator attr on "
                 << use_node->name();
@@ -351,10 +351,10 @@ void GraphView::SetScopedAllocatorAttrs(
 }
 
 namespace {
-Status InferAllocAttr(const Node* n, const Node* dst,
-                      const DeviceNameUtils::ParsedName& local_dev_name,
-                      AllocatorAttributes* attr) {
-  Status s;
+absl::Status InferAllocAttr(const Node* n, const Node* dst,
+                            const DeviceNameUtils::ParsedName& local_dev_name,
+                            AllocatorAttributes* attr) {
+  absl::Status s;
   // Note that it's possible for *n to be a Recv and *dst to be a Send,
   // so these two cases are not mutually exclusive.
   if (IsRecv(n)) {
@@ -418,8 +418,8 @@ Status InferAllocAttr(const Node* n, const Node* dst,
 }
 }  // namespace
 
-Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
-  Status s;
+absl::Status GraphView::SetAllocAttrs(const Graph* g, const Device* device) {
+  absl::Status s;
   const DeviceNameUtils::ParsedName& local_dev_name = device->parsed_name();
 
   std::vector<const Node*> scoped_allocator_instances;
