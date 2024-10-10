@@ -15,7 +15,11 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/abstract_function.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_operation.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace gradients {
