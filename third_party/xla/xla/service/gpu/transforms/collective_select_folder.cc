@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,21 +41,20 @@ namespace {
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
-struct SelectPredInfo {
-  int64_t constant;
-  Comparison::Direction direction;
-  HloOpcode device_id_type;  // kReplicaId or kPartitionId
+struct FoldableSelect {
+  Comparison::Direction cmp_direction;
+  int64_t constant_id;
+  CollectiveOpGroupMode collective_mode;
   HloInstruction* true_operand;
   HloInstruction* false_operand;
 };
 
 // Returns handy references to %constant, %true_operand, %false_operand of the
-// select(broadcast(compare(current_device_id, constant)), true_operand,
-// false_operand)
+//   `select(broadcast(compare(current_id, constant)), true_operand,
+//       false_operand)`
 // or
-// select(compare(current_device_id, constant), true_operand,
-// false_operand)
-std::optional<SelectPredInfo> GetPredSelectInfo(HloInstruction* select) {
+//    select(compare(current_id, constant), true_operand, false_operand)`
+std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   if (select->opcode() != HloOpcode::kSelect) {
     return std::nullopt;
   }
@@ -72,78 +71,90 @@ std::optional<SelectPredInfo> GetPredSelectInfo(HloInstruction* select) {
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(compare_candidate);
 
-  if ((compare->operand(0)->opcode() != HloOpcode::kReplicaId &&
-       compare->operand(0)->opcode() != HloOpcode::kPartitionId) ||
-      compare->operand(1)->opcode() != HloOpcode::kConstant) {
+  const HloInstruction* id_op = compare->operand(0);
+  CollectiveOpGroupMode mode;
+  if (id_op->opcode() == HloOpcode::kReplicaId) {
+    mode = CollectiveOpGroupMode::kCrossReplica;
+  } else if (id_op->opcode() == HloOpcode::kPartitionId) {
+    mode = CollectiveOpGroupMode::kCrossPartition;
+  } else {
+    return std::nullopt;
+  }
+
+  if (compare->operand(1)->opcode() != HloOpcode::kConstant) {
     return std::nullopt;
   }
 
   int64_t id_value =
       compare->operand(1)->literal().GetFirstInteger().value_or(-1);
 
-  return SelectPredInfo{id_value, compare->direction(),
-                        compare->operand(0)->opcode(),
+  return FoldableSelect{compare->direction(), id_value, mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
-bool IsUniqueSource(int64_t device_id, const SourceTargetPairs& pairs) {
-  if (pairs.size() == 1 && pairs[0].first == device_id) return true;
-  return false;
-}
+std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
+    FoldableSelect select_match, SourceTargetPairs pairs) {
+  // If there are no pairs, the predicate is undefined.
+  auto it = pairs.begin();
+  if (it == pairs.end()) return std::nullopt;
 
-bool IsNotPresentInSource(int64_t device_id, const SourceTargetPairs& pairs) {
-  return absl::c_none_of(
-      pairs, [device_id](const auto& pair) { return pair.first == device_id; });
-}
+  // Evaluate the select predicate for the first source target pair.
+  assert(select_match.cmp_direction == Comparison::Direction::kEq ||
+         select_match.cmp_direction == Comparison::Direction::kNe);
+  auto predicate = [select_match](const SourceTargetPair& pair) {
+    int64_t src_id = pair.first;
+    return select_match.cmp_direction == Comparison::Direction::kEq
+               ? src_id == select_match.constant_id
+               : src_id != select_match.constant_id;
+  };
+  bool result_candidate = predicate(*it++);
 
-inline absl::StatusOr<bool> update(HloInstruction* cp, HloInstruction* data) {
-  TF_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, data));
-  return true;
-}
+  // Check that the result is the same for all source target pairs. If not,
+  // we have a contradiction and cannot statically evaluate the predicate. We
+  // return std::nullopt in this case.
+  while (it != pairs.end()) {
+    if (result_candidate != predicate(*it++)) return std::nullopt;
+  }
 
-// We have to maintain integrity of relationship between partition/replica
-// and collective-permute's channel_id.
-// That is we can only fold select when
-// 1. cp has channel_id and condition is based on partition_id
-// 2. cp has no channel_id and condition is based on replica_id
-// See enum class CollectiveOpGroupMode for details.
-bool IsShardingConsistent(HloCollectivePermuteInstruction* cp,
-                          HloOpcode device_id_type) {
-  auto id = cp->channel_id();
-  return (device_id_type == HloOpcode::kPartitionId && id.has_value()) ||
-         (device_id_type == HloOpcode::kReplicaId && !id.has_value());
+  // The predicate statically evaluates to the same value for all source target
+  // pairs.
+  return result_candidate;
 }
 
 // Recognizes the pattern and update if applicable.
-absl::StatusOr<bool> TryFoldSelect(HloInstruction* in) {
-  if (in->opcode() != HloOpcode::kCollectivePermute) return false;
-  auto select_info_opt = GetPredSelectInfo(in->mutable_operand(0));
-  if (!select_info_opt.has_value()) return false;
-  auto select_info = select_info_opt.value();
-
+absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
+  // Root op must be a collective-permute.
   HloCollectivePermuteInstruction* cp =
-      Cast<HloCollectivePermuteInstruction>(in);
-  if (!IsShardingConsistent(cp, select_info.device_id_type)) return false;
+      DynCast<HloCollectivePermuteInstruction>(inst);
+  if (!cp) return false;
 
-  int64_t device_id = select_info.constant;
-  SourceTargetPairs pairs = cp->source_target_pairs();
+  // Operand must be a foldable select, i.e. a select op that this pass'
+  // analysis supports.
+  std::optional<FoldableSelect> select_match =
+      MatchFoldableSelect(inst->mutable_operand(0));
+  if (!select_match) return false;
 
-  if (select_info.direction == Comparison::Direction::kEq) {
-    if (IsUniqueSource(device_id, pairs)) {
-      return update(cp, select_info.true_operand);
-    } else if (IsNotPresentInSource(device_id, pairs)) {
-      return update(cp, select_info.false_operand);
-    }
-  }
+  // We have to maintain integrity of relationship between the predicate, which
+  // is based on partition or replica ID, and the collevtive mode of the
+  // collective-permute op.
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode collective_mode,
+      GetCollectiveOpGroupMode(cp->channel_id().has_value(),
+                               /*use_global_device_ids=*/std::nullopt));
+  if (collective_mode != select_match->collective_mode) return false;
 
-  if (select_info.direction == Comparison::Direction::kNe) {
-    if (IsNotPresentInSource(device_id, pairs)) {
-      return update(cp, select_info.true_operand);
-    } else if (IsUniqueSource(device_id, pairs)) {
-      return update(cp, select_info.false_operand);
-    }
-  }
-  return false;
+  // We can only actually fold the select if we can evaluate the predicate
+  // statically to a known value for all relevant source IDs.
+  std::optional<bool> predicate_value =
+      StaticallyEvaluatePredicateForAllSourceIDs(*select_match,
+                                                 cp->source_target_pairs());
+  if (!predicate_value.has_value()) return false;
+
+  // Fold select and forward the correct operand.
+  HloInstruction* new_operand = *predicate_value ? select_match->true_operand
+                                                 : select_match->false_operand;
+  TF_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, new_operand));
+  return true;
 }
 
 }  // namespace
@@ -152,9 +163,10 @@ absl::StatusOr<bool> CollectiveSelectFolder::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, TryFoldSelect(instruction));
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      TF_ASSIGN_OR_RETURN(bool local_changed,
+                          TryFoldColectivePermuteOfSelect(inst));
       changed |= local_changed;
     }
   }
