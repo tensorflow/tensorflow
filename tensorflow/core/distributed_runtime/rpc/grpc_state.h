@@ -124,7 +124,7 @@ class Exchange {
   // If `status` is success, completes this exchange by parsing the
   // response_buf_ and invoking cb_ with OkStatus(). Else, invokes the
   // callback with `status`.
-  void Complete(Status status);
+  void Complete(absl::Status status);
 
   const State& state() const { return state_; }
 
@@ -198,7 +198,7 @@ class ExchangeQueue {
   void Swap(ExchangeQueue* other);
 
   // Completes all exchanges in this with `status`.
-  void CompleteAll(Status status);
+  void CompleteAll(absl::Status status);
 
   void CallStarted() { call_started_ = true; }
 
@@ -250,7 +250,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     ::grpc::ByteBuffer request_buf;
     ::grpc::Status s = tsl::GrpcMaybeUnparseProto(request, &request_buf);
     if (!s.ok()) {
-      Status status = FromGrpcStatus(s);
+      absl::Status status = FromGrpcStatus(s);
       LOG(ERROR) << "GrpcMaybeUnparseProto returned with non-ok status: "
                  << status.ToString();
       done(status);
@@ -351,7 +351,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
       return;
     }
 
-    Status s = FromGrpcStatus(call_status_);
+    absl::Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
       s.Update(
           errors::Internal("GRPC status is okay but CompletionQueueStatus is "
@@ -374,7 +374,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     kDone,
   };
 
-  void MarkDoneAndCompleteExchanges(Status status)
+  void MarkDoneAndCompleteExchanges(absl::Status status)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_UNLOCK_FUNCTION(mu_) {
     call_state_ = State::kDone;
     VLOG(2) << "Ending gRPC streaming call on the client side due to "
