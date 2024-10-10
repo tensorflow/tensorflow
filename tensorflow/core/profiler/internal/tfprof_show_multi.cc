@@ -43,9 +43,9 @@ const MultiGraphNodeProto& TFMultiShow::Show(const string& prefix,
       absl::PrintF("%s%s", prefix, ret->formatted_str);
       fflush(stdout);
     } else if (opts.output_type == kOutput[2]) {
-      Status s = WriteStringToFile(Env::Default(),
-                                   opts.output_options.at(kFileOpts[0]),
-                                   prefix + ret->formatted_str);
+      absl::Status s = WriteStringToFile(Env::Default(),
+                                         opts.output_options.at(kFileOpts[0]),
+                                         prefix + ret->formatted_str);
       if (!s.ok()) {
         absl::FPrintF(stderr, "%s\n", s.ToString());
       }
