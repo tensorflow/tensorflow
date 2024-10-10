@@ -53,7 +53,7 @@ cc_library(
 
 cc_shared_library(
     name = "dispatch_api_shared",
-    shared_lib_name = "liblrtdispatch.so",
+    shared_lib_name = "libLrtDispatch.so",
     visibility = ["//visibility:public"],
     deps = [":dispatch_api"],
 )

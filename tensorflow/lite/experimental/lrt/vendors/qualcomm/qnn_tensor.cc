@@ -26,7 +26,7 @@
 namespace lrt {
 namespace qnn {
 
-QnnTensor::QnnTensor(const QnnTensor& other) : QnnTensor(other.qnn_tensor()) {
+QnnTensor::QnnTensor(const QnnTensor& other) : QnnTensor(other.Tensor()) {
   auto status = DeepCopy();
   // This should never fail because the input QnnTensor was already deep-copied.
   if (!status.ok()) {

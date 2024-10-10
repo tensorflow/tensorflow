@@ -62,7 +62,7 @@
 
 namespace {
 
-constexpr const char* kSharedLibPath = "liblrtdispatch.so";
+constexpr const char* kSharedLibPath = "libLrtDispatch.so";
 
 LrtDispatchApi TheApi = {
     /*.version=*/{/*.major=*/0, /*.minor=*/0, /*.patch=*/0},

@@ -17,4 +17,4 @@ package(
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
-exports_files(srcs = ["hide_absl.lds"])
+exports_files(srcs = ["export_lrt_only.lds"])

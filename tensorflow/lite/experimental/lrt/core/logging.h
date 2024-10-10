@@ -51,9 +51,9 @@ class Logger {
 #define LITE_RT_LOG LITE_RT_LOG_PROD
 #else
 #define LITE_RT_LOG(severity, format, ...)             \
-  while (false) {                                      \
+  do {                                                 \
     LITE_RT_LOG_PROD(severity, format, ##__VA_ARGS__); \
-  }
+  } while (false)
 #endif
 
 }  // namespace internal

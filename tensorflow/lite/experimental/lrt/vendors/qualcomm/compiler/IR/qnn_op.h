@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_IR_QNN_OP_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_IR_QNN_OP_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_
 
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 
-namespace qnn {
+namespace lrt::qnn {
 
 //
 // Initialize QNN Op.
@@ -42,6 +42,6 @@ void ResetOp(Qnn_OpConfig_t& op);
 // attribute-like info. It does not set edges (in/out tensors).
 LrtStatus LegalizeOp(LrtOp src, Qnn_OpConfig_t& dest);
 
-}  // namespace qnn
+}  // namespace lrt::qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_IR_QNN_OP_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_

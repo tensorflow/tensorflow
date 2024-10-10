@@ -22,17 +22,17 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/registry.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 class LrtDispatchDeviceContextT {
  public:
   using Ptr = std::unique_ptr<LrtDispatchDeviceContextT>;
 
-  ~LrtDispatchDeviceContextT();
+  ~LrtDispatchDeviceContextT() = default;
 
-  static absl::StatusOr<Ptr> Create(const lrt::qnn::Qnn& qnn);
+  static absl::StatusOr<Ptr> Create(lrt::qnn::QnnManager& qnn_manager);
 
-  Qnn_BackendHandle_t backend_handle() { return backend_handle_; }
+  Qnn_BackendHandle_t BackendHandle() { return qnn_manager_.BackendHandle(); }
 
   absl::StatusOr<LrtTensorBufferHandle> RegisterTensorBuffer(
       LrtTensorBuffer tensor_buffer) {
@@ -49,8 +49,7 @@ class LrtDispatchDeviceContextT {
       LrtTensorBufferHandle tensor_buffer_handle);
 
   absl::StatusOr<Qnn_MemHandle_t> GetMemHandle(
-      LrtTensorBufferHandle tensor_buffer_handle, const Qnn_Tensor_t& tensor,
-      Qnn_ContextHandle_t context_handle);
+      LrtTensorBufferHandle tensor_buffer_handle, const Qnn_Tensor_t& tensor);
 
  private:
   struct TensorBufferRegistryEntry {
@@ -63,16 +62,13 @@ class LrtDispatchDeviceContextT {
   using TensorBufferRegistry =
       lrt::qnn::Registry<LrtTensorBufferHandle, TensorBufferRegistryEntry>;
 
-  LrtDispatchDeviceContextT(const lrt::qnn::Qnn& qnn,
-                            Qnn_BackendHandle_t backend_handle)
-      : qnn_(qnn), backend_handle_(backend_handle) {}
+  LrtDispatchDeviceContextT(lrt::qnn::QnnManager& qnn_manager)
+      : qnn_manager_(qnn_manager) {}
 
   absl::StatusOr<Qnn_MemHandle_t> RegisterTensorBuffer(
-      LrtTensorBuffer tensor_buffer, const Qnn_Tensor_t& tensor,
-      Qnn_ContextHandle_t context_handle);
+      LrtTensorBuffer tensor_buffer, const Qnn_Tensor_t& tensor);
 
-  const lrt::qnn::Qnn& qnn_;
-  Qnn_BackendHandle_t backend_handle_;
+  lrt::qnn::QnnManager& qnn_manager_;
   TensorBufferRegistry tensor_buffer_registry_;
 };
 

@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/qnn_sdk:ungrte_qnn.bzl", "ungrte_cc_library_with_qnn", "ungrte_cc_test_with_qnn")
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite/experimental/lrt/qnn:__subpackages__"],
+    default_visibility = ["//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler:__subpackages__"],
 )
 
-ungrte_cc_library_with_qnn(
+cc_library(
     name = "qnn_tensor",
     srcs = ["qnn_tensor.cc"],
     hdrs = ["qnn_tensor.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
     deps = [
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/strings:str_format",
@@ -35,11 +37,17 @@ ungrte_cc_library_with_qnn(
     ],
 )
 
-ungrte_cc_test_with_qnn(
+cc_test(
     name = "qnn_tensor_test",
     srcs = ["qnn_tensor_test.cc"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+    ],
     deps = [
         ":qnn_tensor",
+        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -50,10 +58,14 @@ ungrte_cc_test_with_qnn(
     ],
 )
 
-ungrte_cc_library_with_qnn(
+cc_library(
     name = "qnn_op",
     srcs = ["qnn_op.cc"],
     hdrs = ["qnn_op.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
     deps = [
         # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_op",
@@ -62,11 +74,17 @@ ungrte_cc_library_with_qnn(
     ],
 )
 
-ungrte_cc_test_with_qnn(
+cc_test(
     name = "qnn_op_test",
     srcs = ["qnn_op_test.cc"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+        "no_oss",
+    ],
     deps = [
         ":qnn_op",
+        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",

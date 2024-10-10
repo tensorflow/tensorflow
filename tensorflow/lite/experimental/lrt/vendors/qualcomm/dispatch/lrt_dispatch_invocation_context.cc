@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,38 +31,33 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/core/utils.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/context_binary_info.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/lrt_dispatch_device_context.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
+
+using ::lrt::qnn::QnnManager;
+using ::lrt::qnn::config::GetDefaultContextConfigs;
 
 LrtDispatchInvocationContextT::LrtDispatchInvocationContextT(
-    const lrt::qnn::Qnn& qnn,
+    lrt::qnn::QnnManager& qnn_manager,
     const lrt::qnn::ContextBinaryInfo& context_binary_info,
     LrtDispatchDeviceContextT& device_context,
-    Qnn_ContextHandle_t context_handle, Qnn_ProfileHandle_t profile_handle,
-    int graph_index, Qnn_GraphHandle_t graph_handle)
-    : qnn_(qnn),
+    Qnn_ProfileHandle_t profile_handle, int graph_index,
+    Qnn_GraphHandle_t graph_handle)
+    : qnn_manager_(qnn_manager),
       device_context_(device_context),
-      context_handle_(context_handle),
       profile_handle_(profile_handle),
       graph_index_(graph_index),
       graph_handle_(graph_handle),
-      inputs_(context_binary_info.graphs()[graph_index].inputs()),
-      outputs_(context_binary_info.graphs()[graph_index].outputs()) {}
-
-LrtDispatchInvocationContextT::~LrtDispatchInvocationContextT() {
-  if (auto status =
-          qnn_.qnn_interface().contextFree(context_handle_, profile_handle_);
-      status != QNN_SUCCESS) {
-    ABSL_LOG(ERROR) << "Failed to free context: " << status;
-  }
-}
+      inputs_(context_binary_info.Graphs()[graph_index].Inputs()),
+      outputs_(context_binary_info.Graphs()[graph_index].Outputs()) {}
 
 absl::StatusOr<LrtDispatchInvocationContextT::Ptr>
-LrtDispatchInvocationContextT::Create(const lrt::qnn::Qnn& qnn,
+LrtDispatchInvocationContextT::Create(QnnManager& qnn,
                                       LrtDispatchDeviceContextT& device_context,
                                       const void* exec_bytecode_ptr,
                                       size_t exec_bytecode_size,
@@ -73,10 +69,10 @@ LrtDispatchInvocationContextT::Create(const lrt::qnn::Qnn& qnn,
   }
 
   int graph_index = -1;
-  const auto& graphs = context_binary_info->graphs();
+  const auto& graphs = context_binary_info->Graphs();
   for (auto i = 0; i < graphs.size(); ++i) {
     const auto& graph = graphs[i];
-    if (graph.name() == absl::string_view(function_name)) {
+    if (graph.Name() == absl::string_view(function_name)) {
       graph_index = i;
       break;
     }
@@ -85,35 +81,32 @@ LrtDispatchInvocationContextT::Create(const lrt::qnn::Qnn& qnn,
     return absl::InternalError("Function name not found");
   }
 
-  Qnn_BackendHandle_t backend_handle = device_context.backend_handle();
-  const QnnContext_Config_t* context_configs[] = {nullptr};
   Qnn_ProfileHandle_t profile_handle = nullptr;
-  Qnn_ContextHandle_t context_handle = nullptr;
-  if (auto status = qnn.qnn_interface().contextCreateFromBinary(
-          backend_handle, /*deviceHandle*/ nullptr, context_configs,
-          exec_bytecode_ptr, exec_bytecode_size, &context_handle,
-          profile_handle);
+  if (auto status = qnn.Api()->contextCreateFromBinary(
+          qnn.BackendHandle(), /*deviceHandle*/ nullptr,
+          GetDefaultContextConfigs().data(), exec_bytecode_ptr,
+          exec_bytecode_size, &qnn.ContextHandle(), profile_handle);
       status != QNN_SUCCESS) {
     return absl::InternalError("Failed to create context from context binary");
   }
 
   Qnn_GraphHandle_t graph_handle;
-  if (auto status = qnn.qnn_interface().graphRetrieve(
-          context_handle, function_name, &graph_handle);
+  if (auto status = qnn.Api()->graphRetrieve(qnn.ContextHandle(), function_name,
+                                             &graph_handle);
       status != QNN_SUCCESS) {
     return absl::InternalError("Failed to retrieve graph");
   }
 
   return Ptr(new LrtDispatchInvocationContextT(
-      qnn, std::move(*context_binary_info), device_context, context_handle,
-      profile_handle, graph_index, graph_handle));
+      qnn, std::move(*context_binary_info), device_context, profile_handle,
+      graph_index, graph_handle));
 }
 
 namespace {
 
 absl::StatusOr<LrtTensorBufferRequirements> GetTensorBufferRequirements(
     const LrtRankedTensorType& tensor_type) {
-  LrtTensorBufferType supported_tensor_buffer_types[] = {
+  static constexpr LrtTensorBufferType supported_tensor_buffer_types[] = {
       kLrtTensorBufferTypeFastRpc,
   };
   int num_supported_tensor_buffer_types =
@@ -157,7 +150,7 @@ absl::Status LrtDispatchInvocationContextT::AttachInput(
   }
 
   auto& tensor = inputs_[graph_input_index];
-  return AttachBuffer(tensor.qnn_tensor(), tensor_buffer_handle);
+  return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
 }
 
 absl::Status LrtDispatchInvocationContextT::AttachOutput(
@@ -167,7 +160,7 @@ absl::Status LrtDispatchInvocationContextT::AttachOutput(
   }
 
   auto& tensor = outputs_[graph_output_index];
-  return AttachBuffer(tensor.qnn_tensor(), tensor_buffer_handle);
+  return AttachBuffer(tensor.Tensor(), tensor_buffer_handle);
 }
 
 absl::Status LrtDispatchInvocationContextT::AttachBuffer(
@@ -177,8 +170,7 @@ absl::Status LrtDispatchInvocationContextT::AttachBuffer(
     return tensor_buffer.status();
   }
 
-  auto mem_handle = device_context_.GetMemHandle(tensor_buffer_handle, tensor,
-                                                 context_handle_);
+  auto mem_handle = device_context_.GetMemHandle(tensor_buffer_handle, tensor);
   if (!mem_handle.ok()) {
     return mem_handle.status();
   }
@@ -188,7 +180,7 @@ absl::Status LrtDispatchInvocationContextT::AttachBuffer(
     tensor.v1.memHandle = *mem_handle;
 
   } else if (tensor.version == QNN_TENSOR_VERSION_2) {
-    if (tensor.v2.isDynamicDimensions) {
+    if (tensor.v2.isDynamicDimensions != nullptr) {
       return absl::InternalError("Dynamic dimensions not yet supported");
     }
     tensor.v2.memType = QNN_TENSORMEMTYPE_MEMHANDLE;
@@ -202,21 +194,21 @@ absl::Status LrtDispatchInvocationContextT::AttachBuffer(
 }
 
 absl::Status LrtDispatchInvocationContextT::Execute() {
-  std::vector<Qnn_Tensor_t> inputs;
-  inputs.reserve(inputs_.size());
-  for (auto i = 0; i < inputs_.size(); ++i) {
-    inputs.push_back(inputs_[i].qnn_tensor());
+  const size_t num_ins = inputs_.size();
+  LRT_STACK_ARRAY(Qnn_Tensor_t, inputs, num_ins, QNN_TENSOR_INIT);
+  for (size_t i = 0; i < num_ins; ++i) {
+    *(inputs + i) = inputs_.at(i).Tensor();
   }
 
-  std::vector<Qnn_Tensor_t> outputs;
-  outputs.reserve(outputs_.size());
-  for (auto i = 0; i < outputs_.size(); ++i) {
-    outputs.push_back(outputs_[i].qnn_tensor());
+  const size_t num_outs = outputs_.size();
+  LRT_STACK_ARRAY(Qnn_Tensor_t, outputs, num_outs, QNN_TENSOR_INIT);
+  for (size_t i = 0; i < num_outs; ++i) {
+    *(outputs + i) = outputs_.at(i).Tensor();
   }
 
-  if (auto status = qnn_.qnn_interface().graphExecute(
-          graph_handle_, inputs.data(), inputs.size(), outputs.data(),
-          outputs.size(), /*profileHandle=*/nullptr, /*signalHandle=*/nullptr);
+  if (auto status = qnn_manager_.Api()->graphExecute(
+          graph_handle_, inputs, num_ins, outputs, num_outs,
+          /*profileHandle=*/nullptr, /*signalHandle=*/nullptr);
       status != QNN_SUCCESS) {
     return absl::InternalError("Failed to execute graph");
   }

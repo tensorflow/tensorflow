@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
 
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 #include "third_party/qairt/include/QNN/QnnLog.h"
+#include "third_party/qairt/include/QNN/System/QnnSystemInterface.h"
 
-namespace qnn::log {
+namespace lrt::qnn {
 
 //
 // Standalone Dump/Log Funcitonality
@@ -26,6 +27,9 @@ namespace qnn::log {
 
 // Prints details about this interface.
 void DumpInterface(const QnnInterface_t* interface);
+
+// Prints details about this system interface.
+void DumpSystemInterface(const QnnSystemInterface_t* interface);
 
 //
 // QNN SDK Usage
@@ -35,6 +39,6 @@ void DumpInterface(const QnnInterface_t* interface);
 // This is used when initializing qnn logging.
 QnnLog_Callback_t GetDefaultStdOutLogger();
 
-}  // namespace qnn::log
+}  // namespace lrt::qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_LOG_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_

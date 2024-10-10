@@ -22,7 +22,7 @@
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/include/QNN/QnnInterface.h"
 #include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_tensor.h"
 
 namespace lrt {
@@ -32,9 +32,9 @@ class GraphInfo {
  public:
   static absl::StatusOr<GraphInfo> Create(
       const QnnSystemContext_GraphInfo_t& graph_info);
-  const std::string& name() const { return name_; }
-  const std::vector<QnnTensor>& inputs() const { return inputs_; }
-  const std::vector<QnnTensor>& outputs() const { return outputs_; }
+  const std::string& Name() const { return name_; }
+  const std::vector<QnnTensor>& Inputs() const { return inputs_; }
+  const std::vector<QnnTensor>& Outputs() const { return outputs_; }
 
  private:
   GraphInfo() = default;
@@ -46,13 +46,13 @@ class GraphInfo {
 
 class ContextBinaryInfo {
  public:
-  static absl::StatusOr<ContextBinaryInfo> Create(const qnn::Qnn& qnn,
+  static absl::StatusOr<ContextBinaryInfo> Create(QnnManager& qnn,
                                                   const void* exec_bytecode_ptr,
                                                   size_t exec_bytecode_size);
-  const std::vector<QnnTensor>& context_tensors() const {
+  const std::vector<QnnTensor>& ContextTensors() const {
     return context_tensors_;
   }
-  const std::vector<GraphInfo>& graphs() const { return graphs_; }
+  const std::vector<GraphInfo>& Graphs() const { return graphs_; }
 
  private:
   ContextBinaryInfo() = default;

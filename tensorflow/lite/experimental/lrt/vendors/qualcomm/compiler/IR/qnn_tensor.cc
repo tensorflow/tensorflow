@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_tensor.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 
 #include <memory>
 
@@ -25,7 +25,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor.h"
 
-namespace qnn {
+namespace lrt::qnn {
 
 using ::lrt::LrtTensorManager;
 
@@ -143,4 +143,4 @@ LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest) {
   return kLrtStatusOk;
 }
 
-}  // namespace qnn
+}  // namespace lrt::qnn
