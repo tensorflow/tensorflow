@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:shape_inference_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/mlir/tf2xla/internal:mlir_pass_instrumentation",
         "//tensorflow/compiler/mlir/tf2xla/internal/passes:lowering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
