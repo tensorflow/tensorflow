@@ -1069,6 +1069,17 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
 
   nb::class_<DebugOptions>(m, "DebugOptions")
       .def("__repr__", &DebugOptions::DebugString)
+      .def_prop_ro_static("all_options_list",
+                          [](const nb::object&) -> std::vector<std::string> {
+                            std::vector<std::string> result;
+                            auto* descriptor = xla::DebugOptions::descriptor();
+                            result.reserve(descriptor->field_count());
+                            for (int i = 0; i < descriptor->field_count();
+                                 ++i) {
+                              result.push_back(descriptor->field(i)->name());
+                            }
+                            return result;
+                          })
       .def_prop_rw("xla_backend_optimization_level",
                    &DebugOptions::xla_backend_optimization_level,
                    &DebugOptions::set_xla_backend_optimization_level)
