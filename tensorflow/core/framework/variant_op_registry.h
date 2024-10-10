@@ -66,10 +66,11 @@ extern UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal();
 class UnaryVariantOpRegistry {
  public:
   typedef std::function<bool(Variant*)> VariantDecodeFn;
-  typedef std::function<Status(OpKernelContext*, const Variant&, Variant*)>
+  typedef std::function<absl::Status(OpKernelContext*, const Variant&,
+                                     Variant*)>
       VariantUnaryOpFn;
-  typedef std::function<Status(OpKernelContext*, const Variant&, const Variant&,
-                               Variant*)>
+  typedef std::function<absl::Status(OpKernelContext*, const Variant&,
+                                     const Variant&, Variant*)>
       VariantBinaryOpFn;
 
   // An AsyncTensorDeviceCopyFn is a function provided to
@@ -89,14 +90,14 @@ class UnaryVariantOpRegistry {
   //   Any failure of the copy itself will update the underlying
   //   stream status and propagate through the runtime independent
   //   of the caller.
-  typedef std::function<Status(const Tensor& from, Tensor* to)>
+  typedef std::function<absl::Status(const Tensor& from, Tensor* to)>
       AsyncTensorDeviceCopyFn;
 
   // The AsyncVariantDeviceCopyFn is the signature of the 'device_copy_fn'
   // expected to be passed to the registration macro
   // INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION.
-  typedef std::function<Status(const Variant& from, Variant* to,
-                               AsyncTensorDeviceCopyFn copy_fn)>
+  typedef std::function<absl::Status(const Variant& from, Variant* to,
+                                     AsyncTensorDeviceCopyFn copy_fn)>
       AsyncVariantDeviceCopyFn;
 
   // Add a decode function to the registry.
@@ -296,7 +297,7 @@ bool DecodeUnaryVariant(Variant* variant);
 // REQUIRES:
 //   'to' is not null.
 //
-Status VariantDeviceCopy(
+absl::Status VariantDeviceCopy(
     const VariantDeviceCopyDirection direction, const Variant& from,
     Variant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn);
@@ -310,8 +311,8 @@ Status VariantDeviceCopy(
 //   v_out is not null.
 //
 template <typename Device>
-Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op, const Variant& v,
-                      Variant* v_out) {
+absl::Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op,
+                            const Variant& v, Variant* v_out) {
   const std::string& device = DeviceName<Device>::value;
   UnaryVariantOpRegistry::VariantUnaryOpFn* unary_op_fn =
       UnaryVariantOpRegistry::Global()->GetUnaryOpFn(op, device, v.TypeId());
@@ -334,8 +335,9 @@ Status UnaryOpVariant(OpKernelContext* ctx, VariantUnaryOp op, const Variant& v,
 //   out is not null.
 //
 template <typename Device>
-Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
-                        const Variant& a, const Variant& b, Variant* out) {
+absl::Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
+                              const Variant& a, const Variant& b,
+                              Variant* out) {
   if (a.TypeId() != b.TypeId()) {
     return errors::Internal(
         "BinaryOpVariants: Variants a and b have different "
@@ -385,8 +387,8 @@ class UnaryVariantDecodeRegistration {
 template <typename T>
 class UnaryVariantDeviceCopyRegistration {
  public:
-  typedef std::function<Status(const T& t, T* t_out,
-                               UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn)>
+  typedef std::function<absl::Status(
+      const T& t, T* t_out, UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn)>
       LocalVariantDeviceCopyFn;
   UnaryVariantDeviceCopyRegistration(
       const VariantDeviceCopyDirection direction, const TypeIndex& type_index,
@@ -398,7 +400,7 @@ class UnaryVariantDeviceCopyRegistration {
         [type_index_name, device_copy_fn](
             const Variant& from, Variant* to,
             UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn
-                device_copy_tensor_fn) -> Status {
+                device_copy_tensor_fn) -> absl::Status {
           DCHECK_NE(to, nullptr);
           *to = T();
           if (from.get<T>() == nullptr) {
@@ -415,7 +417,8 @@ class UnaryVariantDeviceCopyRegistration {
 
 template <typename T>
 class UnaryVariantUnaryOpRegistration {
-  typedef std::function<Status(OpKernelContext* ctx, const T& t, T* t_out)>
+  typedef std::function<absl::Status(OpKernelContext* ctx, const T& t,
+                                     T* t_out)>
       LocalVariantUnaryOpFn;
 
  public:
@@ -427,7 +430,7 @@ class UnaryVariantUnaryOpRegistration {
     UnaryVariantOpRegistry::Global()->RegisterUnaryOpFn(
         op, device, type_index,
         [type_index_name, unary_op_fn](OpKernelContext* ctx, const Variant& v,
-                                       Variant* v_out) -> Status {
+                                       Variant* v_out) -> absl::Status {
           DCHECK_NE(v_out, nullptr);
           *v_out = T();
           if (v.get<T>() == nullptr) {
@@ -444,8 +447,8 @@ class UnaryVariantUnaryOpRegistration {
 
 template <typename T>
 class UnaryVariantBinaryOpRegistration {
-  typedef std::function<Status(OpKernelContext* ctx, const T& a, const T& b,
-                               T* out)>
+  typedef std::function<absl::Status(OpKernelContext* ctx, const T& a,
+                                     const T& b, T* out)>
       LocalVariantBinaryOpFn;
 
  public:
@@ -459,7 +462,7 @@ class UnaryVariantBinaryOpRegistration {
         op, device, type_index,
         [type_index_name, binary_op_fn](OpKernelContext* ctx, const Variant& a,
                                         const Variant& b,
-                                        Variant* out) -> Status {
+                                        Variant* out) -> absl::Status {
           DCHECK_NE(out, nullptr);
           *out = T();
           if (a.get<T>() == nullptr) {

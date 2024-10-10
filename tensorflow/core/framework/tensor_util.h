@@ -49,8 +49,8 @@ void DeepCopy(const Tensor& input, Tensor* output);
 // REQUIRES: Each member of 'tensors' must point to data stored in CPU memory.
 // REQUIRES: Each member of 'tensors' must be a Tensor of a copy-able type if it
 //           is not appropriately memory-aligned.
-Status Concat(absl::Span<const Tensor> tensors,
-              Tensor* result) TF_MUST_USE_RESULT;
+absl::Status Concat(absl::Span<const Tensor> tensors,
+                    Tensor* result) TF_MUST_USE_RESULT;
 
 // Splits 'tensor' into 'sizes.size()' individual tensors, along the 0th
 // dimension. The ith output tensor has 0th-dimension size 'sizes[i]'.
@@ -62,8 +62,8 @@ Status Concat(absl::Span<const Tensor> tensors,
 //           appropriately memory-aligned.
 //
 // Split() and Concat() are inverse operations.
-Status Split(const Tensor& tensor, absl::Span<const int64_t> sizes,
-             std::vector<Tensor>* result) TF_MUST_USE_RESULT;
+absl::Status Split(const Tensor& tensor, absl::Span<const int64_t> sizes,
+                   std::vector<Tensor>* result) TF_MUST_USE_RESULT;
 
 namespace internal {
 void SetTensorProtoShape(absl::Span<const size_t> shape,
@@ -351,7 +351,7 @@ inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
 
 // Make a TensorShape from the contents of shape_t. Shape_t must be a
 // 1-dimensional tensor of type int32 or int64.
-Status MakeShape(const Tensor& shape_t, TensorShape* out);
+absl::Status MakeShape(const Tensor& shape_t, TensorShape* out);
 
 }  // namespace tensor
 }  // namespace tensorflow

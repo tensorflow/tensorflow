@@ -27,7 +27,7 @@ namespace {
 void BuildTensorAlwaysSucceedsWithValidTensorShape(DataType type,
                                                    const TensorShape& shape) {
   Tensor out;
-  Status status = Tensor::BuildTensor(type, shape, &out);
+  absl::Status status = Tensor::BuildTensor(type, shape, &out);
   TF_EXPECT_OK(status);
 }
 FUZZ_TEST(TensorFuzz, BuildTensorAlwaysSucceedsWithValidTensorShape)
