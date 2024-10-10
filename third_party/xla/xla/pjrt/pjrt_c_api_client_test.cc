@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/pjrt_c_api_client.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
@@ -136,7 +138,8 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
   ASSERT_GT(client->addressable_devices().size(), 1);
-  std::vector<int32_t> data(4, 0);
+  alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
+  data.fill(0);
   auto* data_ptr = data.data();
   Shape shape = ShapeUtil::MakeShape(S32, {4});
 
@@ -144,7 +147,9 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
       auto buffer,
       client->CreateViewOfDeviceBuffer(
           data_ptr, shape, client->addressable_devices()[0],
-          /*on_delete_callback=*/[data = std::move(data)]() mutable {}));
+          /*on_delete_callback=*/[data = std::move(data)]() mutable {
+            (void)data;
+          }));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> result,

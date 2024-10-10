@@ -841,6 +841,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_executable",
+        "//xla:cpu_function_runtime",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",

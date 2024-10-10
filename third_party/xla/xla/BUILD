@@ -1167,6 +1167,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@eigen_archive//:eigen3",
     ],
 )
 
