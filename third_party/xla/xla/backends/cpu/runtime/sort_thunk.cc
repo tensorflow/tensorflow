@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/base/dynamic_annotations.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -482,6 +484,22 @@ static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
                   num_iterations};
 }
 
+template <PrimitiveType Type>
+static void SortPlainArrayInplace(const SortDims& sort_dims,
+                                  absl::Span<se::DeviceMemoryBase> data,
+                                  bool is_stable) {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<Type>::type;
+  DCHECK_EQ(data.size(), 1);
+
+  NativeT* begin = reinterpret_cast<NativeT*>(data[0].opaque());
+
+  if (is_stable) {
+    std::stable_sort(begin, begin + sort_dims.sort_dim_size);
+  } else {
+    std::sort(begin, begin + sort_dims.sort_dim_size);
+  }
+}
+
 // Sorts `n` buffers in place.
 template <size_t n>
 static void SortInplace(const SortDims& sort_dims, int64_t offset,
@@ -577,7 +595,46 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
     // for 100 elements unstable sort is 2.47 times faster than unstable dsort.
     switch (data.size()) {
       case 1:
-        sort(std::integral_constant<size_t, 1>{});
+        DCHECK_EQ(shapes.size(), 1);
+        DCHECK_EQ(offset, 0);
+        switch (shapes[0].element_type()) {
+          case S8:
+            SortPlainArrayInplace<S8>(sort_dims, data, is_stable);
+            break;
+          case S16:
+            SortPlainArrayInplace<S16>(sort_dims, data, is_stable);
+            break;
+          case S32:
+            SortPlainArrayInplace<S32>(sort_dims, data, is_stable);
+            break;
+          case S64:
+            SortPlainArrayInplace<S64>(sort_dims, data, is_stable);
+            break;
+          case U8:
+            SortPlainArrayInplace<U8>(sort_dims, data, is_stable);
+            break;
+          case U16:
+            SortPlainArrayInplace<U16>(sort_dims, data, is_stable);
+            break;
+          case U32:
+            SortPlainArrayInplace<U32>(sort_dims, data, is_stable);
+            break;
+          case U64:
+            SortPlainArrayInplace<U64>(sort_dims, data, is_stable);
+            break;
+          case F16:
+            SortPlainArrayInplace<F16>(sort_dims, data, is_stable);
+            break;
+          case F32:
+            SortPlainArrayInplace<F32>(sort_dims, data, is_stable);
+            break;
+          case F64:
+            SortPlainArrayInplace<F64>(sort_dims, data, is_stable);
+            break;
+          default:
+            sort(std::integral_constant<size_t, 1>{});
+            break;
+        }
         break;
       case 2:
         sort(std::integral_constant<size_t, 2>{});
