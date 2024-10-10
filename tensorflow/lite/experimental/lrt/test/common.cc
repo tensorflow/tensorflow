@@ -32,7 +32,7 @@
 namespace lrt {
 namespace testing {
 
-inline std::string GetTestFilePath(std::string_view filename) {
+std::string GetTestFilePath(absl::string_view filename) {
   static constexpr std::string_view kTestDataDir =
       "tensorflow/lite/experimental/lrt/"
       "test/testdata/";
@@ -43,7 +43,7 @@ inline std::string GetTestFilePath(std::string_view filename) {
   }
 
   result_path.append(kTestDataDir);
-  result_path.append(filename);
+  result_path.append(filename.data());
 
   return result_path.generic_string();
 }
@@ -64,7 +64,7 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
   return buffer;
 }
 
-UniqueLrtModel LoadTestFileModel(std::string_view filename) {
+UniqueLrtModel LoadTestFileModel(absl::string_view filename) {
   LrtModel model = nullptr;
   LRT_CHECK_STATUS_OK(
       LoadModelFromFile(GetTestFilePath(filename).c_str(), &model));
