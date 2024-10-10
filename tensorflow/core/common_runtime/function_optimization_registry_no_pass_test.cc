@@ -29,7 +29,7 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
   DeviceSet device_set;
   ConfigProto config_proto;
   FunctionOptimizationPass::FunctionOptions function_options;
-  Status status = FunctionOptimizationPassRegistry::Global().Run(
+  absl::Status status = FunctionOptimizationPassRegistry::Global().Run(
       "test_func", device_set, config_proto,
       /*function_options=*/function_options,
       /*graph=*/nullptr,
