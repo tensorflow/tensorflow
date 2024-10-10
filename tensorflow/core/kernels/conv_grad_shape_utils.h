@@ -66,18 +66,16 @@ struct ConvBackpropDimensions {
 // Common code between implementations of Conv?DBackpropInput and
 // Conv?DBackpropFilter. Verifies that the dimensions all match, and computes
 // sizes/padding for the spatial dimensions. Does not support explicit padding.
-Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
-                                     const TensorShape& input_shape,
-                                     const TensorShape& filter_shape,
-                                     const TensorShape& out_backprop_shape,
-                                     const std::vector<int32>& strides,
-                                     Padding padding, TensorFormat data_format,
-                                     ConvBackpropDimensions* dims);
+absl::Status ConvBackpropComputeDimensions(
+    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
+    const std::vector<int32>& strides, Padding padding,
+    TensorFormat data_format, ConvBackpropDimensions* dims);
 
 // The V2 version computes the same outputs with arbitrary dilation rate and
 // supports explicit padding.
 // TODO(b/67112639): Merge V2 versions and the original versions eventually.
-Status ConvBackpropComputeDimensionsV2(
+absl::Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     absl::Span<const int32> dilations, const std::vector<int32>& strides,
@@ -85,11 +83,10 @@ Status ConvBackpropComputeDimensionsV2(
     TensorFormat data_format, ConvBackpropDimensions* dims);
 
 // Computes the shape of the in_backprop.
-Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
-                                       const TensorShape& filter_shape,
-                                       const TensorShape& out_backprop_shape,
-                                       const TensorFormat& data_format,
-                                       TensorShape* input_shape);
+absl::Status Conv2DBackpropComputeInputShape(
+    const Tensor& input_sizes, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape, const TensorFormat& data_format,
+    TensorShape* input_shape);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_SHAPE_UTILS_H_
