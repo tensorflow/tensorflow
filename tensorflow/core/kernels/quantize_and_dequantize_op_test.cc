@@ -735,7 +735,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given) {
   AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
 
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "Invalid range: input_min 1 > input_max 0"))
       << s;
@@ -757,7 +757,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
   AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
   AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
 
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "Invalid range: input_min 1 > input_max 0"))
       << s;

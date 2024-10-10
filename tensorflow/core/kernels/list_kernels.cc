@@ -46,7 +46,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
+absl::Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
   if (t.shape() == TensorShape({})) {
     if ((t.dtype() == DT_INT32 && t.scalar<int32>()() == -1) ||
         (t.dtype() == DT_INT64 && t.scalar<int64_t>()() == -1)) {
@@ -72,9 +72,9 @@ Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
       DataTypeString(t.dtype()));
 }
 
-Status GetElementShapeFromInput(OpKernelContext* c,
-                                const TensorList& tensor_list, int index,
-                                PartialTensorShape* element_shape) {
+absl::Status GetElementShapeFromInput(OpKernelContext* c,
+                                      const TensorList& tensor_list, int index,
+                                      PartialTensorShape* element_shape) {
   TF_RETURN_IF_ERROR(TensorShapeFromTensor(c->input(index), element_shape));
   // Check that `element_shape` and `tensor_list.element_shape` are
   // compatible and store the merged shape in `element_shape`.
@@ -83,7 +83,8 @@ Status GetElementShapeFromInput(OpKernelContext* c,
   return absl::OkStatus();
 }
 
-Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
+absl::Status GetInputList(OpKernelContext* c, int index,
+                          const TensorList** list) {
   if (!TensorShapeUtils::IsScalar(c->input(index).shape())) {
     return errors::InvalidArgument("Input list must be a scalar saw: ",
                                    c->input(index).shape().DebugString());
@@ -98,10 +99,11 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list) {
   return absl::OkStatus();
 }
 
-Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
-                                   int32_t output_index,
-                                   const TensorList& input_list,
-                                   TensorList** output_list) {
+absl::Status ForwardInputOrCreateNewList(OpKernelContext* c,
+                                         int32_t input_index,
+                                         int32_t output_index,
+                                         const TensorList& input_list,
+                                         TensorList** output_list) {
   // Attempt to forward the input tensor to the output if possible.
   std::unique_ptr<Tensor> maybe_output = c->forward_input(
       input_index, output_index, DT_VARIANT, TensorShape{},
@@ -697,7 +699,7 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
                                          TensorListZerosLike<CPUDevice>);
 
-static Status TensorListDeviceCopy(
+static absl::Status TensorListDeviceCopy(
     const TensorList& from, TensorList* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   to->element_shape = from.element_shape;
