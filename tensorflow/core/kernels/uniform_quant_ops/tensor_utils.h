@@ -32,10 +32,10 @@ bool AllElementsPositive(const Tensor& tensor) {
 
 // Given data tensor's shape and quantization params, returns if the shapes are
 // valid.
-Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
-                                     const TensorShape& scales_shape,
-                                     const TensorShape& zero_points_shape,
-                                     int quantization_axis);
+absl::Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
+                                           const TensorShape& scales_shape,
+                                           const TensorShape& zero_points_shape,
+                                           int quantization_axis);
 
 // Given in_shape and perm to transpose, returns out shape after the transpose.
 // perm must be a permutation of [0, 1, ..., in_shape.rank - 1]. The caller is
