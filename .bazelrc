@@ -164,7 +164,7 @@ build:macos --features=archive_param_file
 
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
-build:macos_arm64 --macos_minimum_os=11.0
+build:macos_arm64 --macos_minimum_os=15.0
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -674,16 +674,16 @@ build:release_macos_x86 --config=release_macos_base
 build:release_macos_x86 --config=avx_linux
 build:release_macos_x86 --cpu=darwin
 # Target Catalina as the minimum compatible OS version
-build:release_macos_x86 --macos_minimum_os=10.15
-build:release_macos_x86 --action_env MACOSX_DEPLOYMENT_TARGET=10.15
+build:release_macos_x86 --macos_minimum_os=15.0
+build:release_macos_x86 --action_env MACOSX_DEPLOYMENT_TARGET=15.0
 
 # Build configs for macOS Arm64
-build:release_macos_arm64 --config=release_macos_base
+build:release_macos_arm64 --config=macosx15.0
 build:release_macos_arm64 --cpu=darwin_arm64
 build:release_macos_arm64 --define=tensorflow_mkldnn_contraction_kernel=0
 # Target Moneterey as the minimum compatible OS version
-build:release_macos_arm64 --macos_minimum_os=12.0
-build:release_macos_arm64 --action_env MACOSX_DEPLOYMENT_TARGET=12.0
+build:release_macos_arm64 --macos_minimum_os=15.0
+build:release_macos_arm64 --action_env MACOSX_DEPLOYMENT_TARGET=15.0
 
 # Base test configs for macOS
 test:release_macos_base --verbose_failures=true --local_test_jobs=HOST_CPUS
