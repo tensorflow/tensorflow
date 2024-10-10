@@ -39,7 +39,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ValidateAssignUpdateVariableOpShapes(XlaOpKernelContext* ctx) {
+absl::Status ValidateAssignUpdateVariableOpShapes(XlaOpKernelContext* ctx) {
   DataType variable_dtype;
   TensorShape variable_shape;
   TensorShape value_shape = ctx->InputShape(1);

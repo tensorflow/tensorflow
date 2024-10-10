@@ -54,7 +54,7 @@ namespace tensorflow {
 namespace {
 
 template <typename T>
-static Status ValidateKernelSizes(const T& ksizes) {
+static absl::Status ValidateKernelSizes(const T& ksizes) {
   for (size_t i = 0; i < ksizes.size(); ++i) {
     if (ksizes[i] <= 0) {
       return errors::InvalidArgument(
@@ -66,7 +66,7 @@ static Status ValidateKernelSizes(const T& ksizes) {
 }
 
 template <typename T>
-static Status ValidateStrides(const T& strides) {
+static absl::Status ValidateStrides(const T& strides) {
   for (size_t i = 0; i < strides.size(); ++i) {
     if (strides[i] <= 0) {
       return errors::InvalidArgument(
