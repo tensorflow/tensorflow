@@ -41,10 +41,10 @@ constexpr char kShuffleAndRepeatDatasetV2[] = "ShuffleAndRepeatDatasetV2";
 
 constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 
-Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
-                              const NodeDef& repeat_node,
-                              MutableGraphView* graph, GraphDef* output,
-                              NodeDef* fused_node) {
+absl::Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
+                                    const NodeDef& repeat_node,
+                                    MutableGraphView* graph, GraphDef* output,
+                                    NodeDef* fused_node) {
   fused_node->set_op(kShuffleAndRepeatDataset);
   graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDataset, output,
                                       fused_node);
@@ -75,10 +75,10 @@ Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
   return absl::OkStatus();
 }
 
-Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
-                              const NodeDef& repeat_node,
-                              MutableGraphView* graph, GraphDef* output,
-                              NodeDef* fused_node) {
+absl::Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
+                                    const NodeDef& repeat_node,
+                                    MutableGraphView* graph, GraphDef* output,
+                                    NodeDef* fused_node) {
   fused_node->set_op(kShuffleAndRepeatDatasetV2);
   graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDatasetV2, output,
                                       fused_node);
@@ -115,10 +115,10 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   return absl::OkStatus();
 }
 
-Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
-                              const NodeDef& repeat_node,
-                              MutableGraphView* graph, GraphDef* output,
-                              NodeDef* fused_node) {
+absl::Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
+                                    const NodeDef& repeat_node,
+                                    MutableGraphView* graph, GraphDef* output,
+                                    NodeDef* fused_node) {
   fused_node->set_op(kShuffleAndRepeatDatasetV2);
   graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDataset, output,
                                       fused_node);
@@ -154,7 +154,7 @@ Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
 
 }  // namespace
 
-Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
+absl::Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;
