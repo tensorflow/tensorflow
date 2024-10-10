@@ -55,16 +55,17 @@ class DataServiceWorkerImpl {
   // constructor because the worker may be binding to port `0`, in which case
   // the address isn't known until the worker has started and decided which port
   // to bind to.
-  Status Start(const std::string& worker_address,
-               const std::vector<DataTransferServerInfo>& transfer_servers);
+  absl::Status Start(
+      const std::string& worker_address,
+      const std::vector<DataTransferServerInfo>& transfer_servers);
   // Stops the worker, attempting a clean shutdown by rejecting new requests
   // and waiting for outstanding requests to complete.
   void Stop();
 
   // Serves a GetElement request, storing the result in `*result`. See
   // worker.proto for GetElement API documentation.
-  Status GetElementResult(const GetElementRequest* request,
-                          GetElementResult* result);
+  absl::Status GetElementResult(const GetElementRequest* request,
+                                GetElementResult* result);
 
   // Deletes the local task and iterator. Only called by local clients to delete
   // unused task iterators assuming the task is not read by remote clients. This
@@ -74,15 +75,15 @@ class DataServiceWorkerImpl {
   // See worker.proto for API documentation.
 
   /// Dispatcher-facing API.
-  Status ProcessTask(const ProcessTaskRequest* request,
-                     ProcessTaskResponse* response);
+  absl::Status ProcessTask(const ProcessTaskRequest* request,
+                           ProcessTaskResponse* response);
 
   /// Client-facing API.
-  Status GetElement(const GetElementRequest* request,
-                    GetElementResponse* response);
-  Status GetWorkerTasks(const GetWorkerTasksRequest* request,
-                        GetWorkerTasksResponse* response);
-  Status GetSnapshotTaskProgresses(
+  absl::Status GetElement(const GetElementRequest* request,
+                          GetElementResponse* response);
+  absl::Status GetWorkerTasks(const GetWorkerTasksRequest* request,
+                              GetWorkerTasksResponse* response);
+  absl::Status GetSnapshotTaskProgresses(
       const GetSnapshotTaskProgressesRequest* request,
       GetSnapshotTaskProgressesResponse* response);
 
@@ -121,16 +122,16 @@ class DataServiceWorkerImpl {
   };
 
   // Validates the worker config.
-  Status ValidateWorkerConfig() const;
+  absl::Status ValidateWorkerConfig() const;
   // Creates and initializes a dispatcher client.
   absl::StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
   CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task)
+  absl::Status ProcessTaskInternal(const TaskDef& task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status EnsureTaskInitialized(Task& task);
+  absl::Status EnsureTaskInitialized(Task& task);
   // Stops a task, cancelling the task's outstanding requests and waiting for
   // them to finish.
   void StopTask(Task& task) TF_LOCKS_EXCLUDED(mu_);
@@ -139,7 +140,7 @@ class DataServiceWorkerImpl {
   // A thread for doing periodic heartbeats to the dispatcher.
   void HeartbeatThread() TF_LOCKS_EXCLUDED(mu_);
   // Performs a heartbeat to the dispatcher.
-  Status Heartbeat();
+  absl::Status Heartbeat();
   // Check with the dispatcher to see whether or not to disable compression.
   absl::StatusOr<bool> DisableCompressionAtRuntime(
       const std::string& dataset_id) const;
@@ -155,7 +156,7 @@ class DataServiceWorkerImpl {
   void UpdateTasks(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
   // Updates the distributed snapshot tasks according to the heartbeat response.
-  Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
+  absl::Status UpdateSnapshotWriters(const WorkerHeartbeatResponse& response)
       TF_LOCKS_EXCLUDED(mu_);
   // Creates an dataset iterator for snapshot writers.
   absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>>
