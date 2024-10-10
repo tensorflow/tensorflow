@@ -582,12 +582,6 @@ class GpuDriver {
   static bool GetDeviceProperties(GpuDeviceProperty* device_properties,
                                   int device_ordinal);
 
-  // Gets a specific integer-valued property about the given device.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static absl::StatusOr<int> GetDeviceAttribute(GpuDeviceAttribute attribute,
-                                                GpuDeviceHandle device);
-
   // Returns whether ECC is enabled for the given GpuDeviceHandle via
   // cuDeviceGetattribute with CU_DEVICE_ATTRIBUTE_ECC_ENABLED.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266

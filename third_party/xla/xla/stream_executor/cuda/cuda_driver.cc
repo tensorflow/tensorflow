@@ -1234,14 +1234,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(CUdevice_attribute attribute,
-                                                  CUdevice device) {
-  int val;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetAttribute(&val, attribute, device)));
-  return val;
-}
-
 bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   int value = -1;
   auto status = cuda::ToStatus(
