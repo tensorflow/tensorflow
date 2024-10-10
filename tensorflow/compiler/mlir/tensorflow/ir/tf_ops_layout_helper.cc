@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
