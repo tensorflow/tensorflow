@@ -72,7 +72,7 @@ class BarrierProxy {
   // Waits at the barrier. The first return value is the status when exiting the
   // barrier and the second returns `true` for precisely one caller, which may
   // then destroy the barrier.
-  std::pair<Status, bool> Wait();
+  std::pair<absl::Status, bool> Wait();
 
  private:
   const std::string key_;
@@ -85,7 +85,7 @@ class BarrierProxy {
   const int num_local_threads_;
   int num_entered_ TF_GUARDED_BY(mu_) = 0;
   int num_to_exit_ TF_GUARDED_BY(mu_) = 0;
-  Status status_ TF_GUARDED_BY(mu_);
+  absl::Status status_ TF_GUARDED_BY(mu_);
   bool status_set_ TF_GUARDED_BY(mu_) = false;
 };
 
@@ -108,9 +108,10 @@ class BarrierProxyManager {
   // `num_local_threads` specifies the number of threads in this task to
   // participate. If no tasks are specified, the barrier will block for all the
   // connected tasks.
-  Status Wait(tsl::CoordinationServiceAgent* agent,
-              const std::vector<CoordinatedTask>& tasks, int num_local_threads,
-              absl::string_view key, absl::Duration timeout);
+  absl::Status Wait(tsl::CoordinationServiceAgent* agent,
+                    const std::vector<CoordinatedTask>& tasks,
+                    int num_local_threads, absl::string_view key,
+                    absl::Duration timeout);
   // The number of active BarrierProxies.
   size_t size() const;
 
