@@ -238,7 +238,7 @@ class CostEstimator {
   // Initializes the estimator for the specified grappler item.
   // The estimator shouldn't be used if this function returns any status other
   // that OK.
-  virtual Status Initialize(const GrapplerItem& item) = 0;
+  virtual absl::Status Initialize(const GrapplerItem& item) = 0;
 
   // Predicts the cost of running the given optimized version of the grappler
   // item.
@@ -248,8 +248,9 @@ class CostEstimator {
   // overall cost of running the graph (e.g. the latency of the computation).
   // Returns a status that indicate is the performance could be estimated or
   // not.
-  virtual Status PredictCosts(const GraphDef& optimized_graph,
-                              RunMetadata* run_metadata, Costs* cost) const = 0;
+  virtual absl::Status PredictCosts(const GraphDef& optimized_graph,
+                                    RunMetadata* run_metadata,
+                                    Costs* cost) const = 0;
 };
 
 }  // end namespace grappler

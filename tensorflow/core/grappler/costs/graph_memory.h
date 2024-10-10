@@ -43,9 +43,9 @@ class GraphMemory {
   explicit GraphMemory(const GrapplerItem& item)
       : item_(item), unknown_usage_({-1, {}}) {}
 
-  Status InferStatically(
+  absl::Status InferStatically(
       const std::unordered_map<string, DeviceProperties>& devices);
-  Status InferDynamically(Cluster* cluster);
+  absl::Status InferDynamically(Cluster* cluster);
 
   // Worst case memory usage in bytes, or -1 if the usage is unknown. If there
   // are multiple devices, returns the highest per device memory usage.
