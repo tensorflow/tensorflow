@@ -33,10 +33,10 @@ namespace functor {
 template <typename T>
 struct BucketizeFunctor<CPUDevice, T> {
   // PRECONDITION: boundaries_vector must be sorted.
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<T, 1>::ConstTensor& input,
-                        const std::vector<float>& boundaries_vector,
-                        typename TTypes<int32, 1>::Tensor& output) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<T, 1>::ConstTensor& input,
+                              const std::vector<float>& boundaries_vector,
+                              typename TTypes<int32, 1>::Tensor& output) {
     const int N = input.size();
     for (int i = 0; i < N; i++) {
       auto first_bigger_it = std::upper_bound(

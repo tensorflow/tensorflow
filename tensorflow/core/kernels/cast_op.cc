@@ -112,7 +112,7 @@ void CastOpBase::Compute(OpKernelContext* ctx) {
   }
 }
 
-Status CastOpBase::Unimplemented() {
+absl::Status CastOpBase::Unimplemented() {
   return errors::Unimplemented("Cast ", DataTypeString(external_src_dtype_),
                                " to ", DataTypeString(external_dst_dtype_),
                                " is not supported");
@@ -122,7 +122,7 @@ CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
   OP_REQUIRES_OK(ctx, Prepare());
 }
 
-Status CpuCastOp::Prepare() {
+absl::Status CpuCastOp::Prepare() {
   if (external_src_dtype_ == external_dst_dtype_) {
     work_ = nullptr;  // Identity
     return absl::OkStatus();
