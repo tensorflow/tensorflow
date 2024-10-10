@@ -51,20 +51,21 @@ using tsl::CoordinationServiceAgent;
 
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
  public:
-  MOCK_METHOD(Status, WaitAtBarrier,
+  MOCK_METHOD(absl::Status, WaitAtBarrier,
               (std::string_view barrier_id, absl::Duration timeout,
                const std::vector<CoordinatedTask>& tasks),
               (override));
-  MOCK_METHOD(Status, CancelBarrier, (std::string_view barrier_id), (override));
+  MOCK_METHOD(absl::Status, CancelBarrier, (std::string_view barrier_id),
+              (override));
 
   // All the following member functions are not needed for testing.
-  MOCK_METHOD(Status, Initialize,
+  MOCK_METHOD(absl::Status, Initialize,
               (Env * env, std::string_view job_name, int task_id,
                const CoordinationServiceConfig& configs,
                std::unique_ptr<CoordinationClient> leader_client,
                StatusCallback error_fn),
               (override));
-  MOCK_METHOD(Status, Initialize,
+  MOCK_METHOD(absl::Status, Initialize,
               (Env * env, const CoordinatedTask& task,
                const CoordinationServiceConfig& configs,
                std::unique_ptr<CoordinationClient> leader_client,
@@ -73,17 +74,18 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(bool, IsInitialized, (), (override));
   MOCK_METHOD(bool, IsConnected, (), (override));
   MOCK_METHOD(bool, IsError, (), (override));
-  MOCK_METHOD(Status, Connect, (), (override));
-  MOCK_METHOD(Status, WaitForAllTasks, (const DeviceInfo& local_devices),
+  MOCK_METHOD(absl::Status, Connect, (), (override));
+  MOCK_METHOD(absl::Status, WaitForAllTasks, (const DeviceInfo& local_devices),
               (override));
   MOCK_METHOD(const DeviceInfo&, GetClusterDeviceInfo, (), (override));
   MOCK_METHOD(absl::StatusOr<CoordinatedTask>, GetOwnTask, (), (override));
   MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
               GetTaskState, (const std::vector<CoordinatedTask>& task),
               (override));
-  MOCK_METHOD(Status, ReportError, (const Status& error), (override));
-  MOCK_METHOD(Status, Shutdown, (), (override));
-  MOCK_METHOD(Status, Reset, (), (override));
+  MOCK_METHOD(absl::Status, ReportError, (const absl::Status& error),
+              (override));
+  MOCK_METHOD(absl::Status, Shutdown, (), (override));
+  MOCK_METHOD(absl::Status, Reset, (), (override));
   MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue, (std::string_view key),
               (override));
   MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue,
@@ -97,19 +99,19 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(void, GetKeyValueDirAsync,
               (std::string_view key, StatusOrValueDirCallback done),
               (override));
-  MOCK_METHOD(Status, InsertKeyValue,
+  MOCK_METHOD(absl::Status, InsertKeyValue,
               (std::string_view key, std::string_view value), (override));
-  MOCK_METHOD(Status, InsertKeyValue,
+  MOCK_METHOD(absl::Status, InsertKeyValue,
               (std::string_view key, std::string_view value,
                bool allow_overwrite),
               (override));
-  MOCK_METHOD(Status, DeleteKeyValue, (std::string_view key), (override));
-  MOCK_METHOD(Status, UpdateKeyValue,
+  MOCK_METHOD(absl::Status, DeleteKeyValue, (std::string_view key), (override));
+  MOCK_METHOD(absl::Status, UpdateKeyValue,
               (std::string_view key, std::string_view value), (override));
-  MOCK_METHOD(Status, StartWatchKey,
+  MOCK_METHOD(absl::Status, StartWatchKey,
               (std::string_view key, ChangedKeyValuesCallback on_change),
               (override));
-  MOCK_METHOD(Status, StopWatchKey, (std::string_view key), (override));
+  MOCK_METHOD(absl::Status, StopWatchKey, (std::string_view key), (override));
   MOCK_METHOD(void, WaitAtBarrierAsync,
               (std::string_view barrier_id, absl::Duration timeout,
                const std::vector<CoordinatedTask>& tasks, StatusCallback done),
@@ -117,8 +119,8 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(void, CancelBarrierAsync,
               (std::string_view barrier_id, StatusCallback done), (override));
   MOCK_METHOD(absl::StatusOr<Env*>, GetEnv, (), (override));
-  MOCK_METHOD(void, SetError, (const Status& error), (override));
-  MOCK_METHOD(Status, ActivateWatch,
+  MOCK_METHOD(void, SetError, (const absl::Status& error), (override));
+  MOCK_METHOD(absl::Status, ActivateWatch,
               (std::string_view key,
                (const std::map<std::string, std::string>&)),
               (override));
@@ -130,8 +132,8 @@ const int kThreadPoolSize = 32;
 
 void TestBarrierProxyWait(
     int num_tasks, int num_threads_planned, int num_threads_entered,
-    int expected_ok_count, std::optional<Status> agent_wait_status,
-    std::optional<Status> expected_same_exit_status_for_all_threads) {
+    int expected_ok_count, std::optional<absl::Status> agent_wait_status,
+    std::optional<absl::Status> expected_same_exit_status_for_all_threads) {
   auto agent = std::make_unique<MockCoordinationServiceAgent>();
   const std::vector<CoordinatedTask> tasks(num_tasks);
   BarrierProxy barrier(agent.get(), tasks, num_threads_planned, kTestKey,
@@ -217,7 +219,7 @@ TEST(BarrierProxyTest, ExtraThreadsEnteringTheBarrierGetErrors) {
 
 void TestBarrierProxyManagerWaitSingleKey(
     int num_threads_planned, int num_threads_entered,
-    std::optional<Status> agent_wait_status, int expected_ok_count) {
+    std::optional<absl::Status> agent_wait_status, int expected_ok_count) {
   auto agent = std::make_unique<MockCoordinationServiceAgent>();
   const std::vector<CoordinatedTask> tasks;
   BarrierProxyManager mgr;
