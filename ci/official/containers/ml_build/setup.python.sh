@@ -24,12 +24,21 @@ VERSION=$1
 REQUIREMENTS=$2
 
 # Install Python packages for this container's version
-cat >pythons.txt <<EOF
+if [[ ${VERSION} == "python3.13" ]]; then
+  cat >pythons.txt <<EOF
+$VERSION
+$VERSION-dev
+$VERSION-venv
+EOF
+else
+  cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
 $VERSION-venv
 $VERSION-distutils
 EOF
+fi
+
 /setup.packages.sh pythons.txt
 
 # Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
