@@ -45,7 +45,7 @@ struct GatherNdSlice {
 };
 
 template <typename Device, typename T, typename Index>
-Status DoGatherNd(
+absl::Status DoGatherNd(
     OpKernelContext* c, const Tensor& params, const Tensor& indices,
     Tensor* out,
     BadIndicesPolicy bad_indices_policy = BadIndicesPolicy::kDefault) {

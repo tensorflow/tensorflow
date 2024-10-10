@@ -102,8 +102,8 @@ class ParseExampleOp : public OpKernel {
 
  protected:
   // Copies keys from tensor to std::vector<string>.
-  Status GetTensorKeys(OpKernelContext* ctx, StringPiece input_name,
-                       std::vector<StringPiece>* keys) const {
+  absl::Status GetTensorKeys(OpKernelContext* ctx, StringPiece input_name,
+                             std::vector<StringPiece>* keys) const {
     const Tensor* key_t;
     TF_RETURN_IF_ERROR(ctx->input(input_name, &key_t));
     keys->reserve(key_t->NumElements());
@@ -115,8 +115,8 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
-  Status GetInputListKeys(OpKernelContext* ctx, StringPiece input_name,
-                          std::vector<StringPiece>* keys) const {
+  absl::Status GetInputListKeys(OpKernelContext* ctx, StringPiece input_name,
+                                std::vector<StringPiece>* keys) const {
     OpInputList key_list;
     TF_RETURN_IF_ERROR(ctx->input_list(input_name, &key_list));
     keys->reserve(key_list.size());
@@ -127,11 +127,12 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Validates the shapes of input tensors.
-  Status CheckInputShapes(const Tensor* serialized, const Tensor* names,
-                          const OpInputList& dense_defaults,
-                          const std::vector<StringPiece>& dense_keys_t,
-                          const std::vector<StringPiece>& sparse_keys_t,
-                          const std::vector<StringPiece>& ragged_keys_t) const {
+  absl::Status CheckInputShapes(
+      const Tensor* serialized, const Tensor* names,
+      const OpInputList& dense_defaults,
+      const std::vector<StringPiece>& dense_keys_t,
+      const std::vector<StringPiece>& sparse_keys_t,
+      const std::vector<StringPiece>& ragged_keys_t) const {
     if (op_version_ == 2) {
       if (TensorShapeUtils::IsMatrixOrHigher(serialized->shape())) {
         return errors::InvalidArgument(
@@ -235,18 +236,19 @@ class ParseExampleOp : public OpKernel {
   }
 
   // Parses a single example.
-  Status ParseExampleScalar(const example::FastParseExampleConfig& config,
-                            const Tensor* serialized, OpKernelContext* ctx,
-                            example::Result* result) const {
+  absl::Status ParseExampleScalar(const example::FastParseExampleConfig& config,
+                                  const Tensor* serialized,
+                                  OpKernelContext* ctx,
+                                  example::Result* result) const {
     const tstring& serialized_proto = serialized->scalar<tstring>()();
     return FastParseSingleExample(config, serialized_proto, result);
   }
 
   // Parses a vector of examples.
-  Status ParseExampleVector(const example::FastParseExampleConfig& config,
-                            const Tensor* serialized, const Tensor* names,
-                            OpKernelContext* ctx,
-                            example::Result* result) const {
+  absl::Status ParseExampleVector(const example::FastParseExampleConfig& config,
+                                  const Tensor* serialized, const Tensor* names,
+                                  OpKernelContext* ctx,
+                                  example::Result* result) const {
     auto serialized_t = serialized->flat<tstring>();
     auto names_t = names->flat<tstring>();
     absl::Span<const tstring> slice(serialized_t.data(), serialized_t.size());
@@ -256,8 +258,8 @@ class ParseExampleOp : public OpKernel {
         ctx->device()->tensorflow_cpu_worker_threads()->workers, result);
   }
 
-  Status WriteOutput(const example::Result& result,
-                     OpKernelContext* ctx) const {
+  absl::Status WriteOutput(const example::Result& result,
+                           OpKernelContext* ctx) const {
     OpOutputList dense_values;
     OpOutputList sparse_indices;
     OpOutputList sparse_values;
@@ -488,7 +490,7 @@ class ParseSequenceExampleOp : public OpKernel {
   }
 
  protected:
-  Status CheckInputShapes(
+  absl::Status CheckInputShapes(
       const Tensor* serialized, const Tensor* names,
       const OpInputList& context_dense_defaults,
 
@@ -686,10 +688,10 @@ class ParseSequenceExampleOp : public OpKernel {
     return config;
   }
 
-  Status WriteOutput(const example::Result& context_result,
-                     const example::Result& feature_list_result,
-                     const std::vector<Tensor>& dense_feature_lengths,
-                     OpKernelContext* ctx) const {
+  absl::Status WriteOutput(const example::Result& context_result,
+                           const example::Result& feature_list_result,
+                           const std::vector<Tensor>& dense_feature_lengths,
+                           OpKernelContext* ctx) const {
     OpOutputList context_sparse_indices;
     OpOutputList context_sparse_values;
     OpOutputList context_sparse_shapes;

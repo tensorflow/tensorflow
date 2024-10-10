@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-Status MakeNodeDef(DataType dtype, NodeDef* node_def) {
+absl::Status MakeNodeDef(DataType dtype, NodeDef* node_def) {
   return NodeDefBuilder("fingerprint", "Fingerprint")
       .Input(FakeInput(dtype))
       .Input(FakeInput(DT_STRING))
@@ -40,11 +40,11 @@ Status MakeNodeDef(DataType dtype, NodeDef* node_def) {
 
 class FingerprintOpTest : public OpsTestBase {
  protected:
-  Status MakeFingerprintOp(Tensor* tensor) {
+  absl::Status MakeFingerprintOp(Tensor* tensor) {
     return MakeFingerprintOp(tensor, "farmhash64");
   }
 
-  Status MakeFingerprintOp(Tensor* data, const string& method) {
+  absl::Status MakeFingerprintOp(Tensor* data, const string& method) {
     TF_RETURN_IF_ERROR(MakeNodeDef(data->dtype(), node_def()));
     TF_RETURN_IF_ERROR(InitOp());
 
@@ -195,7 +195,7 @@ TEST_F(FingerprintOpTest, SupportedMethods) {
   Tensor tensor(DT_STRING, TensorShape{1});
   TF_ASSERT_OK(MakeFingerprintOp(&tensor, "unsupported_method"));
 
-  const Status status = RunOpKernel();
+  const absl::Status status = RunOpKernel();
   EXPECT_FALSE(status.ok());
   EXPECT_NE(status.message().find("unsupported_method"), string::npos);
 }
