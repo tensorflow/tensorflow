@@ -58,7 +58,7 @@ static Costs::NanoSeconds PredictExecutionTime(
   return std::max(estimate, Costs::NanoSeconds(1));
 }
 
-Status EstimateEarliestExecutionTimes(
+absl::Status EstimateEarliestExecutionTimes(
     const GrapplerItem& item, const Cluster* cluster,
     std::unordered_map<const NodeDef*, Costs::NanoSeconds>* completion_times) {
   std::unordered_map<string, const NodeDef*> name_map;
@@ -130,7 +130,7 @@ Status EstimateEarliestExecutionTimes(
   return absl::OkStatus();
 }
 
-Status EstimateRequiredTimes(
+absl::Status EstimateRequiredTimes(
     const GrapplerItem& item, const Cluster* cluster,
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
         execution_times,
