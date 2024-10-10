@@ -534,7 +534,7 @@ absl::Status CudnnSupport::Init() {
   LOG(ERROR) << "Could not create cudnn handle: "
              << CudnnStatusToString(status);
   int64_t free, total;
-  GpuDriver::GetDeviceMemoryInfo(parent_->gpu_context(), &free, &total);
+  parent_->DeviceMemoryUsage(&free, &total);
   LOG(ERROR) << "Memory usage: " << free << " bytes free, " << total
              << " bytes total.";
 

@@ -23,12 +23,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -211,6 +214,47 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
                << "; leaking: " << ToString(res);
   }
 }
+
+// Returns the name of the device.
+absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
+  static const size_t kCharLimit = 64;
+  absl::InlinedVector<char, 4> chars(kCharLimit);
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      "Failed to get device name");
+  chars[kCharLimit - 1] = '\0';
+  return chars.begin();
+}
+
+absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    std::string gcnName = props.gcnArchName;
+    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
+    std::string amdgpu_version = gcnName;
+    if (!tokens.empty() && tokens[0].size() >= 3) {
+      amdgpu_version = tokens[0].substr(3);
+    }
+    int version = stoi(amdgpu_version);
+    return version;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu ISA version for device %d", device));
+}
+
+// Return the full GCN Architecture Name for the device
+// for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
+absl::StatusOr<std::string> GetGpuGCNArchName(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    return props.gcnArchName;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu GCN Arch Name for device %d", device));
+}
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -340,7 +384,8 @@ absl::Status RocmExecutor::Init() {
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
   set_context(rocm_context_);
-  return GpuDriver::GetGpuISAVersion(&version_, device_);
+  TF_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
@@ -679,17 +724,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
-  int version;
-  status = GpuDriver::GetGpuISAVersion(&version, device);
-  if (!status.ok()) {
-    return status;
-  }
-
-  std::string gcn_arch_name;
-  status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
 
   DeviceDescription desc;
 
@@ -744,8 +779,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::string device_name;
-    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
+    TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
     desc.set_name(device_name);
   }
 
@@ -781,22 +815,17 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
 
-  int cc_major = 0;
-  int cc_minor = 0;
-  GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device).IgnoreError();
-
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or
   // other hacks, which we don't have access to in OSS TensorFlow.
   //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // Alternatively you might be tempted to use GetDeviceName as a
   // unique identifier, but this is not stable across GPU VBIOS versions.
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  desc.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
-                                     cc_major, cc_minor, device_memory_size,
-                                     core_count));
+  desc.set_model_str(
+      absl::StrFormat("%dB RAM, %d cores", device_memory_size, core_count));
 
   return std::make_unique<DeviceDescription>(std::move(desc));
 }

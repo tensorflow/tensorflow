@@ -106,18 +106,6 @@ absl::Status GpuDriver::GetDevice(int device_ordinal, CUdevice* device) {
                         "Failed call to cuDeviceGet");
 }
 
-absl::Status GpuDriver::GetDeviceName(CUdevice device,
-                                      std::string* device_name) {
-  static const size_t kCharLimit = 64;
-  absl::InlinedVector<char, 4> chars(kCharLimit);
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetName(chars.begin(), kCharLimit - 1, device),
-                     "Failed to get device name"));
-  chars[kCharLimit - 1] = '\0';
-  *device_name = chars.begin();
-  return absl::OkStatus();
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),
@@ -1128,30 +1116,6 @@ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
   return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
 }
 
-absl::Status GpuDriver::GetComputeCapability(int* cc_major, int* cc_minor,
-                                             CUdevice device) {
-  *cc_major = 0;
-  *cc_minor = 0;
-
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
-      cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device)));
-
-  return cuda::ToStatus(cuDeviceGetAttribute(
-      cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
-}
-
-absl::Status GpuDriver::GetGpuISAVersion(int* version, CUdevice device) {
-  return absl::Status{
-      absl::StatusCode::kInternal,
-      "Feature not supported on CUDA platform (GetGpuISAVersion)"};
-}
-
-absl::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
-  return absl::Status{
-      absl::StatusCode::kInternal,
-      "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
-}
-
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
 // T and wraps it in a absl::StatusOr.
 template <typename T>
@@ -1234,14 +1198,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-absl::StatusOr<int> GpuDriver::GetDeviceAttribute(CUdevice_attribute attribute,
-                                                  CUdevice device) {
-  int val;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuDeviceGetAttribute(&val, attribute, device)));
-  return val;
-}
-
 bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   int value = -1;
   auto status = cuda::ToStatus(
@@ -1252,22 +1208,6 @@ bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   }
 
   *result = value;
-  return true;
-}
-
-bool GpuDriver::GetDeviceMemoryInfo(Context* context, int64_t* free_out,
-                                    int64_t* total_out) {
-  ScopedActivateContext activation(context);
-  size_t free = 0;
-  size_t total = 0;
-  auto status = cuda::ToStatus(cuMemGetInfo(&free, &total));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query device memory info: " << status;
-    return false;
-  }
-
-  *free_out = free;
-  *total_out = total;
   return true;
 }
 
