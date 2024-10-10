@@ -795,6 +795,38 @@ def ConvertTrivialTransposeOpToReshapeOp : Pat<
    (AnyStaticShapeTensor $input),
    (AnyStaticShapeTensor $transpose_op)]>;
 
+// Predicate to test if the same two (or n) adjacent dimensions are transposed
+// and contracted. $0=[1, 1, 8, 256], $1=[1, 1, 256, 8],
+// $2=[1, 1, 2048] (or [1, 2048])
+//
+// This test will pass if the contraction from reshape includes additional
+// adjacent dimentions. For example-
+// $0=[1, 3, 8, 256], $1=[1, 3, 256, 8], $2=[1, 6144]
+def AreAdjacentDimsTransposedAndContracted : Constraint<CPred<
+  "TFL::AreAdjacentDimsTransposedAndContracted("
+    "$0.getType().cast<ShapedType>().getShape(),"
+    "$1.cast<DenseElementsAttr>(),"
+    "$2.cast<DenseElementsAttr>())">>;
+
+// Consider the following pattern-
+// %0 = "tfl.transpose"(%arg1, %cst_3)
+//             : (tensor<1x1x8x256xf32>, tensor<4xi32>) -> tensor<1x1x256x8xf32>
+// %2 = "tfl.reshape"(%0, %cst_1)
+//             : (tensor<1x1x256x8xf32>, tensor<2xi32>) -> tensor<1x2048xf32>
+//
+// Here, the transpose op is redundant because the two adjacent dimensions that
+// are being transposed are also being contracted via reshape.
+//
+// For instance, 8x256==256x8==2048, provided 8 and 256 are consecutive
+// dimensions of a rank-n tensor.
+def FoldRedundantTransposeIntoReshape : Pat<
+  (TFL_ReshapeOp
+    (TFL_TransposeOp $input, (Arith_ConstantOp I32ElementsAttr:$permutation)),
+    (Arith_ConstantOp I32ElementsAttr:$shape)),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp $shape)),
+  [(AreAdjacentDimsTransposedAndContracted $input, $permutation, $shape),
+   (AnyStaticShapeTensor $input)]>;
+
 // Pattern to fuse redundant tanspose op
 def FoldDoubleTranspose : Pat<
   (TFL_TransposeOp
