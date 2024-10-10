@@ -628,8 +628,13 @@ class Translator {
       const std::optional<BufferOffset<tflite::QuantizationParameters>>&
           quant_parameters);
 
-  // TODO(b/137395003): Legalize tf.IfOp to TFLite dialect, and change the
-  // following method to handle TFL::IfOp.
+  // Build if operator where then/else are functions.
+  BufferOffset<tflite::Operator> BuildIfOperator(
+      mlir::TFL::FunctionalIfOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
+  // TODO(b/137395003): Once legalization from tf.IfOp is handeled,
+  // delete this function.
   BufferOffset<tflite::Operator> BuildIfOperator(
       mlir::TF::IfOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
@@ -1315,6 +1320,24 @@ std::optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
         /*has_rank=*/has_rank,
         variant_params->empty() ? 0 : builder_.CreateVector(*variant_params));
   }
+}
+
+BufferOffset<tflite::Operator> Translator::BuildIfOperator(
+    mlir::TFL::FunctionalIfOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex("if", tflite::BuiltinOperator_IF);
+  auto then_subgraph_index =
+      subgraph_index_map_.at(op.getThenBranchAttr().getValue());
+  auto else_subgraph_index =
+      subgraph_index_map_.at(op.getElseBranchAttr().getValue());
+  auto builtin_options = tflite::CreateIfOptions(builder_, then_subgraph_index,
+                                                 else_subgraph_index)
+                             .Union();
+  auto inputs = builder_.CreateVector(operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_IfOptions,
+                                builtin_options);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildIfOperator(
@@ -2260,6 +2283,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         return BuildWhileOperator(whileOp, operands, results);
       }
       if (auto ifOp = dyn_cast<mlir::TFL::IfOp>(inst)) {
+        return BuildIfOperator(ifOp, operands, results);
+      }
+
+      if (auto ifOp = dyn_cast<mlir::TFL::FunctionalIfOp>(inst)) {
         return BuildIfOperator(ifOp, operands, results);
       }
 
