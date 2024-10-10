@@ -92,15 +92,17 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
     eager_client_->Unref();
   }
 
-  Status Prepare() override {
+  absl::Status Prepare() override {
     return RunShapeInference(ndef_, *lib_def_, inputs_, retvals_);
   }
 
   void RunAsync(StatusCallback done) override;
 
-  Status SyncExecutors() override { return eager_context_->SyncExecutors(); }
+  absl::Status SyncExecutors() override {
+    return eager_context_->SyncExecutors();
+  }
 
-  void Abort(Status status) override {
+  void Abort(absl::Status status) override {
     int i = 0;
     for (auto handle : retvals_) {
       handle->PoisonRemote(status, device_, context_view_id_);
