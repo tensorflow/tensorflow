@@ -124,6 +124,7 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
         continue;
       }
       conditional->set_branch_computation(branch, new_computation);
+      new_computation->SetConditionalCallInstruction(conditional);
       const Shape& old_shape = conditional->operand(branch + 1)->shape();
 
       // Reroute the operand tuple through a tuple of gte instructions of the
@@ -166,6 +167,7 @@ bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
           conditional_op->GetModule()->AddEmbeddedComputation(
               conditional_op->branch_computation(branch_id)->Clone());
       conditional_op->set_branch_computation(branch_id, branch_computation);
+      branch_computation->SetConditionalCallInstruction(conditional_op);
       auto new_empty_root =
           branch_computation->AddInstruction(HloInstruction::CreateTuple({}));
       branch_computation->set_root_instruction(new_empty_root,
@@ -281,6 +283,7 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
         conditional_op->GetModule()->AddEmbeddedComputation(
             old_branch->Clone());
     conditional_op->set_branch_computation(branch_id, cloned_branch);
+    cloned_branch->SetConditionalCallInstruction(conditional_op);
 
     HloInstruction* old_root = cloned_branch->root_instruction();
     std::vector<HloInstruction*> new_tuple_root_operands;

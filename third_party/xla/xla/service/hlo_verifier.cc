@@ -2816,6 +2816,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(
         VerifyConsistentSharding(conditional, sharding_check_instructions));
 
+    // Check that all the back pointers are consistent.
+    for (HloComputation* branch : conditional->branch_computations()) {
+      TF_RET_CHECK(branch->IsConditionalBranchComputation())
+          << "Conditional instruction " << conditional->name()
+          << " points to non-branch computation" << branch->name();
+      HloInstruction* back_pointer = branch->ConditionalCallInstruction();
+      TF_RET_CHECK(back_pointer == conditional)
+          << "Branch computation " << branch->name()
+          << " does not point back to its conditional instruction "
+          << conditional->name();
+    }
+
     return absl::OkStatus();
   }
 

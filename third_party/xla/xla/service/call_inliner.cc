@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
@@ -88,6 +89,16 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleParameter(HloInstruction* parameter) override {
     TF_RETURN_IF_ERROR(NoteMapping(
         parameter, call_->mutable_operand(parameter->parameter_number())));
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleConditional(HloInstruction* conditional) override {
+    TF_RETURN_IF_ERROR(DefaultAction(conditional));
+    auto [_, new_conditional] =
+        *subcomputation_hlo_to_new_hlo_.find(conditional);
+    for (HloComputation* branch : conditional->branch_computations()) {
+      branch->SetConditionalCallInstruction(new_conditional);
+    }
     return absl::OkStatus();
   }
 
