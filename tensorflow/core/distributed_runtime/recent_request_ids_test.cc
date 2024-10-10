@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/distributed_runtime/request_id.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 
