@@ -46,7 +46,7 @@ class GraphVerifier {
   // Implement an algorithm to verify the specified graph.
   // The return value is a Status that represents a concatenation of Status of
   // each verification step.
-  virtual Status Verify(const GraphDef& graph) = 0;
+  virtual absl::Status Verify(const GraphDef& graph) = 0;
 };
 
 }  // end namespace grappler
