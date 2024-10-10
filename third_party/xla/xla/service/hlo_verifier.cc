@@ -1677,9 +1677,9 @@ absl::Status ShapeVerifier::HandleAsyncDone(HloInstruction* async_done) {
   if (!ShapesSame(root_shape, async_done->shape())) {
     return Internal(
         "The %s expects the shape of output to match the async shape at index "
-        "{1} (%s vs %s).",
-        HloOpcodeString(async_done->opcode()),
-        async_done->shape().ToString(true), root_shape.ToString(true));
+        "{1} (%s vs %s). Module id: %d",
+        async_done->name(), async_done->shape().ToString(true),
+        root_shape.ToString(true), async_done->parent()->parent()->unique_id());
   }
   return CheckAsyncOpOperand(async_done);
 }
