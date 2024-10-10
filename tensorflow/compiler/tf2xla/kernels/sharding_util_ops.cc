@@ -43,10 +43,11 @@ constexpr absl::string_view kNumSplitsAttrName = "num_splits";
 constexpr absl::string_view kNumConcatsAttrName = "num_concats";
 
 template <bool Split>
-Status GetAndValidateAttributes(OpKernelConstruction* ctx,
-                                std::vector<int64_t>& num_partitions,
-                                int& num_slices, std::vector<int64_t>& paddings,
-                                bool& has_paddings) {
+absl::Status GetAndValidateAttributes(OpKernelConstruction* ctx,
+                                      std::vector<int64_t>& num_partitions,
+                                      int& num_slices,
+                                      std::vector<int64_t>& paddings,
+                                      bool& has_paddings) {
   absl::string_view num_partitions_attr_name =
       Split ? kNumSplitsAttrName : kNumConcatsAttrName;
   TF_RETURN_IF_ERROR(ctx->GetAttr(num_partitions_attr_name, &num_partitions));
@@ -140,9 +141,9 @@ class XlaSplitNDBaseOp : public XlaOpKernel {
   }
 
  protected:
-  Status CompileInternal(XlaOpKernelContext* ctx, const xla::XlaOp input,
-                         const TensorShape& input_shape,
-                         const DataType input_dtype) {
+  absl::Status CompileInternal(XlaOpKernelContext* ctx, const xla::XlaOp input,
+                               const TensorShape& input_shape,
+                               const DataType input_dtype) {
     xla::PrimitiveType type;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(input_dtype, &type));
 
@@ -399,10 +400,10 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
   DataType dtype_;
 
  private:
-  Status GetInputsAndOutputShape(XlaOpKernelContext* ctx,
-                                 std::vector<xla::XlaOp>& input_handles,
-                                 std::vector<TensorShape>& input_shapes,
-                                 std::vector<int64_t>& output_shape) {
+  absl::Status GetInputsAndOutputShape(XlaOpKernelContext* ctx,
+                                       std::vector<xla::XlaOp>& input_handles,
+                                       std::vector<TensorShape>& input_shapes,
+                                       std::vector<int64_t>& output_shape) {
     TF_RETURN_IF_ERROR(ctx->InputList("inputs", &input_handles, &input_shapes));
 
     const TensorShape& slice_shape = input_shapes[0];
