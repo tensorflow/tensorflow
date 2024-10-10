@@ -35,7 +35,7 @@ GrpcEagerServiceImpl::GrpcEagerServiceImpl(
   cq_ = server_builder->AddCompletionQueue();
 }
 
-Status GrpcEagerServiceImpl::CreateMasterContext(
+absl::Status GrpcEagerServiceImpl::CreateMasterContext(
     const tensorflow::uint64 context_id, EagerContext* context) {
   return local_impl_.CreateMasterContext(context_id, context);
 }
