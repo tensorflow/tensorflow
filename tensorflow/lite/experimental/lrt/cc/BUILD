@@ -21,6 +21,7 @@ cc_library(
     name = "lite_rt_cc_api",
     hdrs = [
         "lite_rt_support.h",
+        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",

@@ -22,13 +22,13 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> model_path(

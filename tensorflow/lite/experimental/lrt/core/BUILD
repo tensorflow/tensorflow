@@ -22,11 +22,11 @@ cc_library(
     srcs = ["lite_rt_common.cc"],
     hdrs = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_common.h",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_model.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_op_code.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_support.h",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_support.h",
+        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
@@ -123,6 +123,36 @@ cc_library(
 )
 
 cc_library(
+    name = "compiler_plugin_api",
+    srcs = ["compiler_plugin_api.cc"],
+    hdrs = ["compiler_plugin_api.h"],
+    deps = [
+        ":api_internal",
+        ":dynamic_loading",
+    ],
+)
+
+cc_test(
+    name = "compiler_plugin_api_test",
+    srcs = ["compiler_plugin_api_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so"],
+    tags = [
+        # Sanitizer runtimes are incompatible with RTLD_DEEPBIND.
+        "noasan",
+        "nomsan",
+        "nosan",
+    ],
+    deps = [
+        ":compiler_plugin_api",
+        ":dynamic_loading",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dynamic_loading",
     srcs = ["dynamic_loading.cc"],
     hdrs = ["dynamic_loading.h"],
@@ -156,7 +186,6 @@ cc_library(
         ":utils",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",

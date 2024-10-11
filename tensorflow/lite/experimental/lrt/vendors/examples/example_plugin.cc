@@ -20,11 +20,11 @@
 #include <vector>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 //
 // Configurations

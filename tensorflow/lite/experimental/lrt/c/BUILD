@@ -21,7 +21,6 @@ cc_library(
     name = "lite_rt_c_api",
     hdrs = [
         "lite_rt_common.h",
-        "lite_rt_compiler_plugin.h",
         "lite_rt_model.h",
         "lite_rt_op_code.h",
         "lite_rt_support.h",

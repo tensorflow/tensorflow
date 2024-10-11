@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_H_
 
 #include <stddef.h>
 
@@ -95,4 +95,4 @@ LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_COMPILER_PLUGIN_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_H_

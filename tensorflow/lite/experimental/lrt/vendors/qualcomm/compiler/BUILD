@@ -22,7 +22,7 @@ package(
 lite_rt_dynamic_lib(
     name = "qnn_compiler_plugin",
     srcs = ["qnn_compiler_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h"],
+    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h"],
     export_lrt_only = True,
     shared_lib_name = "qnn_compiler_plugin_so",
     so_name = "libLrtQnnCompilerPlugin.so",

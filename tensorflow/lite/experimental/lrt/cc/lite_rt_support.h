@@ -22,8 +22,8 @@
 #include <variant>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 #define _CONCAT_NAME_IMPL(x, y) x##y
 

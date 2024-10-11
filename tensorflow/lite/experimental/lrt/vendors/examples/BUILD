@@ -22,8 +22,9 @@ package(
 lite_rt_dynamic_lib(
     name = "example_plugin",
     srcs = ["example_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h"],
+    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h"],
     export_lrt_only = True,
+    linkstatic = 1,
     shared_lib_name = "example_plugin_so",
     so_name = "libLrtPlugin_ExampleSocManufacturer_ExampleSocModel.so",
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
