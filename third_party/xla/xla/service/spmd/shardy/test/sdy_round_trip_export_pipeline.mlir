@@ -103,6 +103,23 @@ func.func @constant() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: func @inlined_mesh(
+// CHECK-SAME: %arg0: tensor<32xi32>
+// CHECK-SAME:   {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<mesh<[\\\22a\\\22=2, \\\22b\\\22=2]>, [{\\\22a\\\22}]>"},
+// CHECK-SAME:    mhlo.sharding = "{devices=[2,2]<=[4] last_tile_dim_replicate}"})
+// CHECK-SAME: -> (tensor<32xi32> {mhlo.sharding = "{maximal device=5}"}) {
+func.func @inlined_mesh(
+  %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>}
+) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, [{}]>}) {
+  // CHECK-NEXT: %[[SHARDING:.*]] = mhlo.custom_call @Sharding(%arg0)
+  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[\\\22c\\\22=4]>, [{\\\22c\\\22}]>]>"}, mhlo.sharding = "{devices=[4]<=[4]}"}
+  // CHECK-NEXT: %[[RESULT_SHARDING:.*]] = mhlo.custom_call @local_xla.sdy.FuncResultSharding(%[[SHARDING]])
+  // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[], device_ids=[5]>, [{}]>]>"}
+  // CHECK-NEXT: return %[[RESULT_SHARDING]]
+  %0 = sdy.sharding_constraint %arg0 <mesh<["c"=4]>, [{"c"}]> : tensor<32xi32>
+  return %0 : tensor<32xi32>
+}
+
 // CHECK-LABEL: func @op_sharding_rule
 func.func @op_sharding_rule(%arg0: tensor<8x2xf32>, %arg1: tensor<8x2xf32>) -> tensor<8x2xf64> {
   // CHECK: stablehlo.custom_call @foo(%arg0, %arg1) {mhlo.frontend_attributes = {xla.sdy.sharding_rule = "#sdy.op_sharding_rule<([i, j], [i, j])->([i, j]) {i=8, j=2}>"}}
