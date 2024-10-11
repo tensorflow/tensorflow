@@ -610,6 +610,7 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
