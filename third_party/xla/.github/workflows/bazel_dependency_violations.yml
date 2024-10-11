@@ -35,7 +35,7 @@ jobs:
     defaults:
       run:
         shell: bash
-    timeout-minutes: 4
+    timeout-minutes: 6
     continue-on-error: true
     steps:
       - name: "Checking out repository"
