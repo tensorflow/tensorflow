@@ -35,6 +35,7 @@ python_init_repositories(
     local_wheel_dist_folder = "dist",
     local_wheel_inclusion_list = [
         "tensorflow*",
+        "tf_nightly*",
     ],
     local_wheel_workspaces = ["//:WORKSPACE"],
     requirements = {
