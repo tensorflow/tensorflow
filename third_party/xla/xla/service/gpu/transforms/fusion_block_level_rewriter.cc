@@ -135,11 +135,18 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
       continue;
     }
 
+    HloFusionInstruction* fusion_instruction =
+        ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
+
+    TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
+                        should_try_rewrite_if_(fusion_instruction));
+    if (!should_try_rewrite) {
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(
-        bool changed,
-        ProcessFusionInstruction(
-            ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction()),
-            device_info_, shape_size_, &ctx));
+        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
+                                               shape_size_, &ctx));
 
     has_changed |= changed;
   }
