@@ -52,7 +52,6 @@ sudo wget --no-verbose -O /usr/local/bin/bazel https://github.com/bazelbuild/baz
 chmod +x /usr/local/bin/bazel
 bazel --version
 mkdir -p /Volumes/BuildData/bazel_output
-parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd --config=nonccl --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/Volumes/BuildData/bazel_output --nobuild -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
 bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd --test_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd --config=nonccl --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --macos_minimum_os=10.15 --test_tmpdir=/Volumes/BuildData/bazel_output -- //xla/... -//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/...
 bazel analyze-profile profile.json.gz
 # END BuildType.MACOS_CPU_X86
@@ -61,7 +60,6 @@ $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
 parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash
-docker exec xla_ci parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters= --test_tag_filters= --config=release_cpu_linux --config=rbe_linux_cpu --config=linux_cpu_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz --nobuild -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel test --build_tag_filters= --test_tag_filters= --config=release_cpu_linux --config=rbe_linux_cpu --config=linux_cpu_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
@@ -71,7 +69,6 @@ $KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
 parallel --ungroup --retries 3 --delay 15 --nonall -- docker pull gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash
-docker exec xla_ci parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz --nobuild -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,+gpu --test_tag_filters=-no_oss,+gpu --config=release_gpu_linux --config=rbe_linux_cuda --config=linux_cuda_pycpp_test_filters --verbose_failures --test_output=errors --override_repository=xla=/github/xla --profile=profile.json.gz -- //tensorflow/compiler/... -//tensorflow/compiler/tf2tensorrt/... //tensorflow/python/... -//tensorflow/python/distribute/... -//tensorflow/python/compiler/tensorrt/...
 docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
