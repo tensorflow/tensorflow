@@ -1259,18 +1259,11 @@ absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
                                                const Shape& shape,
                                                const DeviceMesh& device_mesh) {
   int64_t src_n_dim = NumTileDimensions(src_sharding);
-
-  const HloSharding* sharding_1d;
-
-  if (src_n_dim == 1) {
-    sharding_1d = &src_sharding;
-  } else {
-    sharding_1d = &dst_sharding;
-  }
+  const HloSharding* sharding_1d =
+      src_n_dim == 1 ? &src_sharding : &dst_sharding;
 
   // Find an intermediate shape
   std::vector<int64_t> inter_shape_dims;
-
   for (size_t i = 0; i < shape.rank(); ++i) {
     if (sharding_1d->tile_assignment().dim(i) == 1) {
       inter_shape_dims.push_back(shape.dimensions(i));
@@ -1309,32 +1302,25 @@ HloInstruction* ReshardTensor(HloInstruction* tensor,
           hlo_sharding_util::ReshapeSharding(shape, *inter_shape, src_sharding);
       std::optional<HloSharding> dst_inter_sharding =
           hlo_sharding_util::ReshapeSharding(shape, *inter_shape, dst_sharding);
-      if (!src_inter_sharding.has_value() || !dst_inter_sharding.has_value()) {
-        src_inter_sharding = HloSharding::Replicate();
-        dst_inter_sharding = HloSharding::Replicate();
-        LOG(WARNING) << "Invalid mixed mesh shape resharding.";
+      if (src_inter_sharding.has_value() && dst_inter_sharding.has_value()) {
+        HloInstruction* src_inter = computation->AddInstruction(
+            HloInstruction::CreateReshape(*inter_shape, tensor));
+        src_inter->set_sharding(*src_inter_sharding);
+
+        HloInstruction* dst_inter = computation->AddInstruction(
+            HloInstruction::CreateReshape(*inter_shape, src_inter));
+        dst_inter->set_sharding(*dst_inter_sharding);
+
+        replace_with = computation->AddInstruction(
+            HloInstruction::CreateReshape(shape, dst_inter));
+        replace_with->set_sharding(dst_sharding);
+        return replace_with;
       }
-
-      HloInstruction* src_inter = computation->AddInstruction(
-          HloInstruction::CreateReshape(*inter_shape, tensor));
-      src_inter->set_sharding(*src_inter_sharding);
-
-      HloInstruction* dst_inter = computation->AddInstruction(
-          HloInstruction::CreateReshape(*inter_shape, src_inter));
-      dst_inter->set_sharding(*dst_inter_sharding);
-
-      replace_with = computation->AddInstruction(
-          HloInstruction::CreateReshape(shape, dst_inter));
-    } else {
-      replace_with = computation->AddInstruction(
-          HloInstruction::CreateReshape(shape, tensor));
     }
-  } else {
-    replace_with = computation->AddInstruction(
-        HloInstruction::CreateReshape(shape, tensor));
   }
+  replace_with =
+      computation->AddInstruction(HloInstruction::CreateReshape(shape, tensor));
   replace_with->set_sharding(dst_sharding);
-
   return replace_with;
 }
 
@@ -1466,41 +1452,35 @@ absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
     // token.
     CHECK_EQ(operand_num, 1);
     operand->set_sharding(dst_sharding);
-  } else {
-    const HloSharding& src_sharding = operand->sharding();
-    HloInstruction* replace_with = nullptr;
-    // Query cache first
-    std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector =
-        nullptr;
-    if (resharding_cache != nullptr) {
-      cache_vector = &((*resharding_cache)[operand]);
-      for (const std::pair<HloSharding, HloInstruction*>& entry :
-           *cache_vector) {
-        if (entry.first == dst_sharding) {
-          replace_with = entry.second;
-        }
-      }
-    }
-
-    if (replace_with != nullptr) {
-      // Do nothing
-    } else {
-      replace_with =
-          ReshardTensor(operand, src_sharding, dst_sharding, device_mesh);
-      if (cache_vector != nullptr) {
-        cache_vector->push_back({dst_sharding, replace_with});
-      }
-    }
-
-    size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
-    if (size > 1) {
-      LOG(WARNING) << "Large reshape instruction inserted (operand of "
-                   << inst->name() << ") with size " << size
-                   << "GB: " << replace_with->ToString();
-    }
-
-    TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
+    return absl::OkStatus();
   }
+  const HloSharding& src_sharding = operand->sharding();
+  HloInstruction* replace_with = nullptr;
+  // Query cache first
+  std::vector<std::pair<HloSharding, HloInstruction*>>* cache_vector = nullptr;
+  if (resharding_cache != nullptr) {
+    cache_vector = &((*resharding_cache)[operand]);
+    for (const std::pair<HloSharding, HloInstruction*>& entry : *cache_vector) {
+      if (entry.first == dst_sharding) {
+        replace_with = entry.second;
+      }
+    }
+  }
+
+  if (replace_with == nullptr) {
+    replace_with =
+        ReshardTensor(operand, src_sharding, dst_sharding, device_mesh);
+    if (cache_vector != nullptr) {
+      cache_vector->push_back({dst_sharding, replace_with});
+    }
+  }
+
+  size_t size = ByteSizeOfShape(replace_with->shape()) / (1024 * 1024 * 1024);
+  LOG_IF(WARNING, size > 1)
+      << "Large reshape instruction inserted (operand of " << inst->name()
+      << ") with size " << size << "GB: " << replace_with->ToString();
+
+  TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(operand_num, replace_with));
   return absl::OkStatus();
 }
 

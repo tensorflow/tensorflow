@@ -70,6 +70,7 @@ using ::testing::IsTrue;
 using ::testing::Not;
 using ::testing::Pair;
 using ::testing::ResultOf;
+using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 using ::testing::status::StatusIs;
 
@@ -590,9 +591,35 @@ ENTRY %elementwise {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* instruction = FindInstruction(module.get(), "param0");
+  const HloInstruction* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
+}
+
+TEST_F(AutoShardingTest, RedundantReshardReshapeTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %elementwise {
+  param0 = bf16[4,68096]{1,0} parameter(0), sharding={replicated}
+  param1 = s8[68096,8512]{1,0} parameter(1), sharding={devices=[1,16,8]<=[128] last_tile_dim_replicate}
+  convolution = bf16[4,8512]{1,0} convolution(param0, param1), dim_labels=bf_io->bf, sharding={devices=[1,128]<=[128]}
+
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {16, 8};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(5) << module->ToString();
+  EXPECT_TRUE(changed);
+  std::vector<HloInstruction*> instructions =
+      module->entry_computation()->MakeInstructionPostOrder();
+  // Check that only one additional reshape op is inserted
+  EXPECT_THAT(instructions, SizeIs(4));
 }
 
 TEST_F(AutoShardingTest, ConvolutionSplitDepthwiseTest) {
