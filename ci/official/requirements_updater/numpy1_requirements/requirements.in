@@ -27,3 +27,8 @@ requests >= 2.31.0
 packaging==23.2
 setuptools==70.0.0
 jax==0.4.7
+# The dependencies below are needed for TF wheel testing.
+tensorflow-io-gcs-filesystem==0.37.1
+libclang >= 13.0.0
+google_pasta ~= 0.2
+flatbuffers ~= 24.3.25
