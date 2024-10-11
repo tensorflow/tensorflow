@@ -41,7 +41,7 @@ GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
   VLOG(1) << "Registered data service worker";
 }
 
-Status GrpcWorkerImpl::Start(
+absl::Status GrpcWorkerImpl::Start(
     const std::string& worker_address,
     const std::vector<DataTransferServerInfo>& transfer_servers) {
   worker_address_ = worker_address;
