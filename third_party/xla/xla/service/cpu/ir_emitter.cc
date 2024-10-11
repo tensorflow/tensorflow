@@ -109,13 +109,21 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
 
+bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
+  return (absl::StrContains(feature_string, "+avxneconvert") ||
+          absl::StrContains(feature_string, "+amx-bf16"));
+}
+
 class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
       : ElementalIrEmitter(
             module, ir_emitter->b(),
-            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/
+                    !IsNativeConvertSupportedOnTargetCPU(
+                        ir_emitter->target_machine_features_
+                            .get_target_feature_string())}),
         hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
 
