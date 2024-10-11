@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_CALL_INLINER_H_
 #define XLA_SERVICE_CALL_INLINER_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -41,9 +44,12 @@ class CallInliner : public HloModulePass {
   // inlined.
   // If update_domain is true, the exit domains could be updated for calls which
   // are being inlined if necessary.
-  explicit CallInliner(bool single_call_site = false,
-                       bool update_domain = false)
-      : single_call_site_(single_call_site), update_domain_(update_domain) {}
+  explicit CallInliner(
+      bool single_call_site = false, bool update_domain = false,
+      absl::flat_hash_set<std::string> composites_to_preserve = {})
+      : single_call_site_(single_call_site),
+        update_domain_(update_domain),
+        composites_to_preserve_(std::move(composites_to_preserve)) {}
   ~CallInliner() override = default;
   absl::string_view name() const override { return "call-inliner"; }
 
@@ -59,6 +65,7 @@ class CallInliner : public HloModulePass {
  private:
   bool single_call_site_;
   bool update_domain_;
+  absl::flat_hash_set<std::string> composites_to_preserve_;
 };
 
 }  // namespace xla

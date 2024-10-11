@@ -202,12 +202,23 @@ class Build:
     # We really want `bazel fetch` here, but it uses `bazel query` and not
     # `cquery`, which means that it fails due to config issues that aren't
     # problems in practice.
-    cmds.append(
-        maybe_docker_exec
-        + retry(
-            self.bazel_command(subcommand="build", extra_options=("--nobuild",))
-        )
-    )
+
+    # TODO(ddunleavy): Remove the condition here. Need to get parallel on the
+    # MacOS VM, and slightly change TF config (likely by specifying tag_filters
+    # manually).
+    if self.type_ not in (
+        BuildType.TENSORFLOW_CPU,
+        BuildType.TENSORFLOW_GPU,
+        BuildType.MACOS_CPU_X86,
+    ):
+      cmds.append(
+          maybe_docker_exec
+          + retry(
+              self.bazel_command(
+                  subcommand="build", extra_options=("--nobuild",)
+              )
+          )
+      )
     cmds.append(maybe_docker_exec + self.bazel_command())
     cmds.append(
         maybe_docker_exec + ["bazel", "analyze-profile", "profile.json.gz"]

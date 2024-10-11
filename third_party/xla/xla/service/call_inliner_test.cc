@@ -376,6 +376,35 @@ TEST_F(CallInlinerTest, InlineCompositeCall) {
   EXPECT_TRUE((*inst)->frontend_attributes().map().empty());
 }
 
+TEST_F(CallInlinerTest, PreserveCompositeCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule composite
+
+  %add (lhs: f32[]) -> f32[] {
+    %lhs = f32[] parameter(0)
+    %rhs = f32[] constant(2)
+    ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+  }
+
+  ENTRY %main () -> f32[] {
+    %lhs = f32[] constant(42)
+    ROOT %call = f32[] call(f32[] %lhs), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+  })";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  CallInliner call_inliner(
+      /*single_call_site=*/true, /*update_domain=*/false,
+      /*composites_to_preserve=*/{"foo.bar"});
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_FALSE(mutated);
+
+  auto inst = module->entry_computation()->instructions().begin();
+  EXPECT_THAT(*inst, op::Constant());
+  ++inst;
+  EXPECT_THAT(*inst, op::Call());
+  EXPECT_FALSE((*inst)->frontend_attributes().map().empty());
+}
+
 TEST_F(CallInlinerTest, UseShardyMhloToHloShmapBodyNotInlined) {
   const char* const hloString = R"(
     HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
