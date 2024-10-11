@@ -62,14 +62,14 @@ class GrpcWorkerImplTest : public ::testing::Test {
     TF_ASSERT_OK(SetUpWorkerClientStub());
   }
 
-  Status SetUpDispatcherServer() {
+  absl::Status SetUpDispatcherServer() {
     experimental::DispatcherConfig config;
     config.set_protocol(kProtocol);
     TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_server_));
     return dispatcher_server_->Start();
   }
 
-  Status SetUpWorkerServer() {
+  absl::Status SetUpWorkerServer() {
     experimental::WorkerConfig config;
     config.set_protocol(kProtocol);
     config.set_dispatcher_address(GetDispatcherAddress());
@@ -78,7 +78,7 @@ class GrpcWorkerImplTest : public ::testing::Test {
     return worker_server_->Start();
   }
 
-  Status SetUpWorkerClientStub() {
+  absl::Status SetUpWorkerClientStub() {
     std::shared_ptr<ChannelCredentials> credentials;
     TF_RETURN_IF_ERROR(
         CredentialsFactory::CreateClientCredentials(kProtocol, &credentials));
