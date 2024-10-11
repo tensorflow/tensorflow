@@ -138,7 +138,8 @@ int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
   }
 }
 
-Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
+absl::Status CheckStateShape(xla::RandomAlgorithm alg,
+                             const TensorShape& shape) {
   if (shape.dims() != 1) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", shape.dims());
@@ -203,7 +204,7 @@ xla::XlaOp CounterAndKeyToVariable(xla::RandomAlgorithm alg, xla::XlaOp state,
 
 // A helper function containing the common part of several kernels below.
 // Precondition: 'algorithm' and 'shape' are compile-time constants.
-Status CompileImpl(
+absl::Status CompileImpl(
     XlaOpKernelContext* ctx, int state_input_idx, int alg_input_idx,
     int shape_input_idx,
     std::function<SamplerReturnType(xla::RandomAlgorithm, xla::XlaOp,
