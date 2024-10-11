@@ -49,8 +49,8 @@ void CredentialsFactory::Register(CredentialsFactory* factory) {
   }
 }
 
-Status CredentialsFactory::Get(absl::string_view protocol,
-                               CredentialsFactory** out) {
+absl::Status CredentialsFactory::Get(absl::string_view protocol,
+                                     CredentialsFactory** out) {
   mutex_lock l(*get_lock());
   auto it = credentials_factories().find(std::string(protocol));
   if (it != credentials_factories().end()) {
@@ -69,7 +69,7 @@ Status CredentialsFactory::Get(absl::string_view protocol,
                           absl::StrJoin(available_types, ", "), " ]");
 }
 
-Status CredentialsFactory::CreateServerCredentials(
+absl::Status CredentialsFactory::CreateServerCredentials(
     absl::string_view protocol,
     std::shared_ptr<::grpc::ServerCredentials>* out) {
   CredentialsFactory* factory;
@@ -78,7 +78,7 @@ Status CredentialsFactory::CreateServerCredentials(
   return absl::OkStatus();
 }
 
-Status CredentialsFactory::CreateClientCredentials(
+absl::Status CredentialsFactory::CreateClientCredentials(
     absl::string_view protocol,
     std::shared_ptr<::grpc::ChannelCredentials>* out) {
   CredentialsFactory* factory;
@@ -97,13 +97,13 @@ class InsecureCredentialsFactory : public CredentialsFactory {
  public:
   std::string Protocol() override { return "grpc"; }
 
-  Status CreateServerCredentials(
+  absl::Status CreateServerCredentials(
       std::shared_ptr<::grpc::ServerCredentials>* out) override {
     *out = ::grpc::InsecureServerCredentials();
     return absl::OkStatus();
   }
 
-  Status CreateClientCredentials(
+  absl::Status CreateClientCredentials(
       std::shared_ptr<::grpc::ChannelCredentials>* out) override {
     *out = ::grpc::InsecureChannelCredentials();
     return absl::OkStatus();
