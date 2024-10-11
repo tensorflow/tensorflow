@@ -177,13 +177,14 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<tsl::RCReference<Value>> values) = 0;
 
+  // Identifies the IFRT implementation. Most C++ users should use LLVM RTTI to
+  // determine the runtime type. This is a string exposed to users mostly for
+  // informational reasons.
+  virtual absl::string_view runtime_type() const = 0;
+
   // The following APIs are taken from `xla::PjRtClient` for fast prototyping.
   // Most of the APIs will be factored out as a `Platform`/`Topology` in the
   // future to facilitate topology discovery and ahead-of-time compilation.
-
-  // TODO(hyeontaek): Remove runtime_type() in favor of LLVM RTTI.
-  virtual absl::string_view runtime_type() const = 0;
-
   // TODO(hyeontaek): Factor them out to a `Platform`/`Topology` class.
   virtual absl::string_view platform_name() const = 0;
   virtual absl::string_view platform_version() const = 0;
