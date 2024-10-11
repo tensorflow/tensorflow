@@ -406,15 +406,6 @@ class GpuDriver {
                                               uint8_t value, size_t uint8_count,
                                               GpuStreamHandle stream);
 
-  // Performs an asynchronous memset of the device memory segment via
-  // cuMemsetD32Async.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g58229da5d30f1c0cdf667b320ec2c0f5
-  static absl::Status AsynchronousMemsetUint32(Context* context,
-                                               GpuDevicePtr location,
-                                               uint32_t value,
-                                               size_t uint32_count,
-                                               GpuStreamHandle stream);
-
   // -- Synchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
 

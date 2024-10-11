@@ -75,8 +75,6 @@ class GpuStream : public StreamCommon {
   }
 
   absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
-  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
-                        uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
                       uint64_t size) override;
   absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,

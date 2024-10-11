@@ -647,20 +647,6 @@ absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                   "Failed to enqueue async memset operation");
 }
 
-absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
-                                                 hipDeviceptr_t location,
-                                                 uint32_t value,
-                                                 size_t uint32_count,
-                                                 GpuStreamHandle stream) {
-  ScopedActivateContext activation{context};
-  void* pointer = absl::bit_cast<void*>(location);
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipMemsetD32Async(pointer, value, uint32_count, stream),
-               "Failed to enqueue async memset operation"));
-  VLOG(2) << "successfully enqueued async memset operation";
-  return absl::OkStatus();
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context,
                                           GpuStreamHandle stream,
                                           StreamCallback callback, void* data) {

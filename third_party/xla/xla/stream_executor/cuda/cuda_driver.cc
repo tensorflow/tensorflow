@@ -806,16 +806,6 @@ absl::Status GpuDriver::AsynchronousMemsetUint8(Context* context,
                         "Failed to enqueue async memset operation");
 }
 
-absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
-                                                 CUdeviceptr location,
-                                                 uint32_t value,
-                                                 size_t uint32_count,
-                                                 CUstream stream) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD32Async(location, value, uint32_count, stream),
-                        "Failed to enqueue async memset operation");
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
                                           StreamCallback callback, void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.

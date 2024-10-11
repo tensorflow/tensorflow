@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_STREAM_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -39,6 +41,9 @@ class CudaStream : public GpuStream {
   absl::Status WaitFor(Stream* other) override;
   absl::Status RecordEvent(Event* event) override;
   absl::Status WaitFor(Event* event) override;
+
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override;
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       GpuExecutor* executor, CudaEvent completed_event,
