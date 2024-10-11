@@ -36,8 +36,8 @@ namespace data {
 namespace {
 constexpr StringPiece kJournal = "journal";
 
-Status ParseSequenceNumber(const std::string& journal_file,
-                           int64_t* sequence_number) {
+absl::Status ParseSequenceNumber(const std::string& journal_file,
+                                 int64_t* sequence_number) {
   if (!RE2::FullMatch(journal_file, ".*_(\\d+)", sequence_number)) {
     return errors::InvalidArgument("Failed to parse journal file name: ",
                                    journal_file);
@@ -55,7 +55,7 @@ std::string DataServiceJournalFile(const std::string& journal_dir,
 FileJournalWriter::FileJournalWriter(Env* env, const std::string& journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status FileJournalWriter::EnsureInitialized() {
+absl::Status FileJournalWriter::EnsureInitialized() {
   if (writer_) {
     return absl::OkStatus();
   }
@@ -76,7 +76,7 @@ Status FileJournalWriter::EnsureInitialized() {
   return absl::OkStatus();
 }
 
-Status FileJournalWriter::Write(const Update& update) {
+absl::Status FileJournalWriter::Write(const Update& update) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   std::string s = update.SerializeAsString();
   if (s.empty()) {
@@ -95,18 +95,18 @@ Status FileJournalWriter::Write(const Update& update) {
 FileJournalReader::FileJournalReader(Env* env, StringPiece journal_dir)
     : env_(env), journal_dir_(journal_dir) {}
 
-Status FileJournalReader::EnsureInitialized() {
+absl::Status FileJournalReader::EnsureInitialized() {
   if (reader_) {
     return absl::OkStatus();
   }
   return UpdateFile(DataServiceJournalFile(journal_dir_, 0));
 }
 
-Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
+absl::Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   while (true) {
     tstring record;
-    Status s = reader_->ReadRecord(&record);
+    absl::Status s = reader_->ReadRecord(&record);
     if (absl::IsOutOfRange(s)) {
       sequence_number_++;
       std::string next_journal_file =
@@ -132,7 +132,7 @@ Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   }
 }
 
-Status FileJournalReader::UpdateFile(const std::string& filename) {
+absl::Status FileJournalReader::UpdateFile(const std::string& filename) {
   VLOG(1) << "Reading from journal file " << filename;
   TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(filename, &file_));
   io::RecordReaderOptions opts;
