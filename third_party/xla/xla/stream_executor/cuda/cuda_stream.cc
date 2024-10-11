@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_stream.h"
 
+#include <stdalign.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -144,10 +146,10 @@ CudaStream::~CudaStream() {
 
 absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
                                   uint64_t size) {
-  if (absl::bit_cast<uintptr_t>(location->opaque()) % 4 != 0) {
+  if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
   }
-  if (size % 4 != 0) {
+  if (size % sizeof(uint32_t) != 0) {
     return absl::InvalidArgumentError("size must be a multiple of 4 bytes.");
   }
   ScopedActivateContext activation(executor_->gpu_context());
@@ -155,6 +157,20 @@ absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
       cuMemsetD32Async(absl::bit_cast<CUdeviceptr>(location->opaque()), pattern,
                        size / 4, gpu_stream()),
       "Failed to enqueue async memset operation");
+}
+
+absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+  if (reinterpret_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) ==
+          0 &&
+      size % sizeof(uint32_t) == 0) {
+    return Memset32(location, 0x0, size);
+  } else {
+    ScopedActivateContext activation(executor_->gpu_context());
+    return cuda::ToStatus(
+        cuMemsetD8Async(absl::bit_cast<CUdeviceptr>(location->opaque()), 0x0,
+                        size, gpu_stream()),
+        "Failed to enqueue async memset operation");
+  }
 }
 
 }  // namespace gpu

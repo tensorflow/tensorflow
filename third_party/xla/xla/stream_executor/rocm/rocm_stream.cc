@@ -161,15 +161,27 @@ RocmStream::~RocmStream() {
 
 absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
                                   uint64_t size) {
-  if (absl::bit_cast<uintptr_t>(location->opaque()) % 4 != 0) {
+  if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
   }
-  if (size % 4 != 0) {
+  if (size % sizeof(uint32_t) != 0) {
     return absl::InvalidArgumentError("size must be a multiple of 4 bytes.");
   }
   return ToStatus(wrap::hipMemsetD32Async(location->opaque(), pattern, size / 4,
                                           gpu_stream()),
                   "Failed to memset memory");
+}
+
+absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+  if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) == 0 &&
+      size % sizeof(uint32_t) == 0) {
+    return Memset32(location, 0x0, size);
+  } else {
+    ScopedActivateContext activation{executor_->gpu_context()};
+    return ToStatus(
+        wrap::hipMemsetAsync(location->opaque(), 0x0, size, gpu_stream()),
+        "Failed to enqueue async memset operation");
+  }
 }
 
 }  // namespace stream_executor::gpu

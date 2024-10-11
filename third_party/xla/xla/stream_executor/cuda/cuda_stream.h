@@ -44,6 +44,7 @@ class CudaStream : public GpuStream {
 
   absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
                         uint64_t size) override;
+  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       GpuExecutor* executor,

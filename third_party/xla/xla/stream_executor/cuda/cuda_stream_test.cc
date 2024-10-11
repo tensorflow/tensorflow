@@ -27,11 +27,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -46,8 +43,6 @@ using ::tsl::testing::IsOk;
 class CudaStreamTest : public ::testing::Test {
  public:
   std::optional<CudaExecutor> executor_;
-  std::unique_ptr<Stream> stream_;
-  GpuStream* gpu_stream_;
 
  private:
   void SetUp() override {
@@ -56,8 +51,6 @@ class CudaStreamTest : public ::testing::Test {
                                 stream_executor::cuda::kCudaPlatformId));
     executor_.emplace(platform, 0);
     ASSERT_THAT(executor_->Init(), IsOk());
-    TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
-    gpu_stream_ = AsGpuStream(stream_.get());
   }
 };
 
@@ -92,6 +85,38 @@ TEST_F(CudaStreamTest, Memset32) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
+}
+
+TEST_F(CudaStreamTest, MemZero) {
+  constexpr int kBufferNumElements = 42;
+  DeviceMemory<uint32_t> buffer =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
+                               kBufferNumElements * sizeof(uint32_t)),
+              IsOk());
+
+  // We overwrite half the buffer with zeros.
+  EXPECT_THAT(
+      stream->MemZero(&buffer, kBufferNumElements / 2 * sizeof(uint32_t)),
+      IsOk());
+
+  std::array<uint32_t, kBufferNumElements> host_buffer;
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  // We expect the first half of the buffer to be zeros.
+  EXPECT_THAT(
+      absl::MakeConstSpan(host_buffer).subspan(0, kBufferNumElements / 2),
+      Each(0x0));
+
+  // And it shouldn't have touched the second half.
+  EXPECT_THAT(absl::MakeConstSpan(host_buffer).subspan(kBufferNumElements / 2),
+              Each(0xDEADBEEF));
 }
 
 }  // namespace
