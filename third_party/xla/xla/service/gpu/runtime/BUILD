@@ -56,6 +56,7 @@ cc_library(
     deps = [
         ":annotation",
         ":custom_call_thunk",
+        ":dynamic_slice_thunk",
         ":nccl_all_gather_thunk",
         ":nccl_all_reduce_thunk",
         ":nccl_all_to_all_thunk",
@@ -64,6 +65,7 @@ cc_library(
         ":nccl_collective_broadcast_thunk",
         ":nccl_collective_thunk",
         ":thunk",
+        ":while_thunk",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:types",
