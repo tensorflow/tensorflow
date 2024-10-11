@@ -102,6 +102,7 @@ cc_library(
     hdrs = ["pipeline_passes.h"],
     deps = [
         ":convert_sharding_custom_calls",
+        ":import_backend_func_calls",
         ":import_constants",
         ":open_while_free_vars_sharding",
         "//xla/mlir_hlo:mhlo_passes",
