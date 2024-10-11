@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -224,6 +226,24 @@ absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
   chars[kCharLimit - 1] = '\0';
   return chars.begin();
 }
+
+absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    std::string gcnName = props.gcnArchName;
+    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
+    std::string amdgpu_version = gcnName;
+    if (!tokens.empty() && tokens[0].size() >= 3) {
+      amdgpu_version = tokens[0].substr(3);
+    }
+    int version = std::stoi(amdgpu_version);
+    return version;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu ISA version for device %d", device));
+}
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -350,7 +370,8 @@ absl::Status RocmExecutor::Init() {
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
   set_context(rocm_context_);
-  return GpuDriver::GetGpuISAVersion(&version_, device_);
+  TF_ASSIGN_OR_RETURN(version_, GetGpuISAVersion(device_));
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
@@ -678,12 +699,6 @@ absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
   auto status = GpuDriver::GetDevice(device_ordinal, &device);
-  if (!status.ok()) {
-    return status;
-  }
-
-  int version;
-  status = GpuDriver::GetGpuISAVersion(&version, device);
   if (!status.ok()) {
     return status;
   }

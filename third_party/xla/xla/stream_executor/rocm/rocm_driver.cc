@@ -911,24 +911,6 @@ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
       "failed to query device pointer for memory space: ", ToString(result)));
 }
 
-absl::Status GpuDriver::GetGpuISAVersion(int* version, hipDevice_t device) {
-  hipDeviceProp_t props;
-  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
-  if (result == hipSuccess) {
-    std::string gcnName = props.gcnArchName;
-    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
-    std::string amdgpu_version = gcnName;
-    if (!tokens.empty() && tokens[0].size() >= 3) {
-      amdgpu_version = tokens[0].substr(3);
-    }
-    *version = stoi(amdgpu_version);
-    return absl::OkStatus();
-  }
-  *version = 0;
-  return absl::InternalError(absl::StrFormat(
-      "failed to determine AMDGpu ISA version for device %d", device));
-}
-
 absl::Status GpuDriver::GetGpuGCNArchName(hipDevice_t device,
                                           std::string* gcnArchName) {
   hipDeviceProp_t props;

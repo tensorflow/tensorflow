@@ -486,10 +486,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Returns Gpu ISA version for the device; i.e 803, 900.
-  // (supported on ROCm only)
-  static absl::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);
-
   // Return the full GCN Architecture Name for the device
   // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
   // (supported on ROCm only)

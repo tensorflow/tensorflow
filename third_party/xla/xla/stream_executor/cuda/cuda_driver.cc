@@ -1080,12 +1080,6 @@ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
   return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
 }
 
-absl::Status GpuDriver::GetGpuISAVersion(int* version, CUdevice device) {
-  return absl::Status{
-      absl::StatusCode::kInternal,
-      "Feature not supported on CUDA platform (GetGpuISAVersion)"};
-}
-
 absl::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
   return absl::Status{
       absl::StatusCode::kInternal,
