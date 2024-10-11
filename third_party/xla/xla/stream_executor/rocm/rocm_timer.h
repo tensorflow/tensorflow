@@ -29,17 +29,22 @@ namespace stream_executor::gpu {
 
 class RocmTimer : public EventBasedTimer {
  public:
-  RocmTimer(Context* context, std::unique_ptr<RocmEvent> start_event,
-            std::unique_ptr<RocmEvent> stop_event, GpuStream* stream);
+  RocmTimer(RocmTimer&&) = default;
+  RocmTimer& operator=(RocmTimer&&) = default;
 
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
+  static absl::StatusOr<RocmTimer> Create(Context* context, GpuStream* stream);
+
  private:
+  RocmTimer(Context* context, RocmEvent start_event, RocmEvent stop_event,
+            GpuStream* stream);
+
   bool is_stopped_ = false;
   Context* context_;
   GpuStream* stream_;
-  std::unique_ptr<RocmEvent> start_event_;
-  std::unique_ptr<RocmEvent> stop_event_;
+  RocmEvent start_event_;
+  RocmEvent stop_event_;
 };
 }  // namespace stream_executor::gpu
 

@@ -1042,6 +1042,37 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "rocm_timer_test",
+    srcs = ["rocm_timer_test.cc"],
+    backends = ["gpu"],
+    tags = ["rocm-only"] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        ":rocm_executor",
+        ":rocm_platform_id",
+        ":rocm_timer",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/stream_executor/gpu:gpu_test_kernels_rocm",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
 cc_library(
     name = "rocm_status",
     srcs = ["rocm_status.cc"],

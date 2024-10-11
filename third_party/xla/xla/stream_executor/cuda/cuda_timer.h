@@ -29,20 +29,29 @@ limitations under the License.
 namespace stream_executor::gpu {
 class CudaTimer : public EventBasedTimer {
  public:
-  CudaTimer(Context* context, std::unique_ptr<CudaEvent> start_event,
-            std::unique_ptr<CudaEvent> stop_event, GpuStream* stream,
-            GpuSemaphore semaphore);
   ~CudaTimer() override;
+  CudaTimer(CudaTimer&&) = default;
+  CudaTimer& operator=(CudaTimer&&) = default;
 
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
+  enum class TimerType {
+    kDelayKernel,
+    kEventBased,
+  };
+  static absl::StatusOr<CudaTimer> Create(Context* context, GpuStream* stream,
+                                          TimerType timer_type);
+
  private:
+  CudaTimer(Context* context, CudaEvent start_event, CudaEvent stop_event,
+            GpuStream* stream, GpuSemaphore semaphore);
+
   GpuSemaphore semaphore_;
   bool is_stopped_ = false;
   Context* context_;
   GpuStream* stream_;
-  std::unique_ptr<CudaEvent> start_event_;
-  std::unique_ptr<CudaEvent> stop_event_;
+  CudaEvent start_event_;
+  CudaEvent stop_event_;
 };
 
 }  // namespace stream_executor::gpu

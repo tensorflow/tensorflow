@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
-#include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -67,7 +66,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
@@ -426,18 +424,15 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 CudaExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
-  GpuSemaphore semaphore{};
+  const CudaTimer::TimerType timer_type =
+      (use_delay_kernel && ShouldLaunchDelayKernel() &&
+       delay_kernels_supported_)
+          ? CudaTimer::TimerType::kDelayKernel
+          : CudaTimer::TimerType::kEventBased;
 
-  if (use_delay_kernel && ShouldLaunchDelayKernel() &&
-      delay_kernels_supported_) {
-    TF_ASSIGN_OR_RETURN(semaphore, LaunchDelayKernel(stream));
-  }
-  TF_ASSIGN_OR_RETURN(auto start_event, CreateGpuEvent(/*allow_timing=*/true));
-  TF_ASSIGN_OR_RETURN(auto stop_event, CreateGpuEvent(/*allow_timing=*/true));
-  TF_RETURN_IF_ERROR(stream->RecordEvent(start_event.get()));
-  return std::make_unique<CudaTimer>(gpu_context(), std::move(start_event),
-                                     std::move(stop_event), stream,
-                                     std::move(semaphore));
+  TF_ASSIGN_OR_RETURN(CudaTimer timer,
+                      CudaTimer::Create(gpu_context(), stream, timer_type));
+  return std::make_unique<CudaTimer>(std::move(timer));
 }
 
 bool CudaExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -816,15 +811,9 @@ absl::Status FillBlockDimLimit(GpuDeviceHandle device,
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::unique_ptr<CudaEvent>> CudaExecutor::CreateGpuEvent(
-    bool allow_timing) {
-  TF_ASSIGN_OR_RETURN(auto event,
-                      CudaEvent::Create(gpu_context(), allow_timing));
-  return std::make_unique<CudaEvent>(std::move(event));
-}
-
 absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
-  return CreateGpuEvent(/*allow_timing=*/false);
+  TF_ASSIGN_OR_RETURN(auto event, CudaEvent::Create(gpu_context(), false));
+  return std::make_unique<CudaEvent>(std::move(event));
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(

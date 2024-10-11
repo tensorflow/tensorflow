@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
-#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -177,9 +176,6 @@ class CudaExecutor : public GpuExecutor {
 
   bool UnloadGpuBinary(const void* gpu_binary)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
-
-  // Creates a GpuEvent for the given stream.
-  absl::StatusOr<std::unique_ptr<CudaEvent>> CreateGpuEvent(bool allow_timing);
 
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();

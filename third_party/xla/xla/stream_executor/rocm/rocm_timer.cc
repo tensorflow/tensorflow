@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_timer.h"
 
-#include <memory>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -53,8 +52,8 @@ absl::StatusOr<float> GetEventElapsedTime(Context* context, hipEvent_t start,
 }
 }  // namespace
 
-RocmTimer::RocmTimer(Context* context, std::unique_ptr<RocmEvent> start_event,
-                     std::unique_ptr<RocmEvent> stop_event, GpuStream* stream)
+RocmTimer::RocmTimer(Context* context, RocmEvent start_event,
+                     RocmEvent stop_event, GpuStream* stream)
     : context_(context),
       stream_(stream),
       start_event_(std::move(start_event)),
@@ -64,11 +63,22 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::InternalError("Measuring inactive timer");
   }
-  TF_RETURN_IF_ERROR(stream_->RecordEvent(stop_event_.get()));
+  TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
   TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
-                      GetEventElapsedTime(context_, start_event_->GetHandle(),
-                                          stop_event_->GetHandle()));
+                      GetEventElapsedTime(context_, start_event_.GetHandle(),
+                                          stop_event_.GetHandle()));
   is_stopped_ = true;
   return absl::Milliseconds(elapsed_milliseconds);
+}
+
+absl::StatusOr<RocmTimer> RocmTimer::Create(Context* context,
+                                            GpuStream* stream) {
+  TF_ASSIGN_OR_RETURN(RocmEvent start_event,
+                      RocmEvent::Create(context, /*allow_timing=*/true));
+  TF_ASSIGN_OR_RETURN(RocmEvent stop_event,
+                      RocmEvent::Create(context, /*allow_timing=*/true));
+  TF_RETURN_IF_ERROR(stream->RecordEvent(&start_event));
+  return RocmTimer(context, std::move(start_event), std::move(stop_event),
+                   stream);
 }
 }  // namespace stream_executor::gpu
