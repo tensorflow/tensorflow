@@ -3869,5 +3869,52 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 0);
 }
 
+TEST_F(CopyInsertionTest, InPlaceGatherScatterUpdate) {
+  constexpr absl::string_view kModuleString = R"(
+    HloModule InPlaceGatherScatterUpdate, input_output_alias={ {1}: (0, {}, may-alias) }
+
+    scatter_update {
+      original = f32[] parameter(0)
+      ROOT update = f32[] parameter(1)
+    }
+    
+    called_computation {
+      %table = f32[4096,16] parameter(0)
+      %gather_indices = s32[8] parameter(1)
+      %scatter_indices = s32[8] parameter(2)
+      %scatter_updates = f32[8,16] parameter(3)
+      %gather = f32[8,16] gather(%table, %gather_indices), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1, 16}
+      %scatter = f32[4096,16] scatter(%table, %scatter_indices, %scatter_updates), update_window_dims={1}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=scatter_update
+      ROOT %tuple = (f32[4096,16], f32[8,16]) tuple(%scatter, %gather)
+    }
+    
+    async_computation {
+      %table = f32[4096,16] parameter(0)
+      %gather_indices = s32[8] parameter(1)
+      %scatter_indices = s32[8] parameter(2)
+      %scatter_updates = f32[8,16] parameter(3)
+      ROOT call = (f32[4096,16], f32[8,16]) call(%table, %gather_indices, %scatter_indices, %scatter_updates), to_apply=called_computation
+    }
+
+    ENTRY main {
+      %table = f32[4096,16] parameter(0)
+      %gather_indices = s32[8] parameter(1)
+      %scatter_indices = s32[8] parameter(2)
+      %scatter_updates = f32[8,16] parameter(3)
+      %async-start = ((f32[4096,16], s32[8], s32[8], f32[8,16]), (f32[4096,16], f32[8,16]), u32[]) async-start(%table, %gather_indices, %scatter_indices, %scatter_updates), calls=%async_computation
+      %async-done = (f32[4096,16], f32[8,16]) async-done(%async-start), calls=%async_computation
+      %gte = f32[8,16] get-tuple-element(%async-done), index=1
+      ROOT %tuple = (f32[8,16], f32[4096,16]) tuple(%gte, %table)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
 }  // namespace
 }  // namespace xla

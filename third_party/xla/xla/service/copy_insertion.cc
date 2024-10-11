@@ -1590,6 +1590,29 @@ class CopyRemover {
       VLOG(2) << "Region-based interference is false.";
       return false;
     };
+    // Returns true if:
+    // 1. `src` is a buffer containing a single HloModule parameter
+    // that is input output aliased.
+    // 2. `dest` is a buffer containing a single HloInstruction that is a
+    // an update in place operation.
+    auto InPlaceUpdateAliasedModuleParam = [&](ValueNode* src,
+                                               ValueNode* dest) {
+      HloInstruction* src_instruction = src->value->instruction();
+      HloInstruction* dest_instruction = dest->value->instruction();
+      bool single_value_in_src_buffer = src->next == src;
+      bool src_is_input_output_aliased_module_param =
+          src_instruction->opcode() == HloOpcode::kParameter &&
+          copy->GetModule()->input_output_alias_config().ParameterHasAlias(
+              src_instruction->parameter_number(), src->value->index());
+      bool dest_is_single_update_in_place_instr =
+          HloDataflowAnalysis::IsInPlaceOperation(dest_instruction->opcode()) &&
+          dest->next == dest->prev &&
+          dest->next->value->instruction()->opcode() == HloOpcode::kCopy;
+
+      return single_value_in_src_buffer &&
+             src_is_input_output_aliased_module_param &&
+             dest_is_single_update_in_place_instr;
+    };
 
     // A kCopy instruction copies an HLO value from a source buffer and
     // defines an HLO value in a destination buffer. Most generally, the
@@ -1669,7 +1692,9 @@ class CopyRemover {
       VLOG(2) << "LiveRangeBefore result: " << live_range_before;
       if (!live_range_before &&
           CheckLiveRangeInterference(copy_node.src, copy_node.dest,
-                                     kMergeFirstDestInSource)) {
+                                     kMergeFirstDestInSource) &&
+          !InPlaceUpdateAliasedModuleParam(copy_node.src,
+                                           copy_node.dest->next)) {
         return false;
       }
       VLOG(2) << "Splice dest after source.";
