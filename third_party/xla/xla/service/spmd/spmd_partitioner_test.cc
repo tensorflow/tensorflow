@@ -9577,10 +9577,12 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled =
-      AllOf(op::Shape("f32[4,4]"),
-            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
-                                      op::Subtract())));
+  auto table_look_up =
+      AllOf(op::Shape("s32[]"),
+            op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Constant(), table_look_up)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -9634,10 +9636,12 @@ ENTRY entry {
       AllOf(op::Shape("f32[4,8]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
                                       op::Constant())));
-  auto tiled =
-      AllOf(op::Shape("f32[4,4]"),
-            op::Copy(op::DynamicSlice(partially_replicated, op::Subtract(),
-                                      op::Subtract())));
+  auto table_look_up =
+      AllOf(op::Shape("s32[]"),
+            op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Constant(), table_look_up)));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -9691,10 +9695,13 @@ ENTRY entry {
       AllOf(op::Shape("f32[8,4]"),
             op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
                                       op::Reshape())));
+  auto table_look_up =
+      AllOf(op::Shape("s32[]"),
+            op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())));
   auto tiled =
       AllOf(op::Shape("f32[4,4]"),
             op::Copy(op::CollectivePermute(op::DynamicSlice(
-                partially_replicated, op::Subtract(), op::Subtract()))));
+                partially_replicated, table_look_up, op::Constant()))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, tiled);
 }
@@ -10385,10 +10392,13 @@ ENTRY entry {
       op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(), op::Constant(),
                                 op::Constant(), op::Constant())),
       op::Shape("f32[8,801,1,1024]"));
+  auto table_look_up =
+      AllOf(op::Shape("s32[]"),
+            op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())));
   auto resharded_lhs =
       AllOf(op::Reshape(op::Transpose(op::AllToAll(op::Reshape(
-                op::Pad(op::DynamicSlice(lhs, op::Subtract(), op::Subtract(),
-                                         op::Subtract(), op::Subtract()),
+                op::Pad(op::DynamicSlice(lhs, op::Constant(), op::Constant(),
+                                         op::Constant(), table_look_up),
                         op::Constant()))))),
             op::Shape("f32[16,401,1,512]"));
   auto left_halo = AllOf(op::Shape("f32[16,2, 1, 512]"),
