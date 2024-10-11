@@ -55,7 +55,7 @@ TEST(TensorBuffer, HostMemory) {
   ASSERT_EQ(tensor_type.element_type, kLrtElementTypeFloat32);
   ASSERT_EQ(tensor_type.layout.rank, 1);
   ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
-  ASSERT_TRUE(!tensor_type.layout.strides);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
 
   size_t size;
   ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
@@ -95,7 +95,7 @@ TEST(TensorBuffer, Ahwb) {
   ASSERT_EQ(tensor_type.element_type, kLrtElementTypeFloat32);
   ASSERT_EQ(tensor_type.layout.rank, 1);
   ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
-  ASSERT_TRUE(!tensor_type.layout.strides);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
 
   size_t size;
   ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
@@ -141,7 +141,7 @@ TEST(TensorBuffer, Ion) {
   ASSERT_EQ(tensor_type.element_type, kLrtElementTypeFloat32);
   ASSERT_EQ(tensor_type.layout.rank, 1);
   ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
-  ASSERT_TRUE(!tensor_type.layout.strides);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
 
   size_t size;
   ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
@@ -189,7 +189,7 @@ TEST(TensorBuffer, DmaBuf) {
   ASSERT_EQ(tensor_type.element_type, kLrtElementTypeFloat32);
   ASSERT_EQ(tensor_type.layout.rank, 1);
   ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
-  ASSERT_NE(tensor_type.layout.strides, nullptr);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
 
   size_t size;
   ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
@@ -237,7 +237,7 @@ TEST(TensorBuffer, FastRpc) {
   ASSERT_EQ(tensor_type.element_type, kLrtElementTypeFloat32);
   ASSERT_EQ(tensor_type.layout.rank, 1);
   ASSERT_EQ(tensor_type.layout.dimensions[0], kTensorType.layout.dimensions[0]);
-  ASSERT_TRUE(!tensor_type.layout.strides);
+  ASSERT_EQ(tensor_type.layout.strides, nullptr);
 
   size_t size;
   ASSERT_EQ(LrtGetTensorBufferSize(buffer, &size), kLrtStatusOk);
