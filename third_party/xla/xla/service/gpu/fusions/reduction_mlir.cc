@@ -17,7 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -79,7 +79,6 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir_converter::PartitionedComputations;
 
-constexpr int kRowMajorReduced = ReductionDimensions::kRowMajorReducedDimension;
 constexpr int kRowKept = ReductionDimensions::kRowKeptDimension;
 constexpr int kRowMinorReduced = ReductionDimensions::kRowMinorReducedDimension;
 constexpr int kColMajorKept = ReductionDimensions::kColMajorKeptDimension;
@@ -363,7 +362,6 @@ MlirReductionFusion::MlirReductionFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis) {
   auto* hero_reduction = analysis.FindHeroReduction();
   CHECK_NE(hero_reduction, nullptr);
-  Shape input_shape = hero_reduction->operand(0)->shape();
   reduction_dimensions_ =
       GetReductionKindAndContiguousComponents(*hero_reduction);
   VLOG(10) << reduction_dimensions_;
@@ -948,6 +946,11 @@ std::unique_ptr<MlirReductionFusion> MlirMultiRowReductionFusion::TryCreate(
   int largest_input_or_output_bits =
       std::max(analysis.input_output_info().smallest_input_dtype_bits,
                analysis.input_output_info().smallest_output_dtype_bits);
+  // Handle the case when there are no inputs.
+  if (largest_input_or_output_bits == std::numeric_limits<int>::max()) {
+    largest_input_or_output_bits =
+        analysis.input_output_info().smallest_output_dtype_bits;
+  }
 
   // Our codegen can't currently deal with vectorization across rows, so we
   // limit the vector size to the size of the row. Note that this emitter
