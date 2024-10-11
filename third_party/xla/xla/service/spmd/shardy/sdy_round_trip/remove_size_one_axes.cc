@@ -119,8 +119,7 @@ void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
                              const SymbolTable& symbolTable) {
   MeshAttr mesh = mlir::sdy::getCommonMesh(
       manualComputationOp.getInShardings().getShardings(),
-      manualComputationOp.getOutShardings().getShardings(),
-      manualComputationOp);
+      manualComputationOp.getOutShardings().getShardings(), symbolTable);
   CHECK(mesh) << "no common mesh found for ManualComputationOp";
 
   SmallVector<StringAttr> newManualAxes;
