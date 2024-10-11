@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/qnn/IR/qnn_op.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_op.h"
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
@@ -24,7 +24,7 @@
 namespace {
 
 TEST(TestInitQnnOp, BuildDefaultOp) {
-  Qnn_OpConfig_t op = qnn::BuildDefaultOp();
+  Qnn_OpConfig_t op = lrt::qnn::BuildDefaultOp();
   ASSERT_EQ(op.version, QNN_OPCONFIG_VERSION_1);
 }
 
@@ -34,8 +34,8 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
 
-  Qnn_OpConfig_t qnn_op = qnn::BuildDefaultOp();
-  ASSERT_STATUS_OK(qnn::LegalizeOp(ops[0], qnn_op));
+  Qnn_OpConfig_t qnn_op = lrt::qnn::BuildDefaultOp();
+  ASSERT_STATUS_OK(lrt::qnn::LegalizeOp(ops[0], qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, "mul"));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
@@ -45,7 +45,7 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
   EXPECT_EQ(qnn_op.v1.numOfOutputs, 0);
   EXPECT_EQ(qnn_op.v1.numOfParams, 0);
 
-  qnn::ResetOp(qnn_op);
+  lrt::qnn::ResetOp(qnn_op);
 }
 
 TEST(TestLegalizeOp, UnsupportedOp) {
@@ -54,11 +54,11 @@ TEST(TestLegalizeOp, UnsupportedOp) {
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
 
-  Qnn_OpConfig_t qnn_op = qnn::BuildDefaultOp();
-  ASSERT_STATUS_HAS_CODE(qnn::LegalizeOp(ops[0], qnn_op),
+  Qnn_OpConfig_t qnn_op = lrt::qnn::BuildDefaultOp();
+  ASSERT_STATUS_HAS_CODE(lrt::qnn::LegalizeOp(ops[0], qnn_op),
                          kLrtStatusErrorUnsupported);
 
-  qnn::ResetOp(qnn_op);
+  lrt::qnn::ResetOp(qnn_op);
 }
 
 }  // namespace

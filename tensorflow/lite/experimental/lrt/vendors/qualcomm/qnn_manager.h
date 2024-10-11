@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_MANAGER_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_MANAGER_H_
 
 #include <optional>
 
@@ -22,21 +22,36 @@
 #include "third_party/qairt/include/QNN/HTP/QnnHtpDevice.h"
 #include "third_party/qairt/include/QNN/QnnBackend.h"
 #include "third_party/qairt/include/QNN/QnnCommon.h"
-#include "third_party/qairt/include/QNN/QnnDevice.h"
 #include "third_party/qairt/include/QNN/QnnInterface.h"
+#include "third_party/qairt/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
 
-namespace qnn {
+//===----------------------------------------------------------------------===//
+//
+//                                                                   QnnManger
+//
+// Syntactic sugar for various Qnn Sdk routines.
+//
+// Provides various utilities for linking shared libraries at runtime
+// against Qnn symbols as well as convience getters and storage of handles
+// (pointers). Provides simple wrappers for freeing handles and returning
+// LrtStatus rather than Qnn ones. Additionally exposes hooks for dumping
+// api and shared libarary details.
+//
+// Does not own any memory and will always have trivial cstor/dstor. The
+// user is responsible for freeing any Qnn handles explicitly. Note,
+// Qnn handles will be automatically freed when the library is unloaded
+// if they have been already.
+//
+//===----------------------------------------------------------------------===//
 
-// QNN backend library should be on DT_RUNPATH (-rpath).
-constexpr absl::string_view kLibQnnHtpSo = "libQnnHtp.so";
+namespace lrt::qnn {
 
-typedef QNN_INTERFACE_VER_TYPE QnnApi;
-
-// Wrapper to manage dynamic loading and lifetimes of QNN SDK objects.
 class QnnManager {
  public:
   QnnManager() = default;
+  ~QnnManager() = default;
 
   //
   // Manage libQnn*.so Loading
@@ -45,10 +60,16 @@ class QnnManager {
   // Loads the libQnn*.so at given path.
   LrtStatus LoadLib(absl::string_view path);
 
+  // Loads the libQnnSystem.so at given path.
+  LrtStatus LoadSystemLib(absl::string_view path);
+
   // Dumps dynamic loading info about the loaded libQnn*.so. Does
   // nothing if it has not been loaded yet.
-  // TODO: rename DumpLibInfo
   void DumpLibDetails() const;
+
+  // Dumps dynamic loading info about the loaded libQnnSystem.so. Does
+  // nothing if it has not been loaded yet.
+  void DumpSystemLibDetails() const;
 
   //
   // Resolve and Access QNN SDK Functions
@@ -65,7 +86,20 @@ class QnnManager {
 
   // Dumps information relevant to the loaded api provider. Does nothing if
   // a successful ResolveFuncs hasn't occurred.
-  void DumpProviderDetails() const;
+  void DumpApiDetails() const;
+
+  // Resolve all available QNN SDK functions from (already) loaded so. If
+  // multiple providers are found, selects the first one with a suitable
+  // version. Fails if none can be found.
+  LrtStatus ResolveSystemApi();
+
+  // Get resolved function pointers for qnn sdk calls. Nullptr if functions
+  // have not been resolved yet.
+  const QnnSystemApi* SystemApi() const;
+
+  // Dumps information relevant to the loaded api provider. Does nothing if
+  // a successful ResolveFuncs hasn't occurred.
+  void DumpSystemApiDetails() const;
 
   //
   // QNN SDK Objects.
@@ -102,6 +136,16 @@ class QnnManager {
   // if contextCreate has not been called.
   LrtStatus FreeContext();
 
+  // Get qnn system context handle. Nullptr if systemContextCreate has not been
+  // successfully called.
+  QnnSystemContext_Handle_t& SystemContextHandle() {
+    return system_context_handle_;
+  }
+
+  // Signal QNN SDK to free any memory related to system context. Does nothing
+  // if systemContextCreate has not been called.
+  LrtStatus FreeSystemContext();
+
   //
   // Context Binary
   //
@@ -113,7 +157,11 @@ class QnnManager {
  private:
   void* lib_so_ = nullptr;
 
+  void* lib_system_so_ = nullptr;
+
   const QnnInterface_t* interface_ = nullptr;
+
+  const QnnSystemInterface_t* system_interface_ = nullptr;
 
   Qnn_LogHandle_t log_handle_ = nullptr;
 
@@ -122,12 +170,18 @@ class QnnManager {
   Qnn_DeviceHandle_t device_handle_ = nullptr;
 
   Qnn_ContextHandle_t context_handle_ = nullptr;
+
+  QnnSystemContext_Handle_t system_context_handle_ = nullptr;
 };
 
 // Runs alls "setup" methods (LoadLibSO, ResolveFuncs) and aditionally
-// instantiates the logging, backend and context.
+// instantiates the logging, backend and context. Simply syntactic sugar,
+// the user may also call QnnManager::Api and do this manually.
+// TODO: Update SetupAll to take a "configuration struct" as input
+// to facilitate Qnn setup in a "declarative" manner.
 LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
-                   QnnManager& qnn);
+                   QnnManager& qnn, bool load_system = false,
+                   bool load_context = false);
 
 // Default QNN Configurations.
 namespace config {
@@ -144,6 +198,6 @@ inline absl::Span<const QnnContext_Config_t*> GetDefaultContextConfigs() {
 
 }  // namespace config
 
-}  // namespace qnn
+}  // namespace lrt::qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_SDK_QNN_MANAGER_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_MANAGER_H_

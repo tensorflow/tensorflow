@@ -21,20 +21,67 @@ cc_library(
     name = "dispatch_api",
     srcs = [
         "dispatch_api.cc",
-        "lrt_dispatch_device_context.cc",
-        "lrt_dispatch_invocation_context.cc",
-    ],
-    hdrs = [
-        "lrt_dispatch_device_context.h",
-        "lrt_dispatch_invocation_context.h",
-        "registry.h",
     ],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
     deps = [
+        ":lrt_dispatch_device_context",
+        ":lrt_dispatch_invocation_context",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "lrt_dispatch_device_context",
+    srcs = ["lrt_dispatch_device_context.cc"],
+    hdrs = ["lrt_dispatch_device_context.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":registry",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/log:absl_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+    ],
+)
+
+cc_library(
+    name = "lrt_dispatch_invocation_context",
+    srcs = ["lrt_dispatch_invocation_context.cc"],
+    hdrs = ["lrt_dispatch_invocation_context.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    deps = [
+        ":lrt_dispatch_device_context",
+        ":registry",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -43,16 +90,24 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_dispatch_c_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/core:logging",
-        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core:utils",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:context_binary_info",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+    ],
+)
+
+cc_library(
+    name = "registry",
+    hdrs = ["registry.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
 cc_shared_library(
     name = "dispatch_api_shared",
-    shared_lib_name = "liblrtdispatch.so",
+    shared_lib_name = "libLrtDispatch.so",
     visibility = ["//visibility:public"],
     deps = [":dispatch_api"],
 )
@@ -69,6 +124,12 @@ cc_test(
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
+    linkstatic = 1,
+    tags = [
+        "no-remote-exec",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":dispatch_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
