@@ -12,21 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_COMPOSE_GRAPH_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_COMPOSE_GRAPH_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_QNN_COMPOSE_GRAPH_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_QNN_COMPOSE_GRAPH_H_
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/qnn_sdk/qnn_manager.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
-namespace qnn {
+namespace lrt::qnn {
 
 // Composes a new QNN Graph from given Lrt Graph. Qnn Graph is written to
 // context behind "qnn". Uses given graph_name to name entry point.
 LrtStatus ComposeGraph(QnnManager& qnn, LrtSubgraph subgraph,
                        absl::string_view qnn_graph_name);
 
-}  // namespace qnn
+}  // namespace lrt::qnn
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_QNN_QNN_COMPOSE_GRAPH_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_QNN_COMPOSE_GRAPH_H_

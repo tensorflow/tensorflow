@@ -25,7 +25,7 @@
 #include "third_party/qairt/include/QNN/QnnCommon.h"
 #include "third_party/qairt/include/QNN/QnnTypes.h"
 #include "third_party/qairt/include/QNN/System/QnnSystemContext.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_tensor.h"
 
 namespace lrt {
@@ -144,19 +144,11 @@ absl::Status ContextBinaryInfo::Init(
 }
 
 absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
-    const qnn::Qnn& qnn, const void* exec_bytecode_ptr,
-    size_t exec_bytecode_size) {
-  QnnSystemContext_Handle_t sys_ctx_handle = nullptr;
-  if (auto status = qnn.system_interface().systemContextCreate(&sys_ctx_handle);
-      status != QNN_SUCCESS) {
-    ABSL_LOG(ERROR) << "Failed to create system handle: " << status;
-    return absl::InternalError("Failed to create system handle");
-  }
-
+    QnnManager& qnn, const void* exec_bytecode_ptr, size_t exec_bytecode_size) {
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size = 0;
-  if (auto status = qnn.system_interface().systemContextGetBinaryInfo(
-          sys_ctx_handle, const_cast<void*>(exec_bytecode_ptr),
+  if (auto status = qnn.SystemApi()->systemContextGetBinaryInfo(
+          qnn.SystemContextHandle(), const_cast<void*>(exec_bytecode_ptr),
           exec_bytecode_size, &binary_info, &binary_info_size);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get context binary info: " << status;
@@ -170,8 +162,6 @@ absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
 
   ContextBinaryInfo info;
   auto status = info.Init(*binary_info);
-
-  qnn.system_interface().systemContextFree(sys_ctx_handle);
 
   if (status.ok()) {
     return info;
