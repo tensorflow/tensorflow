@@ -120,11 +120,11 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
         std::make_unique<Device>(std::move(desc), d.local_device_id(),
                                  d.local_hardware_id(), is_addressable);
     all_device_ptrs.push_back(device.get());
-    if (is_addressable) {
-      addressable_device_ptrs.push_back(device.get());
-    }
     if (is_primary) {
       primary_device_ptrs.push_back(device.get());
+      if (is_addressable) {
+        addressable_device_ptrs.push_back(device.get());
+      }
     }
 
     if (d.has_default_memory_id()) {
