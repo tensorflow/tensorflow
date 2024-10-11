@@ -31,3 +31,4 @@ swig
 unzip
 zip
 openjdk-21-jdk
+vim
