@@ -884,14 +884,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::Status GpuDriver::GetComputeCapability(int* cc_major, int* cc_minor,
-                                             hipDevice_t device) {
-  return absl::InternalError(
-      absl::StrFormat("failed to get compute capability for device: %d "
-                      "(unsupported API on AMD Gpus)",
-                      device));
-}
-
 absl::Status GpuDriver::GetPointerAddressRange(hipDeviceptr_t dptr,
                                                hipDeviceptr_t* base,
                                                size_t* size) {
