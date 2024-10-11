@@ -485,9 +485,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
     PerChannelSymmetricQuantizeAndPopulate(weights_, f);
   }
 
-  void SetSignedWeights4Bit(std::initializer_list<float> f) {
-    SignedSymmetricQuantizeAndPopulate4Bit(weights_, f);
-  }
 
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
@@ -1511,7 +1508,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
       /*input=*/{TensorType_FLOAT32, {2, 10}},
       /*weights=*/{TensorType_INT4, {3, 10}, 0, 0, 10.0 / 7.0, 0});  // Hybrid
 
-  m.SetSignedWeights4Bit({
+  m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
