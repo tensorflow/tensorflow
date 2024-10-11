@@ -2800,6 +2800,7 @@ cc_library(
         ["sort_rewriter_stub.cc"],
     ),
     hdrs = ["sort_rewriter.h"],
+    visibility = ["//xla/service/gpu:__subpackages__"] + if_google(["//learning/brain/engprod/xwatch:__subpackages__"]),
     deps = [
         "//xla:comparison_util",
         "//xla:shape_util",
