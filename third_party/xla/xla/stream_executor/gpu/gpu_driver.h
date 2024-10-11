@@ -478,42 +478,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Returns the number of multiprocessors on the device (note that the device
-  // may be multi-GPU-per-board).
-  static absl::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
-
-  // Returns the limit on number of threads that can be resident in a single
-  // multiprocessor.
-  static absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
-      GpuDeviceHandle device);
-
-  // Returns the amount of shared memory available on a single GPU core (i.e.
-  // SM on NVIDIA devices).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
-      GpuDeviceHandle device);
-
-  // Returns the amount of static shared memory available for a single block
-  // (cooperative thread array).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
-      GpuDeviceHandle device);
-
-  // Returns the total amount of shared memory available for a single block
-  // (cooperative thread array).
-  static absl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(
-      GpuDeviceHandle device);
-
-  // Returns the maximum supported number of registers per block.
-  static absl::StatusOr<int64_t> GetMaxRegistersPerBlock(
-      GpuDeviceHandle device);
-
-  // Returns the number of threads per warp.
-  static absl::StatusOr<int64_t> GetThreadsPerWarp(GpuDeviceHandle device);
-
-  // Queries the grid limits for device with cuDeviceGetAttribute calls.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
-  static absl::Status GetGridLimits(int* x, int* y, int* z,
-                                    GpuDeviceHandle device);
-
   // Returns a grab-bag of device properties in a caller-owned device_properties
   // structure for device_ordinal via cuDeviceGetProperties.
   //
