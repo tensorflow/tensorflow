@@ -152,6 +152,14 @@ bool InlineUnderShardy(HloInstruction* instruction) {
                              sdy::kManualComputationBodyFuncName.str())));
 }
 
+bool InlineComposites(
+    HloInstruction* instruction,
+    const absl::flat_hash_set<std::string>& composites_to_preserve) {
+  return !instruction->is_composite() ||
+         !composites_to_preserve.contains(
+             instruction->frontend_attributes().map().at("composite.name"));
+}
+
 }  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
@@ -204,7 +212,8 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return instruction->opcode() == HloOpcode::kCall &&
          !instruction->has_backend_config() &&
          !instruction->parent()->IsAsyncComputation() &&
-         InlineUnderShardy(instruction);
+         InlineUnderShardy(instruction) &&
+         InlineComposites(instruction, composites_to_preserve_);
 }
 
 absl::StatusOr<bool> CallInliner::Run(

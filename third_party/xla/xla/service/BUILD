@@ -1240,7 +1240,6 @@ xla_cc_test(
     srcs = ["call_inliner_test.cc"],
     deps = [
         ":call_inliner",
-        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
