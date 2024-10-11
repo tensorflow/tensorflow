@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"

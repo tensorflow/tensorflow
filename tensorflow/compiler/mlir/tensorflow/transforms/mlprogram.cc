@@ -18,10 +18,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/Twine.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"

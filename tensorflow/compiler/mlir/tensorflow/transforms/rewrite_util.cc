@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
