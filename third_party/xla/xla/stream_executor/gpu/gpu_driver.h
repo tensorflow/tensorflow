@@ -419,22 +419,6 @@ class GpuDriver {
   static absl::Status SynchronizeStream(Context* context,
                                         GpuStreamHandle stream);
 
-  // Returns whether code in the from context can access memory in the to
-  // context via cuDeviceCanAccessPeer.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
-  static bool CanEnablePeerAccess(Context* from, Context* to);
-
-  // Returns whether the from device can access memory in the to
-  // device via cuDeviceCanAccessPeer. Because of differences between ROCM and
-  // CUDA, this API is not supported in ROCM builds and will result in a link
-  // error if used.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e
-  static bool CanEnablePeerAccess(GpuDeviceHandle from, GpuDeviceHandle to);
-
-  // Enables peer access per CanEnablePeerAccess, via cuCtxEnablePeerAccess.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g0889ec6728e61c05ed359551d67b3f5a
-  static absl::Status EnablePeerAccess(Context* from, Context* to);
-
   // -- Pointer-specific calls.
 
   // Returns the memory space addressed by pointer.
