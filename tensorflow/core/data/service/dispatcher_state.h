@@ -71,7 +71,7 @@ class DispatcherState {
   DispatcherState& operator=(const DispatcherState&) = delete;
 
   // Applies the given update to the dispatcher's state.
-  Status Apply(const Update& update);
+  absl::Status Apply(const Update& update);
 
   // A dataset registered with the dispatcher.
   struct Dataset {
@@ -229,38 +229,38 @@ class DispatcherState {
   std::string NextAvailableDatasetId() const;
 
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(const std::string& id,
-                       std::shared_ptr<const Dataset>& dataset) const;
+  absl::Status DatasetFromId(const std::string& id,
+                             std::shared_ptr<const Dataset>& dataset) const;
 
   // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
-  Status WorkerFromAddress(const std::string& address,
-                           std::shared_ptr<const Worker>& worker) const;
+  absl::Status WorkerFromAddress(const std::string& address,
+                                 std::shared_ptr<const Worker>& worker) const;
   // Lists all workers registered with the dispatcher.
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
   // Returns the next available job id.
   int64_t NextAvailableJobId() const;
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
-  Status JobFromId(int64_t job_id, std::shared_ptr<const Job>& job) const;
+  absl::Status JobFromId(int64_t job_id, std::shared_ptr<const Job>& job) const;
   // Gets a job by name. Returns NOT_FOUND if there is no such job.
-  Status JobByName(const std::string& job_name,
-                   std::shared_ptr<const Job>& job) const;
+  absl::Status JobByName(const std::string& job_name,
+                         std::shared_ptr<const Job>& job) const;
 
   // Returns the next available iteration id.
   int64_t NextAvailableIterationId() const;
   // Returns a list of all iterations.
   std::vector<std::shared_ptr<const Iteration>> ListIterations() const;
   // Gets an iteration by id. Returns NOT_FOUND if there is no such iteration.
-  Status IterationFromId(int64_t id,
-                         std::shared_ptr<const Iteration>& iteration) const;
+  absl::Status IterationFromId(
+      int64_t id, std::shared_ptr<const Iteration>& iteration) const;
   // Gets an iteration by key. Returns NOT_FOUND if there is no such iteration.
-  Status IterationByKey(IterationKey key,
-                        std::shared_ptr<const Iteration>& iteration) const;
+  absl::Status IterationByKey(
+      IterationKey key, std::shared_ptr<const Iteration>& iteration) const;
 
   // Returns the iteration associated with the given iteration client id.
   // Returns NOT_FOUND if the iteration_client_id is unknown or has been
   // released.
-  Status IterationForIterationClientId(
+  absl::Status IterationForIterationClientId(
       int64_t iteration_client_id, std::shared_ptr<const Iteration>& iteration);
   // Returns a list of all active client ids.
   std::vector<int64_t> ListActiveClientIds();
@@ -270,20 +270,21 @@ class DispatcherState {
   // Returns the next available task id.
   int64_t NextAvailableTaskId() const;
   // Gets a task by id. Returns NOT_FOUND if there is no such task.
-  Status TaskFromId(int64_t id, std::shared_ptr<const Task>& task) const;
+  absl::Status TaskFromId(int64_t id, std::shared_ptr<const Task>& task) const;
   // Stores a list of all tasks for the given iteration to `tasks`. Returns
   // NOT_FOUND if there is no such iteration.
-  Status TasksForIteration(
+  absl::Status TasksForIteration(
       int64_t iteration_id,
       std::vector<std::shared_ptr<const Task>>& tasks) const;
   // Stores a list of all tasks for the given worker to `tasks`. Returns
   // NOT_FOUND if there is no such worker.
-  Status TasksForWorker(const absl::string_view worker_address,
-                        std::vector<std::shared_ptr<const Task>>& tasks) const;
+  absl::Status TasksForWorker(
+      const absl::string_view worker_address,
+      std::vector<std::shared_ptr<const Task>>& tasks) const;
 
   // If the dispatcher config explicitly specifies a list of workers, validates
   // `worker_address` is in the list.
-  Status ValidateWorker(absl::string_view worker_address) const;
+  absl::Status ValidateWorker(absl::string_view worker_address) const;
 
   // If the dispatcher config specifies worker addresses, `GetWorkerIndex`
   // returns the worker index according to the list. This is useful for
