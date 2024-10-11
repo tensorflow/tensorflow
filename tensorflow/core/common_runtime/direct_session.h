@@ -67,25 +67,25 @@ class DirectSession : public Session {
   typedef std::vector<std::pair<string, Tensor>> NamedTensorList;
   typedef std::unordered_map<StringPiece, Node*, StringPieceHasher> NameNodeMap;
 
-  ::tensorflow::Status Create(const GraphDef& graph) override;
-  ::tensorflow::Status Create(GraphDef&& graph) override;
-  ::tensorflow::Status Extend(const GraphDef& graph) override;
-  ::tensorflow::Status Extend(GraphDef&& graph) override;
-  ::tensorflow::Status Run(const NamedTensorList& inputs,
-                           const std::vector<string>& output_names,
-                           const std::vector<string>& target_nodes,
-                           std::vector<Tensor>* outputs) override;
+  absl::Status Create(const GraphDef& graph) override;
+  absl::Status Create(GraphDef&& graph) override;
+  absl::Status Extend(const GraphDef& graph) override;
+  absl::Status Extend(GraphDef&& graph) override;
+  absl::Status Run(const NamedTensorList& inputs,
+                   const std::vector<string>& output_names,
+                   const std::vector<string>& target_nodes,
+                   std::vector<Tensor>* outputs) override;
 
   // NOTE: Experimental and subject to change.
-  ::tensorflow::Status Run(const ::tensorflow::RunOptions& run_options,
-                           const NamedTensorList& inputs,
-                           const std::vector<string>& output_names,
-                           const std::vector<string>& target_nodes,
-                           std::vector<Tensor>* outputs,
-                           RunMetadata* run_metadata) override;
+  absl::Status Run(const ::tensorflow::RunOptions& run_options,
+                   const NamedTensorList& inputs,
+                   const std::vector<string>& output_names,
+                   const std::vector<string>& target_nodes,
+                   std::vector<Tensor>* outputs,
+                   RunMetadata* run_metadata) override;
 
   // NOTE: Experimental and subject to change.
-  ::tensorflow::Status Run(
+  absl::Status Run(
       const ::tensorflow::RunOptions& run_options,
       const NamedTensorList& inputs, const std::vector<string>& output_names,
       const std::vector<string>& target_nodes, std::vector<Tensor>* outputs,
@@ -94,22 +94,21 @@ class DirectSession : public Session {
 
   // NOTE: PRunSetup and PRun are added to support partial execution. This
   // feature is experimental and subject to change.
-  ::tensorflow::Status PRunSetup(const std::vector<string>& input_names,
-                                 const std::vector<string>& output_names,
-                                 const std::vector<string>& target_nodes,
-                                 string* handle) override;
-  ::tensorflow::Status PRun(const string& handle, const NamedTensorList& inputs,
-                            const std::vector<string>& output_names,
-                            std::vector<Tensor>* outputs) override;
+  absl::Status PRunSetup(const std::vector<string>& input_names,
+                         const std::vector<string>& output_names,
+                         const std::vector<string>& target_nodes,
+                         string* handle) override;
+  absl::Status PRun(const string& handle, const NamedTensorList& inputs,
+                    const std::vector<string>& output_names,
+                    std::vector<Tensor>* outputs) override;
 
   // Reset clears 'containers' from the device_mgr of the DirectSession.
   // If 'containers' is empty, then Reset clears the default container.
-  ::tensorflow::Status Reset(const std::vector<string>& containers);
+  absl::Status Reset(const std::vector<string>& containers);
 
-  ::tensorflow::Status ListDevices(
-      std::vector<DeviceAttributes>* response) override;
-  ::tensorflow::Status Close() override;
-  ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
+  absl::Status ListDevices(std::vector<DeviceAttributes>* response) override;
+  absl::Status Close() override;
+  absl::Status LocalDeviceManager(const DeviceMgr** output) override {
     *output = device_mgr_.get();
     return absl::OkStatus();
   }
@@ -118,22 +117,22 @@ class DirectSession : public Session {
     cost_model_manager_.ExportCostModels(cost_models);
   }
 
-  ::tensorflow::Status MakeCallable(const CallableOptions& callable_options,
-                                    CallableHandle* out_handle) override;
+  absl::Status MakeCallable(const CallableOptions& callable_options,
+                            CallableHandle* out_handle) override;
 
-  ::tensorflow::Status RunCallable(CallableHandle handle,
-                                   const std::vector<Tensor>& feed_tensors,
-                                   std::vector<Tensor>* fetch_tensors,
-                                   RunMetadata* run_metadata) override;
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata) override;
 
-  ::tensorflow::Status RunCallable(
+  absl::Status RunCallable(
       CallableHandle handle, const std::vector<Tensor>& feed_tensors,
       std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options) override;
 
-  ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
+  absl::Status ReleaseCallable(CallableHandle handle) override;
 
-  ::tensorflow::Status Finalize() override;
+  absl::Status Finalize() override;
 
   const SessionOptions& options() const { return options_; }
 
@@ -198,7 +197,7 @@ class DirectSession : public Session {
   // 'status' is the current status of the execution.
   struct RunState {
     mutex mu;
-    Status status TF_GUARDED_BY(mu);
+    absl::Status status TF_GUARDED_BY(mu);
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
     TensorStore tensor_store;
@@ -240,14 +239,15 @@ class DirectSession : public Session {
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
-  ::tensorflow::Status GetOrCreateExecutors(
-      absl::Span<const string> inputs, absl::Span<const string> outputs,
-      absl::Span<const string> target_nodes,
-      ExecutorsAndKeys** executors_and_keys, RunStateArgs* run_state_args);
+  absl::Status GetOrCreateExecutors(absl::Span<const string> inputs,
+                                    absl::Span<const string> outputs,
+                                    absl::Span<const string> target_nodes,
+                                    ExecutorsAndKeys** executors_and_keys,
+                                    RunStateArgs* run_state_args);
 
   // Creates a set of executors to run the subgraph defined by
   // `callable_options`.
-  ::tensorflow::Status CreateExecutors(
+  absl::Status CreateExecutors(
       const CallableOptions& callable_options,
       std::unique_ptr<ExecutorsAndKeys>* out_executors_and_keys,
       std::unique_ptr<FunctionInfo>* out_func_info,
@@ -256,67 +256,65 @@ class DirectSession : public Session {
   // Creates several graphs given the existing graph_def_ and the
   // input feeds and fetches, given 'devices'. The graphs share a common
   // function library 'flib_def'.
-  ::tensorflow::Status CreateGraphs(
+  absl::Status CreateGraphs(
       const BuildGraphOptions& options,
       std::unordered_map<string, std::unique_ptr<Graph>>* outputs,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       RunStateArgs* run_state_args, DataTypeVector* input_types,
       DataTypeVector* output_types, int64_t* collective_graph_key);
 
-  ::tensorflow::Status RunInternal(
-      int64_t step_id, const RunOptions& run_options,
-      CallFrameInterface* call_frame, ExecutorsAndKeys* executors_and_keys,
-      RunMetadata* run_metadata,
-      const thread::ThreadPoolOptions& threadpool_options);
+  absl::Status RunInternal(int64_t step_id, const RunOptions& run_options,
+                           CallFrameInterface* call_frame,
+                           ExecutorsAndKeys* executors_and_keys,
+                           RunMetadata* run_metadata,
+                           const thread::ThreadPoolOptions& threadpool_options);
 
   // Returns whether inter-op execution uses a global pool or the input
   // `run_options` requests being run on inter_op_thread_pool = 0 in case
   // multiple pools are configured.
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
-  ::tensorflow::Status ExtendLocked(GraphDef&& graph)
+  absl::Status ExtendLocked(GraphDef&& graph)
       TF_EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
-  ::tensorflow::Status ResourceHandleToInputTensor(
-      const Tensor& resource_tensor, Tensor* retrieved_tensor);
+  absl::Status ResourceHandleToInputTensor(const Tensor& resource_tensor,
+                                           Tensor* retrieved_tensor);
 
   // Feeds more inputs to the executors, triggering further execution.
-  ::tensorflow::Status SendPRunInputs(
+  absl::Status SendPRunInputs(
       const std::vector<std::pair<string, Tensor>>& inputs,
       const ExecutorsAndKeys* executors_and_keys,
       IntraProcessRendezvous* rendez);
 
   // Fetches more outputs from the executors. It waits until the output
   // tensors are computed.
-  ::tensorflow::Status RecvPRunOutputs(
-      const std::vector<string>& output_names,
-      const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
-      std::vector<Tensor>* outputs);
+  absl::Status RecvPRunOutputs(const std::vector<string>& output_names,
+                               const ExecutorsAndKeys* executors_and_keys,
+                               PartialRunState* run_state,
+                               std::vector<Tensor>* outputs);
 
   // Check if the specified fetches can be computed from the feeds
   // that we have already provided.
-  ::tensorflow::Status CheckFetch(
-      const std::vector<std::pair<string, Tensor>>& feeds,
-      const std::vector<string>& fetches,
-      const ExecutorsAndKeys* executors_and_keys,
-      const PartialRunState* run_state);
+  absl::Status CheckFetch(const std::vector<std::pair<string, Tensor>>& feeds,
+                          const std::vector<string>& fetches,
+                          const ExecutorsAndKeys* executors_and_keys,
+                          const PartialRunState* run_state);
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
   //
   // If the timeout expires, the `cm->StartCancel()` will be called.
-  ::tensorflow::Status WaitForNotification(Notification* n,
-                                           int64_t timeout_in_ms);
+  absl::Status WaitForNotification(Notification* n, int64_t timeout_in_ms);
   void WaitForNotification(Notification* n, RunState* run_state,
                            CancellationManager* cm, int64_t timeout_in_ms);
 
-  ::tensorflow::Status CheckNotClosed() {
+  absl::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
     if (closed_) return errors::Cancelled("Session has been closed.");
     return absl::OkStatus();
   }
 
-  ::tensorflow::Status CheckGraphCreated(const char* method) {
+  absl::Status CheckGraphCreated(const char* method) {
     mutex_lock l(graph_state_lock_);
     if (!graph_created_) {
       return errors::InvalidArgument(
@@ -325,12 +323,12 @@ class DirectSession : public Session {
     return absl::OkStatus();
   }
 
-  ::tensorflow::Status CreateDebuggerState(
+  absl::Status CreateDebuggerState(
       const CallableOptions& options, int64_t global_step,
       int64_t session_run_index, int64_t executor_step_index,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
-  ::tensorflow::Status DecorateAndPublishGraphForDebug(
+  absl::Status DecorateAndPublishGraphForDebug(
       const DebugOptions& debug_options, Graph* graph, Device* device);
 
   const SessionOptions options_;
@@ -350,7 +348,7 @@ class DirectSession : public Session {
   // is owned.
   std::vector<std::pair<thread::ThreadPool*, bool>> thread_pools_;
 
-  Status init_error_;  // Set to an error if construction failed.
+  absl::Status init_error_;  // Set to an error if construction failed.
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;
