@@ -132,7 +132,9 @@ LrtStatus IsTensorSupported(const tflite::TensorT& tensor) {
     return kLrtStatusErrorUnsupported;
   }
 
-  if (tensor.type != tflite::TensorType_FLOAT32) {
+  if (tensor.type != tflite::TensorType_FLOAT32 &&
+      tensor.type != tflite::TensorType_INT32 &&
+      tensor.type != tflite::TensorType_BOOL) {
     // TODO: b/365299994 - Support all element types.
     _LRT_D_MSG("Only f32 supported.");
     return kLrtStatusErrorUnsupported;
@@ -224,6 +226,10 @@ LrtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
   target->op_code = GetOpCode(op.opcode_index);
 
   for (auto input : op.inputs) {
+    // Skipping optional input tensor.
+    if (input == -1) {
+      continue;
+    }
     auto& input_tensor = tensors[input];
 
     input_tensor->users.push_back(target);

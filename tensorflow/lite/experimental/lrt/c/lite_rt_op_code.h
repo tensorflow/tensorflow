@@ -65,7 +65,7 @@ typedef enum {
   kLrtOpCodeTflSpaceToBatchNd = kTfLiteBuiltinSpaceToBatchNd,
   kLrtOpCodeTflTranspose = kTfLiteBuiltinTranspose,
   kLrtOpCodeTflMean = kTfLiteBuiltinMean,
-  kLrtOpCodeTflSuv = kTfLiteBuiltinSub,
+  kLrtOpCodeTflSub = kTfLiteBuiltinSub,
   kLrtOpCodeTflDiv = kTfLiteBuiltinDiv,
   kLrtOpCodeTflSqueeze = kTfLiteBuiltinSqueeze,
   kLrtOpCodeTflUnidirectionalSequenceLstm =
