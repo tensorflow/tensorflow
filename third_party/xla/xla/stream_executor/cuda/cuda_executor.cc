@@ -260,6 +260,17 @@ absl::StatusOr<int> GetDeviceAttribute(CUdevice_attribute attribute,
       cuda::ToStatus(cuDeviceGetAttribute(&val, attribute, device)));
   return val;
 }
+
+// Returns the name of the device.
+absl::StatusOr<std::string> GetDeviceName(CUdevice device) {
+  static const size_t kCharLimit = 64;
+  absl::InlinedVector<char, 4> chars(kCharLimit);
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuDeviceGetName(chars.begin(), kCharLimit - 1, device),
+                     "Failed to get device name"));
+  chars[kCharLimit - 1] = '\0';
+  return chars.begin();
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -924,8 +935,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::string device_name;
-    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
+    TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
     desc.set_name(device_name);
   }
 
@@ -966,7 +976,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   // identifier for the GPU model.  But getting this requires using NVML or
   // other hacks, which we don't have access to in OSS TensorFlow.
   //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // Alternatively you might be tempted to use GetDeviceName as a
   // unique identifier, but this is not stable across GPU VBIOS versions.
   //
   // For now, this identifier is good enough.

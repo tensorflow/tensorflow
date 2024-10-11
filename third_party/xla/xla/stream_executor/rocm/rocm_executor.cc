@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -211,6 +212,17 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
   }
+}
+
+// Returns the name of the device.
+absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
+  static const size_t kCharLimit = 64;
+  absl::InlinedVector<char, 4> chars(kCharLimit);
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      "Failed to get device name");
+  chars[kCharLimit - 1] = '\0';
+  return chars.begin();
 }
 }  // namespace
 
@@ -738,8 +750,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   {
-    std::string device_name;
-    TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
+    TF_ASSIGN_OR_RETURN(std::string device_name, GetDeviceName(device));
     desc.set_name(device_name);
   }
 
@@ -783,7 +794,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   // identifier for the GPU model.  But getting this requires using NVML or
   // other hacks, which we don't have access to in OSS TensorFlow.
   //
-  // Alternatively you might be tempted to use GpuDriver::GetDeviceName as a
+  // Alternatively you might be tempted to use GetDeviceName as a
   // unique identifier, but this is not stable across GPU VBIOS versions.
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in

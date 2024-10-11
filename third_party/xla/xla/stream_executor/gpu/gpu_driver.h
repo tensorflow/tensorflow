@@ -128,11 +128,6 @@ class GpuDriver {
   // the CUDA/HIP driver API.
   static absl::Status GetDevice(int device_ordinal, GpuDeviceHandle* device);
 
-  // Given a device handle, returns the name reported by the driver for the
-  // device.
-  static absl::Status GetDeviceName(GpuDeviceHandle device,
-                                    std::string* device_name);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
