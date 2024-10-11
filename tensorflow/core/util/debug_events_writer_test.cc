@@ -63,7 +63,7 @@ class DebugEventsWriterTest : public ::testing::Test {
   static bool ReadDebugEventProto(io::RecordReader* reader, uint64* offset,
                                   DebugEvent* proto) {
     tstring record;
-    Status s = reader->ReadRecord(offset, &record);
+    absl::Status s = reader->ReadRecord(offset, &record);
     if (!s.ok()) {
       return false;
     }
