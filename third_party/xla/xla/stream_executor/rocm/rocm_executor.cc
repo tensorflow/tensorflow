@@ -244,6 +244,18 @@ absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
       "failed to determine AMDGpu ISA version for device %d", device));
 }
 
+// Return the full GCN Architecture Name for the device
+// for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
+absl::StatusOr<std::string> GetGpuGCNArchName(hipDevice_t device) {
+  hipDeviceProp_t props;
+  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  if (result == hipSuccess) {
+    return props.gcnArchName;
+  }
+  return absl::InternalError(absl::StrFormat(
+      "failed to determine AMDGpu GCN Arch Name for device %d", device));
+}
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -703,11 +715,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
-  std::string gcn_arch_name;
-  status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
 
   DeviceDescription desc;
 

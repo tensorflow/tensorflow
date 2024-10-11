@@ -1080,12 +1080,6 @@ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
   return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
 }
 
-absl::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
-  return absl::Status{
-      absl::StatusCode::kInternal,
-      "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
-}
-
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
 // T and wraps it in a absl::StatusOr.
 template <typename T>

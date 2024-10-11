@@ -486,12 +486,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Return the full GCN Architecture Name for the device
-  // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
-  // (supported on ROCm only)
-  static absl::Status GetGpuGCNArchName(GpuDeviceHandle device,
-                                        std::string* gcnArchName);
-
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).
   static absl::StatusOr<int> GetMultiprocessorCount(GpuDeviceHandle device);
