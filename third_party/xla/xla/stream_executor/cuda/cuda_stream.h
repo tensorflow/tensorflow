@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform.h"
@@ -41,18 +41,23 @@ class CudaStream : public GpuStream {
   absl::Status WaitFor(Event* event) override;
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
-      GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+      GpuExecutor* executor, CudaEvent completed_event,
       std::optional<std::variant<StreamPriority, int>> priority);
 
+  ~CudaStream() override;
+
  private:
-  CudaStream(GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+  CudaStream(GpuExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              CUstream stream_handle)
-      : GpuStream(executor, std::move(completed_event), priority,
-                  stream_handle),
-        executor_(executor) {}
+      : GpuStream(executor, priority, stream_handle),
+        executor_(executor),
+        completed_event_(std::move(completed_event)) {}
+
+  absl::Status RecordCompletedEvent();
 
   GpuExecutor* executor_;
+  CudaEvent completed_event_;
 };
 }  // namespace gpu
 

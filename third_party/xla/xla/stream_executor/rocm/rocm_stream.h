@@ -23,11 +23,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
@@ -40,18 +41,23 @@ class RocmStream : public GpuStream {
   absl::Status WaitFor(Event* event) override;
 
   static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
-      GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+      GpuExecutor* executor, RocmEvent completed_event,
       std::optional<std::variant<StreamPriority, int>> priority);
 
+  ~RocmStream() override;
+
  private:
-  RocmStream(GpuExecutor* executor, std::unique_ptr<GpuEvent> completed_event,
+  RocmStream(GpuExecutor* executor, RocmEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              hipStream_t stream_handle)
-      : GpuStream(executor, std::move(completed_event), priority,
-                  stream_handle),
-        executor_(executor) {}
+      : GpuStream(executor, priority, stream_handle),
+        executor_(executor),
+        completed_event_(std::move(completed_event)) {}
+
+  absl::Status RecordCompletedEvent();
 
   GpuExecutor* executor_;
+  RocmEvent completed_event_;
 };
 
 }  // namespace gpu
