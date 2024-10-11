@@ -109,7 +109,7 @@ absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
-    GpuExecutor* executor, RocmEvent completed_event,
+    GpuExecutor* executor,
     std::optional<std::variant<StreamPriority, int>> priority) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
@@ -121,6 +121,10 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,
                       CreateStream(executor->gpu_context(), stream_priority));
+
+  TF_ASSIGN_OR_RETURN(auto completed_event,
+                      RocmEvent::Create(executor->gpu_context(),
+                                        /*allow_timing=*/false));
 
   return std::unique_ptr<RocmStream>(new RocmStream(
       executor, std::move(completed_event), priority, stream_handle));

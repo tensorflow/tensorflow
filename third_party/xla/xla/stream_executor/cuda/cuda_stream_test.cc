@@ -19,13 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
@@ -68,13 +66,9 @@ TEST_F(CudaStreamTest, Memset32) {
   DeviceMemory<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto completed_event,
-                          CudaEvent::Create(executor_->gpu_context(),
-                                            /*allow_timing=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<CudaStream> stream,
-      CudaStream::Create(&executor_.value(), std::move(completed_event),
-                         /*priority=*/std::nullopt));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
 
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,

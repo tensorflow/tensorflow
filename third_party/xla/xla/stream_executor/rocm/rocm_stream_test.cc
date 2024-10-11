@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
@@ -68,13 +66,9 @@ TEST_F(RocmStreamTest, Memset32) {
   DeviceMemory<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto completed_event,
-                          RocmEvent::Create(executor_->gpu_context(),
-                                            /*allow_timing=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<RocmStream> stream,
-      RocmStream::Create(&executor_.value(), std::move(completed_event),
-                         /*priority=*/std::nullopt));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
 
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,

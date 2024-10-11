@@ -46,7 +46,7 @@ class RocmStream : public GpuStream {
                         uint64_t size) override;
 
   static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
-      GpuExecutor* executor, RocmEvent completed_event,
+      GpuExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~RocmStream() override;

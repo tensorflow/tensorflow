@@ -93,7 +93,7 @@ absl::StatusOr<CUstream> CreateStream(Context* context, int priority) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
-    GpuExecutor* executor, CudaEvent completed_event,
+    GpuExecutor* executor,
     std::optional<std::variant<StreamPriority, int>> priority) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
@@ -105,6 +105,10 @@ absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,
                       CreateStream(executor->gpu_context(), stream_priority));
+
+  TF_ASSIGN_OR_RETURN(auto completed_event,
+                      CudaEvent::Create(executor->gpu_context(),
+                                        /*allow_timing=*/false));
 
   return std::unique_ptr<CudaStream>(new CudaStream(
       executor, std::move(completed_event), priority, stream_handle));

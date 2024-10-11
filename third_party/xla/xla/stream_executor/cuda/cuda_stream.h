@@ -46,7 +46,7 @@ class CudaStream : public GpuStream {
                         uint64_t size) override;
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
-      GpuExecutor* executor, CudaEvent completed_event,
+      GpuExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~CudaStream() override;
