@@ -33,9 +33,11 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
@@ -106,7 +108,8 @@ mlir::Type StorageType(mlir::OpBuilder b, mlir::Type t);
 // Get the value of the scalar constant's literal in a C++ type.
 template <typename T>
 T ScalarConstantValue(const HloInstruction& instr, PrimitiveType dst_type) {
-  CHECK(hlo_query::IsScalarConstant(&instr));
+  CHECK_EQ(instr.opcode(), HloOpcode::kConstant);
+  CHECK(ShapeUtil::IsEffectiveScalar(instr.shape()));
   absl::StatusOr<Literal> converted = instr.literal().Convert(dst_type);
   TF_CHECK_OK(converted.status());
   return converted.value().GetFirstElement<T>();

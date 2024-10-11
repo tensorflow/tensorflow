@@ -609,7 +609,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
-    if (ShapeUtil::IsScalar(hlo->shape())) {
+    if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
       return EmitConstant(b, *hlo);
     }
     return absl::UnimplementedError(

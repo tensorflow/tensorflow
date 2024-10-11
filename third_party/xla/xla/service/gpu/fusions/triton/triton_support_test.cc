@@ -1108,6 +1108,24 @@ INSTANTIATE_TEST_SUITE_P(
 
 using ConstantTest = TritonSupportTestWithTypeAndDeviceParam;
 
+TEST_P(ConstantTest, ConstantEffectiveScalar) {
+  // The IsTritonSupportedReduction effectively tests the scalar constant
+  // support.
+  auto [data_type, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+ENTRY triton_computation {
+  ROOT const = $0[1,1] constant({{$1}})
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kConstant));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1}, cc);
+}
+
 TEST_P(ConstantTest, Constant2D) {
   // The IsTritonSupportedReduction effectively tests the scalar constant
   // support.

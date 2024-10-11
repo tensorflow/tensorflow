@@ -284,7 +284,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
-    return ShapeUtil::IsScalar(instr.shape())
+    return ShapeUtil::IsEffectiveScalar(instr.shape())
                ? CodegenDecision::Allow()
                : CodegenDecision::Forbid(
                      "Only scalar constants are supported in Triton.");

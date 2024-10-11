@@ -427,14 +427,19 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
 absl::StatusOr<ScalarOrTensor> EmitConstant(ImplicitLocOpBuilder& b,
                                             const HloInstruction& constant) {
   TF_ASSIGN_OR_RETURN(Type ty, TritonType(b, constant.shape().element_type()));
+  llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
+                                   constant.shape().dimensions().end()};
+
   if (constant.shape().IsInteger()) {
     if (constant.shape().element_type() == U64) {
-      return CreateConst(b, ty, ScalarConstantValue<uint64_t>(constant, U64));
+      return CreateConst(b, ty, ScalarConstantValue<uint64_t>(constant, U64),
+                         shape);
     } else {
-      return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64));
+      return CreateConst(b, ty, ScalarConstantValue<int64_t>(constant, S64),
+                         shape);
     }
   }
-  return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64));
+  return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
 }
 
 // Emit sequence of operations for unpacking 2xi4 -> i8.
