@@ -598,6 +598,8 @@ cc_library(
     srcs = ["inspect_sharding.cc"],
     hdrs = ["inspect_sharding.h"],
     deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",
@@ -680,6 +682,8 @@ cc_library(
         # placeholder for index annotation deps
         "@com_google_absl//absl/types:span",
         "@nanobind",
+        "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
@@ -693,6 +697,7 @@ cc_library(
         "//xla/hlo/builder/lib:sorting",
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
+        "//xla/service:hlo_proto_cc",
     ],
 )
 
