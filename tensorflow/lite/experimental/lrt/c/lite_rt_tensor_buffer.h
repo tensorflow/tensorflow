@@ -67,12 +67,12 @@ typedef void (*LrtFastRpcDeallocator)(void* fastrpc_buffer_addr);
 // error if the passed host memory buffer doesn't satisfy
 // LRT_HOST_MEMORY_BUFFER_ALIGNMENT alignment.
 LrtStatus LrtCreateTensorBufferFromHostMemory(
-    LrtRankedTensorType tensor_type, void* host_buffer_addr,
+    const LrtRankedTensorType* tensor_type, void* host_buffer_addr,
     size_t host_buffer_size, LrtHostMemoryDeallocator deallocator,
     LrtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not allocated on the host memory.
-LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer tensor_buffer,
                                        void** host_memory_addr);
 
 #if LRT_HAS_AHWB_SUPPORT
@@ -81,14 +81,14 @@ LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer buffer,
 // be used to specify multiple tensor buffers sharing the same underlying AHWB,
 // in which case the provided AHWB must be sufficiently large to accomodate for
 // the allocation needed for all tensor buffers sharing it.
-LrtStatus LrtCreateTensorBufferFromAhwb(LrtRankedTensorType tensor_type,
+LrtStatus LrtCreateTensorBufferFromAhwb(const LrtRankedTensorType* tensor_type,
                                         AHardwareBuffer* ahwb,
                                         size_t ahwb_offset,
                                         LrtAhwbDeallocator deallocator,
                                         LrtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not an AhardwareBuffer.
-LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer tensor_buffer,
                                  AHardwareBuffer** ahwb);
 #endif  // LRT_HAS_AHWB_SUPPORT
 
@@ -100,8 +100,8 @@ LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer buffer,
 // must be the entire size of the underlying ION memory buffer, including the
 // allocation needed for all tensor buffers sharing it.
 LrtStatus LrtCreateTensorBufferFromIonBuffer(
-    LrtRankedTensorType tensor_type, void* ion_buffer_addr, int ion_buffer_fd,
-    size_t ion_buffer_size, size_t ion_buffer_offset,
+    const LrtRankedTensorType* tensor_type, void* ion_buffer_addr,
+    int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
     LrtIonDeallocator deallocator, LrtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not an ION buffer.
@@ -118,13 +118,13 @@ LrtStatus LrtGetTensorBufferIonBuffer(LrtTensorBuffer buffer,
 // must be the entire size of the underlying ION memory buffer, including the
 // allocation needed for all tensor buffers sharing it.
 LrtStatus LrtCreateTensorBufferFromDmaBufBuffer(
-    LrtRankedTensorType tensor_type, void* dmabuf_buffer_addr,
+    const LrtRankedTensorType* tensor_type, void* dmabuf_buffer_addr,
     int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
     size_t dmabuf_buffer_offset, LrtDmaBufDeallocator deallocator,
     LrtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not an DMA-BUF buffer.
-LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer tensor_buffer,
                                          void** dmabuf_buffer_addr,
                                          int* dmabuf_buffer_fd);
 #endif  // LRT_HAS_DMABUF_SUPPORT
@@ -138,36 +138,37 @@ LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer buffer,
 // FastRPC memory buffer, including the allocation needed for all tensor buffers
 // sharing it.
 LrtStatus LrtCreateTensorBufferFromFastRpcBuffer(
-    LrtRankedTensorType tensor_type, void* fastrpc_buffer_addr, int fastrpc_fd,
-    size_t fastrpc_buffer_size, size_t fastrpc_buffer_offset,
+    const LrtRankedTensorType* tensor_type, void* fastrpc_buffer_addr,
+    int fastrpc_fd, size_t fastrpc_buffer_size, size_t fastrpc_buffer_offset,
     LrtFastRpcDeallocator deallocator, LrtTensorBuffer* buffer);
 
 // Return an error if the backing buffer is not a FastRPC memory buffer.
-LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer tensor_buffer,
                                           void** fastrpc_buffer_addr,
                                           int* fastrpc_buffer_fd);
 #endif  // LRT_HAS_FASTRPC_SUPPORT
 
 // Create a buffer backed by managed memory for a given size.
 LrtStatus LrtCreateManagedTensorBuffer(LrtTensorBufferType buffer_type,
-                                       LrtRankedTensorType tensor_type,
+                                       const LrtRankedTensorType* tensor_type,
                                        size_t buffer_size,
                                        LrtTensorBuffer* buffer);
 
-LrtStatus LrtGetTensorBufferType(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferType(LrtTensorBuffer tensor_buffer,
                                  LrtTensorBufferType* buffer_type);
 
-LrtStatus LrtGetTensorBufferTensorType(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferTensorType(LrtTensorBuffer tensor_buffer,
                                        LrtRankedTensorType* tensor_type);
 
-LrtStatus LrtGetTensorBufferSize(LrtTensorBuffer buffer, size_t* size);
+LrtStatus LrtGetTensorBufferSize(LrtTensorBuffer tensor_buffer, size_t* size);
 
-LrtStatus LrtGetTensorBufferOffset(LrtTensorBuffer buffer, size_t* offset);
+LrtStatus LrtGetTensorBufferOffset(LrtTensorBuffer tensor_buffer,
+                                   size_t* offset);
 
 // Lock a tensor buffer and map it to host memory, optionally syncronizing on a
 // given input event (parameter `event` can be NULL).
-LrtStatus LrtLockTensorBuffer(LrtTensorBuffer buffer, void** host_mem_addr,
-                              LrtEvent event);
+LrtStatus LrtLockTensorBuffer(LrtTensorBuffer tensor_buffer,
+                              void** host_mem_addr, LrtEvent event);
 
 // Unlock a tensor buffer and (potentially) unmap it from host memory.
 LrtStatus LrtUnlockTensorBuffer(LrtTensorBuffer buffer);

@@ -27,46 +27,49 @@
 #include "tensorflow/lite/experimental/lrt/core/tensor_buffer.h"
 
 LrtStatus LrtCreateTensorBufferFromHostMemory(
-    LrtRankedTensorType tensor_type, void* host_buffer_addr, size_t size,
-    LrtHostMemoryDeallocator deallocator, LrtTensorBuffer* buffer) {
-  auto tensor_buffer = LrtTensorBufferT::CreateFromHostMemory(
-      tensor_type,
+    const LrtRankedTensorType* tensor_type, void* host_buffer_addr, size_t size,
+    LrtHostMemoryDeallocator deallocator, LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !host_buffer_addr || !tensor_buffer) {
+    return kLrtStatusErrorInvalidArgument;
+  }
+  auto created_tensor_buffer = LrtTensorBufferT::CreateFromHostMemory(
+      *tensor_type,
       absl::MakeSpan(static_cast<uint8_t*>(host_buffer_addr), size),
       deallocator);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
 #if LRT_HAS_AHWB_SUPPORT
-LrtStatus LrtCreateTensorBufferFromAhwb(LrtRankedTensorType tensor_type,
+LrtStatus LrtCreateTensorBufferFromAhwb(const LrtRankedTensorType* tensor_type,
                                         AHardwareBuffer* ahwb,
                                         size_t ahwb_offset,
                                         LrtAhwbDeallocator deallocator,
-                                        LrtTensorBuffer* buffer) {
-  if (!ahwb || !buffer) {
+                                        LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !ahwb || !tensor_buffer) {
     return kLrtStatusErrorInvalidArgument;
   }
-  auto tensor_buffer = LrtTensorBufferT::CreateFromAhwb(
-      tensor_type, ahwb, ahwb_offset, deallocator);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+  auto created_tensor_buffer = LrtTensorBufferT::CreateFromAhwb(
+      *tensor_type, ahwb, ahwb_offset, deallocator);
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer tensor_buffer,
                                  AHardwareBuffer** ahwb) {
-  if (!buffer || !ahwb) {
+  if (!tensor_buffer || !ahwb) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto ahwb_buffer = buffer->GetAhwbBuffer();
+  auto ahwb_buffer = tensor_buffer->GetAhwbBuffer();
   if (!ahwb_buffer.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", ahwb_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -79,31 +82,31 @@ LrtStatus LrtGetTensorBufferAhwb(LrtTensorBuffer buffer,
 
 #if LRT_HAS_ION_SUPPORT
 LrtStatus LrtCreateTensorBufferFromIonBuffer(
-    LrtRankedTensorType tensor_type, void* ion_buffer_addr, int ion_buffer_fd,
-    size_t ion_buffer_size, size_t ion_buffer_offset,
-    LrtIonDeallocator deallocator, LrtTensorBuffer* buffer) {
-  if (!ion_buffer_addr || !buffer) {
+    const LrtRankedTensorType* tensor_type, void* ion_buffer_addr,
+    int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
+    LrtIonDeallocator deallocator, LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !tensor_buffer) {
     return kLrtStatusErrorInvalidArgument;
   }
-  auto tensor_buffer = LrtTensorBufferT::CreateFromIonBuffer(
-      tensor_type, ion_buffer_addr, ion_buffer_fd, ion_buffer_size,
+  auto created_tensor_buffer = LrtTensorBufferT::CreateFromIonBuffer(
+      *tensor_type, ion_buffer_addr, ion_buffer_fd, ion_buffer_size,
       ion_buffer_offset, deallocator);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferIonBuffer(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferIonBuffer(LrtTensorBuffer tensor_buffer,
                                       void** ion_buffer_addr,
                                       int* ion_buffer_fd) {
-  if (!buffer || !ion_buffer_addr || !ion_buffer_fd) {
+  if (!tensor_buffer || !ion_buffer_addr || !ion_buffer_fd) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto ion_buffer = buffer->GetIonBuffer();
+  auto ion_buffer = tensor_buffer->GetIonBuffer();
   if (!ion_buffer.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", ion_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -117,32 +120,32 @@ LrtStatus LrtGetTensorBufferIonBuffer(LrtTensorBuffer buffer,
 
 #if LRT_HAS_DMABUF_SUPPORT
 LrtStatus LrtCreateTensorBufferFromDmaBufBuffer(
-    LrtRankedTensorType tensor_type, void* dmabuf_buffer_addr,
+    const LrtRankedTensorType* tensor_type, void* dmabuf_buffer_addr,
     int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
     size_t dmabuf_buffer_offset, LrtDmaBufDeallocator deallocator,
-    LrtTensorBuffer* buffer) {
-  if (!dmabuf_buffer_addr || !buffer) {
+    LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !tensor_buffer) {
     return kLrtStatusErrorInvalidArgument;
   }
-  auto tensor_buffer = LrtTensorBufferT::CreateFromDmaBufBuffer(
-      tensor_type, dmabuf_buffer_addr, dmabuf_buffer_fd, dmabuf_buffer_size,
+  auto created_tensor_buffer = LrtTensorBufferT::CreateFromDmaBufBuffer(
+      *tensor_type, dmabuf_buffer_addr, dmabuf_buffer_fd, dmabuf_buffer_size,
       dmabuf_buffer_offset, deallocator);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer tensor_buffer,
                                          void** dmabuf_buffer_addr,
                                          int* dmabuf_buffer_fd) {
-  if (!buffer || !dmabuf_buffer_addr || !dmabuf_buffer_fd) {
+  if (!tensor_buffer || !dmabuf_buffer_addr || !dmabuf_buffer_fd) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto dmabuf_buffer = buffer->GetDmaBufBuffer();
+  auto dmabuf_buffer = tensor_buffer->GetDmaBufBuffer();
   if (!dmabuf_buffer.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", dmabuf_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -156,32 +159,32 @@ LrtStatus LrtGetTensorBufferDmaBufBuffer(LrtTensorBuffer buffer,
 
 #if LRT_HAS_FASTRPC_SUPPORT
 LrtStatus LrtCreateTensorBufferFromFastRpcBuffer(
-    LrtRankedTensorType tensor_type, void* fastrpc_buffer_addr,
+    const LrtRankedTensorType* tensor_type, void* fastrpc_buffer_addr,
     int fastrpc_buffer_fd, size_t fastrpc_buffer_size,
     size_t fastrpc_buffer_offset, LrtFastRpcDeallocator deallocator,
-    LrtTensorBuffer* buffer) {
-  if (!fastrpc_buffer_addr || !buffer) {
+    LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !tensor_buffer) {
     return kLrtStatusErrorInvalidArgument;
   }
-  auto tensor_buffer = LrtTensorBufferT::CreateFromFastRpcBuffer(
-      tensor_type, fastrpc_buffer_addr, fastrpc_buffer_fd, fastrpc_buffer_size,
+  auto created_tensor_buffer = LrtTensorBufferT::CreateFromFastRpcBuffer(
+      *tensor_type, fastrpc_buffer_addr, fastrpc_buffer_fd, fastrpc_buffer_size,
       fastrpc_buffer_offset, deallocator);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer tensor_buffer,
                                           void** fastrpc_buffer_addr,
                                           int* fastrpc_buffer_fd) {
-  if (!buffer || !fastrpc_buffer_addr || !fastrpc_buffer_fd) {
+  if (!tensor_buffer || !fastrpc_buffer_addr || !fastrpc_buffer_fd) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto fastrpc_buffer = buffer->GetFastRpcBuffer();
+  auto fastrpc_buffer = tensor_buffer->GetFastRpcBuffer();
   if (!fastrpc_buffer.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", fastrpc_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -194,61 +197,65 @@ LrtStatus LrtGetTensorBufferFastRpcBuffer(LrtTensorBuffer buffer,
 #endif  // LRT_HAS_FASTRPC_SUPPORT
 
 LrtStatus LrtCreateManagedTensorBuffer(LrtTensorBufferType buffer_type,
-                                       LrtRankedTensorType tensor_type,
+                                       const LrtRankedTensorType* tensor_type,
                                        size_t buffer_size,
-                                       LrtTensorBuffer* buffer) {
-  auto tensor_buffer =
-      LrtTensorBufferT::CreateManaged(buffer_type, tensor_type, buffer_size);
-  if (!tensor_buffer.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer.status().message());
+                                       LrtTensorBuffer* tensor_buffer) {
+  if (!tensor_type || !tensor_buffer) {
+    return kLrtStatusErrorInvalidArgument;
+  }
+  auto created_tensor_buffer =
+      LrtTensorBufferT::CreateManaged(buffer_type, *tensor_type, buffer_size);
+  if (!created_tensor_buffer.ok()) {
+    LITE_RT_LOG(LRT_ERROR, "%s", created_tensor_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
   }
-  *buffer = tensor_buffer->release();
+  *tensor_buffer = created_tensor_buffer->release();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferType(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferType(LrtTensorBuffer tensor_buffer,
                                  LrtTensorBufferType* buffer_type) {
-  if (!buffer || !buffer_type) {
+  if (!tensor_buffer || !buffer_type) {
     return kLrtStatusErrorInvalidArgument;
   }
-  *buffer_type = buffer->buffer_type();
+  *buffer_type = tensor_buffer->buffer_type();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferTensorType(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferTensorType(LrtTensorBuffer tensor_buffer,
                                        LrtRankedTensorType* tensor_type) {
-  if (!buffer || !tensor_type) {
+  if (!tensor_buffer || !tensor_type) {
     return kLrtStatusErrorInvalidArgument;
   }
-  *tensor_type = buffer->tensor_type();
+  *tensor_type = tensor_buffer->tensor_type();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferSize(LrtTensorBuffer buffer, size_t* buffer_size) {
-  if (!buffer || !buffer_size) {
+LrtStatus LrtGetTensorBufferSize(LrtTensorBuffer tensor_buffer,
+                                 size_t* buffer_size) {
+  if (!tensor_buffer || !buffer_size) {
     return kLrtStatusErrorInvalidArgument;
   }
-  *buffer_size = buffer->buffer_size();
+  *buffer_size = tensor_buffer->buffer_size();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferOffset(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferOffset(LrtTensorBuffer tensor_buffer,
                                    size_t* buffer_offset) {
-  if (!buffer || !buffer_offset) {
+  if (!tensor_buffer || !buffer_offset) {
     return kLrtStatusErrorInvalidArgument;
   }
-  *buffer_offset = buffer->buffer_offset();
+  *buffer_offset = tensor_buffer->buffer_offset();
   return kLrtStatusOk;
 }
 
-LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer buffer,
+LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer tensor_buffer,
                                        void** host_memory_addr) {
-  if (!buffer || !host_memory_addr) {
+  if (!tensor_buffer || !host_memory_addr) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto host_buffer = buffer->GetHostBuffer();
+  auto host_buffer = tensor_buffer->GetHostBuffer();
   if (!host_buffer.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", host_buffer.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -258,13 +265,13 @@ LrtStatus LrtGetTensorBufferHostMemory(LrtTensorBuffer buffer,
   return kLrtStatusOk;
 }
 
-LrtStatus LrtLockTensorBuffer(LrtTensorBuffer buffer, void** host_mem_addr,
-                              LrtEvent event) {
-  if (!buffer || !host_mem_addr) {
+LrtStatus LrtLockTensorBuffer(LrtTensorBuffer tensor_buffer,
+                              void** host_mem_addr, LrtEvent event) {
+  if (!tensor_buffer || !host_mem_addr) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  auto mapped_addr = buffer->Lock(event);
+  auto mapped_addr = tensor_buffer->Lock(event);
   if (!mapped_addr.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", mapped_addr.status().message());
     return kLrtStatusErrorRuntimeFailure;
@@ -274,12 +281,12 @@ LrtStatus LrtLockTensorBuffer(LrtTensorBuffer buffer, void** host_mem_addr,
   return kLrtStatusOk;
 }
 
-LrtStatus LrtUnlockTensorBuffer(LrtTensorBuffer buffer) {
-  if (!buffer) {
+LrtStatus LrtUnlockTensorBuffer(LrtTensorBuffer tensor_buffer) {
+  if (!tensor_buffer) {
     return kLrtStatusErrorInvalidArgument;
   }
 
-  if (auto status = buffer->Unlock(); !status.ok()) {
+  if (auto status = tensor_buffer->Unlock(); !status.ok()) {
     LITE_RT_LOG(LRT_ERROR, "%s", status.message());
     return kLrtStatusErrorRuntimeFailure;
   }
@@ -287,4 +294,6 @@ LrtStatus LrtUnlockTensorBuffer(LrtTensorBuffer buffer) {
   return kLrtStatusOk;
 }
 
-void LrtDestroyTensorBuffer(LrtTensorBuffer buffer) { delete buffer; }
+void LrtDestroyTensorBuffer(LrtTensorBuffer tensor_buffer) {
+  delete tensor_buffer;
+}

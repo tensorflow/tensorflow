@@ -190,6 +190,13 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromIonBuffer(
     const LrtRankedTensorType& tensor_type, void* ion_buffer_addr,
     int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
     LrtFastRpcDeallocator deallocator) {
+  if (!ion_buffer_addr) {
+    return absl::InvalidArgumentError("Invalid ION buffer address");
+  }
+  if (ion_buffer_fd < 0) {
+    return absl::InvalidArgumentError("Invalid ION buffer fd");
+  }
+
   Ptr tensor_buffer(new LrtTensorBufferT(tensor_type, kLrtTensorBufferTypeIon,
                                          ion_buffer_size, ion_buffer_offset));
   tensor_buffer->buffer_ = IonBuffer{
@@ -221,6 +228,13 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromDmaBufBuffer(
     const LrtRankedTensorType& tensor_type, void* dmabuf_buffer_addr,
     int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
     size_t dmabuf_buffer_offset, LrtFastRpcDeallocator deallocator) {
+  if (!dmabuf_buffer_addr) {
+    return absl::InvalidArgumentError("Invalid DMA-BUF buffer address");
+  }
+  if (dmabuf_buffer_fd < 0) {
+    return absl::InvalidArgumentError("Invalid DMA-BUF buffer fd");
+  }
+
   Ptr tensor_buffer(
       new LrtTensorBufferT(tensor_type, kLrtTensorBufferTypeDmaBuf,
                            dmabuf_buffer_size, dmabuf_buffer_offset));
@@ -253,6 +267,13 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromFastRpcBuffer(
     const LrtRankedTensorType& tensor_type, void* fastrpc_buffer_addr,
     int fastrpc_buffer_fd, size_t fastrpc_buffer_size,
     size_t fastrpc_buffer_offset, LrtFastRpcDeallocator deallocator) {
+  if (!fastrpc_buffer_addr) {
+    return absl::InvalidArgumentError("Invalid FastRPC buffer address");
+  }
+  if (fastrpc_buffer_fd < 0) {
+    return absl::InvalidArgumentError("Invalid FastRPC buffer fd");
+  }
+
   Ptr tensor_buffer(
       new LrtTensorBufferT(tensor_type, kLrtTensorBufferTypeFastRpc,
                            fastrpc_buffer_size, fastrpc_buffer_offset));
@@ -309,6 +330,11 @@ absl::Status LrtTensorBufferT::IsValid() const {
     }
   }
 
+  // Check for valid offset.
+  if (buffer_offset() >= buffer_size()) {
+    return absl::InternalError("Invalid buffer offset");
+  }
+
   // Check for sufficient size.
   if (auto num_bytes = lrt::internal::GetNumPackedBytes(tensor_type_);
       !num_bytes.ok()) {
@@ -317,7 +343,7 @@ absl::Status LrtTensorBufferT::IsValid() const {
     return absl::InternalError("Insufficient buffer size");
   }
 
-  // Check for alignment.
+  // Check for proper alignment.
   if (buffer_type() == kLrtTensorBufferTypeHostMemory) {
     auto host_buffer = GetHostBuffer();
     if (!host_buffer.ok()) {

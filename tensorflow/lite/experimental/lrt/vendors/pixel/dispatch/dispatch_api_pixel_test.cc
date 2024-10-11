@@ -147,19 +147,19 @@ TEST(DispatchApi, Pixel) {
 
   LrtTensorBuffer input_0_tensor_buffer;
   EXPECT_EQ(LrtCreateManagedTensorBuffer(
-                input_0_tensor_buffer_type, kInput0TensorType,
+                input_0_tensor_buffer_type, &kInput0TensorType,
                 input_0_tensor_buffer_size, &input_0_tensor_buffer),
             kLrtStatusOk);
 
   LrtTensorBuffer input_1_tensor_buffer;
   EXPECT_EQ(LrtCreateManagedTensorBuffer(
-                input_1_tensor_buffer_type, kInput1TensorType,
+                input_1_tensor_buffer_type, &kInput1TensorType,
                 input_1_tensor_buffer_size, &input_1_tensor_buffer),
             kLrtStatusOk);
 
   LrtTensorBuffer output_tensor_buffer;
   EXPECT_EQ(LrtCreateManagedTensorBuffer(
-                output_tensor_buffer_type, kOutputTensorType,
+                output_tensor_buffer_type, &kOutputTensorType,
                 output_tensor_buffer_size, &output_tensor_buffer),
             kLrtStatusOk);
 
