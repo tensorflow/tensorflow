@@ -40,6 +40,81 @@ LrtStatus LegalizeOpType(const LrtOpManager& src, Qnn_OpConfig_t& dest) {
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseMultiply";
       break;
+    case kLrtOpCodeTflAdd:
+      dest.v1.name = QNN_OP_NAME("add");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseAdd";
+      break;
+    case kLrtOpCodeTflBatchMatmul:
+      dest.v1.name = QNN_OP_NAME("batch_matmul");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "MatMul";
+      break;
+    case kLrtOpCodeTflConcatenation:
+      dest.v1.name = QNN_OP_NAME("concatenation");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "Concat";
+      break;
+    case kLrtOpCodeTflDiv:
+      dest.v1.name = QNN_OP_NAME("div");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseDivide";
+      break;
+    case kLrtOpCodeTflFullyConnected:
+      dest.v1.name = QNN_OP_NAME("fully_connected");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "FullyConnected";
+      break;
+    case kLrtOpCodeTflReshape:
+      dest.v1.name = QNN_OP_NAME("reshape");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "Reshape";
+      break;
+    case kLrtOpCodeTflRsqrt:
+      dest.v1.name = QNN_OP_NAME("rsqrt");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseRsqrt";
+      break;
+    case kLrtOpCodeTflSelectV2:
+      dest.v1.name = QNN_OP_NAME("select_v2");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseSelect";
+      break;
+    case kLrtOpCodeTflSelect:
+      dest.v1.name = QNN_OP_NAME("select");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseSelect";
+      break;
+    case kLrtOpCodeTflStridedSlice:
+      dest.v1.name = QNN_OP_NAME("strided_slice");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "StridedSlice";
+      break;
+    case kLrtOpCodeTflSlice:
+      dest.v1.name = QNN_OP_NAME("slice");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "StridedSlice";
+      break;
+    case kLrtOpCodeTflSoftmax:
+      dest.v1.name = QNN_OP_NAME("softmax");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "Softmax";
+      break;
+    case kLrtOpCodeTflSub:
+      dest.v1.name = QNN_OP_NAME("sub");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "ElementWiseSubtract";
+      break;
+    case kLrtOpCodeTflTanh:
+      dest.v1.name = QNN_OP_NAME("tanh");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "Tanh";
+      break;
+    case kLrtOpCodeTflTranspose:
+      dest.v1.name = QNN_OP_NAME("transpose");
+      dest.v1.packageName = "qti.aisw";
+      dest.v1.typeName = "Transpose";
+      break;
     default:
       return kLrtStatusErrorUnsupported;
   }
