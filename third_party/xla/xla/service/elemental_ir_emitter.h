@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/ir_builder_mixin.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

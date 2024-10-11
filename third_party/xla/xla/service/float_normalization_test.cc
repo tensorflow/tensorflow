@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"

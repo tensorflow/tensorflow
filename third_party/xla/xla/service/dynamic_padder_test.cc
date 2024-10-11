@@ -45,12 +45,9 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -60,7 +57,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {

@@ -18,10 +18,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

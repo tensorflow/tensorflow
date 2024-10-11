@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/env.h"
 
 // Consolidated utilities for logging information during compilation, usually
 // based on the options specified in the DebugOptions proto.

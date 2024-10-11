@@ -19,8 +19,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

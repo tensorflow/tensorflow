@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/tests/hlo_test_base.h"
