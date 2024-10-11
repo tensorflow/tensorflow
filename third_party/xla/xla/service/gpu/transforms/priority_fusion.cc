@@ -904,6 +904,36 @@ bool PriorityFusion::ConsumeFuel(HloInstruction* producer,
   });
 };
 
+FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
+                                               const HloInstruction* user) {
+  // If user is a scatter, verify that we can fuse the constant correctly.
+  if (auto fusion_decision = CanEmitInputFusedScatter(*constant, *user);
+      !fusion_decision) {
+    return fusion_decision;
+  }
+
+  // If user is a Triton fusion, verify that the constant is supported
+  // by Triton.
+  //
+  // Note: `IsFusible` should not be used for Triton fusions. Generally,
+  // `IsFusible` returns `false` for Triton fusions, because Triton fusions have
+  // kCustom fusion kind, but sometimes `IsFusible` will return `true` if the
+  // fusion contains only elementwise instructions.
+  // We can always fuse a producer into Triton fusions if the producer is
+  // supported by Triton, so it's enough to check if the constant is supported.
+  if (IsGenericTritonFusion(*user)) {
+    return IsTritonSupportedInstruction(*constant,
+                                        device_info_.gpu_compute_capability());
+  }
+
+  // Verify that the user is fusible.
+  if (!IsFusible(*user)) {
+    return FusionDecision::Forbid("User is not fusible");
+  }
+
+  return FusionDecision::Allow();
+}
+
 absl::StatusOr<bool> PriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1024,13 +1054,11 @@ absl::StatusOr<bool> PriorityFusion::Run(
         constants.push_back(instruction);
       }
     }
+
     for (auto* constant : constants) {
       auto users = constant->users();
       for (auto* user : users) {
-        if ((IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) ||
-            (IsTritonSupportedInstruction(
-                 *constant, device_info_.gpu_compute_capability()) &&
-             IsGenericTritonFusion(*user))) {
+        if (CanFuseConstant(constant, user)) {
           Fuse(constant, user);
           changed = true;
         }
