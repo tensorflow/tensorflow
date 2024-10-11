@@ -615,10 +615,10 @@ bool ReplaceTensorWithConstant(
 
 }  // namespace
 
-Status ConstantFold(const ConstantFoldingOptions& opts,
-                    FunctionLibraryRuntime* function_library, Env* env,
-                    const Device* partition_device, Graph* graph,
-                    bool* was_mutated) {
+absl::Status ConstantFold(const ConstantFoldingOptions& opts,
+                          FunctionLibraryRuntime* function_library, Env* env,
+                          const Device* partition_device, Graph* graph,
+                          bool* was_mutated) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
   // the same here.
   port::ScopedFlushDenormal flush;
@@ -689,7 +689,7 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
     graph_runner.reset(nullptr);
   });
 
-  Status s =
+  absl::Status s =
       graph_runner->Run(constant_graph.get(), function_library, {} /* inputs*/,
                         tensors_to_fetch_names, &outputs);
   if (!s.ok()) {

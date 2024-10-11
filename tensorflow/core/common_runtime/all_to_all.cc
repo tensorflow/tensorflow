@@ -43,8 +43,8 @@ AllToAll::AllToAll()
     : col_ctx_(nullptr), col_params_(nullptr), done_(nullptr), counter_(0) {}
 
 StatusCallback AllToAll::CheckCounterAndCallDone() {
-  return [this](const Status& s) {
-    Status final_status;
+  return [this](const absl::Status& s) {
+    absl::Status final_status;
     {
       mutex_lock l(mu_);
       status_.Update(s);
@@ -75,7 +75,7 @@ StatusCallback AllToAll::CheckCounterAndCallDone() {
   };
 }
 
-Status AllToAll::InitializeCollectiveContext(
+absl::Status AllToAll::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   if (col_ctx->input->dim_size(0) != col_ctx->col_params->group.group_size) {
     return errors::InvalidArgument("input to all-to-all first dimension size (",

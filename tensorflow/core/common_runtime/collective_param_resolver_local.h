@@ -63,9 +63,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                              CancellationManager* cancel_mgr,
                              const StatusCallback& done) override;
 
-  Status LookupGroup(int32_t group_key, CollGroupParams* group) override;
+  absl::Status LookupGroup(int32_t group_key, CollGroupParams* group) override;
 
-  void StartAbort(const Status& s) override;
+  void StartAbort(const absl::Status& s) override;
 
  protected:
   // For access to InstanceRec and CompleteDefaultRanking.
@@ -75,7 +75,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   struct GroupRec {
     mutable mutex mu;
     CollGroupParams group TF_GUARDED_BY(mu);
-    Status status TF_GUARDED_BY(mu);
+    absl::Status status TF_GUARDED_BY(mu);
     std::unordered_map<string, int64_t> incarnations_by_device_name
         TF_GUARDED_BY(mu);
     std::vector<CollGroupParams*> pending_params TF_GUARDED_BY(mu);
@@ -100,7 +100,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CancelGroup(int32 group_key) TF_LOCKS_EXCLUDED(group_mu_);
 
   // Lookup and populate parameters from an already initialized group.
-  Status LookupAndPopulateGroupParams(CollGroupParams* group_params);
+  absl::Status LookupAndPopulateGroupParams(CollGroupParams* group_params);
 
   // Used to complete/verify CollInstance.
   struct InstanceRec;
@@ -113,7 +113,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     // If an error occurs during initialization this structure stays in the
     // table with a non-OK status. Purging the table and restarting needs to be
     // done at a higher level.
-    Status status TF_GUARDED_BY(mu);
+    absl::Status status TF_GUARDED_BY(mu);
 
     // These fields are used to count the instances that have called
     // in and become known while resolving broadcast source identity and
@@ -172,8 +172,8 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   // If cp.device_names contains only devices local to this process
   // populates *localities, else returns an error.
-  Status GetLocalDeviceLocalities(const CollectiveParams& cp,
-                                  std::vector<DeviceLocality>* localities);
+  absl::Status GetLocalDeviceLocalities(
+      const CollectiveParams& cp, std::vector<DeviceLocality>* localities);
 
   // Sets cp->instance_default_rank according to location of device in
   // current ordering of cp->instance.device_names.
@@ -183,7 +183,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // best implementation.
   void AssignCollectiveType(CollectiveParams* cp);
 
-  void StartAbortLocal(const Status& s)
+  void StartAbortLocal(const absl::Status& s)
       TF_LOCKS_EXCLUDED(status_mu_, group_mu_, instance_mu_);
 
   const bool nccl_;
@@ -207,7 +207,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                                      std::unique_ptr<InstanceRec>, TupleHash>>
       instance_table_ TF_GUARDED_BY(instance_mu_);
   mutex status_mu_;
-  Status status_ TF_GUARDED_BY(status_mu_);
+  absl::Status status_ TF_GUARDED_BY(status_mu_);
 };
 
 }  // namespace tensorflow
