@@ -486,13 +486,6 @@ class GpuDriver {
 
   // -- Device-specific calls.
 
-  // Returns the compute capability for the device; i.e (3, 5).
-  // This is currently done via the deprecated device API.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1ge2091bbac7e1fb18c2821612115607ea
-  // (supported on CUDA only)
-  static absl::Status GetComputeCapability(int* cc_major, int* cc_minor,
-                                           GpuDeviceHandle device);
-
   // Returns Gpu ISA version for the device; i.e 803, 900.
   // (supported on ROCm only)
   static absl::Status GetGpuISAVersion(int* version, GpuDeviceHandle device);

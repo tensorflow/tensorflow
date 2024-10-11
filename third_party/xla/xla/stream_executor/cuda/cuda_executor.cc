@@ -271,6 +271,19 @@ absl::StatusOr<std::string> GetDeviceName(CUdevice device) {
   chars[kCharLimit - 1] = '\0';
   return chars.begin();
 }
+
+// Returns the compute capability for the device; i.e (3, 5).
+absl::Status GetComputeCapability(int* cc_major, int* cc_minor,
+                                  CUdevice device) {
+  *cc_major = 0;
+  *cc_minor = 0;
+
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+      cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device)));
+
+  return cuda::ToStatus(cuDeviceGetAttribute(
+      cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -300,8 +313,7 @@ absl::Status CudaExecutor::Init() {
   TF_ASSIGN_OR_RETURN(Context * context,
                       CudaContext::Create(device_ordinal(), device_));
   set_context(context);
-  TF_RETURN_IF_ERROR(
-      GpuDriver::GetComputeCapability(&cc_major_, &cc_minor_, device_));
+  TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major_, &cc_minor_, device_));
   TF_ASSIGN_OR_RETURN(delay_kernels_supported_, DelayKernelIsSupported());
   return absl::OkStatus();
 }
@@ -855,8 +867,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   int cc_major;
   int cc_minor;
-  TF_RETURN_IF_ERROR(
-      GpuDriver::GetComputeCapability(&cc_major, &cc_minor, device));
+  TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major, &cc_minor, device));
 
   DeviceDescription desc;
 

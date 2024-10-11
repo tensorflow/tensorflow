@@ -1080,18 +1080,6 @@ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
   return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
 }
 
-absl::Status GpuDriver::GetComputeCapability(int* cc_major, int* cc_minor,
-                                             CUdevice device) {
-  *cc_major = 0;
-  *cc_minor = 0;
-
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
-      cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device)));
-
-  return cuda::ToStatus(cuDeviceGetAttribute(
-      cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
-}
-
 absl::Status GpuDriver::GetGpuISAVersion(int* version, CUdevice device) {
   return absl::Status{
       absl::StatusCode::kInternal,
