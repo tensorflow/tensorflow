@@ -113,7 +113,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, uniform);
       return;
@@ -280,7 +280,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     // If the input shape is constant, no need to set dimension sizes.
     // TODO(hinsu): Simplify this once MLIR bridge can handle bounded types.
     TensorShape static_shape;
-    Status status = ctx->ConstantInputAsShape(0, &static_shape);
+    absl::Status status = ctx->ConstantInputAsShape(0, &static_shape);
     if (status.ok()) {
       ctx->SetOutput(0, normal);
       return;

@@ -34,10 +34,10 @@ namespace {
 
 // Check whether updates.shape = indices.shape[:batch_dim] +
 // buffer_shape[num_index_dims:]
-Status ValidateUpdateShape(const TensorShape& buffer_shape,
-                           const TensorShape& indices_shape,
-                           const TensorShape& updates_shape,
-                           bool broadcast_scalar_update) {
+absl::Status ValidateUpdateShape(const TensorShape& buffer_shape,
+                                 const TensorShape& indices_shape,
+                                 const TensorShape& updates_shape,
+                                 bool broadcast_scalar_update) {
   if (indices_shape.dims() < 1) {
     return errors::InvalidArgument(
         "indices shape must have >= 1 dimension; got ",

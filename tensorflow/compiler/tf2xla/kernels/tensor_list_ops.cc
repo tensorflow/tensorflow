@@ -111,9 +111,10 @@ REGISTER_XLA_OP(Name("TensorListLength").IsMetadataOp(), TensorListLengthOp);
 // "input" is the shape input for EmptyTensorList/TensorListReserve ops.
 // If "input" is a compile time constant and not "unknown rank" (-1), return
 // its value in "*shape".
-Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
-                                   xla::PrimitiveType dtype, bool* got_shape,
-                                   xla::Shape* shape) {
+absl::Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx,
+                                         xla::XlaOp input,
+                                         xla::PrimitiveType dtype,
+                                         bool* got_shape, xla::Shape* shape) {
   auto is_compile_time_constant_or = input.builder()->IsConstant(input);
   TF_RETURN_IF_ERROR(is_compile_time_constant_or.status());
 
