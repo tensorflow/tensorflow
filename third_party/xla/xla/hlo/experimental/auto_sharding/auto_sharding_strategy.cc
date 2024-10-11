@@ -501,7 +501,7 @@ BuildStrategyAndCost(
           }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map, 0,
-                              /*operands_to_consider_all_strategies_for=*/{0},
+                              /*operands_to_consider_all_strategies_for=*/{},
                               *strategy_group);
         break;
       }
