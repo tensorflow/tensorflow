@@ -12,17 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_cc_lib_and_so")
+load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_dynamic_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-lite_rt_cc_lib_and_so(
-    name = "mul_op_plugin",
-    srcs = ["mul_op_plugin.cc"],
-    shared_lib_name = "Plugin_Test_MulOp",
+lite_rt_dynamic_lib(
+    name = "example_plugin",
+    srcs = ["example_plugin.cc"],
+    hdrs = ["//tensorflow/lite/experimental/lrt/c:lite_rt_compiler_plugin.h"],
+    export_lrt_only = True,
+    shared_lib_name = "example_plugin_so",
+    so_name = "libLrtPlugin_ExampleSocManufacturer_ExampleSocModel.so",
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
@@ -32,11 +35,12 @@ lite_rt_cc_lib_and_so(
 )
 
 cc_test(
-    name = "mul_op_plugin_test",
-    srcs = ["mul_op_plugin_test.cc"],
-    tags = ["no_oss"],
+    name = "example_plugin_test",
+    srcs = [
+        "example_plugin_test.cc",
+    ],
     deps = [
-        ":mul_op_plugin",  # buildcleaner: keep
+        ":example_plugin",  # buildcleaner: keep
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",

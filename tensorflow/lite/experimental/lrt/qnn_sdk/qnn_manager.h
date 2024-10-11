@@ -28,14 +28,8 @@
 
 namespace qnn {
 
-#ifndef QNN_SDK_LIB_HTP
-
-// If path not provided, dlopen will search DT_RUNPATH (-rpath).
+// QNN backend library should be on DT_RUNPATH (-rpath).
 constexpr absl::string_view kLibQnnHtpSo = "libQnnHtp.so";
-#else
-
-constexpr absl::string_view kLibQnnHtpSo = QNN_SDK_LIB_HTP;
-#endif
 
 typedef QNN_INTERFACE_VER_TYPE QnnApi;
 
