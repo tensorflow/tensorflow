@@ -475,11 +475,11 @@ int64_t CalculateBatchSize(const OpInputList& shapes_list_in,
 }
 
 // Validates input tensors.
-Status ValidateInput(const OpInputList& indices_list_in,
-                     const OpInputList& values_list_in,
-                     const OpInputList& shapes_list_in,
-                     const OpInputList& dense_list_in,
-                     const DataType& internal_type) {
+absl::Status ValidateInput(const OpInputList& indices_list_in,
+                           const OpInputList& values_list_in,
+                           const OpInputList& shapes_list_in,
+                           const OpInputList& dense_list_in,
+                           const DataType& internal_type) {
   const auto size = indices_list_in.size();
   // Only perform internal_type check for SparseCrossOp.
   // Check if the internal_type is not invalid before doing so.
@@ -705,7 +705,7 @@ GenerateKeyedColumnsFromInput(const OpInputList& indices_list_in,
 // It also output_start_indices which contains the start indices for each
 // input in the output SparseTensor.
 template <typename InternalType>
-Status CreateOutputTensors(
+absl::Status CreateOutputTensors(
     const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>& columns,
     int64_t batch_size, OpKernelContext* context, Tensor** indices_out,
     Tensor** values_out, Tensor** shape_out,
@@ -911,7 +911,7 @@ class SparseCrossHashedOp : public OpKernel {
     const auto salt = salt_t->flat<int64_t>();
     OP_REQUIRES_OK(
         context, salt.size() == 2
-                     ? Status()
+                     ? absl::Status()
                      : errors::InvalidArgument(
                            "Input \"salt\" must have length 2 but has length ",
                            salt.size()));
