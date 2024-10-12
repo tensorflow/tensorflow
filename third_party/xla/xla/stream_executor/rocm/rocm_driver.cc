@@ -110,16 +110,6 @@ absl::Status GpuDriver::Init() {
   return *init_retval;
 }
 
-absl::Status GpuDriver::GetDevice(int device_ordinal, hipDevice_t* device) {
-  hipError_t res = wrap::hipDeviceGet(device, device_ordinal);
-  if (res == hipSuccess) {
-    return absl::OkStatus();
-  }
-
-  return absl::InternalError(
-      absl::StrCat("failed call to hipDeviceGet: ", ToString(res)));
-}
-
 absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(graph, /*flags=*/0),

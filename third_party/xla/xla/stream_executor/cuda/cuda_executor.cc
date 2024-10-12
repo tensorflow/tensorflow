@@ -352,6 +352,14 @@ absl::Status GetGridLimits(int* x, int* y, int* z, CUdevice device) {
   *z = value;
   return absl::OkStatus();
 }
+
+// Returns the device associated with the given device_ordinal.
+absl::StatusOr<CUdevice> GetDevice(int device_ordinal) {
+  CUdevice device;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGet(&device, device_ordinal),
+                                    "Failed call to cuDeviceGet"));
+  return device;
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -377,7 +385,7 @@ CudaExecutor::~CudaExecutor() {
 
 absl::Status CudaExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
-  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal(), &device_));
+  TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
   TF_ASSIGN_OR_RETURN(Context * context,
                       CudaContext::Create(device_ordinal(), device_));
   set_context(context);
@@ -930,8 +938,7 @@ absl::Status CudaExecutor::TrimGraphMemory() {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaExecutor::CreateDeviceDescription(int device_ordinal) {
-  GpuDeviceHandle device;
-  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal, &device));
+  TF_ASSIGN_OR_RETURN(GpuDeviceHandle device, GetDevice(device_ordinal));
 
   int cc_major;
   int cc_minor;

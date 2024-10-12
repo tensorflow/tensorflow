@@ -101,11 +101,6 @@ absl::Status GpuDriver::Init() {
   return *init_retval;
 }
 
-absl::Status GpuDriver::GetDevice(int device_ordinal, CUdevice* device) {
-  return cuda::ToStatus(cuDeviceGet(device, device_ordinal),
-                        "Failed call to cuDeviceGet");
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),

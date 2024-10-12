@@ -322,6 +322,17 @@ absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   return absl::OkStatus();
 }
 
+// Returns the device associated with the given device_ordinal.
+absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
+  hipDevice_t device;
+  hipError_t res = wrap::hipDeviceGet(&device, device_ordinal);
+  if (res == hipSuccess) {
+    return device;
+  }
+
+  return absl::InternalError(
+      absl::StrCat("failed call to hipDeviceGet: ", ToString(res)));
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -443,7 +454,7 @@ void RocmExecutor::UnloadKernel(const Kernel* kernel) {
 absl::Status RocmExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
 
-  TF_RETURN_IF_ERROR(GpuDriver::GetDevice(device_ordinal(), &device_));
+  TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(rocm_context_,
                       RocmContext::Create(device_ordinal(), device_));
@@ -775,11 +786,7 @@ absl::Status RocmExecutor::TrimGraphMemory() {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
-  GpuDeviceHandle device;
-  auto status = GpuDriver::GetDevice(device_ordinal, &device);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(GpuDeviceHandle device, GetDevice(device_ordinal));
 
   TF_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
 
