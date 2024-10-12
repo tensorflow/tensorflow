@@ -39,8 +39,6 @@ using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createExportNamedComputationsPass());
-  // Run canonicalizer to simplify `ManualComputationOp`s.
-  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass());
   // Preserve the SDY shardings for `createExportMhloShardingsPass` so that

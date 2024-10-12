@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/Passes.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -163,6 +165,21 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
                                    return_tuple, /*use_shardy=*/false);
 }
 
+absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module) {
+  mlir::MLIRContext* context = module.getContext();
+  mlir::PassManager pm(context);
+  xla::sdy::addSdyRoundTripExportPipeline(pm);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  if (!mlir::succeeded(pm.run(module))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shardy export failed;\n\nDetailed "
+                     "error from MLIR: ",
+                     status.message()));
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::string> SerializeUsingNativeBytecode(
     mlir::ModuleOp module) {
   std::string bytecode;
@@ -194,6 +211,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // Legalize CHLO -> [StableHLO+Shape] -> StableHLO
   // Preserve higher-level ops with XLA support. To be replaced by composites.
   mlir::PassManager pm(context);
+  xla::sdy::addSdyRoundTripExportPipeline(pm);
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -263,17 +281,18 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
   // TODO (b/344930098): Allow VHLO interop and remove the all_stablehlo check
-  bool all_stablehlo = true;
+  bool all_stablehlo_or_shardy = true;
   module->walk([&](mlir::Operation* op) {
     if (!llvm::isa<mlir::ModuleOp>(op) &&
         !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
-                   mlir::chlo::ChloDialect>(op->getDialect())) {
-      all_stablehlo = false;
+                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
+            op->getDialect())) {
+      all_stablehlo_or_shardy = false;
       return mlir::WalkResult::interrupt();
     }
     return mlir::WalkResult::advance();
   });
-  if (!all_stablehlo) {
+  if (!all_stablehlo_or_shardy) {
     return SerializeUsingNativeBytecode(module);
   }
   return SerializeUsingVersionedStablehlo(module, target, inplace);
