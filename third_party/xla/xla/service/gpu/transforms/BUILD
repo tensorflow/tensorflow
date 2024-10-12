@@ -464,6 +464,7 @@ xla_cc_test(
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_utils",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
