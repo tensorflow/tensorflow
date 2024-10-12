@@ -121,13 +121,6 @@ class GpuDriver {
   // previously registered.
   static bool HostUnregister(Context* context, void* location);
 
-  // Given a device ordinal, returns a device handle into the device outparam,
-  // which must not be null.
-  //
-  // N.B. these device handles do not have a corresponding destroy function in
-  // the CUDA/HIP driver API.
-  static absl::Status GetDevice(int device_ordinal, GpuDeviceHandle* device);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control

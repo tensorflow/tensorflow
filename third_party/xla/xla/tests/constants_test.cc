@@ -24,8 +24,9 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 

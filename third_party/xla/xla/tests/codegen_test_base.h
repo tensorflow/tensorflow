@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
