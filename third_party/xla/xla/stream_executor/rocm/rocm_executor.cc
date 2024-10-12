@@ -394,6 +394,7 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
 
   return absl::OkStatus();
 }
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -886,11 +887,8 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
-  {
-    bool ecc_enabled = false;
-    (void)GpuDriver::IsEccEnabled(device, &ecc_enabled);
-    desc.set_ecc_enabled(ecc_enabled);
-  }
+  // No way to query ECC status from the API.
+  desc.set_ecc_enabled(false);
 
   uint64_t device_memory_size = -1;
   (void)RocmContext::GetDeviceTotalMemory(device, &device_memory_size);

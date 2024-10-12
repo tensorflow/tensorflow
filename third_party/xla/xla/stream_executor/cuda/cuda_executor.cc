@@ -436,6 +436,19 @@ bool GetDeviceTotalMemory(CUdevice device, uint64_t* result) {
   *result = value;
   return true;
 }
+
+bool IsEccEnabled(CUdevice device, bool* result) {
+  int value = -1;
+  auto status = cuda::ToStatus(
+      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_ECC_ENABLED, device));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to query ECC status: " << status;
+    return false;
+  }
+
+  *result = value;
+  return true;
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -1063,7 +1076,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   {
     bool ecc_enabled = false;
-    (void)GpuDriver::IsEccEnabled(device, &ecc_enabled);
+    IsEccEnabled(device, &ecc_enabled);
     desc.set_ecc_enabled(ecc_enabled);
   }
 

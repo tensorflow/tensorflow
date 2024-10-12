@@ -806,19 +806,6 @@ bool GpuDriver::GetDeviceProperties(hipDeviceProp_t* device_properties,
   return true;
 }
 
-bool GpuDriver::IsEccEnabled(hipDevice_t device, bool* result) {
-  int value = -1;
-  hipError_t res = hipSuccess;
-  // TODO(ROCm) implement this feature in HIP
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query ECC status: " << ToString(res);
-    return false;
-  }
-
-  *result = value;
-  return true;
-}
-
 std::string GpuDriver::GetPCIBusID(hipDevice_t device) {
   std::string pci_bus_id;
   static const int kBufferSize = 64;

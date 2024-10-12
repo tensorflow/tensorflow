@@ -980,19 +980,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
-  int value = -1;
-  auto status = cuda::ToStatus(
-      cuDeviceGetAttribute(&value, CU_DEVICE_ATTRIBUTE_ECC_ENABLED, device));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query ECC status: " << status;
-    return false;
-  }
-
-  *result = value;
-  return true;
-}
-
 std::string GpuDriver::GetPCIBusID(CUdevice device) {
   std::string pci_bus_id;
   static const int kBufferSize = 64;
