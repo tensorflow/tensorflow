@@ -37,7 +37,7 @@ absl::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
   return xla::BroadcastTo(input, output_dims);
 }
 
-Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
+absl::Status BroadcastOpsToSame(xla::XlaOp* lhs, xla::XlaOp* rhs) {
   TF_ASSIGN_OR_RETURN(auto lhs_xla_shape, lhs->builder()->GetShape(*lhs));
   TF_ASSIGN_OR_RETURN(auto rhs_xla_shape, rhs->builder()->GetShape(*rhs));
   tensorflow::TensorShape lhs_tf_shape;
