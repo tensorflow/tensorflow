@@ -107,7 +107,8 @@ TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   (*(callsite->node_def.mutable_attr()))["_XlaMustCompile"] = BoolAttr(true);
 
   // Note: need to set attribute on the created node.
-  Status status = xla_kernel_creator.CreateKernel(flr_, callsite, &kernel_);
+  absl::Status status =
+      xla_kernel_creator.CreateKernel(flr_, callsite, &kernel_);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   EXPECT_EQ("XTimesY", kernel_->name());
@@ -129,14 +130,12 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
-  Status status =
-      xla_kernel_creator.CreateKernel(flr_, ToNodeProperties(R"proto(
-                                        name: 'XTimesY'
-                                        op: 'XTimesY'
-                                        input: 'a'
-                                        input: 'b'
-                                      )proto"),
-                                      &kernel_);
+  absl::Status status = xla_kernel_creator.CreateKernel(
+      flr_,
+      ToNodeProperties(R"pb(
+        name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
+      )pb"),
+      &kernel_);
   EXPECT_TRUE(absl::IsInternal(status)) << status;
 }
 
@@ -146,14 +145,12 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
-  Status status =
-      xla_kernel_creator.CreateKernel(flr_, ToNodeProperties(R"proto(
-                                        name: 'XTimesY'
-                                        op: 'XTimesY'
-                                        input: 'a'
-                                        input: 'b'
-                                      )proto"),
-                                      &kernel_);
+  absl::Status status = xla_kernel_creator.CreateKernel(
+      flr_,
+      ToNodeProperties(R"pb(
+        name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
+      )pb"),
+      &kernel_);
   EXPECT_TRUE(absl::IsInternal(status)) << status;
 }
 

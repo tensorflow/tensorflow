@@ -24,7 +24,7 @@ void XlaHostRecvDeviceContext::CopyDeviceTensorToCPU(
     Tensor* cpu_tensor, StatusCallback done) {
   DataType dtype = EncodePrimitiveTypeAsDataType(shape_.element_type()).value();
   TensorShape tensor_shape;
-  Status status = XLAShapeToTensorShape(shape_, &tensor_shape);
+  absl::Status status = XLAShapeToTensorShape(shape_, &tensor_shape);
   if (!status.ok()) {
     done(status);
     return;

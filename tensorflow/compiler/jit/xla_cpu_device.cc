@@ -36,12 +36,14 @@ using tensorflow::IdentityShapeRepresentationFn;
 
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
-  Status ListPhysicalDevices(std::vector<string>* devices) override;
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status CreateDevices(
+      const SessionOptions& options, const string& name_prefix,
+      std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
+absl::Status XlaCpuDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
@@ -53,7 +55,7 @@ Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   return absl::OkStatus();
 }
 
-Status XlaCpuDeviceFactory::CreateDevices(
+absl::Status XlaCpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
@@ -104,7 +106,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   // tensorflow_accelerator_device_info() == nullptr is used as an IsCPU test.
   // We need XlaCpuDevice to be treated not as CPU because it allocates
   // XlaTensors, not regular Tensors.
-  Status status = device->UseAcceleratorDeviceInfo();
+  absl::Status status = device->UseAcceleratorDeviceInfo();
   if (!status.ok()) {
     errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT);
     return status;

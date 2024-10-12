@@ -31,19 +31,20 @@ namespace {
 
 class TestListener : public XlaActivityListener {
  public:
-  Status Listen(
+  absl::Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
     auto_clustering_activity_ = auto_clustering_activity;
     return absl::OkStatus();
   }
 
-  Status Listen(
+  absl::Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     jit_compilation_activity_ = jit_compilation_activity;
     return absl::OkStatus();
   }
 
-  Status Listen(const XlaOptimizationRemark& optimization_remark) override {
+  absl::Status Listen(
+      const XlaOptimizationRemark& optimization_remark) override {
     return absl::OkStatus();
   }
 

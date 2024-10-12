@@ -31,17 +31,16 @@ class TfToHloCompiler {
 
   // Compiles a Tensorflow `function` to an HloModuleProto stored in the
   // XlaCompilationResult pointed to by `result`.
-  virtual Status Compile(const XlaCompiler::CompileOptions& options,
-                         const NameAttrList& function,
-                         absl::Span<const XlaArgument> args,
-                         XlaCompilationResult* result) = 0;
+  virtual absl::Status Compile(const XlaCompiler::CompileOptions& options,
+                               const NameAttrList& function,
+                               absl::Span<const XlaArgument> args,
+                               XlaCompilationResult* result) = 0;
 
   // Compiles a Tensorflow single op to an HloModuleProto stored in the
   // XlaCompilationResult pointed to by `result`.
-  virtual Status CompileSingleOp(const XlaCompiler::CompileOptions& options,
-                                 const OpKernelContext* ctx,
-                                 absl::Span<const XlaArgument> args,
-                                 XlaCompilationResult* result) = 0;
+  virtual absl::Status CompileSingleOp(
+      const XlaCompiler::CompileOptions& options, const OpKernelContext* ctx,
+      absl::Span<const XlaArgument> args, XlaCompilationResult* result) = 0;
 
  private:
   TfToHloCompiler(const TfToHloCompiler&) = delete;
