@@ -806,21 +806,6 @@ bool GpuDriver::GetDeviceProperties(hipDeviceProp_t* device_properties,
   return true;
 }
 
-std::string GpuDriver::GetPCIBusID(hipDevice_t device) {
-  std::string pci_bus_id;
-  static const int kBufferSize = 64;
-  absl::InlinedVector<char, 4> chars(kBufferSize);
-  chars[kBufferSize - 1] = '\0';
-  hipError_t res =
-      wrap::hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
-    return pci_bus_id;
-  }
-  pci_bus_id = chars.begin();
-  return pci_bus_id;
-}
-
 absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     Context* context, hipFunction_t kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

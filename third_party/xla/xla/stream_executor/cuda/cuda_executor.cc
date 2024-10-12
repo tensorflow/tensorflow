@@ -449,6 +449,21 @@ bool IsEccEnabled(CUdevice device, bool* result) {
   *result = value;
   return true;
 }
+
+std::string GetPCIBusID(CUdevice device) {
+  std::string pci_bus_id;
+  static const int kBufferSize = 64;
+  absl::InlinedVector<char, 4> chars(kBufferSize);
+  chars[kBufferSize - 1] = '\0';
+  auto status = cuda::ToStatus(
+      cuDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to query PCI bus id for device: " << status;
+    return pci_bus_id;
+  }
+  pci_bus_id = std::string(chars.begin(), kBufferSize - 1);
+  return pci_bus_id;
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -1044,7 +1059,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
 
   {
-    std::string pci_bus_id = GpuDriver::GetPCIBusID(device);
+    std::string pci_bus_id = GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = absl::AsciiStrToLower(pci_bus_id);

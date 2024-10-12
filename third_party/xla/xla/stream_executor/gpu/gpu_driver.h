@@ -440,11 +440,6 @@ class GpuDriver {
   static bool GetDeviceProperties(GpuDeviceProperty* device_properties,
                                   int device_ordinal);
 
-  // Returns a PCI bus id string for the device.
-  // [domain]:[bus]:[device].[function]
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g85295e7d9745ab8f0aa80dd1e172acfc
-  static std::string GetPCIBusID(GpuDeviceHandle device);
-
   // -- Context- and device-independent calls.
 
   // Returns the number of visible CUDA device via cuDeviceGetCount.

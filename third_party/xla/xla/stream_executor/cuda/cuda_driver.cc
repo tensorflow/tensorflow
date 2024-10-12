@@ -980,21 +980,6 @@ bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
   return status.ok();
 }
 
-std::string GpuDriver::GetPCIBusID(CUdevice device) {
-  std::string pci_bus_id;
-  static const int kBufferSize = 64;
-  absl::InlinedVector<char, 4> chars(kBufferSize);
-  chars[kBufferSize - 1] = '\0';
-  auto status = cuda::ToStatus(
-      cuDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query PCI bus id for device: " << status;
-    return pci_bus_id;
-  }
-  pci_bus_id = chars.begin();
-  return pci_bus_id;
-}
-
 absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     Context* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

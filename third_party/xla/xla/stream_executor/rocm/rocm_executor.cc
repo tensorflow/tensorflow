@@ -395,6 +395,20 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   return absl::OkStatus();
 }
 
+std::string GetPCIBusID(hipDevice_t device) {
+  std::string pci_bus_id;
+  static const int kBufferSize = 64;
+  absl::InlinedVector<char, 4> chars(kBufferSize);
+  chars[kBufferSize - 1] = '\0';
+  hipError_t res =
+      wrap::hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
+    return pci_bus_id;
+  }
+  pci_bus_id = chars.begin();
+  return pci_bus_id;
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -854,7 +868,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   DeviceDescription desc;
 
   {
-    std::string pci_bus_id = GpuDriver::GetPCIBusID(device);
+    std::string pci_bus_id = GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
