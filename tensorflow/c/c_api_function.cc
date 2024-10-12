@@ -39,7 +39,7 @@ using tensorflow::errors::InvalidArgument;
 namespace tensorflow {
 namespace {
 
-Status ValidateNonRefOutput(const Node* node, int idx) {
+absl::Status ValidateNonRefOutput(const Node* node, int idx) {
   const DataType& dt = node->output_type(idx);
   return IsRefType(dt)
              ? InvalidArgument("Output ", idx, " of node '", node->name(),
@@ -51,7 +51,7 @@ Status ValidateNonRefOutput(const Node* node, int idx) {
 // does various checks while doing so. `input_nodes` will contain the same
 // information as input_tensors just in a different structure to make
 // following processing easier. TODO(iga): Simplify this nested structure.
-Status ProcessInputs(
+absl::Status ProcessInputs(
     const TF_Graph* fn_body, const char* fn_name, int ninputs,
     const TF_Output* inputs, std::vector<OutputTensor>* input_tensors,
     std::unordered_map<const Node*, std::vector<int>>* input_nodes)
@@ -88,9 +88,9 @@ Status ProcessInputs(
 
 // Converts `noutputs` and `outputs` into `outputs_tensors` and does various
 // checks while doing so.
-Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
-                      int noutputs, const TF_Output* outputs,
-                      std::vector<OutputTensor>* output_tensors)
+absl::Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
+                            int noutputs, const TF_Output* outputs,
+                            std::vector<OutputTensor>* output_tensors)
     TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
@@ -110,7 +110,7 @@ Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
 
 // Populates `body_nodes` with the nodes that will become function's body.
 // Performs various checks.
-Status ComputeBodyNodes(
+absl::Status ComputeBodyNodes(
     const TF_Graph* fn_body, const char* fn_name, int num_opers,
     const TF_Operation* const* opers,
     const std::unordered_map<const Node*, std::vector<int>>& input_nodes,
