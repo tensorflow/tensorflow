@@ -423,6 +423,19 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
 
   return absl::OkStatus();
 }
+
+// Returns the total amount of memory available on the device.
+bool GetDeviceTotalMemory(CUdevice device, uint64_t* result) {
+  size_t value{};
+  auto status = cuda::ToStatus(cuDeviceTotalMem(&value, device));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to query total available memory: " << status;
+    return false;
+  }
+
+  *result = value;
+  return true;
+}
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -1055,7 +1068,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   uint64_t device_memory_size = static_cast<uint64_t>(-1);
-  (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
+  GetDeviceTotalMemory(device, &device_memory_size);
   desc.set_device_memory_size(device_memory_size);
 
   int64_t l2_cache_bytes =

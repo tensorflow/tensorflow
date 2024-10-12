@@ -993,18 +993,6 @@ bool GpuDriver::IsEccEnabled(CUdevice device, bool* result) {
   return true;
 }
 
-bool GpuDriver::GetDeviceTotalMemory(CUdevice device, uint64_t* result) {
-  size_t value{};
-  auto status = cuda::ToStatus(cuDeviceTotalMem(&value, device));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to query total available memory: " << status;
-    return false;
-  }
-
-  *result = value;
-  return true;
-}
-
 std::string GpuDriver::GetPCIBusID(CUdevice device) {
   std::string pci_bus_id;
   static const int kBufferSize = 64;

@@ -445,10 +445,6 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g9c3e1414f0ad901d3278a4d6645fc266
   static bool IsEccEnabled(GpuDeviceHandle device, bool* result);
 
-  // Returns the total amount of memory available for allocation by the CUDA
-  // context, in bytes, via cuDeviceTotalMem.
-  static bool GetDeviceTotalMemory(GpuDeviceHandle device, uint64_t* result);
-
   // Returns a PCI bus id string for the device.
   // [domain]:[bus]:[device].[function]
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g85295e7d9745ab8f0aa80dd1e172acfc
