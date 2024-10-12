@@ -67,7 +67,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       .def("start",
            [](ProfilerSessionWrapper& wrapper, const char* logdir,
               const py::dict& options) {
-             tensorflow::Status status;
+             absl::Status status;
              ToolOptions tool_options = ToolOptionsFromPythonDict(options);
              {
                py::gil_scoped_release release;
@@ -79,7 +79,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       .def("stop",
            [](ProfilerSessionWrapper& wrapper) {
              tensorflow::string content;
-             tensorflow::Status status;
+             absl::Status status;
              {
                py::gil_scoped_release release;
                status = wrapper.Stop(&content);
@@ -90,7 +90,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
              return py::bytes(content);
            })
       .def("export_to_tb", [](ProfilerSessionWrapper& wrapper) {
-        tensorflow::Status status;
+        absl::Status status;
         {
           py::gil_scoped_release release;
           status = wrapper.ExportToTensorBoard();
@@ -112,7 +112,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
         [](const char* service_addr, const char* logdir,
            const char* worker_list, bool include_dataset_ops, int duration_ms,
            int num_tracing_attempts, py::dict options) {
-          tensorflow::Status status;
+          absl::Status status;
           ToolOptions tool_options = ToolOptionsFromPythonDict(options);
           {
             py::gil_scoped_release release;
@@ -127,7 +127,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
   m.def("monitor", [](const char* service_addr, int duration_ms,
                       int monitoring_level, bool display_timestamp) {
     tensorflow::string content;
-    tensorflow::Status status;
+    absl::Status status;
     {
       py::gil_scoped_release release;
       status = tensorflow::profiler::pywrap::Monitor(
