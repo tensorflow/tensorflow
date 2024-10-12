@@ -29,7 +29,7 @@ namespace functor {
 template <typename Device, typename T, typename Tindices, bool ADJ_A,
           bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor {
-  static EIGEN_ALWAYS_INLINE Status Compute(
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
       OpKernelContext* ctx, typename TTypes<T>::Matrix out,
       typename TTypes<Tindices>::ConstMatrix a_indices,
       typename TTypes<T>::ConstVec a_values, typename TTypes<T>::ConstMatrix b);
