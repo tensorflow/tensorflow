@@ -409,6 +409,18 @@ std::string GetPCIBusID(hipDevice_t device) {
   pci_bus_id = chars.begin();
   return pci_bus_id;
 }
+
+bool GetDeviceProperties(hipDeviceProp_t* device_properties,
+                         int device_ordinal) {
+  hipError_t res =
+      wrap::hipGetDeviceProperties(device_properties, device_ordinal);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to query device properties: " << ToString(res);
+    return false;
+  }
+
+  return true;
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -880,7 +892,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   }
 
   hipDeviceProp_t prop;
-  if (GpuDriver::GetDeviceProperties(&prop, device_ordinal)) {
+  if (GetDeviceProperties(&prop, device_ordinal)) {
     desc.set_threads_per_block_limit(prop.maxThreadsPerBlock);
 
     ThreadDim thread_dim_limit;

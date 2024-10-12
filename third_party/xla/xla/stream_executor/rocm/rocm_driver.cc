@@ -794,18 +794,6 @@ absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   return version;
 }
 
-bool GpuDriver::GetDeviceProperties(hipDeviceProp_t* device_properties,
-                                    int device_ordinal) {
-  hipError_t res =
-      wrap::hipGetDeviceProperties(device_properties, device_ordinal);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query device properties: " << ToString(res);
-    return false;
-  }
-
-  return true;
-}
-
 absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     Context* context, hipFunction_t kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

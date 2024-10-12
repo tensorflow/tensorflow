@@ -973,13 +973,6 @@ absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   return version;
 }
 
-bool GpuDriver::GetDeviceProperties(CUdevprop* device_properties,
-                                    int device_ordinal) {
-  auto status =
-      cuda::ToStatus(cuDeviceGetProperties(device_properties, device_ordinal));
-  return status.ok();
-}
-
 absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
     Context* context, CUfunction kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {

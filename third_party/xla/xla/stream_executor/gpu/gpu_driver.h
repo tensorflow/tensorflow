@@ -428,18 +428,6 @@ class GpuDriver {
   static absl::Status GetPointerAddressRange(GpuDevicePtr dptr,
                                              GpuDevicePtr* base, size_t* size);
 
-  // -- Device-specific calls.
-
-  // Returns a grab-bag of device properties in a caller-owned device_properties
-  // structure for device_ordinal via cuDeviceGetProperties.
-  //
-  // This call is deprecated in the NVIDIA driver API; its replacement is
-  // GetDeviceAttribute
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE__DEPRECATED.html#group__CUDA__DEVICE__DEPRECATED_1g65a5b4e25186bd257df80b98c98cffe6
-  static bool GetDeviceProperties(GpuDeviceProperty* device_properties,
-                                  int device_ordinal);
-
   // -- Context- and device-independent calls.
 
   // Returns the number of visible CUDA device via cuDeviceGetCount.
