@@ -744,7 +744,7 @@ static PyObject* EagerTensor_prefer_custom_summarizer(EagerTensor* self) {
 // not include a shape or dtype.
 static PyObject* EagerTensor_summarize_value(EagerTensor* self) {
   std::string summary;
-  tensorflow::Status status =
+  absl::Status status =
       tensorflow::unwrap(self->handle)->SummarizeValue(summary);
   if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
     return nullptr;
