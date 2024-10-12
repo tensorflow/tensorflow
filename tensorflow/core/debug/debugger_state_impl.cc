@@ -38,7 +38,7 @@ DebuggerState::~DebuggerState() {
   }
 }
 
-Status DebuggerState::PublishDebugMetadata(
+absl::Status DebuggerState::PublishDebugMetadata(
     const int64_t global_step, const int64_t session_run_index,
     const int64_t executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
@@ -48,14 +48,14 @@ Status DebuggerState::PublishDebugMetadata(
                                        output_names, target_names, debug_urls_);
 }
 
-Status DebugGraphDecorator::DecorateGraph(Graph* graph, Device* device) {
+absl::Status DebugGraphDecorator::DecorateGraph(Graph* graph, Device* device) {
   DebugNodeInserter::DeparallelizeWhileLoops(graph, device);
   return DebugNodeInserter::InsertNodes(
       debug_options_.debug_tensor_watch_opts(), graph, device);
 }
 
-Status DebugGraphDecorator::PublishGraph(const Graph& graph,
-                                         const string& device_name) {
+absl::Status DebugGraphDecorator::PublishGraph(const Graph& graph,
+                                               const string& device_name) {
   std::unordered_set<string> debug_urls;
   for (const DebugTensorWatch& watch :
        debug_options_.debug_tensor_watch_opts()) {

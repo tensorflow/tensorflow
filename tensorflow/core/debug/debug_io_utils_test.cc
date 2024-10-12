@@ -163,8 +163,8 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
-  Status s = DebugFileIO::DumpTensorToDir(kDebugNodeKey, *tensor_b_, wall_time,
-                                          test_dir, &dump_file_name);
+  absl::Status s = DebugFileIO::DumpTensorToDir(
+      kDebugNodeKey, *tensor_b_, wall_time, test_dir, &dump_file_name);
   ASSERT_TRUE(s.ok());
 
   // Read the file into a Event proto.
@@ -240,8 +240,8 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
-  Status s = DebugFileIO::DumpTensorToDir(kDebugNodeKey, *tensor_a_, wall_time,
-                                          test_dir, &dump_file_name);
+  absl::Status s = DebugFileIO::DumpTensorToDir(
+      kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_name);
   ASSERT_FALSE(s.ok());
 
   // Tear down temporary file and directories.
@@ -279,7 +279,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
     ASSERT_NE(dump_roots[0], dump_roots[i]);
   }
 
-  Status s =
+  absl::Status s =
       DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
   ASSERT_TRUE(s.ok());
 
@@ -349,7 +349,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMemoryCallback) {
         }
       });
 
-  Status s =
+  absl::Status s =
       DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
   ASSERT_TRUE(s.ok());
   ASSERT_TRUE(called);
@@ -403,7 +403,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     std::vector<string> urls;
     urls.push_back(debug_url);
 
-    Status s =
+    absl::Status s =
         DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
     ASSERT_TRUE(s.ok());
 
