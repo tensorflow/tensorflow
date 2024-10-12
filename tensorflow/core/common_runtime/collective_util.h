@@ -27,9 +27,10 @@ limitations under the License.
 namespace tensorflow {
 namespace collective_util {
 
-Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
-                                   const string& device_name, Device** device,
-                                   DeviceLocality* device_locality);
+absl::Status InitializeDeviceAndLocality(const DeviceMgr* dev_mgr,
+                                         const string& device_name,
+                                         Device** device,
+                                         DeviceLocality* device_locality);
 string SubdivPermDebugString(const CollectiveParams& col_params);
 
 // Used for executing a sub-operation, e.g. a merge_op instance, with
@@ -49,9 +50,9 @@ class SubContext {
   ~SubContext() = default;
 };
 
-Status ComputeBinOp(OpKernelContext* op_ctx, OpKernelContext::Params* params,
-                    Device* device, OpKernel* op, Tensor* output,
-                    Tensor* input);
+absl::Status ComputeBinOp(OpKernelContext* op_ctx,
+                          OpKernelContext::Params* params, Device* device,
+                          OpKernel* op, Tensor* output, Tensor* input);
 
 }  // namespace collective_util
 }  // namespace tensorflow

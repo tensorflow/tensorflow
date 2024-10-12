@@ -228,8 +228,8 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
-void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  Status status;
+void BaseCollectiveExecutor::StartAbort(const absl::Status& s) {
+  absl::Status status;
   {
     mutex_lock l(status_mu_);
     if (!status_.ok()) {
@@ -237,7 +237,7 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
               << s;
       return;
     }
-    status_ = StatusGroup::MakeDerived(Status(
+    status_ = StatusGroup::MakeDerived(absl::Status(
         s.code(),
         absl::StrCat(
             "Collective ops is aborted by: ", s.message(),
@@ -253,7 +253,7 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
   }
 }
 
-Status BaseCollectiveExecutor::GetStatus(const Status& s) {
+absl::Status BaseCollectiveExecutor::GetStatus(const absl::Status& s) {
   if (s.ok()) return s;
   mutex_lock l(status_mu_);
   // If the collective executor is already aborted, use the aborted status
@@ -274,7 +274,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto done_safe = [this, done, ctx, is_callback_called](const Status& s) {
+  auto done_safe = [this, done, ctx,
+                    is_callback_called](const absl::Status& s) {
     bool called = is_callback_called->exchange(true);
     if (!called) {
       if (!s.ok() && !IsCancelled(ctx->cancellation_manager())) {
@@ -293,8 +294,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
         timeout_microseconds, [this, is_callback_called, done] {
           bool called = is_callback_called->exchange(true);
           if (!called) {
-            Status status(absl::StatusCode::kDeadlineExceeded,
-                          "Collective has timed out during execution.");
+            absl::Status status(absl::StatusCode::kDeadlineExceeded,
+                                "Collective has timed out during execution.");
             StartAbort(status);
             done(status);
           }
@@ -313,7 +314,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
           ? &ctx->input(0)
           : nullptr;
   CollectiveImplementationInterface* col_impl = nullptr;
-  Status status = CreateCollective(*col_params, &col_impl);
+  absl::Status status = CreateCollective(*col_params, &col_impl);
   if (!status.ok()) {
     done_safe(status);
     DCHECK_EQ(nullptr, col_impl);
@@ -352,7 +353,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
         },
         context_id);
     col_impl->Ref();
-    col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
+    col_impl->Run([col_impl, col_ctx, done_safe](const absl::Status& s) {
       core::ScopedUnref unref(col_impl);
       done_safe(s);
     });
@@ -376,7 +377,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   });
 
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
-                    done](const Status& s) {
+                    done](const absl::Status& s) {
     tsl::profiler::TraceMe::ActivityEnd(trace_id);
     bool called = is_callback_called->exchange(true);
     if (!called) {
@@ -396,7 +397,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
         timeout_microseconds, [this, is_callback_called, done]() {
           bool called = is_callback_called->exchange(true);
           if (!called) {
-            Status status(
+            absl::Status status(
                 absl::StatusCode::kDeadlineExceeded,
                 "Collective has timed out waiting for other workers.");
             StartAbort(status);
@@ -408,7 +409,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
                                                 done_safe);
 }
 
-Status BaseCollectiveExecutor::CreateCollective(
+absl::Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {
   VLOG(2) << "CreateCollective type "
