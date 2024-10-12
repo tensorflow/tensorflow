@@ -56,34 +56,6 @@ namespace stream_executor::gpu {
 
 namespace {
 
-// Returns the device associated with the given context.
-absl::StatusOr<hipDevice_t> DeviceFromContext(Context* context) {
-  ScopedActivateContext activated{context};
-  hipDevice_t device = -1;
-  hipError_t result = wrap::hipCtxGetDevice(&device);
-  if (result == hipSuccess) return device;
-
-  return absl::InternalError(
-      absl::StrCat("failed to get device for context: ", ToString(result)));
-}
-
-}  // namespace
-
-namespace {
-
-// Call hipDeviceSynchronize and crash if it doesn't succeed.
-void SynchronizeOrDie() {
-  auto res = wrap::hipDeviceSynchronize();
-  if (res != hipSuccess) {
-    LOG(FATAL) << "Synchronize found " << ToString(res)
-               << " :: " << tsl::CurrentStackTrace();
-  }
-}
-
-}  // namespace
-
-namespace {
-
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInit() {
@@ -860,55 +832,6 @@ std::string GpuDriver::GetPCIBusID(hipDevice_t device) {
   }
   pci_bus_id = chars.begin();
   return pci_bus_id;
-}
-
-bool GpuDriver::CanEnablePeerAccess(Context* from, Context* to) {
-  // A context can always access its own memory.
-  if (from == to) return true;
-
-  auto from_device = DeviceFromContext(from);
-  if (!from_device.ok()) {
-    LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
-               << from_device.status();
-    return false;
-  }
-
-  auto to_device = DeviceFromContext(to);
-  if (!to_device.ok()) {
-    LOG(ERROR) << "failed to resolve 'to' peer access context to a device: "
-               << to_device.status();
-    return false;
-  }
-  return CanEnablePeerAccess(from_device.value(), to_device.value());
-}
-
-bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from, GpuDeviceHandle to) {
-  int can_access_peer = -1;
-  hipError_t result = wrap::hipDeviceCanAccessPeer(&can_access_peer, from, to);
-  if (result != hipSuccess) {
-    LOG(ERROR) << "failed to detect peer access capability: "
-               << ToString(result);
-    return false;
-  }
-  return can_access_peer;
-}
-
-absl::Status GpuDriver::EnablePeerAccess(Context* from, Context* to) {
-  if (from == to) {
-    return absl::OkStatus();  // A device can always access its own memory.
-  }
-
-  ScopedActivateContext activated{from};
-  hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
-  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
-    return absl::InternalError(
-        absl::StrFormat("failed to enable peer access from %d to %d: %s",
-                        from->device_ordinal(), to->device_ordinal(),
-                        ToString(result).c_str()));
-  }
-
-  return absl::OkStatus();
 }
 
 absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(

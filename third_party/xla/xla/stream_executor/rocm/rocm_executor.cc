@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -332,6 +333,66 @@ absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
 
   return absl::InternalError(
       absl::StrCat("failed call to hipDeviceGet: ", ToString(res)));
+}
+
+// Returns the device associated with the given context.
+absl::StatusOr<hipDevice_t> DeviceFromContext(Context* context) {
+  ScopedActivateContext activated{context};
+  hipDevice_t device = -1;
+  hipError_t result = wrap::hipCtxGetDevice(&device);
+  if (result == hipSuccess) return device;
+
+  return absl::InternalError(
+      absl::StrCat("failed to get device for context: ", ToString(result)));
+}
+
+bool CanEnablePeerAccess(hipDevice_t from, hipDevice_t to) {
+  int can_access_peer = -1;
+  hipError_t result = wrap::hipDeviceCanAccessPeer(&can_access_peer, from, to);
+  if (result != hipSuccess) {
+    LOG(ERROR) << "failed to detect peer access capability: "
+               << ToString(result);
+    return false;
+  }
+  return can_access_peer;
+}
+
+bool CanEnablePeerAccess(Context* from, Context* to) {
+  // A context can always access its own memory.
+  if (from == to) return true;
+
+  auto from_device = DeviceFromContext(from);
+  if (!from_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
+               << from_device.status();
+    return false;
+  }
+
+  auto to_device = DeviceFromContext(to);
+  if (!to_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'to' peer access context to a device: "
+               << to_device.status();
+    return false;
+  }
+  return CanEnablePeerAccess(from_device.value(), to_device.value());
+}
+
+absl::Status EnablePeerAccess(Context* from, Context* to) {
+  if (from == to) {
+    return absl::OkStatus();  // A device can always access its own memory.
+  }
+
+  ScopedActivateContext activated{from};
+  hipError_t result = wrap::hipCtxEnablePeerAccess(
+      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
+  if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
+    return absl::InternalError(
+        absl::StrFormat("failed to enable peer access from %d to %d: %s",
+                        from->device_ordinal(), to->device_ordinal(),
+                        ToString(result).c_str()));
+  }
+
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -700,13 +761,12 @@ fft::FftSupport* RocmExecutor::AsFft() {
 
 bool RocmExecutor::CanEnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
-  return GpuDriver::CanEnablePeerAccess(gpu_context(),
-                                        rocm_other->gpu_context());
+  return CanEnablePeerAccess(gpu_context(), rocm_other->gpu_context());
 }
 
 absl::Status RocmExecutor::EnablePeerAccessTo(StreamExecutor* other) {
   GpuExecutor* rocm_other = static_cast<GpuExecutor*>(other);
-  return GpuDriver::EnablePeerAccess(gpu_context(), rocm_other->gpu_context());
+  return EnablePeerAccess(gpu_context(), rocm_other->gpu_context());
 }
 
 bool RocmExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
@@ -742,8 +802,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
-absl::Status FillBlockDimLimit(GpuDeviceHandle device,
-                               BlockDim* block_dim_limit) {
+absl::Status FillBlockDimLimit(hipDevice_t device, BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
   // (as opposed to ThreadDim which expresses the dimensions of threads
@@ -787,7 +846,7 @@ absl::Status RocmExecutor::TrimGraphMemory() {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 RocmExecutor::CreateDeviceDescription(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(GpuDeviceHandle device, GetDevice(device_ordinal));
+  TF_ASSIGN_OR_RETURN(hipDevice_t device, GetDevice(device_ordinal));
 
   TF_ASSIGN_OR_RETURN(std::string gcn_arch_name, GetGpuGCNArchName(device));
 
