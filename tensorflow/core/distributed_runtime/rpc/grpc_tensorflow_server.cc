@@ -38,8 +38,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status FillServerDef(const string& cluster_spec, const string& job_name,
-                     int task_index, ServerDef* options) {
+absl::Status FillServerDef(const string& cluster_spec, const string& job_name,
+                           int task_index, ServerDef* options) {
   options->set_protocol("grpc");
   options->set_job_name(job_name);
   options->set_task_index(task_index);
@@ -113,8 +113,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
   tensorflow::ServerDef server_def;
-  tensorflow::Status s = tensorflow::FillServerDef(cluster_spec, job_name,
-                                                   task_index, &server_def);
+  absl::Status s = tensorflow::FillServerDef(cluster_spec, job_name, task_index,
+                                             &server_def);
   if (!s.ok()) {
     std::cerr << "ERROR: " << s.message() << std::endl;
     Usage(argv[0]);

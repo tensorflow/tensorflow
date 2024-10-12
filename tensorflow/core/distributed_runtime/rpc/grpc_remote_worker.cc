@@ -135,7 +135,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
 
     auto callback = [this, request, response, done, start_usec,
-                     logging_active](Status s) {
+                     logging_active](absl::Status s) {
       if (logging_active) {
         if (logger_->LoggingActive()) {
           int64_t end_usec = Env::Default()->NowMicros();
@@ -204,7 +204,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
 
     auto callback = [this, request, response, done, start_usec,
-                     logging_active](Status s) {
+                     logging_active](absl::Status s) {
       if (logging_active) {
         if (logger_->LoggingActive()) {
           int64_t end_usec = Env::Default()->NowMicros();
@@ -296,7 +296,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     request.set_request_id(request_id);
 
     MarkRecvFinishedResponse* response = new MarkRecvFinishedResponse();
-    auto done = [response](Status status) { delete response; };
+    auto done = [response](absl::Status status) { delete response; };
     IssueRequest(&request, response, markrecvfinished_, done);
   }
 
