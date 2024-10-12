@@ -33,16 +33,16 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main);
 // arguments.
 typedef std::vector<std::pair<string, TransformFuncParameters>>
     TransformParameters;
-Status ParseTransformParameters(const string& transforms_string,
-                                TransformParameters* params_list);
+absl::Status ParseTransformParameters(const string& transforms_string,
+                                      TransformParameters* params_list);
 
 // Applies a series of transformations to the GraphDef. These transforms are
 // defined by modules that call REGISTER_GRAPH_TRANSFORM() to associate a
 // function with a name string.
-Status TransformGraph(const std::vector<string>& inputs,
-                      const std::vector<string>& outputs,
-                      const TransformParameters& transform_params,
-                      GraphDef* graph_def);
+absl::Status TransformGraph(const std::vector<string>& inputs,
+                            const std::vector<string>& outputs,
+                            const TransformParameters& transform_params,
+                            GraphDef* graph_def);
 
 }  // namespace graph_transforms
 }  // namespace tensorflow
