@@ -136,6 +136,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
