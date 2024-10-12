@@ -1205,6 +1205,7 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_context",
         ":cuda_event",
         ":cuda_status",
         "//xla/stream_executor:device_memory",

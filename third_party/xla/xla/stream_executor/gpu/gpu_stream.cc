@@ -54,30 +54,6 @@ Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
   return handle;
 }
 
-absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                               const DeviceMemoryBase& gpu_src, uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyD2D(
-      parent_->gpu_context(),
-      reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_dst->opaque())),
-      reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())), size,
-      gpu_stream());
-}
-
-absl::Status GpuStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                               uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyH2D(
-      parent_->gpu_context(), reinterpret_cast<GpuDevicePtr>(gpu_dst->opaque()),
-      host_src, size, gpu_stream());
-}
-
-absl::Status GpuStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
-                               uint64_t size) {
-  return GpuDriver::AsynchronousMemcpyD2H(
-      parent_->gpu_context(), host_dst,
-      reinterpret_cast<GpuDevicePtr>(const_cast<void*>(gpu_src.opaque())), size,
-      gpu_stream());
-}
-
 absl::Status GpuStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
   auto callback_ptr =

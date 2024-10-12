@@ -343,16 +343,6 @@ absl::Status GpuDriver::DeviceGraphMemTrim(CUdevice device) {
                         "Failed to trim device graph memory");
 }
 
-absl::StatusOr<bool> GpuDriver::StreamIsCapturing(CUstream stream) {
-  VLOG(2) << "Checking if stream " << stream << " is capturing";
-
-  CUstreamCaptureStatus status;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuStreamIsCapturing(stream, &status),
-                                    "Failed to check stream capturing status"));
-
-  return status == CU_STREAM_CAPTURE_STATUS_ACTIVE;
-}
-
 absl::Status GpuDriver::GraphConditionalHandleCreate(
     GpuGraphConditionalHandle* handle, CUgraph graph, Context* context,
     unsigned int default_launch_value, unsigned int flags) {
@@ -967,73 +957,6 @@ absl::Status GpuDriver::SynchronousMemcpyH2D(Context* context,
           " host src: %p; size: %u=0x%x",
           absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
   VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyD2H(Context* context, void* host_dst,
-                                              CUdeviceptr gpu_src,
-                                              uint64_t size, CUstream stream) {
-  ScopedActivateContext activation(context);
-
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream)));
-
-  VLOG(2) << "successfully enqueued async memcpy d2h of " << size
-          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
-          << host_dst << " on stream " << stream;
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyH2D(Context* context,
-                                              CUdeviceptr gpu_dst,
-                                              const void* host_src,
-                                              uint64_t size, CUstream stream) {
-  ScopedActivateContext activation(context);
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream)));
-
-  VLOG(2) << "successfully enqueued async memcpy h2d of " << size << " bytes"
-          << " from " << host_src << " to " << absl::bit_cast<void*>(gpu_dst)
-          << " on stream " << stream;
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
-                                              CUdeviceptr gpu_dst,
-                                              CUdeviceptr gpu_src,
-                                              uint64_t size, CUstream stream) {
-  ScopedActivateContext activation(context);
-
-  // In graph capture mode we never have operations that access peer memory, so
-  // we can always make a call to cuMemcpyDtoDAsync.
-  TF_ASSIGN_OR_RETURN(bool is_capturing, StreamIsCapturing(stream));
-
-  if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
-    // GetContextMap()->GetAnyContext() doesn't work when ptr == 0.
-    // This happens when the size is 0.
-    TF_RETURN_IF_ERROR(
-        cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
-  } else {
-    // Any context work here.
-    CUcontext dst_context = CudaContext::GetContextMap()->GetAnyContext(
-        absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context = CudaContext::GetContextMap()->GetAnyContext(
-        absl::bit_cast<void*>(gpu_src));
-
-    if (dst_context == src_context) {
-      // Since the CUDA context is the same, the src and dst are within the same
-      // GPU. So we can use cuMemcpyDtoD.
-      TF_RETURN_IF_ERROR(
-          cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
-    } else {
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
-          gpu_dst, dst_context, gpu_src, src_context, size, stream)));
-    }
-  }
-
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size << " bytes"
-          << " from " << absl::bit_cast<void*>(gpu_src) << " to "
-          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream;
   return absl::OkStatus();
 }
 

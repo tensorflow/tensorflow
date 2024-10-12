@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -103,6 +104,61 @@ absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
                "could not wait stream on event"));
+  return absl::OkStatus();
+}
+
+absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
+                                   hipDeviceptr_t gpu_src, uint64_t size,
+                                   hipStream_t stream) {
+  ScopedActivateContext activation{context};
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream),
+      absl::StrFormat(
+          "failed to enqueue async memcpy from device to host: host dst: %p; "
+          "Gpu src: %p; size: %llu=0x%llx",
+          host_dst, absl::bit_cast<void*>(gpu_src), size, size)));
+
+  VLOG(2) << "successfully enqueued async memcpy d2h of " << size
+          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
+          << host_dst << " on stream " << stream
+          << " device: " << context->device_ordinal();
+  return absl::OkStatus();
+}
+
+absl::Status AsynchronousMemcpyH2D(Context* context, hipDeviceptr_t gpu_dst,
+                                   const void* host_src, uint64_t size,
+                                   hipStream_t stream) {
+  ScopedActivateContext activation{context};
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size,
+                               stream),
+      absl::StrFormat(
+          "failed to enqueue async memcpy from host to device: Gpu dst: %p; "
+          "host src: %p; size: %llu=0x%llx",
+          absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
+
+  VLOG(2) << "successfully enqueued async memcpy h2d of " << size
+          << " bytes from " << host_src << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
+          << " device: " << context->device_ordinal();
+  return absl::OkStatus();
+}
+
+absl::Status AsynchronousMemcpyD2D(Context* context, hipDeviceptr_t gpu_dst,
+                                   hipDeviceptr_t gpu_src, uint64_t size,
+                                   hipStream_t stream) {
+  ScopedActivateContext activation{context};
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream),
+      absl::StrFormat("failed to enqueue async memcpy from device to device: "
+                      "Gpu dst: %p ; Gpu src: %p ; size: %llu=0x%llx",
+                      absl::bit_cast<void*>(gpu_dst),
+                      absl::bit_cast<void*>(gpu_src), size, size)));
+
+  VLOG(2) << "successfully enqueued async memcpy d2d of " << size
+          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
+          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
+          << " device: " << context->device_ordinal();
   return absl::OkStatus();
 }
 
@@ -184,4 +240,27 @@ absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
+absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst,
+                                const DeviceMemoryBase& gpu_src,
+                                uint64_t size) {
+  return AsynchronousMemcpyD2D(
+      executor_->gpu_context(),
+      absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
+      absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, gpu_stream());
+}
+
+absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                                uint64_t size) {
+  return AsynchronousMemcpyH2D(
+      executor_->gpu_context(),
+      absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src, size,
+      gpu_stream());
+}
+
+absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                                uint64_t size) {
+  return AsynchronousMemcpyD2H(executor_->gpu_context(), host_dst,
+                               absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),
+                               size, gpu_stream());
+}
 }  // namespace stream_executor::gpu

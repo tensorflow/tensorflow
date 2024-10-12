@@ -265,11 +265,6 @@ class GpuDriver {
       GpuGraphHandle graph, const char* path,
       bool return_printed_graph = false);
 
-  // Returns a stream's capture status.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g37823c49206e3704ae23c7ad78560bca
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
-  static absl::StatusOr<bool> StreamIsCapturing(GpuStreamHandle stream);
-
   // Free unused memory that was cached on the specified device for use with
   // graphs back to the OS.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g57c87f4ba6af41825627cdd4e5a8c52b
@@ -406,21 +401,6 @@ class GpuDriver {
   static absl::Status SynchronousMemcpyH2D(Context* context,
                                            GpuDevicePtr gpu_dst,
                                            const void* host_src, uint64_t size);
-
-  // -- Asynchronous memcopies.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
-
-  static absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
-                                            GpuDevicePtr gpu_src, uint64_t size,
-                                            GpuStreamHandle stream);
-  static absl::Status AsynchronousMemcpyH2D(Context* context,
-                                            GpuDevicePtr gpu_dst,
-                                            const void* host_src, uint64_t size,
-                                            GpuStreamHandle stream);
-  static absl::Status AsynchronousMemcpyD2D(Context* context,
-                                            GpuDevicePtr gpu_dst,
-                                            GpuDevicePtr gpu_src, uint64_t size,
-                                            GpuStreamHandle stream);
 
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this

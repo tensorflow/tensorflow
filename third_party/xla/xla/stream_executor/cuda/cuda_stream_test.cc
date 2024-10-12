@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_stream.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -38,6 +39,7 @@ namespace gpu {
 namespace {
 
 using ::testing::Each;
+using ::testing::ElementsAreArray;
 using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {
@@ -117,6 +119,55 @@ TEST_F(CudaStreamTest, MemZero) {
   // And it shouldn't have touched the second half.
   EXPECT_THAT(absl::MakeConstSpan(host_buffer).subspan(kBufferNumElements / 2),
               Each(0xDEADBEEF));
+}
+
+TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
+  constexpr int kBufferNumElements = 42;
+  DeviceMemory<uint32_t> buffer =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  std::array<uint32_t, kBufferNumElements> src_buffer;
+  std::generate(src_buffer.begin(), src_buffer.end(),
+                [i = 0]() mutable { return i++; });
+
+  EXPECT_THAT(stream->MemcpyH2D(absl::MakeConstSpan(src_buffer), &buffer),
+              IsOk());
+
+  std::array<uint32_t, kBufferNumElements> host_buffer;
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
+}
+
+TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
+  constexpr int kBufferNumElements = 42;
+  DeviceMemory<uint32_t> buffer1 =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+  DeviceMemory<uint32_t> buffer2 =
+      executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
+                               kBufferNumElements * sizeof(uint32_t)),
+              IsOk());
+
+  EXPECT_THAT(stream->MemcpyD2D(&buffer2, buffer1,
+                                kBufferNumElements * sizeof(uint32_t)),
+              IsOk());
+
+  std::array<uint32_t, kBufferNumElements> host_buffer;
+  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)), IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
 }  // namespace

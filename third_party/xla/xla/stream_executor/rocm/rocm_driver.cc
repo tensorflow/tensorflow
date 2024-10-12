@@ -305,16 +305,6 @@ absl::Status GpuDriver::DeviceGraphMemTrim(GpuDeviceHandle device) {
                   "Failed to trim device graph memory");
 }
 
-absl::StatusOr<bool> GpuDriver::StreamIsCapturing(GpuStreamHandle stream) {
-  VLOG(2) << "Checking if stream " << stream << " is capturing";
-
-  hipStreamCaptureStatus status;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipStreamIsCapturing(stream, &status),
-                              "Failed to check stream capturing status"));
-
-  return status == hipStreamCaptureStatusActive;
-}
-
 absl::Status GpuDriver::GraphConditionalHandleCreate(
     GpuGraphConditionalHandle* handle, hipGraph_t graph, Context* context,
     unsigned int default_launch_value, unsigned int flags) {
@@ -786,66 +776,6 @@ absl::Status GpuDriver::SynchronousMemcpyH2D(Context* context,
           " host src: %p; size: %llu=0x%llx",
           absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
   VLOG(2) << "successfully sync memcpy'd h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyD2H(Context* context, void* host_dst,
-                                              hipDeviceptr_t gpu_src,
-                                              uint64_t size,
-                                              GpuStreamHandle stream) {
-  ScopedActivateContext activation{context};
-  TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream),
-      absl::StrFormat(
-          "failed to enqueue async memcpy from device to host: host dst: %p; "
-          "Gpu src: %p; size: %llu=0x%llx",
-          host_dst, absl::bit_cast<void*>(gpu_src), size, size)));
-
-  VLOG(2) << "successfully enqueued async memcpy d2h of " << size
-          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
-          << host_dst << " on stream " << stream
-          << " device: " << context->device_ordinal();
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyH2D(Context* context,
-                                              hipDeviceptr_t gpu_dst,
-                                              const void* host_src,
-                                              uint64_t size,
-                                              GpuStreamHandle stream) {
-  ScopedActivateContext activation{context};
-  TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size,
-                               stream),
-      absl::StrFormat(
-          "failed to enqueue async memcpy from host to device: Gpu dst: %p; "
-          "host src: %p; size: %llu=0x%llx",
-          absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
-
-  VLOG(2) << "successfully enqueued async memcpy h2d of " << size
-          << " bytes from " << host_src << " to "
-          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
-          << " device: " << context->device_ordinal();
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
-                                              hipDeviceptr_t gpu_dst,
-                                              hipDeviceptr_t gpu_src,
-                                              uint64_t size,
-                                              GpuStreamHandle stream) {
-  ScopedActivateContext activation{context};
-  TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream),
-      absl::StrFormat("failed to enqueue async memcpy from device to device: "
-                      "Gpu dst: %p ; Gpu src: %p ; size: %llu=0x%llx",
-                      absl::bit_cast<void*>(gpu_dst),
-                      absl::bit_cast<void*>(gpu_src), size, size)));
-
-  VLOG(2) << "successfully enqueued async memcpy d2d of " << size
-          << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
-          << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
-          << " device: " << context->device_ordinal();
   return absl::OkStatus();
 }
 
