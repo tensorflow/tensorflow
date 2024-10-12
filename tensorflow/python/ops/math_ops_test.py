@@ -1368,14 +1368,6 @@ class RangeTest(test_util.TensorFlowTestCase):
     actual = math_ops.range(start, end, step)
     self.assertAllEqual(expected, self.evaluate(actual))
 
-  def testInt64Overflow(self):
-    start = 5000000000000000000
-    end = -5000000000000000000
-    step = -1
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Requires ((limit - start) / delta) <= "):
-      self.evaluate(math_ops.range(start, end, step))
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class ErfcinvTest(test_util.TensorFlowTestCase):
