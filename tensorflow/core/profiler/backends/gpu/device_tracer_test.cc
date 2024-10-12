@@ -120,7 +120,7 @@ class DeviceTracerTest : public ::testing::Test {
   }
 
  protected:
-  void ExpectFailure(const Status& status, error::Code code) {
+  void ExpectFailure(const absl::Status& status, error::Code code) {
     EXPECT_FALSE(status.ok()) << status;
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.message();
@@ -161,7 +161,7 @@ TEST_F(DeviceTracerTest, CollectBeforeStop) {
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   XSpace space;
-  Status status = tracer->CollectData(&space);
+  absl::Status status = tracer->CollectData(&space);
   ExpectFailure(status, tensorflow::error::FAILED_PRECONDITION);
   TF_EXPECT_OK(tracer->Stop());
 }
@@ -172,7 +172,7 @@ TEST_F(DeviceTracerTest, StartTwoTracers) {
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
-  Status status = tracer2->Start();
+  absl::Status status = tracer2->Start();
   ExpectFailure(status, tensorflow::error::UNAVAILABLE);
   TF_EXPECT_OK(tracer1->Stop());
   TF_EXPECT_OK(tracer2->Start());
@@ -196,7 +196,7 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
   std::vector<Tensor> outputs;
 
   TF_ASSERT_OK(tracer->Start());
-  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  absl::Status s = session->Run(inputs, output_names, target_nodes, &outputs);
   TF_ASSERT_OK(s);
   TF_ASSERT_OK(tracer->Stop());
   ASSERT_EQ(1, outputs.size());
@@ -223,8 +223,8 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   RunOptions run_options;
   run_options.set_trace_level(RunOptions::FULL_TRACE);
   RunMetadata run_metadata;
-  Status s = session->Run(run_options, inputs, output_names, target_nodes,
-                          &outputs, &run_metadata);
+  absl::Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                                &outputs, &run_metadata);
   TF_ASSERT_OK(s);
   ASSERT_TRUE(run_metadata.has_step_stats());
   // Depending on whether this runs on CPU or GPU, we will have a
