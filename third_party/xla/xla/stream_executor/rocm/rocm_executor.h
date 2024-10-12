@@ -192,7 +192,7 @@ class RocmExecutor : public GpuExecutor {
 
   // Handle for the ROCm device being operated on. Immutable
   // post-initialization.
-  GpuDeviceHandle device_;
+  hipDevice_t device_;
 
   // Reader/writer lock for mutable data structures on this object.
   absl::Mutex mu_;

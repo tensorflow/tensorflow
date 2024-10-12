@@ -212,7 +212,7 @@ class CudaExecutor : public GpuExecutor {
 
   // Handle for the CUDA device being operated on. Immutable
   // post-initialization.
-  GpuDeviceHandle device_;
+  CUdevice device_;
 
   // True if delay kernels are supported.
   bool delay_kernels_supported_ = false;
