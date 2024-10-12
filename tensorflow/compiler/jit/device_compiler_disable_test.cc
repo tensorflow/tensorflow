@@ -64,7 +64,7 @@ TEST(DeviceCompilerTest, TestDisabledXlaCompilation) {
   core::ScopedUnref profiler_ref(profiler);
 
   // Check that strict compilation is disallowed.
-  Status status = xla_device_compiler->CompileIfNeeded(
+  absl::Status status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kStrict, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());

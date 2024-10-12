@@ -45,9 +45,9 @@ namespace {
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
 
-Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
-                                    const string& name_suffix,
-                                    FunctionDefLibrary* library) {
+absl::Status AddGraphDefToFunctionLibrary(
+    const GraphDefBuilder& graphdef_builder, const string& name_suffix,
+    FunctionDefLibrary* library) {
   GraphDef graphdef;
   TF_RETURN_IF_ERROR(graphdef_builder.ToGraphDef(&graphdef));
   std::unique_ptr<Graph> graph =
@@ -477,9 +477,9 @@ Node* RetOp(int index, ops::NodeOut a, const GraphDefBuilder::Options& opts) {
   return opts.FinalizeBuilder(&node_builder);
 }
 
-Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
-                   const std::vector<string>& encapsulated_functions) {
-  Status s;
+absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
+                         const std::vector<string>& encapsulated_functions) {
+  absl::Status s;
   // Convert the GraphDef to a Graph
   std::unique_ptr<FunctionLibraryDefinition> lib_def(
       new FunctionLibraryDefinition(OpRegistry::Global(), *library));
@@ -550,7 +550,7 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   return s;
 }
 
-Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
+absl::Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
   std::vector<string> encapsulated_functions;
   return Encapsulate(graphdef, library, encapsulated_functions);
 }

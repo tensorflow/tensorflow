@@ -31,7 +31,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ClusterScoping(std::unique_ptr<Graph>* graph) {
+absl::Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   FixupSourceAndSinkEdges(graph->get());
 
   GraphOptimizationPassWrapper wrapper;
