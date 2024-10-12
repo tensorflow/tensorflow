@@ -289,12 +289,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-absl::Status GpuDriver::DeviceGraphMemTrim(GpuDeviceHandle device) {
-  VLOG(2) << "Trim ROCM device graph memory " << device;
-  return ToStatus(wrap::hipDeviceGraphMemTrim(device),
-                  "Failed to trim device graph memory");
-}
-
 absl::Status GpuDriver::GraphConditionalHandleCreate(
     GpuGraphConditionalHandle* handle, hipGraph_t graph, Context* context,
     unsigned int default_launch_value, unsigned int flags) {

@@ -933,12 +933,13 @@ CudaExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
 }
 
 absl::Status CudaExecutor::TrimGraphMemory() {
-  return GpuDriver::DeviceGraphMemTrim(device_);
+  return cuda::ToStatus(cuDeviceGraphMemTrim(device_),
+                        "Failed to trim device graph memory");
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaExecutor::CreateDeviceDescription(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(GpuDeviceHandle device, GetDevice(device_ordinal));
+  TF_ASSIGN_OR_RETURN(CUdevice device, GetDevice(device_ordinal));
 
   int cc_major;
   int cc_minor;

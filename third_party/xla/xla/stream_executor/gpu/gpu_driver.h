@@ -258,11 +258,6 @@ class GpuDriver {
       GpuGraphHandle graph, const char* path,
       bool return_printed_graph = false);
 
-  // Free unused memory that was cached on the specified device for use with
-  // graphs back to the OS.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g57c87f4ba6af41825627cdd4e5a8c52b
-  static absl::Status DeviceGraphMemTrim(GpuDeviceHandle device);
-
   // Creates a conditional handle.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gece6f3b9e85d0edb8484d625fe567376
   static absl::Status GraphConditionalHandleCreate(

@@ -781,7 +781,8 @@ RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
 }
 
 absl::Status RocmExecutor::TrimGraphMemory() {
-  return GpuDriver::DeviceGraphMemTrim(device_);
+  return ToStatus(wrap::hipDeviceGraphMemTrim(device_),
+                  "Failed to trim device graph memory");
 }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>

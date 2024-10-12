@@ -332,12 +332,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-absl::Status GpuDriver::DeviceGraphMemTrim(CUdevice device) {
-  VLOG(2) << "Trim CUDA device graph memory " << device;
-  return cuda::ToStatus(cuDeviceGraphMemTrim(device),
-                        "Failed to trim device graph memory");
-}
-
 absl::Status GpuDriver::GraphConditionalHandleCreate(
     GpuGraphConditionalHandle* handle, CUgraph graph, Context* context,
     unsigned int default_launch_value, unsigned int flags) {
