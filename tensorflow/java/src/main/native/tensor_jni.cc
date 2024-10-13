@@ -18,11 +18,16 @@ limitations under the License.
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <algorithm>
 #include <memory>
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
+#include "tsl/platform/ctstring.h"
+#include "tsl/platform/ctstring_internal.h"
 
 namespace {
 

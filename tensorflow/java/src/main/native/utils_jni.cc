@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/java/src/main/native/utils_jni.h"
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,

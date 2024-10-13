@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/tensorflow_jni.h"
 
 #include <limits>
+
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv* env,
