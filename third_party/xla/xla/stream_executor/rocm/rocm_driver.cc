@@ -610,27 +610,6 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 }
 
-void* GpuDriver::HostAllocate(Context* context, uint64_t bytes) {
-  ScopedActivateContext activation{context};
-  void* host_mem = nullptr;
-  // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to alloc " << bytes
-               << " bytes on host: " << ToString(res);
-  }
-  return host_mem;
-}
-
-void GpuDriver::HostDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation{context};
-  hipError_t res = wrap::hipHostFree(location);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "error deallocating host memory at " << location << ": "
-               << ToString(res);
-  }
-}
-
 absl::Status GpuDriver::SynchronizeStream(Context* context,
                                           GpuStreamHandle stream) {
   ScopedActivateContext activated{context};

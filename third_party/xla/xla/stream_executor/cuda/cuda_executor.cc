@@ -70,9 +70,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -503,6 +505,29 @@ void DeviceDeallocate(Context* context, void* location) {
   }
 }
 
+// Allocates memory on the host.
+void* HostAllocate(Context* context, uint64_t bytes) {
+  ScopedActivateContext activation(context);
+  void* host_mem = nullptr;
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status = cuda::ToStatus(
+      cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to alloc " << bytes << " bytes on host: " << status;
+  }
+  return host_mem;
+}
+
+// Deallocates memory allocated via HostAllocate.
+void HostDeallocate(Context* context, void* location) {
+  ScopedActivateContext activation(context);
+  auto status = cuda::ToStatus(cuMemFreeHost(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error deallocating host memory at " << location << ": "
+               << status;
+  }
+}
+
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -878,10 +903,20 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceMemoryBase(nullptr, 0);
   } else if (memory_space ==
              static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);
+    return DeviceMemoryBase(HostAllocate(gpu_context(), size), size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(DeviceAllocate(gpu_context(), size), size);
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+CudaExecutor::HostMemoryAllocate(uint64_t size) {
+  auto* buffer = HostAllocate(gpu_context(), size);
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, this);
 }
 
 void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -892,10 +927,14 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
   }
   auto memory_space = status_or_memory_space.value();
   if (memory_space == MemoryType::kHost) {
-    GpuDriver::HostDeallocate(gpu_context(), mem->opaque());
+    HostDeallocate(gpu_context(), mem->opaque());
   } else {
     DeviceDeallocate(gpu_context(), mem->opaque());
   }
+}
+
+void CudaExecutor::HostMemoryDeallocate(void* location) {
+  return HostDeallocate(gpu_context(), location);
 }
 
 bool CudaExecutor::SynchronizeAllActivity() {

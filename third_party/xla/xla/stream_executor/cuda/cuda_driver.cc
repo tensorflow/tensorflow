@@ -787,27 +787,6 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 }
 
-void* GpuDriver::HostAllocate(Context* context, uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  void* host_mem = nullptr;
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status = cuda::ToStatus(
-      cuMemHostAlloc(&host_mem, bytes, CU_MEMHOSTALLOC_PORTABLE));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << bytes << " bytes on host: " << status;
-  }
-  return host_mem;
-}
-
-void GpuDriver::HostDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation(context);
-  auto status = cuda::ToStatus(cuMemFreeHost(location));
-  if (!status.ok()) {
-    LOG(ERROR) << "error deallocating host memory at " << location << ": "
-               << status;
-  }
-}
-
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);

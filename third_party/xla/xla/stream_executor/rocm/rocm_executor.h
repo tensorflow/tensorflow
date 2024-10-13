@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -111,18 +109,8 @@ class RocmExecutor : public GpuExecutor {
 
   void UnifiedMemoryDeallocate(void* location) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
-      uint64_t size) override {
-    auto* buffer = GpuDriver::HostAllocate(gpu_context(), size);
-    if (buffer == nullptr && size > 0) {
-      return absl::InternalError(
-          absl::StrFormat("Failed to allocate HostMemory of size %d", size));
-    }
-    return std::make_unique<HostMemoryAllocation>(buffer, size, this);
-  }
-
-  void HostMemoryDeallocate(void* location) override {
-    return GpuDriver::HostDeallocate(gpu_context(), location);
-  }
+      uint64_t size) override;
+  void HostMemoryDeallocate(void* location) override;
 
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 

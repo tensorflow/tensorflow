@@ -58,9 +58,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+#include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -462,6 +464,20 @@ void DeviceDeallocate(Context* context, void* location) {
             << context->device_ordinal();
   }
 }
+
+// Allocates memory on the host.
+void* HostAllocate(Context* context, uint64_t bytes) {
+  ScopedActivateContext activation{context};
+  void* host_mem = nullptr;
+  // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
+  hipError_t res = wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to alloc " << bytes
+               << " bytes on host: " << ToString(res);
+  }
+  return host_mem;
+}
+
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -711,10 +727,28 @@ absl::Status RocmExecutor::LoadModuleFromHsaco(const char* hsaco,
 DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space ==
       static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
-    return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);
+    return DeviceMemoryBase(HostAllocate(gpu_context(), size), size);
   }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(DeviceAllocate(gpu_context(), size), size);
+}
+absl::StatusOr<std::unique_ptr<MemoryAllocation>>
+RocmExecutor::HostMemoryAllocate(uint64_t size) {
+  auto* buffer = HostAllocate(gpu_context(), size);
+  if (buffer == nullptr && size > 0) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to allocate HostMemory of size %d", size));
+  }
+  return std::make_unique<HostMemoryAllocation>(buffer, size, this);
+}
+
+void RocmExecutor::HostMemoryDeallocate(void* location) {
+  ScopedActivateContext activation{gpu_context()};
+  hipError_t res = wrap::hipHostFree(location);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "error deallocating host memory at " << location << ": "
+               << ToString(res);
+  }
 }
 
 void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
