@@ -787,36 +787,6 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 }
 
-void* GpuDriver::UnifiedMemoryAllocate(Context* context, uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  CUdeviceptr result = 0;
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status =
-      cuda::ToStatus(cuMemAllocManaged(&result, bytes, CU_MEM_ATTACH_GLOBAL));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to alloc " << bytes
-               << " bytes unified memory; result: " << status;
-    return nullptr;
-  }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
-          << bytes << " bytes in unified memory";
-  return ptr;
-}
-
-void GpuDriver::UnifiedMemoryDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation(context);
-  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
-  auto status = cuda::ToStatus(cuMemFree(pointer));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to free unified memory at " << location
-               << "; result: " << status;
-  } else {
-    VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << context;
-  }
-}
-
 void* GpuDriver::HostAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activation(context);
   void* host_mem = nullptr;

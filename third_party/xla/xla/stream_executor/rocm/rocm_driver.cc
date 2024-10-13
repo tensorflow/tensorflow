@@ -610,35 +610,6 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 }
 
-void* GpuDriver::UnifiedMemoryAllocate(Context* context, uint64_t bytes) {
-  ScopedActivateContext activated{context};
-  hipDeviceptr_t result = 0;
-  // "managed" memory is visible to both CPU and GPU.
-  hipError_t res = wrap::hipMallocManaged(&result, bytes, hipMemAttachGlobal);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to alloc " << bytes
-               << " bytes unified memory; result: " << ToString(res);
-    return nullptr;
-  }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
-          << bytes << " bytes in unified memory";
-  return ptr;
-}
-
-void GpuDriver::UnifiedMemoryDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation(context);
-  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
-  hipError_t res = wrap::hipFree(pointer);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to free unified memory at " << location
-               << "; result: " << ToString(res);
-  } else {
-    VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << context;
-  }
-}
-
 void* GpuDriver::HostAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;

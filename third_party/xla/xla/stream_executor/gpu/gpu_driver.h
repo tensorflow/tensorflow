@@ -69,18 +69,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
   static void DestroyStream(Context* context, GpuStreamHandle stream);
 
-  // Allocates a unified memory space of size bytes associated with the given
-  // context via cuMemAllocManaged.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb347ded34dc326af404aa02af5388a32
-  // (supported on CUDA only)
-  static void* UnifiedMemoryAllocate(Context* context, uint64_t bytes);
-
-  // Deallocates a unified memory space of size bytes associated with the given
-  // context via cuMemFree.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
-  // (supported on CUDA only)
-  static void UnifiedMemoryDeallocate(Context* context, void* location);
-
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost/hipHostMalloc.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0

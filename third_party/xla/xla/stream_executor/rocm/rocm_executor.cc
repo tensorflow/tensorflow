@@ -721,6 +721,35 @@ void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
   DeviceDeallocate(gpu_context(), mem->opaque());
 }
 
+void* RocmExecutor::UnifiedMemoryAllocate(uint64_t size) {
+  ScopedActivateContext activated{gpu_context()};
+  hipDeviceptr_t result = 0;
+  // "managed" memory is visible to both CPU and GPU.
+  hipError_t res = wrap::hipMallocManaged(&result, size, hipMemAttachGlobal);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to alloc " << size
+               << " bytes unified memory; result: " << ToString(res);
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << gpu_context() << " of "
+          << size << " bytes in unified memory";
+  return ptr;
+}
+
+void RocmExecutor::UnifiedMemoryDeallocate(void* location) {
+  ScopedActivateContext activation(gpu_context());
+  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
+  hipError_t res = wrap::hipFree(pointer);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << gpu_context();
+  }
+}
+
 bool RocmExecutor::SynchronizeAllActivity() {
   return gpu_context()->Synchronize().ok();
 }

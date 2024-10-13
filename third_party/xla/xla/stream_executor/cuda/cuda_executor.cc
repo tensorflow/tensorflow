@@ -526,6 +526,36 @@ CudaExecutor::~CudaExecutor() {
   set_context(nullptr);
 }
 
+void CudaExecutor::UnifiedMemoryDeallocate(void* location) {
+  ScopedActivateContext activation(gpu_context());
+  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
+  auto status = cuda::ToStatus(cuMemFree(pointer));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << status;
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << gpu_context();
+  }
+}
+
+void* CudaExecutor::UnifiedMemoryAllocate(uint64_t size) {
+  ScopedActivateContext activation(gpu_context());
+  CUdeviceptr result = 0;
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status =
+      cuda::ToStatus(cuMemAllocManaged(&result, size, CU_MEM_ATTACH_GLOBAL));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to alloc " << size
+               << " bytes unified memory; result: " << status;
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << gpu_context() << " of "
+          << size << " bytes in unified memory";
+  return ptr;
+}
+
 absl::Status CudaExecutor::Init() {
   TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
