@@ -906,13 +906,29 @@ bool CudaExecutor::HostMemoryRegister(void* location, uint64_t size) {
   VLOG(1) << "Called StreamExecutor::HostMemoryRegister(data=" << location
           << ")";
 
-  return GpuDriver::HostRegister(gpu_context(), location, size);
+  ScopedActivateContext activation(gpu_context());
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status = cuda::ToStatus(
+      cuMemHostRegister(location, size, CU_MEMHOSTREGISTER_PORTABLE));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
 }
 
 bool CudaExecutor::HostMemoryUnregister(void* location) {
   VLOG(1) << "Called StreamExecutor::HostUnregister(data=" << location << ")";
 
-  return GpuDriver::HostUnregister(gpu_context(), location);
+  ScopedActivateContext activation(gpu_context());
+  auto status = cuda::ToStatus(cuMemHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
 }
 
 absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,

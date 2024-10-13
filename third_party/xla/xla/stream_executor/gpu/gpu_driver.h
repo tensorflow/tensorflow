@@ -81,22 +81,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void HostDeallocate(Context* context, void* location);
 
-  // Registers a memory region at location of size bytes via
-  // cuMemHostRegister/hipHostRegister.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
-  static bool HostRegister(Context* context, void* location, uint64_t bytes);
-
-  // Unregisters a memory region that was previously registered at location via
-  // cuMemHostUnregister/hipHostUnregister.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g63f450c8125359be87b7623b1c0b2a14
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
-  //
-  // TODO(leary) verify an error will be returned if the location wasn't
-  // previously registered.
-  static bool HostUnregister(Context* context, void* location);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control
