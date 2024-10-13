@@ -1733,7 +1733,10 @@ cc_library(
     name = "string_utils",
     srcs = ["utils/string_utils.cc"],
     hdrs = ["utils/string_utils.h"],
-    visibility = ["//tensorflow/lite:__pkg__"],
+    visibility = [
+        "//learning/expander/pod/tensorflow_ops:__pkg__",
+        "//tensorflow/lite:__pkg__",
+    ],
 )
 
 exports_files(srcs = ["allocation.h"])
