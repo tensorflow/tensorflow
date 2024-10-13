@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::ifrt {
 
