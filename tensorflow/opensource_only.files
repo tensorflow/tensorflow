@@ -1,5 +1,4 @@
 tf_staging/BUILD:
-tf_staging/ci/official/wheel_test/BUILD:
 tf_staging/tensorflow/__init__:.py
 tf_staging/tensorflow/api_template.__init__:.py
 tf_staging/tensorflow/api_template_v1.__init__:.py

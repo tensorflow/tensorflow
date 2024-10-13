@@ -189,4 +189,14 @@ bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
   return result;
 }
 
+// Check if oneDNN supports AVX-NE-CONVERT on CPU
+bool IsAVXConvertSupportedByOneDNNOnThisCPU() {
+  bool result = false;
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  using port::TestCPUFeature;
+  result = TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT);
+#endif  // INTEL_MKL && ENABLE_ONEDNN_V3
+  return result;
+}
+
 }  // namespace tensorflow

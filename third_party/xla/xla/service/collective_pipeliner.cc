@@ -275,8 +275,8 @@ bool CollectSimpleDependencies(HloInstruction* i,
   for (HloInstruction* op : i->mutable_operands()) {
     absl::InlinedVector<HloInstruction*, 4> to_add;
     if (op->opcode() == HloOpcode::kBroadcast) {
-      to_add.push_back(op);
       if (deps_set.insert(op).second) {
+        to_add.push_back(op);
         op = op->mutable_operand(0);
         if (op->opcode() == HloOpcode::kConstant) {
           if (deps_set.insert(op).second) {
@@ -318,6 +318,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
   absl::flat_hash_set<HloInstruction*> added_instructions;
   HloInstruction* folded_instr = instr;
   std::vector<HloInstruction*> formatting_ops;
+  absl::flat_hash_set<HloInstruction*> formatting_set;
   // Returns if this is an acceptable user of a pipelined instruction.
   // Generic elementwise ops can have multiple operands that require the inputs
   // of being saved across the loop. So protect them through
@@ -411,11 +412,12 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
     auto& data = stack.back();
     HloInstruction* instr = data.first;
     if (data.second == 0 && instr != folded_instr) {
-      if (!CollectSimpleDependencies(instr, formatting_ops,
-                                     added_instructions)) {
+      if (!CollectSimpleDependencies(instr, formatting_ops, formatting_set)) {
         return empty_pair;
       }
-      formatting_ops.push_back(instr);
+      if (formatting_set.insert(instr).second) {
+        formatting_ops.push_back(instr);
+      }
     }
     if (data.second == instr->user_count()) {
       stack.pop_back();
@@ -2330,9 +2332,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
   // Create the new tuple with the original while tuple size.
   std::vector<HloInstruction*> new_output_tuple;
   new_output_tuple.resize(operands_indices_count, nullptr);
+  InstructionMap pipelined_map;
   // Reproduce computation to the output after the loop on the full shape.
   for (auto& to_move : loop_analysis.GetMoveInfos()) {
-    InstructionMap pipelined_map;
     for (int64_t i = 0; i < to_move.collectives_to_move.size(); ++i) {
       HloInstruction* collective = to_move.collectives_to_move[i];
       int64_t gte_index = collective_to_new_tuple_index[collective];
@@ -2419,6 +2421,9 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     //  an effect on the instruction itself (like say broadcast, slices ...
     //  etc).
     for (HloInstruction* formatting_op : to_move.formatting_ops) {
+      if (pipelined_map.contains(formatting_op)) {
+        continue;
+      }
       if (!to_add_batch_set.contains(formatting_op) &&
           formatting_op->opcode() != HloOpcode::kBroadcast) {
         HloInstruction* cloned_not_to_batch = loop_computation->AddInstruction(

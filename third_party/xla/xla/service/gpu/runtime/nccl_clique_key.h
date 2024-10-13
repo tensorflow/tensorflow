@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -56,10 +56,11 @@ enum class AsyncStreamKind : int64_t {
   kCollective = 0,  // Stream for asynchronous collective ops.
   kP2P0 = 1,        // One Stream for P2P Send and Recv ops.
   kP2P1 = 2,        // Another Stream for P2P Send and Recv ops.
+  kMemCpyP2P = 3,   // Stream for MemCpyP2P
 };
 
 constexpr static int64_t kAsyncStreamTotal =
-    static_cast<int64_t>(AsyncStreamKind::kP2P1) + 1;
+    static_cast<int64_t>(AsyncStreamKind::kMemCpyP2P) + 1;
 
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.

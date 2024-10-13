@@ -200,28 +200,24 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xplane_py_pb2",
-#     api_version = 2,
 #     visibility = [":friends"],
 #     deps = [":xplane_proto"],
 # )
 #
 # py_proto_library(
 #     name = "memory_viewer_preprocess_py_pb2",
-#     api_version = 2,
 #     visibility = [":memory_viewer_friends"],
 #     deps = [":memory_viewer_preprocess_proto"],
 # )
 #
 # py_proto_library(
 #     name = "op_profile_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":op_profile_proto"],
 # )
 #
 # py_proto_library(
 #     name = "op_metrics_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":op_metrics_proto"],
 # )

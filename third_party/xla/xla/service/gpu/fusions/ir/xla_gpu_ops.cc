@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -46,9 +45,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "stablehlo/dialect/TypeInference.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_dialect.cc.inc"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 
 namespace xla {
 namespace gpu {
@@ -184,13 +183,13 @@ ParseResult ApplyIndexingOp::parse(OpAsmParser& parser,
       parser.parseOptionalAttrDict(result.attributes)) {
     return failure();
   }
-  auto map = indexing_map_attr.getMap();
+  auto map = indexing_map_attr.getIndexingMap().GetAffineMap();
   result.addTypes(SmallVector<Type, 2>(map.getNumResults(), index_type));
   return success();
 }
 
 void ApplyIndexingOp::print(OpAsmPrinter& p) {
-  AffineMap affine_map = getIndexingMapAttr().getMap();
+  AffineMap affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
   p << " " << getIndexingMapAttr();
 
   auto operands = getOperands();
@@ -215,14 +214,14 @@ void ApplyIndexingOp::print(OpAsmPrinter& p) {
 }
 
 LogicalResult ApplyIndexingOp::verify() {
-  auto affine_map = getIndexingMapAttr().getMap();
+  auto affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
   unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
   if (getOperands().size() != num_variables) {
     return emitOpError(
         "operand count must match the number of dimensions and symbols in the "
         "affine map");
   }
-  if (!getIndexingMapAttr().getConstraints().empty()) {
+  if (!getIndexingMap().GetConstraints().empty()) {
     return emitOpError("apply indexing op cannot have any constraints");
   }
   return success();
@@ -311,11 +310,10 @@ struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
-    if (indexing_map.IsSimplified()) {
+    if (!indexing_map.Simplify()) {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap is already simplified");
     }
-    indexing_map.Simplify();
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
         indexing_op, indexing_op.getOperands(), indexing_map);
     return success();
@@ -836,13 +834,13 @@ LogicalResult LoopOp::verify() {
     return emitOpError() << "mismatch in number of induction variables "
                          << getNumInductionVars()
                          << " and RangeVars in the indexing map "
-                         << indexing_map.ToString();
+                         << ToString(indexing_map);
   }
   if (indexing_map.GetDimVarsCount() != getDims().size()) {
     return emitOpError() << "mismatch in number of dims operands "
                          << getDims().size()
                          << " and DimVars in the indexing map "
-                         << indexing_map.ToString();
+                         << ToString(indexing_map);
   }
   for (auto [bb_arg, result_type, init] :
        llvm::zip(getRegionIterArgs(), getResultTypes(), getInits())) {
@@ -959,9 +957,9 @@ VariableConstraints GetConstraintsForVariables(const IndexingMap& map) {
   for (const auto& constraint : map.GetConstraints()) {
     constraint.first.walk([&](mlir::AffineExpr leaf) {
       if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(leaf)) {
-        result.constraints_for_dims[dim.getPosition()].push_back(constraint);
+        result.constraints_for_dims[dim.getPosition()].insert(constraint);
       } else if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf)) {
-        result.constraints_for_symbols[sym.getPosition()].push_back(constraint);
+        result.constraints_for_symbols[sym.getPosition()].insert(constraint);
       }
     });
   }
@@ -982,7 +980,7 @@ LogicalResult MaterializeOp::verify() {
     return emitOpError()
            << "must have thread_id dimension in both indexing maps";
   }
-  if (map_in.GetDimVars(0) != map_out.GetDimVars(0)) {
+  if (map_in.GetDimVars(0).bounds != map_out.GetDimVars(0).bounds) {
     return emitOpError() << "thread_id dimension must have the same bounds in "
                             "both indexing maps";
   }
@@ -1047,12 +1045,12 @@ LogicalResult MaterializeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult InsertOp::verify() {
-  if (!getMap().getRangeVars().empty()) {
+  if (!getMap().getIndexingMap().GetRangeVars().empty()) {
     return emitOpError() << "insert_op map must not have any symbols";
   }
   int64_t vector_map_num_results =
       getSource().getType().getIndexingMapAttr().getNumResults();
-  if (vector_map_num_results != getMap().getDimVars().size()) {
+  if (vector_map_num_results != getMap().getIndexingMap().GetDimVars().size()) {
     return emitOpError() << "source map result count must equal insert_op's "
                             "map's dimension count";
   }

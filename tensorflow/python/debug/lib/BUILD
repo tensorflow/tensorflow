@@ -358,7 +358,7 @@ cuda_py_strict_test(
     shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-        "no_rocm", #TODO(ROCm) Re-enable after issue is fixed.
+        "cuda-only", #TODO(ROCm) Re-enable after issue is fixed.
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
@@ -390,7 +390,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_windows_gpu",
-        "no_rocm", #TODO(ROCm) Re-enable after issue is fixed.
+        "cuda-only", #TODO(ROCm) Re-enable after issue is fixed.
     ],
     deps = [
         ":debug_events_reader",

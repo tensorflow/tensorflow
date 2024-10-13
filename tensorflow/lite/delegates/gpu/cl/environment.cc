@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/util.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -252,8 +256,11 @@ bool CanUseSubBufferForImage2d(const GpuInfo& gpu_info) {
   if (!gpu_info.IsCL11OrHigher()) {
     return false;
   }
-  if (gpu_info.IsPowerVR()) {
-    // driver issue
+  if (gpu_info.IsPowerVR() &&
+      gpu_info.powervr_info.driver_version.branch_main <= 23) {
+    // 24.2@6603887 - works.
+    // 1.15@6133110 - doesn't work.
+    //   Segfaults, wrong results at model level.
     return false;
   }
   if (gpu_info.IsNvidia()) {

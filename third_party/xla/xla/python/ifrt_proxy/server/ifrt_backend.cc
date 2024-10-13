@@ -35,6 +35,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -206,6 +207,8 @@ Future<BackendInterface::Response> IfrtBackend::Process(
       return Future<Response>(
           HandleGetDefaultDeviceAssignmentRequest(std::move(request)));
     default:
+      LOG(ERROR) << "Got unimplemented request type: "
+                 << request->DebugString();
       return Future<Response>(absl::UnimplementedError(absl::StrCat(
           "Got unimplemented request type: ", request->request_case())));
   }
@@ -764,14 +767,32 @@ IfrtBackend::HandleFullyReplicatedShardRequest(
 
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDeleteArrayRequest(std::unique_ptr<IfrtRequest> request) {
-  TF_ASSIGN_OR_RETURN(auto array,
-                      GetArray(request->delete_array_request().array_handle()));
+  std::vector<uint64_t> bad_handles;
+  std::vector<Future<>> deletion_futures;
 
-  auto deletion_future = array->Delete();
+  auto delete_handle = [&](uint64_t handle) {
+    auto array = GetArray(handle);
+    if (array.ok()) {
+      deletion_futures.push_back(array.value()->Delete());
+    } else {
+      deletion_futures.push_back(Future<>(array.status()));
+    }
+  };
+
+  if (request->delete_array_request().has_array_handle_deprecated()) {
+    // TODO(b/296144873): After removing array_handle_deprecated(), move
+    // delete_handle's definition to the single place it is used.
+    delete_handle(request->delete_array_request().array_handle_deprecated());
+  }
+
+  for (auto array_handle : request->delete_array_request().array_handle()) {
+    delete_handle(array_handle);
+  }
+
   uint64_t future_handle = handle_generator_.New();
   {
     absl::MutexLock lock(&futures_mutex_);
-    futures_.insert({future_handle, std::move(deletion_future)});
+    futures_.insert({future_handle, JoinFutures(deletion_futures)});
   }
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
@@ -793,16 +814,30 @@ IfrtBackend::HandleIsArrayDeletedRequest(std::unique_ptr<IfrtRequest> request) {
 
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDestructArrayRequest(std::unique_ptr<IfrtRequest> request) {
+  std::vector<uint64_t> bad_handles;
   {
     absl::MutexLock lock(&arrays_mutex_);
-    bool deleted =
-        arrays_.erase(request->destruct_array_request().array_handle());
-    if (!deleted) {
-      return absl::NotFoundError(
-          absl::StrCat("Unknown array handle: ",
-                       request->destruct_array_request().array_handle()));
+    for (const uint64_t array_handle :
+         request->destruct_array_request().array_handle()) {
+      if (!arrays_.erase(array_handle)) {
+        bad_handles.push_back(array_handle);
+      }
+    }
+
+    if (request->destruct_array_request().has_array_handle_deprecated()) {
+      const uint64_t array_handle =
+          request->destruct_array_request().array_handle_deprecated();
+      if (!arrays_.erase(array_handle)) {
+        bad_handles.push_back(array_handle);
+      }
     }
   }
+
+  if (!bad_handles.empty()) {
+    return absl::NotFoundError(absl::StrCat("Unknown array handle(s): ",
+                                            absl::StrJoin(bad_handles, ",")));
+  }
+
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
   // Currently DestructArrayResponse is an empty message, but proxy clients may

@@ -97,7 +97,7 @@ if [[ ${IS_GPU} == "1" ]] || [[ ${IS_ROCM} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_ROCM} == "1" ]]; then
-  PIP_TEST_FILTER_TAG="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36,-no_rocm,${PIP_TEST_FILTER_TAG}"
+  PIP_TEST_FILTER_TAG="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36,-cuda-only,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   # TODO(b/122370901): Fix nomac, no_mac inconsistency.

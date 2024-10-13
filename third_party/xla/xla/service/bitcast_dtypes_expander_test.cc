@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "xla/service/bitcast_dtypes_expander.h"
 
-#include "xla/hlo/utils/hlo_matchers.h"
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

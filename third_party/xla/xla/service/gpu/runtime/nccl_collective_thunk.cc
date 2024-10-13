@@ -92,6 +92,8 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
       // they involve actual computation and not just data movement.
     case F8E5M2:
     case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return !IsReductionCollective(reduction_op);
     default:
       return false;

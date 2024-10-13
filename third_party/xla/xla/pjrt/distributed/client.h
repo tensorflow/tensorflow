@@ -104,9 +104,8 @@ class DistributedRuntimeClient {
 
     // Whether the client should send a request to wait for error from the
     // coordination service at the startup.
-    // TODO(b/355706798): Enable this by default once we confirm this works for
-    // all cases and eventually remove this option.
-    bool poll_for_error_from_service_at_startup = false;
+    // TODO(b/355706798): eventually remove this option.
+    bool poll_for_error_from_service_at_startup = true;
   };
 
   virtual ~DistributedRuntimeClient() = default;

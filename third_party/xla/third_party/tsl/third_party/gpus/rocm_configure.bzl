@@ -476,7 +476,7 @@ def _create_dummy_repository(repository_ctx):
             "%{hipblas_lib}": _lib_name("hipblas"),
             "%{miopen_lib}": _lib_name("miopen"),
             "%{rccl_lib}": _lib_name("rccl"),
-            "%{hipfft_or_rocfft}": _lib_name("hipfft"),
+            "%{hipfft_or_rocfft}": "hipfft",
             "%{hipfft_or_rocfft_lib}": _lib_name("hipfft"),
             "%{hiprand_lib}": _lib_name("hiprand"),
             "%{hipsparse_lib}": _lib_name("hipsparse"),

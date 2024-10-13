@@ -342,7 +342,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
       tsl::AllocatorAttributes attrs;
-      attrs.set_gpu_compatible(ctx->options()->service_options().pinned());
+      if (ctx->options() != nullptr) {
+        attrs.set_gpu_compatible(ctx->options()->service_options().pinned());
+      }
       return data_service_client_.Initialize(ctx->accelerator_device_info(),
                                              ctx->allocator(attrs));
     }

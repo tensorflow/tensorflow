@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 

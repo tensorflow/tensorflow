@@ -20,7 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
-#include "tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 
 namespace xla {
 

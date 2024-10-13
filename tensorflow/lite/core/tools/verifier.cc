@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/core/tools/verifier.h"
 
+#include <stdarg.h>
+
 #include <algorithm>
 #include <climits>
 #include <complex>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
@@ -57,7 +60,7 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
 }
 
 // Returns the int32_t value pointed by ptr.
-const uint32_t GetIntPtr(const char* ptr) {
+uint32_t GetIntPtr(const char* ptr) {
 #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
     __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   return flatbuffers::EndianScalar(*reinterpret_cast<const uint32_t*>(ptr));

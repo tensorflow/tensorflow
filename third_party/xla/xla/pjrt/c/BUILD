@@ -17,9 +17,13 @@ load(
     "//xla/tsl:tsl.bzl",
     "if_google",
     "if_macos",
+    "internal_visibility",
 )
 
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla:internal"]),
+)
 
 cc_library(
     name = "pjrt_c_api_hdrs",
@@ -361,7 +365,9 @@ xla_test(
     name = "pjrt_c_api_gpu_test",
     srcs = ["pjrt_c_api_gpu_test.cc"],
     backends = ["gpu"],
-    tags = if_google([
+    tags = [
+        "cuda-only", #TODO(rocm): weekly sync 241001
+    ] + if_google([
         "config-cuda-only",
     ]),
     deps = [

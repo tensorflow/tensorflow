@@ -23,10 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-// Calls Python hash() on an object.
-// TODO(phawkins): consider upstreaming this to nanobind.
-Py_hash_t nb_hash(nanobind::handle o);
-
 // Calls Python isinstance(inst, cls).
 // TODO(phawkins): consider upstreaming this to nanobind.
 bool nb_isinstance(nanobind::handle inst, nanobind::handle cls);

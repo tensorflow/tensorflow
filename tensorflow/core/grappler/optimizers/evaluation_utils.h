@@ -55,9 +55,9 @@ class DeviceSimple : public DeviceBase {
 };
 
 Status EvaluateNode(const NodeDef& node,
-                    const gtl::InlinedVector<TensorValue, 4>& inputs,
+                    const absl::InlinedVector<TensorValue, 4UL>& inputs,
                     DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                    gtl::InlinedVector<TensorValue, 4>* output);
+                    absl::InlinedVector<TensorValue, 4UL>* output);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

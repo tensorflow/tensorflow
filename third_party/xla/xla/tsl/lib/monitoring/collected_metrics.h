@@ -27,7 +27,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
-#include "tsl/protobuf/histogram.pb.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

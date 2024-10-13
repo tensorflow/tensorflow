@@ -20,7 +20,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tsl/profiler/utils/xplane_utils.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {

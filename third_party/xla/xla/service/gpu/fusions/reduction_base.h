@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {

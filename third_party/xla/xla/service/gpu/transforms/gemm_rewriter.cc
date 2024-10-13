@@ -63,13 +63,13 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -1083,12 +1083,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // cuBLASLt FP8 GEMM kernels require the scaling factors to be in F32
     // format. Set the factors to one when no scaling factors were captured.
-    Literal one_literal = LiteralUtil::One(F32);
-    HloInstruction *one = instr->AddInstruction(
-        HloInstruction::CreateConstant(one_literal.Clone()));
     std::array<bool, 2> mult_scale{a.mult_scale, b.mult_scale};
     std::array<HloInstruction *, 2> scales{a.scale, b.scale}, inv_scales,
         scales_f32;
+    HloInstruction *one_constant = nullptr;
+    auto one = [&one_constant, instr]() -> HloInstruction * {
+      if (!one_constant) {
+        one_constant = instr->AddInstruction(
+            HloInstruction::CreateConstant(LiteralUtil::One(F32)));
+      }
+      return one_constant;
+    };
+
     for (int i = 0; i < scales.size(); ++i) {
       if (scales[i]) {
         if (!ShapeUtil::IsScalar(scales[i]->shape())) {
@@ -1099,7 +1105,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
         if (!mult_scale[i]) {
           inv_scales[i] = instr->AddInstruction(HloInstruction::CreateBinary(
-              scales[i]->shape(), HloOpcode::kDivide, one, scales[i]));
+              scales[i]->shape(), HloOpcode::kDivide, one(), scales[i]));
         }
         scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
@@ -1107,7 +1113,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
         }
       } else {
-        scales_f32[i] = one;
+        scales_f32[i] = one();
       }
     }
 
@@ -1249,7 +1255,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
-        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1], one, one};
+        a.fp8_input, b.fp8_input, scales_f32[0], scales_f32[1]};
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1415,13 +1421,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If necessary, invert the scaling factor of D and convert to F32.
+    // If necessary, invert the scaling factor of D and convert to F32. When no
+    // scaling factor was captured, set the factor to one.
     if (d_scale) {
       TF_ASSIGN_OR_RETURN(d_scale,
                           InvertAndConvertScalar(d_scale, !mult_scale));
-      TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
-          gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
+    } else {
+      d_scale = instr->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::One(F32)));
     }
+    existing_gemm->AppendOperand(d_scale);
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -1887,12 +1896,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
-    // TODO(tdanyluk): Investigate why don't we use the actual precision (and
-    // algorithm) here? Why do we use the default?
-    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        se::gpu::GetBlasComputationType(
-                            PrecisionConfig::ALG_UNSET, a_dtype, output_type,
-                            stream_executor::blas::kDefaultComputePrecision));
+    TF_ASSIGN_OR_RETURN(
+        const se::blas::ComputationType compute_type,
+        se::gpu::GetBlasComputationType(
+            instr.precision_config().algorithm(), a_dtype, output_type,
+            stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 

@@ -73,10 +73,18 @@ validate_gpu_tag = aspect(
     attr_aspects = ["deps"],
 )
 
-def _no_rocm_tag_violation_aspect_impl(target, ctx):
-    return _dependency_violation_aspect_impl(target, ctx, "no_rocm")
+def _cuda_only_tag_violation_aspect_impl(target, ctx):
+    return _dependency_violation_aspect_impl(target, ctx, "cuda-only")
 
-validate_no_rocm_tag = aspect(
-    implementation = _no_rocm_tag_violation_aspect_impl,
+validate_cuda_only_tag = aspect(
+    implementation = _cuda_only_tag_violation_aspect_impl,
+    attr_aspects = ["deps"],
+)
+
+def _rocm_only_tag_violation_aspect_impl(target, ctx):
+    return _dependency_violation_aspect_impl(target, ctx, "rocm-only")
+
+validate_rocm_only_tag = aspect(
+    implementation = _rocm_only_tag_violation_aspect_impl,
     attr_aspects = ["deps"],
 )

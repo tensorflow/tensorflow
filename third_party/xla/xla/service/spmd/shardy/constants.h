@@ -38,13 +38,22 @@ inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";
 
-// Attribute name for temporarily storing the Shardonnay sharding during HLO
-// round-trip. It cannot match the name kShardingAttr ("sdy.sharding"), as
+// Attribute name for temporarily storing the Shardy sharding during HLO
+// round-trip. It cannot match the name `kShardingAttr` ("sdy.sharding"), as
 // during round-trip, going from HLO to MHLO, the code removes attributes
 // in the `frontend_attributes` field, making them top level. And Shardonnay
 // verification expects `kShardingAttr` to be of type
 // TensorShardingAttr/TensorShardingPerValueAttr - not a StringAttr.
 inline constexpr llvm::StringRef kShardingRoundTripAttr = "xla.sdy.sharding";
+
+// Attribute name for temporarily storing the Shardy sharding rule during HLO
+// round-trip. It cannot match the name `kShardingRuleAttr`
+// ("sdy.sharding_rule"), as during round-trip, going from HLO to MHLO, the code
+// removes attributes in the `frontend_attributes` field, making them top level.
+// And Shardy verification expects `kShardingRuleAttr` to be of type
+// OpShardingRuleAttr - not a StringAttr.
+inline constexpr llvm::StringRef kShardingRuleRoundTripAttr =
+    "xla.sdy.sharding_rule";
 
 // Attribute name for temporarily storing the Shardonnay meshes during HLO
 // round-trip.
@@ -81,16 +90,20 @@ inline constexpr llvm::StringRef kOutShardings = "xla.sdy.out_shardings";
 // Attribute name for the manual axes of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 
-// The target name of the custom call that will store the various attrs of a
-// `ManualComputationOp` and a reference to a `FuncOp` that is the body of the
-// original `ManualComputationOp`.
-inline constexpr llvm::StringRef kManualComputationCustomCallTargetName =
-    "xla.sdy.ManualComputation";
-
 // The function name of the of the body of a `ManualComputationOp` during Shardy
 // round tripping. Used
 inline constexpr llvm::StringRef kManualComputationBodyFuncName =
     "xla.sdy.manual_computation_body";
+
+// The target name of the custom call that changes operands from global to local
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kGlobalToLocalShapeCallTargetName =
+    "xla.sdy.GlobalToLocalShape";
+
+// The target name of the custom call that changes results from local to global
+// shape during Shardy round tripping.
+inline constexpr llvm::StringRef kLocalToGlobalShapeCallTargetName =
+    "xla.sdy.LocalToGlobalShape";
 
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";

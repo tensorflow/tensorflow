@@ -179,8 +179,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/utils:session_manager",
         "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
         "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
+        "@local_xla//xla/tsl/profiler/utils:session_manager",
     ],
 )

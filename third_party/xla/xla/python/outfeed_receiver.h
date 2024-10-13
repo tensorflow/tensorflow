@@ -75,6 +75,8 @@ class OutfeedReceiver {
                                             std::vector<XlaOp> arrays,
                                             uint32_t device_idx);
 
+  absl::Status RegisterOutfeed(uint32_t consumer_id, const Shape& shape);
+
  private:
   std::unique_ptr<OutfeedReceiverImpl> p_impl_;
 };

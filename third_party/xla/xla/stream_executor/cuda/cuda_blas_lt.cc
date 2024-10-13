@@ -449,15 +449,12 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
                                  CUBLASLT_MATMUL_DESC_B_SCALE_POINTER,
                                  b_scale.opaque()));
     }
-    auto isF8Input = [](const auto& desc) {
-      return desc.type() == CUDA_R_8F_E4M3 || desc.type() == CUDA_R_8F_E5M2;
-    };
-    if (c_scale != nullptr && isF8Input(c_desc_)) {
+    if (c_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_C_SCALE_POINTER,
                                  c_scale.opaque()));
     }
-    if (d_scale != nullptr && isF8Input(d_desc_)) {
+    if (d_scale != nullptr) {
       TF_RETURN_IF_ERROR(SetAttr(op_desc_.get(),
                                  CUBLASLT_MATMUL_DESC_D_SCALE_POINTER,
                                  d_scale.opaque()));

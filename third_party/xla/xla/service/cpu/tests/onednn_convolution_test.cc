@@ -48,6 +48,30 @@ class ConvolutionTest : public HloTestBase {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
+
+  const char* conv_rewrite_bias_str_ = R"(
+    ; CHECK:     custom_call_target="__onednn$convolution",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:       "onednn_conv_config":{
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS"]
+    ; CHECK-DAG:     }
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
+
+  const char* fused_convolution_binary_add_ = R"(
+    ; CHECK:     custom_call_target="__onednn$convolution",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:       "onednn_conv_config":{
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BINARY_ADD"]
+    ; CHECK-DAG:     }
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
 };
 
 TEST_F(ConvolutionTest, Simple2DTestF32) {
@@ -55,9 +79,9 @@ TEST_F(ConvolutionTest, Simple2DTestF32) {
   HloModule convolution.test.f32
 
   ENTRY convolution.test.f32 {
-    arg.0 = f32[1,22,22,1] parameter(0), parameter_replication={false}
+    arg.0 = f32[1,22,22,1] parameter(0)
     reshape.0 = f32[1,22,22,1] reshape(arg.0)
-    arg.1 = f32[8,8,1,1] parameter(1), parameter_replication={false}
+    arg.1 = f32[8,8,1,1] parameter(1)
     reshape.1 = f32[8,8,1,1] reshape(arg.1)
     convolution.0 = f32[1,11,11,1] convolution(reshape.0, reshape.1), window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
     reshape.2 = f32[1,11,11,1] reshape(convolution.0)
@@ -94,6 +118,7 @@ TEST_F(ConvolutionTest, Simple2DTestF16) {
 
   const char* convolution_module_str = R"(
   HloModule convolution.test.f16
+
   ENTRY convolution.test.bf16 {
     p0 = f16[8,4,5,5,1] parameter(0)
     p1 = f16[3,3,3,1,32] parameter(1)
@@ -102,6 +127,62 @@ TEST_F(ConvolutionTest, Simple2DTestF16) {
 
   EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{1e-4, 1e-4}));
   MatchOptimizedHlo(convolution_module_str, conv_rewrite_str_);
+}
+
+TEST_F(ConvolutionTest, Conv3DWithBiasBF16) {
+  const char* convolution_module_str = R"(
+  HloModule convolution.test.with.bias.relu.bf16.3D
+
+  ENTRY TestComputation {
+    arg.0 = bf16[15,4,5,5,28] parameter(0)
+    arg.1 = bf16[3,3,3,28,64] parameter(1)
+    conv = bf16[15,4,5,5,64] convolution(arg.0, arg.1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+    bias = bf16[64] parameter(2)
+    broadcasted_bias = bf16[15,4,5,5,64] broadcast(bias), dimensions={4}
+    ROOT add = bf16[15,4,5,5,64] add(conv, broadcasted_bias)
+})";
+  EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{0.01, 0.01}));
+  MatchOptimizedHlo(convolution_module_str, conv_rewrite_bias_str_);
+}
+
+TEST_F(ConvolutionTest, SimpleTestF32WithBinaryAddFusion1) {
+  const char* convolution_module_str = R"(
+  HloModule conv.binaryadd.test.f32
+
+  ENTRY matmul.biasadd.test.f32 {
+    arg0.1 = f32[1,22,22,1] parameter(0)
+    constant.3 = f32[] constant(1)
+    broadcast.4 = f32[8,8,1,1] broadcast(constant.3), dimensions={}
+    convolution.0 = f32[1,11,11,1] convolution(arg0.1, broadcast.4), window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    constant.5 = f32[] constant(15)
+    broadcast.6 = f32[1] broadcast(constant.5), dimensions={}
+    broadcast.9 = f32[1,11,11,1] broadcast(broadcast.6), dimensions={3}
+    ROOT add.10 = f32[1,11,11,1] add(convolution.0, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(convolution_module_str, fused_convolution_binary_add_);
+}
+
+// This test should match BIAS + Residual Add when the residual add fusion is
+// re-enabled.
+TEST_F(ConvolutionTest, SimpleTestBF16WithBiasAndAddFusion) {
+  const char* convolution_module_str = R"(
+  HloModule convolution.add.test.bf16
+
+  ENTRY convolution.add.test.bf16 {
+    arg0.1 = bf16[1,22,22,1] parameter(0)
+    arg0.2 = bf16[8,8,1,10] parameter(1)
+    convolution.0 = bf16[1,11,11,10] convolution(arg0.1, arg0.2), window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    const.0 = bf16[10] constant(15)
+    bcast.1 = bf16[1,11,11,10] broadcast(const.0), dimensions={3}
+    add.0 = bf16[1,11,11,10] add(convolution.0, bcast.1)
+    const.1 = bf16[1,11,11,10] constant({...})
+    ROOT add.1 = bf16[1,11,11,10] add(add.0, const.1)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(convolution_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(convolution_module_str, conv_rewrite_bias_str_);
 }
 
 }  // namespace cpu

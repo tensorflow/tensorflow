@@ -746,7 +746,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
         "no_oss",  # b/241013307
-	    "no_rocm",
+	    "cuda-only",
         "notap",  # Flaky; TODO(b/289970206)
     ],
     tpu_tags = [
@@ -1813,6 +1813,7 @@ distribute_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
@@ -2580,7 +2581,7 @@ distribute_py_strict_test(
         "multi_and_single_gpu",
         "nomac",  # TODO(b/201788023): Attempt MultiProcessCluster to fix this.
         "notpu",
-        "no_rocm", #times out
+        "cuda-only", #times out
     ],
     deps = [
         ":distribute_lib",

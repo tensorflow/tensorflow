@@ -23,11 +23,13 @@ limitations under the License.
 #include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir {
 

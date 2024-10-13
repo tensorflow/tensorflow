@@ -70,9 +70,10 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
   CHECK(false);
 }
 
-absl::Status CreateTritonIrAndFileCheck(
-    HloTestBase* test, absl::string_view hlo_text,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
+absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
+                                        absl::string_view hlo_text,
+                                        absl::string_view triton_fusion_name,
+                                        absl::string_view filecheck_pattern) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
                       test->ParseAndReturnVerifiedModule(hlo_text));
   auto* comp = verified_module->GetComputationWithName(triton_fusion_name);

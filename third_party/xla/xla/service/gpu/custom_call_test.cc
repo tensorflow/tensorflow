@@ -79,6 +79,20 @@ limitations under the License.
 #endif
 
 namespace xla {
+
+struct Range {
+  int64_t lo;
+  int64_t hi;
+};
+
+}  // namespace xla
+
+// Register struct types with XLA:FFI to enable automatic decoding from
+// dictionary attributes to structs.
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
+                                      StructMember<int64_t>("hi"));
+
+namespace xla {
 namespace {
 
 class CustomCallTest : public ClientLibraryTestBase {};
@@ -614,12 +628,17 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 //===----------------------------------------------------------------------===//
 
 static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
-                                  absl::Span<const int32_t> i32_arr) {
+                                  absl::Span<const int32_t> i32_arr,
+                                  Range range) {
   if (i32_arr.size() != 4)
     return absl::InternalError("i32_arr size does not match");
 
   if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 || i32_arr[3] != 4)
     return absl::InternalError("i32_arr values do not match");
+
+  if (range.lo != 0 || range.hi != 42) {
+    return absl::InternalError("range values do not match");
+  }
 
   return absl::OkStatus();
 }
@@ -627,7 +646,8 @@ static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
 XLA_FFI_DEFINE_HANDLER(kFfiAttributes, FfiAttributes,
                        ffi::Ffi::Bind()
                            .Ret<ffi::AnyBuffer>()
-                           .Attr<absl::Span<const int32_t>>("i32_arr"));
+                           .Attr<absl::Span<const int32_t>>("i32_arr")
+                           .Attr<Range>("range"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_attributes",
                          PLATFORM, kFfiAttributes);
@@ -636,7 +656,9 @@ TEST_F(CustomCallTest, FfiAttributes) {
   XlaBuilder b(TestName());
   CustomCall(&b, "xla.gpu.ffi_attributes", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {}),
-             /*opaque=*/"{ i32_arr = array<i32: 1, 2, 3, 4> }",
+             /*opaque=*/
+             "{ i32_arr = array<i32: 1, 2, 3, 4>,"
+             "  range = { lo = 0 : i64, hi = 42 : i64 } }",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -715,6 +737,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 struct SomeExtraContext {
   explicit SomeExtraContext(int32_t value) : value(value) {}
   int32_t value;
+  bool prepared = false;
   bool initialized = false;
   bool executed = false;
 };
@@ -723,14 +746,24 @@ template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
-  if constexpr (stage == ffi::ExecutionStage::kInitialize) {
+  if constexpr (stage == ffi::ExecutionStage::kPrepare) {
+    ctx->prepared = true;
+  } else if constexpr (stage == ffi::ExecutionStage::kInitialize) {
     ctx->initialized = true;
-  } else {
+  } else if constexpr (stage == ffi::ExecutionStage::kExecute) {
     ctx->executed = true;
+  } else {
+    return absl::InternalError("Unexpected stage");
   }
 
   return absl::OkStatus();
 }
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextPrepare,
+                       ExecutionContext<ffi::ExecutionStage::kPrepare>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
 
 XLA_FFI_DEFINE_HANDLER(kExecutionContextInitialize,
                        ExecutionContext<ffi::ExecutionStage::kInitialize>,
@@ -748,7 +781,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
                          PLATFORM,
                          {
                              /*instantiate=*/nullptr,
-                             /*prepare=*/nullptr,
+                             /*prepare=*/kExecutionContextPrepare,
                              /*initialize=*/kExecutionContextInitialize,
                              /*execute=*/kExecutionContextExecute,
                          });
@@ -774,6 +807,7 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   // Check that FFI handler was called during initialization and execution.
   TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
                           execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->prepared);
   EXPECT_TRUE(user_context->initialized);
   EXPECT_TRUE(user_context->executed);
 }

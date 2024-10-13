@@ -67,13 +67,13 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 // clang-format off
 #include "third_party/gpus/cuda/include/library_types.h"
@@ -5240,10 +5240,12 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
       .set_uid(next_uid());
   amax_s->set_output(true)
       .set_dim({1, 1, 1, 1})
+      .set_stride({1, 1, 1, 1})
       .set_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_uid(next_uid());
   amax_o->set_output(true)
       .set_dim({1, 1, 1, 1})
+      .set_stride({1, 1, 1, 1})
       .set_data_type(cudnn_frontend::DataType_t::FLOAT)
       .set_uid(next_uid());
 

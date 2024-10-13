@@ -58,11 +58,11 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace xla {
 namespace sdy {

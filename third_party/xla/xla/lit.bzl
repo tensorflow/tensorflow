@@ -1,6 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_google", "if_oss")
 
 def enforce_glob(files, **kwargs):
@@ -209,7 +210,11 @@ def lit_test(
         srcs = tools,
         bin_dir = bin_dir,
         lib_dir = lib_dir,
-        deps = ["//xla/stream_executor/cuda:all_runtime"],
+        deps = if_cuda_is_configured(
+            [
+                "//xla/stream_executor/cuda:all_runtime",
+            ],
+        ),
         visibility = ["//visibility:private"],
         **kwargs
     )

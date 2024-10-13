@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
-#include "tsl/lib/math/math_util.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

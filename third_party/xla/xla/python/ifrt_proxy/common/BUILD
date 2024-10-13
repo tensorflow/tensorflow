@@ -72,11 +72,12 @@ tf_proto_library(
         "//xla/pjrt:execute_options_proto",
         "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",
+        "//xla/python/ifrt:execute_options_proto",
         "//xla/python/ifrt:remap_plan_proto",
         "//xla/python/ifrt:serdes_proto",
         "//xla/python/ifrt:shape_proto",
         "//xla/python/ifrt:sharding_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "//xla/tsl/protobuf:status_proto",
     ],
 )
 
@@ -180,11 +181,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_utils",
+    srcs = ["test_utils.cc"],
+    hdrs = ["test_utils.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/debugging:leak_check",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 # copybara:uncomment_begin
 # bzl_library(
 #     name = "ifrt_proxy_bzl",
 #     srcs = ["ifrt_proxy.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+# )
+#
+# bzl_library(
+#     name = "ifrt_proxy_google_bzl",
+#     srcs = ["ifrt_proxy.google.bzl"],
+#     parse_tests = False,
+#     visibility = ["//visibility:private"],
+#     deps = [
+#         "//devtools/build_cleaner/skylark:build_defs_lib",
+#         "//xla:xla_bzl",
+#     ],
 # )
 # copybara:uncomment_end

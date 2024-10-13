@@ -236,7 +236,7 @@ struct OneShotBufferizePass
     opts.bufferizeFunctionBoundaries = true;
     opts.functionArgTypeConverterFn =
         [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
-            const bufferization::BufferizationOptions& options) {
+            const bufferization::BufferizationOptions& /*options*/) {
           // Functions created by fusion outlining should have fully dynamic
           // layout. All other functions (for now only "main") gets static
           // layout.

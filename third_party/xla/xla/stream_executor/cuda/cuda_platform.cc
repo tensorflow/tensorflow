@@ -38,8 +38,6 @@ namespace gpu {
 
 CudaPlatform::CudaPlatform() : name_("CUDA") {}
 
-CudaPlatform::~CudaPlatform() {}
-
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
@@ -55,7 +53,7 @@ const std::string& CudaPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaPlatform::DescriptionForDevice(int ordinal) const {
-  return GpuExecutor::CreateDeviceDescription(ordinal);
+  return CudaExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {

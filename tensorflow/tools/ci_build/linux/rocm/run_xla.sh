@@ -75,8 +75,8 @@ else
 	bazel \
         	test \
 		-k \
-		--test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm --keep_going \
-		--build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-no_rocm \
+		--test_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-cuda-only --keep_going \
+		--build_tag_filters=-no_oss,-oss_excluded,-oss_serial,gpu,requires-gpu,-no_gpu,-cuda-only \
     		--config=rocm \
     		--test_output=errors \
     		--local_test_jobs=${N_TEST_JOBS} \

@@ -555,7 +555,7 @@ class PriorityFusionQueue {
       }
     }
 
-    return {};
+    return FusionDecision::Allow();
   }
 
   TiledRunTimeDataOrError GetTiledRunTimeDataCached(
@@ -587,17 +587,17 @@ class PriorityFusionQueue {
       if (result_or_status.ok()) {
         return *result_or_status;
       } else {
-        return FusionDecision{
+        return FusionDecision::Forbid(
             absl::StrCat("TiledRunTimeDataOrError return status: ",
-                         result_or_status.status().message())};
+                         result_or_status.status().message()));
       }
     }();
 
     if (const auto* fusion_decision =
             std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
-      tiled_run_time_data_or_error = FusionDecision{
+      tiled_run_time_data_or_error = FusionDecision::Forbid(
           absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
-                       fusion_decision->Explain())};
+                       fusion_decision->Explain()));
     }
 
     absl::MutexLock lock(&tiled_run_time_data_cache_mutex_);
@@ -608,12 +608,12 @@ class PriorityFusionQueue {
   FusionDecision CanFuseTriton(HloInstruction* producer,
                                HloInstruction* consumer) {
     if (!triton_softmax_priority_fusion_enabled_) {
-      return "triton softmax fusion is not enabled";
+      return FusionDecision::Forbid("triton softmax fusion is not enabled");
     }
 
     if (IsGenericTritonFusion(*producer)) {
       if (!IsFusible(*consumer)) {
-        return "the consumer is not fusible";
+        return FusionDecision::Forbid("the consumer is not fusible");
       }
 
       if (auto fusion_decision = IsTritonSupported(*consumer);
@@ -622,7 +622,7 @@ class PriorityFusionQueue {
       }
     } else {
       if (!IsFusible(*producer)) {
-        return "the producer is not fusible";
+        return FusionDecision::Forbid("the producer is not fusible");
       }
 
       if (auto fusion_decision = IsTritonSupported(*producer);
@@ -651,7 +651,7 @@ class PriorityFusionQueue {
           tiled_run_time_data.block_level_parameters;
     }
 
-    return {};
+    return FusionDecision::Allow();
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
@@ -660,15 +660,16 @@ class PriorityFusionQueue {
     }
 
     if (!IsFusible(*producer)) {
-      return "the producer is not fusible";
+      return FusionDecision::Forbid("the producer is not fusible");
     }
 
     if (!IsFusible(*consumer)) {
-      return "the consumer is not fusible";
+      return FusionDecision::Forbid("the consumer is not fusible");
     }
 
     if (consumer->opcode() == HloOpcode::kBitcast) {
-      return "not fusing into a single bitcast as consumer";
+      return FusionDecision::Forbid(
+          "not fusing into a single bitcast as consumer");
     }
 
     // Scatter is special as it has no elemental version but is still input
@@ -698,7 +699,8 @@ class PriorityFusionQueue {
     };
     if (contains_significant_reduce(producer) &&
         contains_significant_reduce(consumer)) {
-      return "both the producer and the consumer contain a reduce";
+      return FusionDecision::Forbid(
+          "both the producer and the consumer contain a reduce");
     }
 
     // Avoid doing fusions into the output of an "input" fusion when it would
@@ -712,8 +714,8 @@ class PriorityFusionQueue {
           fusion_analysis_cache_.Get(*producer, *consumer);
       if (analysis_fused.GetEmitterFusionKind() ==
           HloFusionAnalysis::EmitterFusionKind::kLoop) {
-        return "fusion into output of a reduce fusion would create a loop "
-               "fusion";
+        return FusionDecision::Forbid(
+            "fusion into output of a reduce fusion would create a loop fusion");
       }
     }
 
@@ -731,7 +733,8 @@ class PriorityFusionQueue {
     // kernels, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
     if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
-      return "the fusion would result in an overly large code duplication";
+      return FusionDecision::Forbid(
+          "the fusion would result in an overly large code duplication");
     }
 
     // Don't fuse across a root instruction. There are situation when a root
@@ -739,7 +742,8 @@ class PriorityFusionQueue {
     // root are not necessary dead. They can be inputs to instructions with side
     // effects, like outfeed.
     if (producer == producer->parent()->root_instruction()) {
-      return "not fusing into the output of the root instruction";
+      return FusionDecision::Forbid(
+          "not fusing into the output of the root instruction");
     }
 
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer);
@@ -764,7 +768,7 @@ class PriorityFusionQueue {
     // override any value.
     {
       absl::MutexLock lock(&can_fuse_cache_mutex_);
-      can_fuse_cache_[producer][consumer] = fusion_decision;
+      can_fuse_cache_[producer].insert_or_assign(consumer, fusion_decision);
     }
 
     return fusion_decision;
@@ -772,10 +776,9 @@ class PriorityFusionQueue {
 
   FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
-      return "No users to fuse";
+      return FusionDecision::Forbid("No users to fuse");
     }
 
-    FusionDecision result;
     bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
       if (user->opcode() == HloOpcode::kBitcast) {
@@ -790,9 +793,10 @@ class PriorityFusionQueue {
       }
     }
     if (!has_non_bitcast_user) {
-      return "not fusing because there are only bitcast users";
+      return FusionDecision::Forbid(
+          "not fusing because there are only bitcast users");
     }
-    return {};
+    return FusionDecision::Allow();
   }
 
   // Store computation for cost analysis.

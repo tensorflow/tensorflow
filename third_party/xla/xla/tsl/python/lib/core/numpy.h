@@ -29,6 +29,13 @@ limitations under the License.
 #define NO_IMPORT_ARRAY
 #endif
 
+// Prevent linking error with numpy>=2.1.0
+// error: undefined hidden symbol: _xla_numpy_apiPyArray_RUNTIME_VERSION
+// Without this define, Numpy's API symbols will have hidden symbol visibility,
+// which may break things if Bazel chooses to build a cc_library target into
+// its own .so file. Bazel typically does this for debug builds.
+#define NPY_API_SYMBOL_ATTRIBUTE
+
 // clang-format off
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
 #include <locale>

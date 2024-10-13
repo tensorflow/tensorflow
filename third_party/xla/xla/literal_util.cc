@@ -229,6 +229,11 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
 
+/* static */ Literal LiteralUtil::ConvertS8ToF32(
+    const LiteralSlice& s8_literal) {
+  return ConvertType<int8_t, float>(s8_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertBF16ToF32(
     const LiteralSlice& bf16_literal) {
   return ConvertType<bfloat16, float>(bf16_literal);
@@ -247,6 +252,16 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 /* static */ Literal LiteralUtil::ConvertF32ToF8E5M2FNUZ(
     const LiteralSlice& f32_literal) {
   return ConvertType<float, tsl::float8_e5m2fnuz>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF8E5M2(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e5m2>(f32_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF32ToF8E4M3FN(
+    const LiteralSlice& f32_literal) {
+  return ConvertType<float, tsl::float8_e4m3fn>(f32_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertF32ToBF16(

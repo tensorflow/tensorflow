@@ -934,7 +934,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   class TestExecuteNodeArgs : public EagerKernelArgs {
    public:
     TestExecuteNodeArgs(
-        gtl::InlinedVector<TensorValue, 4>&& tensor_args,
+        absl::InlinedVector<TensorValue, 4UL>&& tensor_args,
         std::function<Status(const int, eager::RemoteTensorHandle*)>
             serialize_remote_handle)
         : EagerKernelArgs(std::move(tensor_args)),
@@ -1095,7 +1095,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   input.set_device(local_device_);
   std::vector<RemoteTensorHandle> inputs = {input};
   std::vector<FunctionRet> outputs;
-  gtl::InlinedVector<TensorValue, 4> tensor_args = {TensorValue()};
+  absl::InlinedVector<TensorValue, 4UL> tensor_args = {TensorValue()};
   TestExecuteNodeArgs args(
       std::move(tensor_args),
       [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
@@ -1193,7 +1193,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
-  gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
+  absl::InlinedVector<TensorValue, 4UL> input_tensors = {TensorValue()};
   RemoteTensorHandle input;
   input.set_op_id(1);
   input.set_output_num(0);
@@ -1248,7 +1248,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
-  gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
+  absl::InlinedVector<TensorValue, 4UL> input_tensors = {TensorValue()};
   RemoteTensorHandle input;
   input.set_op_id(1);
   input.set_output_num(0);

@@ -26,7 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -47,8 +49,9 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
   explicit MlirInPlaceDynamicUpdateSliceFusion(
       const HloFusionAnalysis& analysis)
       : analysis_(analysis),
-        dus_ops_(
-            GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
+        dus_ops_(GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())),
+        config_(ComputeLoopFusionConfig(
+            analysis, dus_ops_[0].instruction().operand(1)->shape())) {}
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -77,6 +80,7 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
  private:
   const HloFusionAnalysis& analysis_;
   std::vector<HloInstructionAdaptor> dus_ops_;
+  LaunchDimensionsConfig config_;
 };
 
 }  // namespace gpu

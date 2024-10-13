@@ -11,7 +11,7 @@ load(
     _tf_additional_rpc_deps = "tf_additional_rpc_deps",
     _tf_additional_tensor_coding_deps = "tf_additional_tensor_coding_deps",
     _tf_additional_test_deps = "tf_additional_test_deps",
-    _tf_cuda_libdevice_path_deps = "tf_cuda_libdevice_path_deps",
+    _tf_cuda_root_path_deps = "tf_cuda_root_path_deps",
     _tf_fingerprint_deps = "tf_fingerprint_deps",
     _tf_google_mobile_srcs_no_runtime = "tf_google_mobile_srcs_no_runtime",
     _tf_google_mobile_srcs_only_runtime = "tf_google_mobile_srcs_only_runtime",
@@ -53,7 +53,7 @@ tf_additional_lib_hdrs = _tf_additional_lib_hdrs
 tf_additional_rpc_deps = _tf_additional_rpc_deps
 tf_additional_tensor_coding_deps = _tf_additional_tensor_coding_deps
 tf_additional_test_deps = _tf_additional_test_deps
-tf_cuda_libdevice_path_deps = _tf_cuda_libdevice_path_deps
+tf_cuda_root_path_deps = _tf_cuda_root_path_deps
 tf_fingerprint_deps = _tf_fingerprint_deps
 tf_google_mobile_srcs_no_runtime = _tf_google_mobile_srcs_no_runtime
 tf_google_mobile_srcs_only_runtime = _tf_google_mobile_srcs_only_runtime

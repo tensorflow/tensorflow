@@ -925,7 +925,7 @@ FunctionDef AddVarAcrossDevices() {
 class TestFunctionPackedArgs : public FunctionArgsInterface {
  public:
   TestFunctionPackedArgs(const int index,
-                         gtl::InlinedVector<TensorValue, 4>&& tensor_args) {
+                         absl::InlinedVector<TensorValue, 4UL>&& tensor_args) {
     packed_args_.emplace(index, std::move(tensor_args));
   }
 
@@ -942,7 +942,7 @@ class TestFunctionPackedArgs : public FunctionArgsInterface {
   std::vector<Tensor> GetLocalTensors() const override { return {}; }
 
  private:
-  absl::flat_hash_map<int, gtl::InlinedVector<TensorValue, 4>> packed_args_;
+  absl::flat_hash_map<int, absl::InlinedVector<TensorValue, 4UL>> packed_args_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CompositeDevice) {
@@ -985,7 +985,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CompositeDevice) {
 
   // Packed TensorHandle
   {
-    gtl::InlinedVector<TensorValue, 4> handles;
+    absl::InlinedVector<TensorValue, 4UL> handles;
     handles.push_back(TensorValue(&resource_handle0));
     handles.push_back(TensorValue(&resource_handle1));
     TestFunctionPackedArgs args(0, std::move(handles));

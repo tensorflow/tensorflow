@@ -74,7 +74,6 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "notsan",   # TODO(b/345034145): Fix tsan error.
-        "no_rocm",  # TODO(rocm): sync 24-08-20
     ],  
     deps = if_gpu_is_configured(
         #keep sorted
@@ -209,7 +208,7 @@ xla_test(
         "swap_conv_operands_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -322,7 +321,7 @@ xla_test(
         "gpu_a100",
         "gpu_v100",
     ],
-    tags = ["no_rocm"], # TODO(rocm) 240729 Test checks only for cuda capability
+    tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -399,7 +398,6 @@ xla_test(
         "gpu_p100",
         "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
-    tags = ["no_rocm"], # TODO(rocm): weekly sync 24-08-20
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -654,6 +652,7 @@ lit_test_suite(
             "transpose_210.hlo",
             "transpose_210_extra_output.hlo",
             "triton_naming.hlo",
+            "zero_clamp_abs_index.hlo",
         ],
         include = [
             "*.hlo",

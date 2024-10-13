@@ -61,25 +61,20 @@ void removeFrontendAttribute(mlir::func::FuncOp funcOp,
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 
-// Parses `stringAttr` to an attribute of type `AttrTy`.
-//
-// NOTE: assumes `stringAttr` is of type `StringAttr`.
-template <typename AttrTy>
-AttrTy parseStringAttr(mlir::Attribute stringAttr) {
-  std::string value;
-  std::string error;
-  CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-                        &value, &error))
-      << error;
-  return mlir::cast<AttrTy>(
-      mlir::parseAttribute(value, stringAttr.getContext()));
-}
-
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
 template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
-  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
+  if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
+    std::string value;
+    std::string error;
+    CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
+                          &value, &error))
+        << error;
+    return mlir::cast<AttrTy>(
+        mlir::parseAttribute(value, stringAttr.getContext()));
+  }
+  return nullptr;
 }
 
 }  // namespace sdy

@@ -100,8 +100,13 @@ Array::MakeArrayFromHostBuffer(
 }
 
 void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
+  if (rpc_helper->version().protocol_version() >= 5) {
+    rpc_helper->Batch(RpcHelper::kDestructArray, handle);
+    return;
+  }
+
   auto req = std::make_unique<DestructArrayRequest>();
-  req->set_array_handle(handle.handle);
+  req->set_array_handle_deprecated(handle.handle);
   rpc_helper->DestructArray(std::move(req))
       .OnReady(
           [](absl::StatusOr<std::shared_ptr<DestructArrayResponse>> response) {
@@ -126,8 +131,13 @@ Future<> Array::GetReadyFuture() const {
 }
 
 Future<> Array::Delete() {
+  if (rpc_helper_->version().protocol_version() >= 5) {
+    rpc_helper_->Batch(RpcHelper::kDeleteArray, handle_);
+    return Future<>(absl::OkStatus());
+  }
+
   auto req = std::make_unique<DeleteArrayRequest>();
-  req->set_array_handle(handle_.handle);
+  req->set_array_handle_deprecated(handle_.handle);
 
   absl::StatusOr<std::shared_ptr<DeleteArrayResponse>> response =
       rpc_helper_->DeleteArray(std::move(req)).Await();

@@ -3755,6 +3755,10 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
                          on_false.is_dynamic_dimension(dimension));
     }
   }
+  if (result.has_layout()) {
+    result.mutable_layout()->set_element_size_in_bits(
+        on_true.layout().element_size_in_bits());
+  }
   return std::move(result);
 }
 

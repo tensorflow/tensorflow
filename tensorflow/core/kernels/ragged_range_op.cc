@@ -81,14 +81,22 @@ class RaggedRangeOp : public OpKernel {
       T limit = broadcast_limits ? limits(0) : limits(row);
       T delta = broadcast_deltas ? deltas(0) : deltas(row);
       OP_REQUIRES(context, delta != 0, InvalidArgument("Requires delta != 0"));
-      SPLITS_TYPE size;  // The number of elements in the specified range.
+      uint64_t size;  // The number of elements in the specified range.
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
         size = 0;
       } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
-        size = Eigen::divup(Eigen::numext::abs(limit - start),
-                            Eigen::numext::abs(delta));
+        uint64_t range;
+        if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit)) +
+                  static_cast<uint64_t>(Eigen::numext::abs(start));
+        } else {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+        }
+
+        size = Eigen::divup(range,
+                            static_cast<uint64_t>(Eigen::numext::abs(delta)));
       } else {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
@@ -97,7 +105,7 @@ class RaggedRangeOp : public OpKernel {
             context, size_auto <= std::numeric_limits<int64_t>::max(),
             errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
                                     std::numeric_limits<int64_t>::max()));
-        size = static_cast<SPLITS_TYPE>(size_auto);
+        size = static_cast<uint64_t>(size_auto);
       }
       OP_REQUIRES(context, size >= 0, InvalidArgument("Requires size >= 0"));
       OP_REQUIRES(

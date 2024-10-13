@@ -1143,8 +1143,6 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         std::vector<int64_t>(halo_exchange_base_shape.rank(), 1)));
   }
 
-  std::vector<OffsetCalculation> left_halo_size_functions(base_shape_.rank());
-  std::vector<OffsetCalculation> right_halo_size_functions(base_shape_.rank());
   // TODO(yuanzx): We are concatenating on each sharded dimension one at time,
   // and in the second dimension (and beyond) we create halos by slicing the
   // concat in the previous dimension, which is not optimal. We should generate
@@ -1162,18 +1160,18 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
     // partition.
     MultiplyAddDivideOffsetCalculation shard_limit_of_previous_on_padded(
         input_shard_size, explicit_left_padding[dim], 1);
-    left_halo_size_functions[dim] =
+    OffsetCalculation left_halo_size_functions =
         shard_limit_of_previous_on_padded - start_on_padded_calculations[dim];
 
     // Right halo.
     MultiplyAddDivideOffsetCalculation shard_start_of_next_on_padded(
         input_shard_size, input_shard_size + explicit_left_padding[dim], 1);
-    right_halo_size_functions[dim] =
+    OffsetCalculation right_halo_size_functions =
         limit_on_padded_calculations[dim] - shard_start_of_next_on_padded;
 
     auto resharded = ExchangeHaloAndGetValidData(
-        visiting_hlo, halo_exchange_base_shape, left_halo_size_functions[dim],
-        right_halo_size_functions[dim], explicit_left_padding[dim],
+        visiting_hlo, halo_exchange_base_shape, left_halo_size_functions,
+        right_halo_size_functions, explicit_left_padding[dim],
         padded_shape.dimensions(dim), shard_shape.dimensions(dim), dim,
         *halo_exchange_target, offsets_on_padded_shape[dim], pad_value,
         partition_ordinals[dim], state_.collective_ops_creator,

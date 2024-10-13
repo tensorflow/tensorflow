@@ -30,6 +30,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:call_inliner",
+        "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -60,6 +61,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:computation_layout",
@@ -70,8 +73,6 @@ cc_library(
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_export",
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_import",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
-        "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -153,6 +154,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardings",
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardings",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/service/spmd/shardy/sdy_round_trip:remove_size_one_axes",
         "//xla/service/spmd/shardy/sdy_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/sdy_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:mhlo_to_hlo_to_mhlo",

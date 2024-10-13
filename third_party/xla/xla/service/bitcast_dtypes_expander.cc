@@ -15,23 +15,23 @@ limitations under the License.
 
 #include "xla/service/bitcast_dtypes_expander.h"
 
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/str_format.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/broadcast.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/client/xla_computation.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 

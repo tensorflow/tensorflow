@@ -16,12 +16,10 @@ limitations under the License.
 #include "xla/service/all_reduce_folder.h"
 
 #include <cstddef>
-#include <iostream>
+#include <initializer_list>
 #include <memory>
-#include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -29,220 +27,180 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-namespace m = xla::testing::opcode_matchers;
+namespace matcher = xla::testing::opcode_matchers;
 using ::testing::HasSubstr;
 
-class AllReduceFolderTest : public HloTestBase {
- public:
-  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
-      absl::string_view hlo_module, bool expect_change) {
-    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
-    auto changed = AllReduceFolder().Run(module.get());
-    if (!changed.ok()) {
-      return changed.status();
+class AllReduceFolderTest : public HloTestBase {};
+
+const char *k2AllReduce = R"(
+    HloModule m
+
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
     }
-    EXPECT_EQ(changed.value(), expect_change);
-    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
-  }
 
-  size_t AllReduceCount(std::unique_ptr<HloModule> &module) {
-    return absl::c_count_if(module->entry_computation()->instructions(),
-                            HloPredicateIsOp<HloOpcode::kAllReduce>);
-  }
-};
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups=$group_0, to_apply=sum
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups=$group_1, to_apply=sum
+    }
+  )";
 
-TEST_F(AllReduceFolderTest, Simple) {
-  absl::string_view hlo_string = R"(
-HloModule m
-
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
+size_t AllReduceCount(HloModule *module) {
+  return absl::c_count_if(module->entry_computation()->instructions(),
+                          HloPredicateIsOp<HloOpcode::kAllReduce>);
 }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=sum
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
+void ExpectOneAllReduce(HloModule *module,
+                        absl::string_view target_replica_groups) {
   EXPECT_EQ(AllReduceCount(module), 1);
   HloInstruction *root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, m::AllReduce(m::Parameter(0)));
-  EXPECT_THAT(root->ToString(), HasSubstr("replica_groups={{0,1,2,3}}"));
+  EXPECT_THAT(root, matcher::AllReduce(matcher::Parameter(0)));
+  EXPECT_THAT(root->ToString(), HasSubstr(target_replica_groups));
+}
+
+TEST_F(AllReduceFolderTest, Simple) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, RunAndCheckHloRewrite(k2AllReduce, AllReduceFolder(), true,
+                                         {{"$group_0", "{{0,1},{2,3}}"},
+                                          {"$group_1", "{{0,2},{1,3}}"}}));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3}}");
 }
 
 // Same as Simple, but groups for the 2 all-reduce's are swapped.
 TEST_F(AllReduceFolderTest, SimpleSwap) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, RunAndCheckHloRewrite(k2AllReduce, AllReduceFolder(), true,
+                                         {{"$group_1", "{{0,1},{2,3}}"},
+                                          {"$group_0", "{{0,2},{1,3}}"}}));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3}}");
+}
+
+TEST_F(AllReduceFolderTest, BothEmptyReplicaGroups_NotTransformed) {
+  TF_ASSERT_OK(RunAndCheckHloRewrite(k2AllReduce, AllReduceFolder(), false,
+                                     {{"$group_0", "{}"}, {"$group_1", "{}"}}));
+}
+
+TEST_F(AllReduceFolderTest, EmptyReplicaGroups_NotTransformed) {
+  TF_ASSERT_OK(RunAndCheckHloRewrite(
+      k2AllReduce, AllReduceFolder(), false,
+      {{"$group_0", "{}"}, {"$group_1", "{{0,2},{1,3}}"}}));
+}
+
+TEST_F(AllReduceFolderTest, MismatchOtherProperties0_NotTransformed) {
   absl::string_view hlo_string = R"(
-HloModule m
+    HloModule m
 
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, channel_id=1, to_apply=sum
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=sum
+    }
+    )";
+  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,2},{1,3}}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,1},{2,3}}, to_apply=sum
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
-  EXPECT_EQ(AllReduceCount(module), 1);
-  HloInstruction *root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, m::AllReduce(m::Parameter(0)));
-  EXPECT_THAT(root->ToString(), HasSubstr("replica_groups={{0,1,2,3}}"));
-}
-
-TEST_F(AllReduceFolderTest, EmptyReplicaGroups) {
+TEST_F(AllReduceFolderTest, MismatchOtherProperties1_NotTransformed) {
   absl::string_view hlo_string = R"(
-HloModule m
+    HloModule m
 
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
+
+    mul {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT mul = f32[] multiply(a, b)
+    }
+
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, to_apply=sum
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=mul
+    }
+    )";
+  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=sum
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
-}
-
-TEST_F(AllReduceFolderTest, MismatchOtherProperties0) {
+TEST_F(AllReduceFolderTest, NotFoldable_NotTransformed) {
   absl::string_view hlo_string = R"(
-HloModule m
+    HloModule m
 
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
-}
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, channel_id=1, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=sum
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
-}
-
-TEST_F(AllReduceFolderTest, MismatchOtherProperties1) {
-  absl::string_view hlo_string = R"(
-HloModule m
-
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
-}
-
-mul {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT mul = f32[] multiply(a, b)
-}
-
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3}}, to_apply=mul
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
-}
-
-TEST_F(AllReduceFolderTest, NotFoldable) {
-  absl::string_view hlo_string = R"(
-HloModule m
-
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
-}
-
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,1},{2,3}}, to_apply=sum
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/false));
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3}}, to_apply=sum
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,1},{2,3}}, to_apply=sum
+    }
+    )";
+  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo_string, AllReduceFolder(), false));
 }
 
 TEST_F(AllReduceFolderTest, Foldable0) {
   absl::string_view hlo_string = R"(
-HloModule m
+    HloModule m
 
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
-}
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,4},{1,5},{2,3},{6,7}}, to_apply=sum
-  ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,5},{4,1},{2,7},{3,6}}, to_apply=sum
-}
-)";
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,4},{1,5},{2,3},{6,7}}, to_apply=sum
+      ROOT ar1 = f32[8] all-reduce(ar0), replica_groups={{0,5},{4,1},{2,7},{3,6}}, to_apply=sum
+    }
+  )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
-  EXPECT_EQ(AllReduceCount(module), 1);
-  HloInstruction *root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, m::AllReduce(m::Parameter(0)));
-  EXPECT_THAT(root->ToString(),
-              HasSubstr("replica_groups={{0,1,4,5},{2,3,6,7}}"));
+                          RunAndCheckHloRewrite(hlo_string, AllReduceFolder()));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,4,5},{2,3,6,7}}");
 }
 
 // Verify that a chain of foldable all-reduce's folds in a single pass
 // invocation.
 TEST_F(AllReduceFolderTest, FoldableChain) {
   absl::string_view hlo_string = R"(
-HloModule m
+    HloModule m
 
-sum {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add.2 = f32[] add(a, b)
-}
+    sum {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add.2 = f32[] add(a, b)
+    }
 
-ENTRY main {
-  p0 = f32[8] parameter(0)
-  ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3},{4,5},{6,7}}, to_apply=sum
-  ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3},{4,6},{5,7}}, to_apply=sum
-  ROOT ar2 = f32[8] all-reduce(ar1), replica_groups={{0,4},{1,5},{2,6},{3,7}}, to_apply=sum
-}
-)";
+    ENTRY main {
+      p0 = f32[8] parameter(0)
+      ar0 = f32[8] all-reduce(p0), replica_groups={{0,1},{2,3},{4,5},{6,7}}, to_apply=sum
+      ar1 = f32[8] all-reduce(ar0), replica_groups={{0,2},{1,3},{4,6},{5,7}}, to_apply=sum
+      ROOT ar2 = f32[8] all-reduce(ar1), replica_groups={{0,4},{1,5},{2,6},{3,7}}, to_apply=sum
+    }
+    )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunPass(hlo_string, /*expect_change=*/true));
-  std::cerr << module->ToString();
-  EXPECT_EQ(AllReduceCount(module), 1);
-  HloInstruction *root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, m::AllReduce(m::Parameter(0)));
-  EXPECT_THAT(root->ToString(),
-              HasSubstr("replica_groups={{0,1,2,3,4,5,6,7}}"));
+                          RunAndCheckHloRewrite(hlo_string, AllReduceFolder()));
+  ExpectOneAllReduce(module.get(), "replica_groups={{0,1,2,3,4,5,6,7}}");
 }
 
 }  // namespace

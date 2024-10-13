@@ -907,7 +907,6 @@ tf_xla_py_strict_test(
     shard_count = 12,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1791,7 +1790,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     shard_count = 20,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "no_aarch64",  # TODO(b/348125886)
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2866,7 +2865,7 @@ tf_cuda_cc_test(
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # ROCmSoftwarePlatform #958
+        "cuda-only",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
@@ -2887,7 +2886,7 @@ tf_cuda_cc_test(
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "no_rocm",  # ROCmSoftwarePlatform #958
+        "cuda-only",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),

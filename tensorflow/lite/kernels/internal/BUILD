@@ -669,7 +669,9 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":common",
+        ":compatibility",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite/core/c:common",
     ],
 )
@@ -784,6 +786,7 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -881,6 +884,7 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

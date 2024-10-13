@@ -48,13 +48,14 @@ if [ -f /usertools/cpu.bazelrc ]; then
 else
          yes "" | $PYTHON_BIN_PATH configure.py
 
+
         # Run bazel test command. Double test timeouts to avoid flakes.
         # xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
         bazel test \
               -k \
-              --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+              --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-cuda-only,-benchmark-test,-v1only \
               --test_lang_filters=cc,py \
-	      --jobs=30 \
+	            --jobs=30 \
               --local_ram_resources=60000 \
               --local_cpu_resources=15 \
               --local_test_jobs=${N_BUILD_JOBS} \

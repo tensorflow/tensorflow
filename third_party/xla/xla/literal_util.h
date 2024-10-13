@@ -239,10 +239,13 @@ class LiteralUtil {
   // If the given literal's data type is <SrcType>, converts it to a <DstType>
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
+  static Literal ConvertS8ToF32(const LiteralSlice& s8_literal);
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
   static Literal ConvertF32ToF8E4M3FNUZ(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF8E5M2FNUZ(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToF8E5M2(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToF8E4M3FN(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToS8(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);

@@ -78,6 +78,7 @@ namespace xla::gpu {
   V(kCollectiveCmd, "CollectiveCmd")                     \
   V(kAllReduceCmd, "AllReduceCmd")                       \
   V(kReduceScatter, "ReduceScatterCmd")                  \
+  V(kAllToAll, "AllToAllCmd")                  \
   V(kAllGatherCmd, "AllGatherCmd")                       \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")   \
   V(kUnknownCmd, "UnknownCmd") \
@@ -1070,6 +1071,32 @@ class ReduceScatterCmd : public CollectiveCmd {
 
  private:
   ReductionKind reduction_kind_;
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
+//===----------------------------------------------------------------------===//
+// AllToAllCmd
+//===----------------------------------------------------------------------===//
+
+class AllToAllCmd : public CollectiveCmd {
+ public:
+  AllToAllCmd(ExecutionStreamId execution_stream_id,
+              ExecutionStreamId async_from_stream_id, NcclApi* nccl_api,
+              NcclCollectiveConfig config, bool has_split_dimension,
+              absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  AsyncStreamKind GetAsyncStreamKind() override {
+    return AsyncStreamKind::kCollective;
+  };
+
+ private:
+  bool has_split_dimension_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };
 

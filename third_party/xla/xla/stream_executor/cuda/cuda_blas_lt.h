@@ -33,14 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/types.h"
 
 namespace stream_executor {
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
-
 namespace cuda {
 
 class BlasLt : public gpu::BlasLt {

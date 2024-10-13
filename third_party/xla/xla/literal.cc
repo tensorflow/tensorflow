@@ -1950,7 +1950,7 @@ template <typename NativeT>
 static bool AllElementsEqualValue(absl::Span<const NativeT> data,
                                   NativeT value) {
   for (int64_t i = 0; i < data.size(); ++i) {
-    if (!EqualIncludingNan(data[i], value)) {
+    if (memcmp(&data[i], &value, sizeof value)) {
       return false;
     }
   }

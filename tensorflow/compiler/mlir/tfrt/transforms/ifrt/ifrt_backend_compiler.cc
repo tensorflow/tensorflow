@@ -148,15 +148,27 @@ absl::Status IfrtBackendCompiler::CompileTensorflow(
         "Failed to find model context for ifrt serving.");
   }
 
+  if ((*ifrt_model_context)->IsFrozen()) {
+    return absl::FailedPreconditionError(
+        "Cannot compile IFRT programs after the model is frozen. Please make "
+        "sure warmup covers all signatures by following go/tf-model-warmup.");
+  }
+
   mlir::StatusScopedDiagnosticHandler diag_handler(module->getContext());
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_tpu_bct_conversion_before", module);
   }
 
+  TfrtTpuCompileOptions options;
+  options.disable_set_default_tpu_device_and_device_assignment_attributes =
+      compile_options_
+          .disable_set_default_tpu_device_and_device_assignment_attributes;
+  options.support_multi_dims_sharding = true;
+
   if (tpu_compiler_ != nullptr) {
     // Run backward compat pass so that we can use bridge to do clustering.
     if (mlir::failed(
-            tpu_compiler_->RunTPUBackwardCompatConversion(module, {}))) {
+            tpu_compiler_->RunTPUBackwardCompatConversion(module, options))) {
       return diag_handler.Combine(
           absl::InternalError("Failed to handle legacy TPU Ops"));
     }

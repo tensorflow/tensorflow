@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 
-#include "absl/strings/str_format.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -28,11 +29,9 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/model/indexing_map.h"
-
-#define GET_ATTRDEF_LIST
-#define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 
 namespace xla {
 namespace gpu {
@@ -46,137 +45,35 @@ using mlir::AsmPrinter;
 using mlir::failure;
 using mlir::success;
 
-constexpr llvm::StringRef kIsSimplifiedKeyword = "is_simplified";
-
-ParseResult ParseInterval(AsmParser& parser, Interval& interval) {
-  // ParseResult converts to `true` if parsing failed.
-  return failure(parser.parseLSquare() || parser.parseInteger(interval.lower) ||
-                 parser.parseComma() || parser.parseInteger(interval.upper) ||
-                 parser.parseRSquare());
-}
-
-ParseResult parseBool(AsmParser& parser, bool* result) {
-  if (succeeded(parser.parseOptionalKeyword("true"))) {
-    *result = true;
-    return success();
+// Parses a chain of string attributes into an indexing map.
+// Example:
+// "()[s0, s1] -> (1 + s0 + s1 mod 3 - s1, s0 mod 2),"
+//   " domain: s0 in [-10, 10], s1 in [0, 2]"
+// will be parsed as 3 StringAttrs, concatenated into a single string, and then
+// parsed into an IndexingMap.
+std::optional<IndexingMap> parseChainOfStringsAsIndexingMap(
+    mlir::AsmParser& parser) {
+  mlir::StringAttr indexing_map_attr;
+  std::string indexing_map_str;
+  while (parser.parseOptionalAttribute(indexing_map_attr).has_value()) {
+    indexing_map_str.append(indexing_map_attr.getValue());
   }
-  if (succeeded(parser.parseOptionalKeyword("false"))) {
-    *result = false;
-    return success();
-  }
-  return failure();
-}
-
-void PrintDimVars(AsmPrinter& p, ArrayRef<DimVar> dim_vars) {
-  for (const auto [index, dim_var] : llvm::enumerate(dim_vars)) {
-    p << "d" << index << " in " << dim_var.bounds << ", ";
-  }
-}
-
-ParseResult ParseDimVars(AsmParser& parser, ArrayRef<std::string> dim_names,
-                         SmallVector<DimVar>& dim_vars) {
-  dim_vars.reserve(dim_names.size());
-  for (const auto& [index, dim_name] : llvm::enumerate(dim_names)) {
-    if (parser.parseKeyword(dim_name) || parser.parseKeyword("in") ||
-        ParseInterval(parser, dim_vars.emplace_back().bounds) ||
-        parser.parseComma()) {
-      return failure();
-    }
-  }
-  return success();
-}
-
-void PrintRangeVars(AsmPrinter& p, ArrayRef<RangeVar> range_vars) {
-  for (const auto [index, range_var] : llvm::enumerate(range_vars)) {
-    p << "s" << index << " in " << range_var.range << ", ";
-  }
-}
-
-ParseResult ParseRangeVars(AsmParser& parser,
-                           ArrayRef<std::string> range_symbol_names,
-                           SmallVector<RangeVar>& range_vars) {
-  range_vars.reserve(range_symbol_names.size());
-  for (const auto& [index, range_symbol_name] :
-       llvm::enumerate(range_symbol_names)) {
-    if (parser.parseKeyword(range_symbol_name) || parser.parseKeyword("in") ||
-        ParseInterval(parser, range_vars.emplace_back().range) ||
-        parser.parseComma()) {
-      return failure();
-    }
-  }
-  return success();
-}
-
-void PrintConstraints(AsmPrinter& p,
-                      ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
-  for (const auto& [expr, interval] : constraints) {
-    p << expr << " in " << interval << ", ";
-  }
+  return ParseIndexingMap(indexing_map_str, parser.getContext());
 }
 
 mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
-  mlir::AffineMap map;
-  if (parser.parseLess() || parser.parseAffineMap(map)) {
+  if (parser.parseLess()) {
     return {};
   }
-
-  // Store real strings to back up StringRef throughout ParseConstraints.
-  SmallVector<std::string> dim_strings(map.getNumDims());
-  SmallVector<std::string> symbol_strings(map.getNumSymbols());
-  SmallVector<std::pair<llvm::StringRef, AffineExpr>> symbolSet;
-  symbolSet.reserve(map.getNumDims() + map.getNumSymbols());
-  for (int i = 0; i < map.getNumDims(); ++i) {
-    dim_strings[i] = absl::StrFormat("d%d", i);
-    symbolSet.push_back(
-        {dim_strings[i], mlir::getAffineDimExpr(i, parser.getContext())});
-  }
-  for (int i = 0; i < map.getNumSymbols(); ++i) {
-    symbol_strings[i] = absl::StrFormat("s%d", i);
-    symbolSet.push_back(
-        {symbol_strings[i], mlir::getAffineSymbolExpr(i, parser.getContext())});
-  }
-  if (map.getNumDims() + map.getNumSymbols() == 0) {
-    if (parser.parseGreater()) return {};
-    return IndexingMapAttr::get(parser.getContext(), map, /*dim_vars=*/{},
-                                /*range_vars=*/{},
-                                /*constraints=*/{}, /*is_simplified=*/true);
-  }
-  if (parser.parseComma() || parser.parseKeyword("domain") ||
-      parser.parseColon()) {
+  auto indexing_map = parseChainOfStringsAsIndexingMap(parser);
+  if (!indexing_map.has_value() || parser.parseGreater()) {
     return {};
   }
-
-  SmallVector<DimVar> dim_vars;
-  if (ParseDimVars(parser, dim_strings, dim_vars)) {
-    return {};
-  }
-  SmallVector<RangeVar> range_vars;
-  if (ParseRangeVars(parser, symbol_strings, range_vars)) {
-    return {};
-  }
-
-  SmallVector<std::pair<AffineExpr, Interval>> constraints;
-  while (failed(parser.parseOptionalKeyword(kIsSimplifiedKeyword))) {
-    auto& constraint = constraints.emplace_back();
-    if (parser.parseAffineExpr(symbolSet, constraint.first) ||
-        parser.parseKeyword("in") || ParseInterval(parser, constraint.second) ||
-        parser.parseComma()) {
-      return {};
-    }
-    constraints.push_back(constraint);
-  }
-
-  bool is_simplified = false;
-  if (parser.parseColon() || parseBool(parser, &is_simplified) ||
-      parser.parseGreater()) {
-    return {};
-  }
-  return IndexingMapAttr::get(parser.getContext(), map, dim_vars, range_vars,
-                              constraints, is_simplified);
+  return IndexingMapAttr::get(parser.getContext(), *indexing_map);
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<" << getIndexingMap().ToString() << ">";
+  printer << "<\"" << ToString(getIndexingMap()) << "\">";
 }
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
@@ -186,33 +83,56 @@ IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
     constraints.push_back({constraint.first, constraint.second});
   }
   return get(context, indexing_map.GetAffineMap(), indexing_map.GetDimVars(),
-             indexing_map.GetRangeVars(), constraints,
-             indexing_map.IsSimplified());
+             indexing_map.GetRangeVars(), constraints);
 }
 
 mlir::LogicalResult IndexingMapAttr::verify(
     mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
     mlir::AffineMap map, ArrayRef<DimVar> dim_vars,
     ArrayRef<RangeVar> range_vars,
-    ArrayRef<std::pair<AffineExpr, Interval>> constraints, bool is_simplified) {
-  if (map.getNumDims() != dim_vars.size()) {
-    return emitError() << "dim size must match the number of dimensions in "
-                          "the affine map";
+    ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
+  auto indexing_map =
+      IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);
+  std::stringstream ss;
+  if (!indexing_map.Verify(ss)) {
+    return emitError() << ss.str();
   }
-  if (map.getNumSymbols() != range_vars.size()) {
-    return emitError()
-           << "range size must match the number of symbols in the affine map";
-  }
-  return mlir::success();
+  return success();
 }
 
 IndexingMap IndexingMapAttr::getIndexingMap() const {
   return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
-                     getConstraints(), getIsSimplified());
+                     getConstraints());
 }
 
 int64_t IndexingMapAttr::getNumResults() const {
   return getMap().getNumResults();
+}
+
+mlir::Attribute LayoutAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  mlir::StringAttr memory_space_str;
+  if (parser.parseLess() || parser.parseAttribute(memory_space_str) ||
+      parser.parseComma()) {
+    return {};
+  }
+  std::optional<MemorySpace> memspace =
+      symbolizeMemorySpace(memory_space_str.getValue());
+  if (!memspace.has_value()) {
+    return {};
+  }
+  std::optional<IndexingMap> indexing_map =
+      parseChainOfStringsAsIndexingMap(parser);
+  if (!indexing_map.has_value() || parser.parseGreater()) {
+    return {};
+  }
+  auto* context = parser.getContext();
+  return LayoutAttr::get(context, MemorySpaceAttr::get(context, *memspace),
+                         IndexingMapAttr::get(context, *indexing_map));
+}
+
+void LayoutAttr::print(mlir::AsmPrinter& printer) const {
+  printer << "<\"" << stringifyMemorySpace(getMemorySpace().getValue())
+          << "\", \"" << ToString(getThreadMap().getIndexingMap()) << "\">";
 }
 
 }  // namespace gpu

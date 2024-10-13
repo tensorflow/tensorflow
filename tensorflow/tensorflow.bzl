@@ -88,7 +88,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.18.0"
+VERSION = "2.19.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1762,6 +1762,7 @@ def tf_cc_tests(
         srcs,
         deps,
         name = "",
+        data = [],
         linkstatic = 0,
         tags = [],
         size = "medium",
@@ -1779,6 +1780,7 @@ def tf_cc_tests(
             size = size,
             srcs = [src],
             args = args,
+            data = data,
             kernels = kernels,
             linkopts = linkopts,
             linkstatic = linkstatic,
@@ -2025,7 +2027,7 @@ def tf_kernel_library(
             [prefix + "*impl.h"],
             exclude = [prefix + "*test*", prefix + "*.cu.h"],
         )
-    cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
+    cuda_or_rocm_deps = [clean_dep("//tensorflow/core:gpu_lib")]
     if gpu_srcs:
         for gpu_src in gpu_srcs:
             if gpu_src.endswith(".cc") and not gpu_src.endswith(".cu.cc"):
@@ -2038,7 +2040,7 @@ def tf_kernel_library(
             copts = gpu_copts,
             **kwargs
         )
-        cuda_deps.extend([":" + name + "_gpu"])
+        cuda_or_rocm_deps.extend([":" + name + "_gpu"])
     kwargs["tags"] = kwargs.get("tags", []) + [
         "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
         "req_dep=@local_config_cuda//cuda:cuda_headers",
@@ -2049,10 +2051,9 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        cuda_deps = cuda_deps + gpu_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
-        deps = deps,
+        deps = deps + gpu_deps + cuda_or_rocm_deps,
         compatible_with = compatible_with,
         **kwargs
     )
@@ -3580,3 +3581,10 @@ def tf_python_framework_friends():
 
 def if_cuda_tools(if_true, if_false = []):
     return _if_cuda_tools(if_true, if_false)
+
+# The config is used to determine if we need dependency on pre-built wheels.
+def if_wheel_dependency(if_true, if_false = []):
+    return select({
+        "@local_xla//xla/tsl:enable_wheel_dependency": if_true,
+        "//conditions:default": if_false,
+    })

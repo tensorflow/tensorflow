@@ -66,7 +66,6 @@ def gpu_only_cc_library(name, tags = [], **kwargs):
 
 def cuda_only_cc_library(name, tags = [], **kwargs):
     """A library that only gets compiled when CUDA is configured, otherwise it's an empty target.
-
     Args:
       name: Name of the target
       tags: Tags being applied to the implementation target
@@ -81,7 +80,7 @@ def cuda_only_cc_library(name, tags = [], **kwargs):
     )
     cc_library(
         name = "%s_cuda_only" % name,
-        tags = tags + ["manual", "no_rocm"],
+        tags = tags + ["manual", "cuda-only"],
         **kwargs
     )
     native.alias(
@@ -92,6 +91,7 @@ def cuda_only_cc_library(name, tags = [], **kwargs):
         restricted_to = kwargs.get("restricted_to"),
         target_compatible_with = kwargs.get("target_compatible_with"),
     )
+
 
 def stream_executor_build_defs_bzl_deps():
     return []
