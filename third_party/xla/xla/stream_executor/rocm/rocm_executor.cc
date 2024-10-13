@@ -805,15 +805,30 @@ absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
 absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
                                              const void* host_src,
                                              uint64_t size) {
-  return GpuDriver::SynchronousMemcpyH2D(
-      gpu_context(), AsROCmDevicePtr(gpu_dst), host_src, size);
+  ScopedActivateContext activation(gpu_context());
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipMemcpyHtoD(AsROCmDevicePtr(gpu_dst), const_cast<void*>(host_src),
+                          size),
+      absl::StrFormat(
+          "failed to synchronous memcpy from host to device: Gpu dst: %p;"
+          " host src: %p; size: %llu=0x%llx",
+          AsROCmDevicePtr(gpu_dst), host_src, size, size)));
+  VLOG(2) << "successfully sync memcpy'd h2d of " << size << " bytes";
+  return absl::OkStatus();
 }
 
 absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
                                              const DeviceMemoryBase& gpu_src,
                                              uint64_t size) {
-  return GpuDriver::SynchronousMemcpyD2H(gpu_context(), host_dst,
-                                         AsROCmDevicePtr(gpu_src), size);
+  ScopedActivateContext activation{gpu_context()};
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipMemcpyDtoH(host_dst, AsROCmDevicePtr(gpu_src), size),
+      absl::StrFormat("failed to synchronous memcpy from device to host: "
+                      "host dst: %p; Gpu src: %p; size: %llu=0x%llx",
+                      host_dst, AsROCmDevicePtr(gpu_src), size, size)));
+  VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
+          << host_dst;
+  return absl::OkStatus();
 }
 
 void RocmExecutor::DeallocateStream(Stream* stream) {

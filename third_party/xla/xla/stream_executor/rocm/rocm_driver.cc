@@ -603,35 +603,6 @@ absl::Status GpuDriver::SynchronizeStream(Context* context,
   return absl::OkStatus();
 }
 
-absl::Status GpuDriver::SynchronousMemcpyD2H(Context* context, void* host_dst,
-                                             hipDeviceptr_t gpu_src,
-                                             uint64_t size) {
-  ScopedActivateContext activation{context};
-  TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyDtoH(host_dst, gpu_src, size),
-      absl::StrFormat("failed to synchronous memcpy from device to host: "
-                      "host dst: %p; Gpu src: %p; size: %llu=0x%llx",
-                      host_dst, absl::bit_cast<void*>(gpu_src), size, size)));
-  VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
-          << host_dst;
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::SynchronousMemcpyH2D(Context* context,
-                                             hipDeviceptr_t gpu_dst,
-                                             const void* host_src,
-                                             uint64_t size) {
-  ScopedActivateContext activation{context};
-  TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src), size),
-      absl::StrFormat(
-          "failed to synchronous memcpy from host to device: Gpu dst: %p;"
-          " host src: %p; size: %llu=0x%llx",
-          absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
-  VLOG(2) << "successfully sync memcpy'd h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

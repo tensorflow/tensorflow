@@ -777,35 +777,6 @@ absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
                         "Could not synchronize CUDA stream");
 }
 
-absl::Status GpuDriver::SynchronousMemcpyD2H(Context* context, void* host_dst,
-                                             CUdeviceptr gpu_src,
-                                             uint64_t size) {
-  ScopedActivateContext activation(context);
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuMemcpyDtoH(host_dst, gpu_src, size),
-      absl::StrFormat("failed to synchronous memcpy from device to host "
-                      "host dst: %p; GPU src: %p; size: %u=0x%x",
-                      host_dst, absl::bit_cast<void*>(gpu_src), size, size)));
-  VLOG(2) << "successfully sync memcpy'd d2h of " << size << " bytes to "
-          << host_dst;
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::SynchronousMemcpyH2D(Context* context,
-                                             CUdeviceptr gpu_dst,
-                                             const void* host_src,
-                                             uint64_t size) {
-  ScopedActivateContext activation(context);
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuMemcpyHtoD(gpu_dst, host_src, size),
-      absl::StrFormat(
-          "failed to synchronous memcpy from host to device: GPU dst: %p;"
-          " host src: %p; size: %u=0x%x",
-          absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
-  VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));

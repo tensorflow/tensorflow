@@ -316,15 +316,6 @@ class GpuDriver {
                                                   GpuGraphNodeHandle node,
                                                   GpuGraphHandle child);
 
-  // -- Synchronous memcopies.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g4d32266788c440b0220b1a9ba5795169
-
-  static absl::Status SynchronousMemcpyD2H(Context* context, void* host_dst,
-                                           GpuDevicePtr gpu_src, uint64_t size);
-  static absl::Status SynchronousMemcpyH2D(Context* context,
-                                           GpuDevicePtr gpu_dst,
-                                           const void* host_src, uint64_t size);
-
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
   // callback when it fires.
