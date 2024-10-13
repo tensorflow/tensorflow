@@ -610,41 +610,6 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 }
 
-void* GpuDriver::DeviceAllocate(Context* context, uint64_t bytes) {
-  if (bytes == 0) {
-    return nullptr;
-  }
-
-  ScopedActivateContext activated{context};
-  hipDeviceptr_t result = 0;
-  hipError_t res = wrap::hipMalloc(&result, bytes);
-  if (res != hipSuccess) {
-    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
-    // implements a retry if the first allocation fails).
-    LOG(INFO) << "failed to allocate "
-              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
-              << " bytes) from device: " << ToString(res);
-    return nullptr;
-  }
-  void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for device " << context->device_ordinal()
-          << " of " << bytes << " bytes";
-  return ptr;
-}
-
-void GpuDriver::DeviceDeallocate(Context* context, void* location) {
-  ScopedActivateContext activation{context};
-  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
-  hipError_t res = wrap::hipFree(pointer);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to free device memory at " << location
-               << "; result: " << ToString(res);
-  } else {
-    VLOG(2) << "deallocated " << location << " for device "
-            << context->device_ordinal();
-  }
-}
-
 void* GpuDriver::UnifiedMemoryAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;

@@ -226,8 +226,8 @@ cc_library(
     ]),
     deps = [
         ":rocm_context",
-        ":rocm_diagnostics",
-        ":rocm_driver",
+        ":rocm_diagnostics",  # buildcleaner: keep
+        ":rocm_driver",  # buildcleaner: keep
         ":rocm_driver_wrapper",
         ":rocm_event",
         ":rocm_kernel",
@@ -261,6 +261,7 @@ cc_library(
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -277,6 +278,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,

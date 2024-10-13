@@ -85,6 +85,7 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
@@ -464,6 +465,44 @@ std::string GetPCIBusID(CUdevice device) {
   pci_bus_id = std::string(chars.begin(), kBufferSize - 1);
   return pci_bus_id;
 }
+
+// Allocates memory on the GPU device.
+void* DeviceAllocate(Context* context, uint64_t bytes) {
+  if (bytes == 0) {
+    return nullptr;
+  }
+
+  ScopedActivateContext activated{context};
+  CUdeviceptr result = 0;
+  auto status = cuda::ToStatus(cuMemAlloc(&result, bytes));
+  if (!status.ok()) {
+    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
+    // implements a retry if the first allocation fails).
+    LOG(INFO) << "failed to allocate "
+              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
+              << " bytes) from device: " << status;
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
+          << bytes << " bytes";
+  return ptr;
+}
+
+// Deallocates memory on the GPU device that was previously allocated via
+// DeviceAllocate.
+void DeviceDeallocate(Context* context, void* location) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr pointer = absl::bit_cast<CUdeviceptr>(location);
+  auto status = cuda::ToStatus(cuMemFree(pointer));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to free device memory at " << location
+               << "; result: " << status;
+  } else {
+    VLOG(2) << "deallocated " << location << " for context " << context;
+  }
+}
+
 }  // namespace
 
 // Given const GPU memory, returns a libcuda device pointer datatype, suitable
@@ -812,7 +851,7 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);
   }
   CHECK_EQ(memory_space, 0);
-  return DeviceMemoryBase(GpuDriver::DeviceAllocate(gpu_context(), size), size);
+  return DeviceMemoryBase(DeviceAllocate(gpu_context(), size), size);
 }
 
 void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -825,7 +864,7 @@ void CudaExecutor::Deallocate(DeviceMemoryBase* mem) {
   if (memory_space == MemoryType::kHost) {
     GpuDriver::HostDeallocate(gpu_context(), mem->opaque());
   } else {
-    GpuDriver::DeviceDeallocate(gpu_context(), mem->opaque());
+    DeviceDeallocate(gpu_context(), mem->opaque());
   }
 }
 

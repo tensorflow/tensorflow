@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
@@ -82,6 +83,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/numbers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
@@ -422,6 +424,44 @@ bool GetDeviceProperties(hipDeviceProp_t* device_properties,
 
   return true;
 }
+
+// Allocates memory on the GPU device.
+void* DeviceAllocate(Context* context, uint64_t bytes) {
+  if (bytes == 0) {
+    return nullptr;
+  }
+
+  ScopedActivateContext activated{context};
+  hipDeviceptr_t result = 0;
+  hipError_t res = wrap::hipMalloc(&result, bytes);
+  if (res != hipSuccess) {
+    // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
+    // implements a retry if the first allocation fails).
+    LOG(INFO) << "failed to allocate "
+              << tsl::strings::HumanReadableNumBytes(bytes) << " (" << bytes
+              << " bytes) from device: " << ToString(res);
+    return nullptr;
+  }
+  void* ptr = reinterpret_cast<void*>(result);
+  VLOG(2) << "allocated " << ptr << " for device " << context->device_ordinal()
+          << " of " << bytes << " bytes";
+  return ptr;
+}
+
+// Deallocates memory on the GPU device that was previously allocated via
+// DeviceAllocate.
+void DeviceDeallocate(Context* context, void* location) {
+  ScopedActivateContext activation{context};
+  hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
+  hipError_t res = wrap::hipFree(pointer);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to free device memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated " << location << " for device "
+            << context->device_ordinal();
+  }
+}
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
@@ -674,11 +714,11 @@ DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
     return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);
   }
   CHECK_EQ(memory_space, 0);
-  return DeviceMemoryBase(GpuDriver::DeviceAllocate(gpu_context(), size), size);
+  return DeviceMemoryBase(DeviceAllocate(gpu_context(), size), size);
 }
 
 void RocmExecutor::Deallocate(DeviceMemoryBase* mem) {
-  GpuDriver::DeviceDeallocate(gpu_context(), mem->opaque());
+  DeviceDeallocate(gpu_context(), mem->opaque());
 }
 
 bool RocmExecutor::SynchronizeAllActivity() {
