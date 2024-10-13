@@ -766,27 +766,6 @@ absl::Status GpuDriver::GetPointerAddressRange(hipDeviceptr_t dptr,
                       reinterpret_cast<void*>(dptr), ToString(result).c_str()));
 }
 
-absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
-    hipDeviceptr_t pointer) {
-  unsigned int value;
-  hipError_t result = wrap::hipPointerGetAttribute(
-      &value, HIP_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer);
-  if (result == hipSuccess) {
-    switch (value) {
-      case hipMemoryTypeDevice:
-        return MemoryType::kDevice;
-      case hipMemoryTypeHost:
-        return MemoryType::kHost;
-      default:
-        return absl::InternalError(
-            absl::StrCat("unknown memory space provided by ROCM API: ", value));
-    }
-  }
-
-  return absl::InternalError(absl::StrCat(
-      "failed to query device pointer for memory space: ", ToString(result)));
-}
-
 absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   int32_t version;
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&version),

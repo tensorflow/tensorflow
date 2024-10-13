@@ -944,22 +944,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
-    CUdeviceptr pointer) {
-  unsigned int value;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuPointerGetAttribute(
-      &value, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer)));
-  switch (value) {
-    case CU_MEMORYTYPE_DEVICE:
-      return MemoryType::kDevice;
-    case CU_MEMORYTYPE_HOST:
-      return MemoryType::kHost;
-    default:
-      return absl::InternalError(
-          absl::StrCat("unknown memory space provided by CUDA API: ", value));
-  }
-}
-
 absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
                                                CUdeviceptr* base,
                                                size_t* size) {
