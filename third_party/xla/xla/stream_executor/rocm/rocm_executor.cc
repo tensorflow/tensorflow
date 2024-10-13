@@ -790,13 +790,16 @@ bool RocmExecutor::SynchronizeAllActivity() {
 
 absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
-  if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
-      size % 4 == 0) {
-    return GpuDriver::SynchronousMemsetUint32(
-        gpu_context(), AsROCmDevicePtr(location), 0x0, size / 4);
+  ScopedActivateContext activation{gpu_context()};
+  hipDeviceptr_t rocm_location = AsROCmDevicePtr(location);
+  if (reinterpret_cast<uintptr_t>(location->opaque()) % sizeof(uint32_t) == 0 &&
+      size % sizeof(uint32_t) == 0) {
+    return ToStatus(
+        wrap::hipMemsetD32(rocm_location, 0x0, size / sizeof(uint32_t)),
+        "Failed to memset memory");
   }
-  return GpuDriver::SynchronousMemsetUint8(
-      gpu_context(), AsROCmDevicePtr(location), 0x0, size);
+  return ToStatus(wrap::hipMemsetD8(rocm_location, 0x0, size),
+                  "Failed to memset memory");
 }
 
 absl::Status RocmExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,

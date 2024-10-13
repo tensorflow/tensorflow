@@ -972,13 +972,16 @@ bool CudaExecutor::HostMemoryUnregister(void* location) {
 
 absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
-  if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
-      size % 4 == 0) {
-    return GpuDriver::SynchronousMemsetUint32(
-        gpu_context(), AsCudaDevicePtr(location), 0x0, size / 4);
+  ScopedActivateContext activation(gpu_context());
+  CUdeviceptr cuda_location = AsCudaDevicePtr(location);
+  if (reinterpret_cast<uintptr_t>(location->opaque()) % sizeof(uint32_t) == 0 &&
+      size % sizeof(uint32_t) == 0) {
+    return cuda::ToStatus(
+        cuMemsetD32(cuda_location, 0x0, size / sizeof(uint32_t)),
+        "Failed to memset memory");
   }
-  return GpuDriver::SynchronousMemsetUint8(
-      gpu_context(), AsCudaDevicePtr(location), 0x0, size);
+  return cuda::ToStatus(cuMemsetD8(cuda_location, 0x0, size),
+                        "Failed to memset memory");
 }
 
 absl::Status CudaExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,

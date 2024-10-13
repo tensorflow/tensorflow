@@ -742,23 +742,6 @@ absl::Status GpuDriver::LaunchKernel(
                    "; shared memory size: ", shared_mem_bytes));
 }
 
-absl::Status GpuDriver::SynchronousMemsetUint8(Context* context,
-                                               CUdeviceptr location,
-                                               uint8_t value, size_t size) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD8(location, value, size),
-                        "Failed to memset memory");
-}
-
-absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
-                                                CUdeviceptr location,
-                                                uint32_t value,
-                                                size_t uint32_count) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuMemsetD32(location, value, uint32_count),
-                        "Failed to memset memory");
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
                                           StreamCallback callback, void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.

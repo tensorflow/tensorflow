@@ -565,24 +565,6 @@ absl::Status GpuDriver::LaunchKernel(
                       shared_mem_bytes, stream, kernel_params, extra);
 }
 
-absl::Status GpuDriver::SynchronousMemsetUint8(Context* context,
-                                               hipDeviceptr_t location,
-                                               uint8_t value, size_t size) {
-  ScopedActivateContext activation{context};
-  return ToStatus(wrap::hipMemsetD8(location, value, size),
-                  "Failed to memset memory");
-}
-
-absl::Status GpuDriver::SynchronousMemsetUint32(Context* context,
-                                                hipDeviceptr_t location,
-                                                uint32_t value,
-                                                size_t uint32_count) {
-  ScopedActivateContext activation{context};
-  void* pointer = absl::bit_cast<void*>(location);
-  return ToStatus(wrap::hipMemsetD32(pointer, value, uint32_count),
-                  "Failed to memset memory");
-}
-
 absl::Status GpuDriver::AddStreamCallback(Context* context,
                                           GpuStreamHandle stream,
                                           StreamCallback callback, void* data) {
