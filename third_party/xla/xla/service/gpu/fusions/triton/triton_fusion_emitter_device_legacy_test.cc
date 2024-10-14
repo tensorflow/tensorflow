@@ -180,8 +180,8 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
     }
   )";
   const std::string pattern = R"(
-    CHECK:  %convert.4.0 = bf16[
-    CHECK:  %convert.5.0 = bf16[
+    CHECK:  %convert.2.0 = bf16[
+    CHECK:  %convert.3.0 = bf16[
     CHECK: "algorithm":"ALG_UNSET"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
