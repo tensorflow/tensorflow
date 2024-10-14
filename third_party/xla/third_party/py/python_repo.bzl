@@ -197,6 +197,7 @@ python_repository = repository_rule(
         "HERMETIC_PYTHON_VERSION",
         "WHEEL_NAME",
         "WHEEL_COLLAB",
+        "OUTPUT_PATH",
         "USE_PYWRAP_RULES",
     ],
     local = True,

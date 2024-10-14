@@ -37,7 +37,8 @@ void* GpuManagedAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
            CUDA_SUCCESS);
   ptr = reinterpret_cast<void*>(result);
 #elif TENSORFLOW_USE_ROCM
-  void** result = 0;
+  //TODO(rocm): Use wrap namespace
+  void* result = 0;
   CHECK_EQ(hipHostMalloc(&result, num_bytes, 0), 0);
   ptr = reinterpret_cast<void*>(result);
 #endif

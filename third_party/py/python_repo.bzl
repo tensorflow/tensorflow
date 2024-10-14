@@ -14,6 +14,7 @@ def _python_repository_impl(ctx):
     ctx.file("BUILD", "")
     wheel_name = ctx.os.environ.get("WHEEL_NAME", "tensorflow")
     wheel_collab = ctx.os.environ.get("WHEEL_COLLAB", False)
+    output_path = repository_ctx.os.environ.get("OUTPUT_PATH", None)
 
     requirements = None
     for i in range(0, len(ctx.attr.requirements_locks)):
@@ -70,6 +71,7 @@ WHEEL_COLLAB = "{wheel_collab}"
 REQUIREMENTS = "{requirements}"
 REQUIREMENTS_WITH_LOCAL_WHEELS = "{requirements_with_local_wheels}"
 USE_PYWRAP_RULES = {use_pywrap_rules}
+OUTPUT_PATH = "{output_path}"
 """.format(
             version = version,
             wheel_name = wheel_name,
@@ -77,6 +79,7 @@ USE_PYWRAP_RULES = {use_pywrap_rules}
             requirements = str(requirements),
             requirements_with_local_wheels = requirements_with_local_wheels,
             use_pywrap_rules = use_pywrap_rules,
+            output_path = output_path,
         ),
     )
 
@@ -195,6 +198,7 @@ python_repository = repository_rule(
         "WHEEL_NAME",
         "WHEEL_COLLAB",
         "USE_PYWRAP_RULES",
+        "OUTPUT_PATH",
     ],
     local = True,
 )
