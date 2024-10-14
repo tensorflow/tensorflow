@@ -57,34 +57,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-namespace {
-
-// Actually performs the work of CUDA initialization. Wrapped up in one-time
-// execution guard.
-static absl::Status InternalInit() {
-  absl::Status status =
-      cuda::ToStatus(cuInit(0 /* = flags */), "Failed call to cuInit");
-  if (status.ok()) {
-    return status;
-  }
-
-  LOG(ERROR) << "failed call to cuInit: " << status;
-
-  Diagnostician::LogDiagnosticInformation();
-  return status;
-}
-
-}  // namespace
-
-absl::Status GpuDriver::Init() {
-  // Cached return value from calling InternalInit(), as cuInit need only be
-  // called once, but GpuDriver::Init may be called many times.
-  static absl::Status* init_retval = [] {
-    return new absl::Status(InternalInit());
-  }();
-  return *init_retval;
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),

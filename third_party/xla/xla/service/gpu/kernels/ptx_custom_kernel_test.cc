@@ -78,9 +78,9 @@ constexpr std::string_view kAddI32KernelPtx = R"(
 TEST(PtxCustomKernelTest, GetPtxCustomKernel) {
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::StreamExecutor> executor,
-                          se::gpu::CudaPlatform().GetUncachedExecutor(0));
+  se::gpu::CudaPlatform platform;
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
+                          platform.ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       CustomKernel custom_kernel,
       GetPtxCustomKernel("AddI32", kAddI32KernelPtx, 3, se::BlockDim(4),

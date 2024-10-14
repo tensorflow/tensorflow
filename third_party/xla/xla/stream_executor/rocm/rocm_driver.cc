@@ -54,34 +54,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-namespace {
-
-// Actually performs the work of ROCM initialization. Wrapped up in one-time
-// execution guard.
-static absl::Status InternalInit() {
-  hipError_t res = wrap::hipInit(0 /* = flags */);
-
-  if (res == hipSuccess) {
-    return absl::OkStatus();
-  }
-
-  LOG(ERROR) << "failed call to hipInit: " << ToString(res);
-  Diagnostician::LogDiagnosticInformation();
-  return absl::AbortedError(
-      absl::StrCat("failed call to hipInit: ", ToString(res)));
-}
-
-}  // namespace
-
-absl::Status GpuDriver::Init() {
-  // Cached return value from calling InternalInit(), as hipInit need only be
-  // called once, but GpuDriver::Init may be called many times.
-  static absl::Status* init_retval = [] {
-    return new absl::Status(InternalInit());
-  }();
-  return *init_retval;
-}
-
 absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(graph, /*flags=*/0),

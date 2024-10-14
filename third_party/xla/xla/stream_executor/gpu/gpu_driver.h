@@ -57,13 +57,6 @@ namespace gpu {
 // Thread safety: these functions should not be used from signal handlers.
 class GpuDriver {
  public:
-  // Wraps a call to cuInit/hipInit with logging to help indicate what has gone
-  // wrong in the case of failure. Safe to call multiple times; will be fast on
-  // all calls after the first.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__INITIALIZE.html#group__CUDA__INITIALIZE_1g0a2f1517e1bd8502c7194c3a8c134bc3
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#initialization
-  static absl::Status Init();
-
   // Destroys a CUDA/HIP stream associated with the given context.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management

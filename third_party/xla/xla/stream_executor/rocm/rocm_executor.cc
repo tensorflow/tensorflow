@@ -597,8 +597,6 @@ void RocmExecutor::UnloadKernel(const Kernel* kernel) {
 }
 
 absl::Status RocmExecutor::Init() {
-  TF_RETURN_IF_ERROR(GpuDriver::Init());
-
   TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(rocm_context_,

@@ -582,7 +582,6 @@ void* CudaExecutor::UnifiedMemoryAllocate(uint64_t size) {
 }
 
 absl::Status CudaExecutor::Init() {
-  TF_RETURN_IF_ERROR(GpuDriver::Init());
   TF_ASSIGN_OR_RETURN(device_, GetDevice(device_ordinal()));
   TF_ASSIGN_OR_RETURN(Context * context,
                       CudaContext::Create(device_ordinal(), device_));

@@ -54,13 +54,13 @@ class CudaPlatform : public Platform {
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
   absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
+ private:
   // Returns a device constructed with the ordinal without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
       int ordinal);
 
- private:
   // This platform's name.
   std::string name_;
 

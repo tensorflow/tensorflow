@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -44,15 +45,16 @@ using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {
  public:
-  std::optional<CudaExecutor> executor_;
+  CudaExecutor* executor_;
 
  private:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                             stream_executor::PlatformManager::PlatformWithId(
                                 stream_executor::cuda::kCudaPlatformId));
-    executor_.emplace(platform, 0);
-    ASSERT_THAT(executor_->Init(), IsOk());
+    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                            platform->ExecutorForDevice(0));
+    executor_ = reinterpret_cast<CudaExecutor*>(executor);
   }
 };
 
@@ -62,7 +64,7 @@ TEST_F(CudaStreamTest, Memset32) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(&executor_.value(),
+                          CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
 
   // Should fail due to the invalid size parameter.
@@ -95,7 +97,7 @@ TEST_F(CudaStreamTest, MemZero) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(&executor_.value(),
+                          CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
@@ -127,7 +129,7 @@ TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(&executor_.value(),
+                          CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
 
   std::array<uint32_t, kBufferNumElements> src_buffer;
@@ -152,7 +154,7 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
-                          CudaStream::Create(&executor_.value(),
+                          CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,

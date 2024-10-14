@@ -71,7 +71,7 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
                 IsOk());
   }
 
-  std::optional<CudaExecutor> executor_;
+  StreamExecutor* executor_;
   std::unique_ptr<Stream> stream_;
   GpuStream* gpu_stream_;
 
@@ -80,8 +80,7 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
     TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                             stream_executor::PlatformManager::PlatformWithId(
                                 stream_executor::cuda::kCudaPlatformId));
-    executor_.emplace(platform, 0);
-    ASSERT_THAT(executor_->Init(), IsOk());
+    TF_ASSERT_OK_AND_ASSIGN(executor_, platform->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     gpu_stream_ = AsGpuStream(stream_.get());
   }
@@ -90,11 +89,13 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
 TEST_P(CudaTimerTest, Create) {
   TF_ASSERT_OK_AND_ASSIGN(
       CudaTimer timer,
-      CudaTimer::Create(executor_->gpu_context(), gpu_stream_, GetParam()));
+      CudaTimer::Create(
+          reinterpret_cast<CudaExecutor*>(executor_)->gpu_context(),
+          gpu_stream_, GetParam()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
-  LaunchSomeKernel(&executor_.value(), stream_.get());
+  LaunchSomeKernel(executor_, stream_.get());
 
   TF_ASSERT_OK_AND_ASSIGN(absl::Duration timer_result,
                           timer.GetElapsedDuration());

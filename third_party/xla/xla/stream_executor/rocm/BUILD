@@ -369,20 +369,23 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
-        ":rocm_driver",
+        ":rocm_diagnostics",  # buildcleaner: keep
+        ":rocm_driver_wrapper",
         ":rocm_executor",
         ":rocm_platform_id",
-        ":rocm_runtime",
+        ":rocm_status",
         "//xla/stream_executor",  # buildcleaner: keep
         "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/platform:initialize",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )

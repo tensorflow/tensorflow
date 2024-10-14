@@ -17,12 +17,13 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_PLATFORM_H_
 
 #include <memory>
-#include <vector>
+#include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {

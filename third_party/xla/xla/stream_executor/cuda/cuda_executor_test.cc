@@ -19,8 +19,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "xla/stream_executor/cuda/cuda_platform.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -34,7 +35,8 @@ using testing::Not;
 using testing::VariantWith;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
-  TF_ASSERT_OK(GpuDriver::Init());
+  CudaPlatform platform;
+  ASSERT_GT(platform.VisibleDeviceCount(), 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
                           CudaExecutor::CreateDeviceDescription(0));
