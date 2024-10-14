@@ -937,6 +937,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor",
@@ -1015,7 +1016,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
-        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:matmul_indexing_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -1062,7 +1063,7 @@ cc_library(
         "//xla/stream_executor/cuda:cudnn_plugin",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ]) + ["//xla/service/gpu:matmul_indexing_utils"],
 )
 
 cc_library(
@@ -2060,6 +2061,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu:stream_executor_util",
@@ -2198,6 +2200,7 @@ cc_library(
         "//xla/service:hlo_dce",
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:symbolic_tiled_hlo_instruction",

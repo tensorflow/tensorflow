@@ -179,6 +179,7 @@ cc_library(
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:target_util",
         "//xla/service/gpu:triton_fusion_analysis",

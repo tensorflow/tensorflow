@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gather_simplifier.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
