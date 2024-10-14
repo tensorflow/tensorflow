@@ -3,20 +3,20 @@ module attributes {tf.devices = {"/job:tpu_host_worker/replica:0/task:0/device:C
 // CHECK-LABEL: func @move_broadcast_non_spmd
 func.func @move_broadcast_non_spmd(%arg0: tensor<f32>) -> () {
   // CHECK:      %[[ELEM_0:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: %[[SHAPE_0:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
-  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]]) {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]]) {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK:      %[[ELEM_1:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: %[[SHAPE_1:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
-  // CHECK-NEXT: %[[FULL_1:.*]] = "tf.Fill"(%[[SHAPE_1]], %[[ELEM_1]]) {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK-NEXT: %[[FULL_1:.*]] = "tf.Fill"(%[[SHAPE_1]], %[[ELEM_1]]) {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: tf_device.replicate([%arg0, %[[FULL_0]], %[[FULL_1]], %[[FULL_0]]] as %[[REPVAR:.*]]: tensor<f32>) {n = 4 : i32} {
   // CHECK-NEXT:   %[[ID:.*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:     tf_device.return %[[IDINSIDE]] : tensor<f32>
-  // CHECK-NEXT:   }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+  // CHECK-NEXT:   }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
   // CHECK-NEXT:   "tf_device.cluster"() ({
   // CHECK-NEXT:     %[[GROUP:.*]] = "tf.Const"()
   // CHECK-SAME:       [0, 1, 2, 3]
@@ -37,15 +37,15 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 // CHECK-LABEL: func @move_broadcast_spmd
 func.func @move_broadcast_spmd(%arg0: tensor<f32>) -> () {
   // CHECK:      %[[ELEM_0:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: %[[SHAPE_0:.*]] = "tf.Const"()
-  // CHECK:      {ici_weight_distribution_mlir_bridge_marker = true}
-  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]]) {ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK:      {_ici_weight_distribution_mlir_bridge_marker = true}
+  // CHECK-NEXT: %[[FULL_0:.*]] = "tf.Fill"(%[[SHAPE_0]], %[[ELEM_0]]) {_ici_weight_distribution_mlir_bridge_marker = true}
   // CHECK-NEXT: tf_device.replicate([%arg0, %[[FULL_0]], %[[FULL_0]], %[[FULL_0]]] as %[[REPVAR:.*]]: tensor<f32>) {n = 4 : i32} {
   // CHECK-NEXT:   %[[ID:.*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:     tf_device.return %[[IDINSIDE]] : tensor<f32>
-  // CHECK-NEXT:   }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+  // CHECK-NEXT:   }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
   // CHECK-NEXT:   "tf_device.cluster"() ({
   // CHECK-NEXT:     %[[GROUP:.*]] = "tf.Const"()
   // CHECK-SAME:       [0, 1, 2, 3]

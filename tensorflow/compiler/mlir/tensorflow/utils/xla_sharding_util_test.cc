@@ -57,9 +57,9 @@ TEST(XLAShardingUtilTest, TestShapesCheckForSplitSharding) {
    func.func @parallel_execute_with_tiled_input(%arg0: tensor<128x9xf32>, %arg1: tensor<128x9xf32>, %arg2: tensor<128x10xi32>, %arg3: tensor<128x10xi32>) -> (tensor<128x10xi32>, tensor<10x5xi1>) {
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x9xf32>, [%arg2, %arg3] as %ri_2: tensor<128x10xi32>) {n = 2 : i32} {
       %1 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-        %identity = "tf.Identity"(%ri_1) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<128x9xf32>) -> tensor<128x9xf32>
+        %identity = "tf.Identity"(%ri_1) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<128x9xf32>) -> tensor<128x9xf32>
         tf_device.return %identity : tensor<128x9xf32>
-      }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<128x9xf32>
+      }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<128x9xf32>
       %2, %3 = "tf_device.cluster_func"(%1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x9xf32>, tensor<128x10xi32>) -> (tensor<128x10xi32>, tensor<10x5xi1>)
       tf_device.return %2, %3 : tensor<128x10xi32>, tensor<10x5xi1>
     }
@@ -99,9 +99,9 @@ TEST(XLAShardingUtilTest, TestShapesCheckForSplitShardingWithUnknownShapes) {
    func.func @parallel_execute_with_tiled_input(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<128x10xi32>, %arg3: tensor<128x10xi32>) -> (tensor<128x10xi32>, tensor<10x5xi1>) {
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<*xf32>, [%arg2, %arg3] as %ri_2: tensor<128x10xi32>) {n = 2 : i32} {
       %1 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-        %identity = "tf.Identity"(%ri_1) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<*xf32>) -> tensor<*xf32>
+        %identity = "tf.Identity"(%ri_1) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<*xf32>) -> tensor<*xf32>
         tf_device.return %identity : tensor<*xf32>
-      }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<*xf32>
+      }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<*xf32>
       %2, %3 = "tf_device.cluster_func"(%1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<*xf32>, tensor<128x10xi32>) -> (tensor<128x10xi32>, tensor<10x5xi1>)
       tf_device.return %2, %3 : tensor<128x10xi32>, tensor<10x5xi1>
     }
