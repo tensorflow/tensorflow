@@ -35,20 +35,10 @@ namespace xla {
 namespace gpu {
 
 class GpuCostModelStatsCollectionTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
-                                  /*per_second_rates=*/{},
-                                  /*min_latencies_seconds=*/{},
-                                  /*count_multiple_input_accesses=*/true}};
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
 };
 
 TEST_F(GpuCostModelStatsCollectionTest, FusinInEntryComputation) {

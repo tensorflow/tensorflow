@@ -1528,4 +1528,8 @@ bool HloCostAnalysis::KeyToCopyFromSubcomputation(absl::string_view key) const {
          !absl::StartsWith(key, kUtilizationKey);
 }
 
+int64_t HloCostAnalysis::DefaultShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kDefaultPointerSize);
+}
+
 }  // namespace xla

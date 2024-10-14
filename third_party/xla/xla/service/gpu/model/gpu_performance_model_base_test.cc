@@ -38,17 +38,7 @@ namespace {
 
 class GpuPerformanceModelBaseTest : public HloTestBase {
  public:
-  GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
-  GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
-                                       /*per_second_rates=*/{},
-                                       /*min_latencies_seconds=*/{},
-                                       /*count_multiple_input_accesses=*/true};
+  GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};

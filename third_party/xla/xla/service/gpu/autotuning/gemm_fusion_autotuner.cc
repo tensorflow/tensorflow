@@ -263,20 +263,12 @@ absl::StatusOr<TileSizeLimit> GetLimits(const HloDotInstruction& dot) {
 
 int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
-int64_t PriorityFusionShapeSize(const Shape& shape) {
+HloCostAnalysis::Options PriorityFusionOptions() {
   // The real pointer size is set in GpuCompiler. In HloCostAnalysis, the
   // pointer size is used only to determine the size of tuple types. We
   // shouldn't have any tuples in the autotuned module, so it's safe to use
-  // a constant here, instead of piping the real value.
-  constexpr int64_t kPointerSize = 8;
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
-HloCostAnalysis::Options PriorityFusionOptions() {
-  return {/*shape_size=*/PriorityFusionShapeSize,
-          /*per_second_rates=*/{},
-          /*min_latencies_seconds=*/{},
-          /*count_multiple_input_accesses=*/true};
+  // the default value here, instead of piping the real value.
+  return {.count_multiple_input_accesses = true};
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(

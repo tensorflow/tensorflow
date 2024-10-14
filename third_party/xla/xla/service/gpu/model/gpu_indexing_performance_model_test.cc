@@ -56,20 +56,13 @@ using ::tsl::testing::StatusIs;
 
 class GpuIndexingPerformanceModelTest : public HloTestBase {
  public:
-  GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
+      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
       &mlir_context_};
 
   GpuIndexingPerformanceModelTest() : HloTestBase() {}
@@ -713,10 +706,7 @@ class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
                             ParseAndReturnVerifiedModule(hlo_module_string));
 
     GpuHloCostAnalysis cost_analysis(
-        GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
-                                    /*per_second_rates=*/{},
-                                    /*min_latencies_seconds=*/{},
-                                    /*count_multiple_input_accesses=*/true},
+        GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
         device_info_);
 
     ASSERT_IS_OK(module->entry_computation()->Accept(&cost_analysis));

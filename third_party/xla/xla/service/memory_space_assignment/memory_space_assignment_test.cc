@@ -98,16 +98,13 @@ using ::testing::_;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
-constexpr int64_t kPointerSize = 8;
 constexpr float kAsyncCopyBandwidth = 100;
 constexpr float kAlternateMemBandwidth = 1000;
 constexpr float kBytesPerSecond = 100;
 constexpr float kFlopsPerSecond = 1000;
 constexpr float kTranscendentalsPerSecond = 10;
 
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
+const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
 int64_t SizeFunction(const BufferValue& value) {
   return ShapeSize(value.shape());
@@ -153,7 +150,6 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
   HloCostAnalysis::Options DefaultHloCostAnalysisOptions() {
     HloCostAnalysis::Options options;
-    options.shape_size = ShapeSize;
     options.set_flops_per_second(kFlopsPerSecond);
     options.set_bytes_per_second(kBytesPerSecond);
     options.set_transcendentals_per_second(kTranscendentalsPerSecond);
@@ -9993,7 +9989,8 @@ ENTRY main {
   // Setup cost analysis so it takes 2 instructions to prefetch anything.
   HloCostAnalysis::Properties properties;
   properties[HloCostAnalysis::kBytesAccessedKey] = kBytesPerSecond;
-  HloCostAnalysis hlo_cost_analysis(ShapeSize, properties);
+  HloCostAnalysis hlo_cost_analysis(HloCostAnalysis::DefaultShapeSize,
+                                    properties);
   CostAnalysisOptions cost_analysis_options;
   HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(

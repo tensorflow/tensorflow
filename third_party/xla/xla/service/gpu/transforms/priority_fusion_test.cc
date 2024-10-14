@@ -57,13 +57,6 @@ namespace xla {
 namespace gpu {
 
 class PriorityFusionTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
@@ -84,10 +77,7 @@ class PriorityFusionTest : public HloTestBase {
   se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   PriorityFusion priority_fusion_{
       /*thread_pool=*/nullptr, device_info_,
-      GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
-                                  /*per_second_rates=*/{},
-                                  /*min_latencies_seconds=*/{},
-                                  /*count_multiple_input_accesses=*/true}};
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
 };
 
 class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
