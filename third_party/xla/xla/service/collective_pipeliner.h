@@ -103,6 +103,8 @@ class CollectivePipeliner : public HloModulePass {
     // Determines whether a loop invariant instruction can be considered
     // in the pipelining chain.
     bool should_add_loop_invariant_op_in_chain = false;
+    // Postprocessing hook which runs for every successfully pipelined op.
+    HloPostprocessor postprocess_pipelined_ops = std::nullopt;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;

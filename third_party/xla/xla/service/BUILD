@@ -592,7 +592,6 @@ cc_library(
         ":collective_ops_utils",
         ":constant_value",
         ":hlo_dce",
-        ":hlo_pass",
         ":tuple_points_to_analysis",
         ":value_range",
         "//xla:comparison_util",
