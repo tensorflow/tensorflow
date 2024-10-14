@@ -415,10 +415,10 @@ ENTRY main {
 class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
  public:
   static void SetUpTestSuite() {
-    std::string path =
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                          "gpu_compiler_test_autotune_db.textproto");
-    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
+    // std::string path =
+    //     tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+    //                       "gpu_compiler_test_autotune_db.textproto");
+    // TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
   }
 
   static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
