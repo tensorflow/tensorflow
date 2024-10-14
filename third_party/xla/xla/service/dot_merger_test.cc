@@ -813,5 +813,30 @@ TEST_F(DotMergerTest, MergeSparseDotsDifferentMetadata) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(DotMergerTest, NoMergeWithFalseCompatibility) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    lhs0 = f32[2,4,100,200] parameter(0)
+    lhs1 = f32[2,4,300,200] parameter(1)
+    rhs  = f32[2,4,200, 50] parameter(2)
+    dot0 = f32[2,4,100, 50] dot(lhs0, rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                                            lhs_contracting_dims={3}, rhs_contracting_dims={2}
+    dot1 = f32[2,4,300, 50] dot(lhs1, rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                                            lhs_contracting_dims={3}, rhs_contracting_dims={2}
+    ROOT tuple = (f32[2,4,100,50], f32[2,4,300,50]) tuple(dot0, dot1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  std::function<bool(const HloInstruction* dot_a, const HloInstruction* dot_b)>
+      can_merge = [&](const HloInstruction* dot_a,
+                      const HloInstruction* dot_b) -> bool { return false; };
+  DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max(),
+                 can_merge);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

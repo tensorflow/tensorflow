@@ -278,8 +278,10 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   return new_dot;
 }
 
-absl::StatusOr<bool> MergeDots(HloComputation* comp,
-                               int64_t max_size_to_merge) {
+absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
+                               std::function<bool(const HloInstruction* dot_a,
+                                                  const HloInstruction* dot_b)>
+                                   can_merge) {
   auto is_merge_candidate = [&](HloInstruction* instr) {
     int64_t bytes = ShapeUtil::ByteSizeOfElements(instr->shape());
     for (const HloInstruction* operand : instr->operands()) {
@@ -395,7 +397,7 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp,
             (!is_merge_candidate(a) && !is_merge_candidate(b)) ||
             // Perform reachability checks last since they can be expensive.
             graph.IsReachableNonConst(a_id, b_id) ||
-            graph.IsReachableNonConst(b_id, a_id)) {
+            graph.IsReachableNonConst(b_id, a_id) || !can_merge(a, b)) {
           continue;
         }
 
@@ -437,7 +439,7 @@ absl::StatusOr<bool> DotMerger::Run(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool changed_computation,
-                        MergeDots(comp, max_size_to_merge_));
+                        MergeDots(comp, max_size_to_merge_, can_merge_));
     changed |= changed_computation;
   }
   return changed;

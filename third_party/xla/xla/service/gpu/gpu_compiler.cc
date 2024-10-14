@@ -797,10 +797,19 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<DotDecomposer>();
     // Only merge "smallish" dots.  This threshold defaults to 32MB today, with
     // a flag to override.
+    // Do not merge dots when they are assigned different stream ids.
+    std::function<bool(const HloInstruction* dot_a,
+                       const HloInstruction* dot_b)>
+        can_merge = [&](const HloInstruction* dot_a,
+                        const HloInstruction* dot_b) -> bool {
+      return dot_a->backend_config<GpuBackendConfig>()->operation_queue_id() ==
+             dot_b->backend_config<GpuBackendConfig>()->operation_queue_id();
+    };
     pipeline.AddPass<DotMerger>(
-        /*max_size_to_merge=*/int64_t{
-            debug_options.xla_gpu_dot_merger_threshold_mb()}
-        << 20);
+        /*max_size_to_merge=*/int64_t{debug_options
+                                          .xla_gpu_dot_merger_threshold_mb()}
+            << 20,
+        can_merge);
     pipeline.AddPass<SortSimplifier>();
     pipeline.AddPass<TupleSimplifier>();
     pipeline.AddPass<WhileLoopConstantSinking>();
