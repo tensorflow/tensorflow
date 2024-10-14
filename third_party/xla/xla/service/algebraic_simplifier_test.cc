@@ -10180,6 +10180,110 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWeirdDnums2) {
                             m::Concatenate(m::Parameter(3), m::Parameter(4)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWithBatchDim) {
+  const char* hlo_string = R"(
+  HloModule m
+  apply {
+   a = f32[] parameter(0)
+   b = f32[] parameter(1)
+   ROOT c = f32[] add(a, b)
+  }
+  test {
+    z  = f32[] constant(0)
+    init = f32[3,100,4] broadcast(z), dimensions={}
+    index0 = s32[3,1,4,5] parameter(0)
+    index1 = s32[3,1,2,5] parameter(1)
+    update0 = f32[3,4,4,5] parameter(2)
+    update1 = f32[3,2,4,5] parameter(3)
+    scatter.0 = f32[3,100,4] scatter(init, index0, update0),
+              to_apply=apply,
+              update_window_dims={2},
+              inserted_window_dims={1},
+              scatter_dims_to_operand_dims={1},
+              index_vector_dim=1,
+              input_batching_dims={0},
+              scatter_indices_batching_dims={0}
+    scatter.1 = f32[3,100,4] scatter(init, index1, update1),
+              to_apply=apply,
+              update_window_dims={2},
+              inserted_window_dims={1},
+              scatter_dims_to_operand_dims={1},
+              index_vector_dim=1,
+              input_batching_dims={0},
+              scatter_indices_batching_dims={0}
+    ROOT add.1 = f32[3,100,4] add(scatter.0, scatter.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  // Simplify Add
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  const HloInstruction* concat1;
+  const HloInstruction* concat2;
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Scatter(
+                  m::Broadcast(),
+                  m::Concatenate(&concat1, m::Parameter(0), m::Parameter(1)),
+                  m::Concatenate(&concat2, m::Parameter(2), m::Parameter(3)))));
+  EXPECT_EQ(Cast<HloConcatenateInstruction>(concat1)->concatenate_dimension(),
+            2);
+  EXPECT_EQ(Cast<HloConcatenateInstruction>(concat2)->concatenate_dimension(),
+            1);
+}
+
+TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWithBatchDim2) {
+  const char* hlo_string = R"(
+  HloModule m
+  apply {
+   a = f32[] parameter(0)
+   b = f32[] parameter(1)
+   ROOT c = f32[] add(a, b)
+  }
+   test {
+    z  = f32[] constant(0)
+    init = f32[100,3,4] broadcast(z), dimensions={}
+    index0 = s32[4,3,5,1] parameter(0)
+    index1 = s32[2,3,5,1] parameter(1)
+    update0 = f32[4,3,4,5] parameter(2)
+    update1 = f32[2,3,4,5] parameter(3)
+    scatter.0 = f32[100,3,4] scatter(init, index0, update0),
+              to_apply=apply,
+              update_window_dims={2},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=3,
+              input_batching_dims={1},
+              scatter_indices_batching_dims={1}
+    scatter.1 = f32[100,3,4] scatter(init, index1, update1),
+              to_apply=apply,
+              update_window_dims={2},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=3,
+              input_batching_dims={1},
+              scatter_indices_batching_dims={1}
+    ROOT add.1 = f32[100,3,4] add(scatter.0, scatter.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  // Simplify Add
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  const HloInstruction* concat1;
+  const HloInstruction* concat2;
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Scatter(
+                  m::Broadcast(),
+                  m::Concatenate(&concat1, m::Parameter(0), m::Parameter(1)),
+                  m::Concatenate(&concat2, m::Parameter(2), m::Parameter(3)))));
+  EXPECT_EQ(Cast<HloConcatenateInstruction>(concat1)->concatenate_dimension(),
+            0);
+  EXPECT_EQ(Cast<HloConcatenateInstruction>(concat2)->concatenate_dimension(),
+            0);
+}
+
 TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
   const char* hlo_string = R"(
   HloModule m

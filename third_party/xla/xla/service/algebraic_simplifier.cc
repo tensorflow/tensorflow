@@ -1053,9 +1053,27 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       if (d == lhs_dnums.index_vector_dim()) {
         continue;
       }
+      // Skip the dimensions that are in the update window before we subtract 1
+      // from `update_dim` for the next iteration.
       while (
           absl::c_linear_search(lhs_dnums.update_window_dims(), update_dim)) {
         --update_dim;
+      }
+      if (absl::c_linear_search(lhs_dnums.scatter_indices_batching_dims(), d)) {
+        // Corresponding batch dimensions in updates, scatter_indices and inputs
+        // have the same sizes. So we can't concatenate a batch dim in updates
+        // and scatter_indices without changing inputs. Instead, we ensure the
+        // two scatter instructions have the same batch dimensions to support
+        // the transformation.
+        if (lhs_scatter_index->shape().dimensions(d) !=
+            rhs_scatter_index->shape().dimensions(d)) {
+          // This shouldn't be reachable as we currently only combine two
+          // scatter instructions feeding into the same add straightforwardly,
+          // which should have the same result shapes.
+          return absl::OkStatus();
+        }
+        update_dim--;
+        continue;
       }
       if (lhs_scatter_index->shape().dimensions(d) ==
           rhs_scatter_index->shape().dimensions(d)) {
@@ -1094,7 +1112,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
         absl::c_equal(lhs_dnums.inserted_window_dims(),
                       rhs_dnums.inserted_window_dims()) &&
         absl::c_equal(lhs_dnums.update_window_dims(),
-                      rhs_dnums.update_window_dims());
+                      rhs_dnums.update_window_dims()) &&
+        absl::c_equal(lhs_dnums.scatter_indices_batching_dims(),
+                      rhs_dnums.scatter_indices_batching_dims()) &&
+        absl::c_equal(lhs_dnums.input_batching_dims(),
+                      rhs_dnums.input_batching_dims());
     const bool index_concat_is_safe =
         !lhs->unique_indices() && !rhs->unique_indices() &&
         !DynCast<HloScatterInstruction>(lhs)->indices_are_sorted() &&
