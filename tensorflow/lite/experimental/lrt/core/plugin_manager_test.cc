@@ -14,12 +14,12 @@
 
 #include "tensorflow/lite/experimental/lrt/core/plugin_manager.h"
 
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "testing/base/public/unique-test-directory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
@@ -30,15 +30,22 @@ using ::lrt::testing::TouchTestFile;
 constexpr absl::string_view kTestPluginSearchPath =
     "third_party/tensorflow/lite/experimental/lrt/vendors/examples";
 
+constexpr absl::string_view kTestManufacturer = "ExampleSocManufacturer";
+
+bool PluginOk(LrtPluginManager& plugin) {
+  return kTestManufacturer == plugin.Api().soc_manufacturer() &&
+         plugin.Api().num_supported_models(plugin.PluginHandle()) == 1;
+}
+
 TEST(PluginManagerTest, LoadTestPlugin) {
   std::vector<LrtPluginManager> plugins;
 
   ASSERT_STATUS_OK(
       LrtPluginManager::LoadPlugins({kTestPluginSearchPath}, plugins));
+  plugins.front().DumpPluginInfo();
 
   ASSERT_EQ(plugins.size(), 1);
-  EXPECT_STREQ(plugins[0].Api()->soc_manufacturer(), "ExampleSocManufacturer");
-  ASSERT_STATUS_OK(plugins[0].FreeLib());
+  EXPECT_TRUE(PluginOk(plugins[0]));
 }
 
 TEST(PluginManagerTest, LoadTestPluginWithMalformed) {
@@ -50,8 +57,7 @@ TEST(PluginManagerTest, LoadTestPluginWithMalformed) {
       LrtPluginManager::LoadPlugins({kTestPluginSearchPath, dir}, plugins));
 
   ASSERT_EQ(plugins.size(), 1);
-  EXPECT_STREQ(plugins[0].Api()->soc_manufacturer(), "ExampleSocManufacturer");
-  ASSERT_STATUS_OK(plugins[0].FreeLib());
+  EXPECT_TRUE(PluginOk(plugins[0]));
 }
 
 TEST(PluginManagerTest, MultipleValidPlugins) {
@@ -61,10 +67,44 @@ TEST(PluginManagerTest, MultipleValidPlugins) {
       {kTestPluginSearchPath, kTestPluginSearchPath}, plugins));
 
   ASSERT_EQ(plugins.size(), 2);
-  EXPECT_STREQ(plugins[0].Api()->soc_manufacturer(), "ExampleSocManufacturer");
-  EXPECT_STREQ(plugins[1].Api()->soc_manufacturer(), "ExampleSocManufacturer");
-  ASSERT_STATUS_OK(plugins[0].FreeLib());
-  ASSERT_STATUS_OK(plugins[1].FreeLib());
+  EXPECT_TRUE(PluginOk(plugins[0]));
+  EXPECT_TRUE(PluginOk(plugins[1]));
+}
+
+TEST(PluginManagerTest, MoveAssign) {
+  std::vector<LrtPluginManager> plugins;
+
+  ASSERT_STATUS_OK(
+      LrtPluginManager::LoadPlugins({kTestPluginSearchPath}, plugins));
+
+  ASSERT_EQ(plugins.size(), 1);
+  EXPECT_TRUE(PluginOk(plugins.front()));
+
+  LrtPluginManager other = std::move(plugins.front());
+
+  EXPECT_EQ(plugins.front().Api().soc_manufacturer, nullptr);
+  EXPECT_EQ(plugins.front().PluginHandle(), nullptr);
+  EXPECT_EQ(plugins.front().CompiledResultHandle(), nullptr);
+
+  EXPECT_TRUE(PluginOk(other));
+}
+
+TEST(PluginManagerTest, MoveConstruct) {
+  std::vector<LrtPluginManager> plugins;
+
+  ASSERT_STATUS_OK(
+      LrtPluginManager::LoadPlugins({kTestPluginSearchPath}, plugins));
+
+  ASSERT_EQ(plugins.size(), 1);
+  EXPECT_TRUE(PluginOk(plugins.front()));
+
+  LrtPluginManager other(std::move(plugins.front()));
+
+  EXPECT_EQ(plugins.front().Api().soc_manufacturer, nullptr);
+  EXPECT_EQ(plugins.front().PluginHandle(), nullptr);
+  EXPECT_EQ(plugins.front().CompiledResultHandle(), nullptr);
+
+  EXPECT_TRUE(PluginOk(other));
 }
 
 }  // namespace

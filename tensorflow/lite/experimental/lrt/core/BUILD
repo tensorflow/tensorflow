@@ -153,7 +153,6 @@ cc_library(
 #         "@com_google_googletest//:gtest_main",
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
-#         "@com_google_absl//absl/types:span",
 #         "//tensorflow/lite/experimental/lrt/test:common",
 #     ],
 # )

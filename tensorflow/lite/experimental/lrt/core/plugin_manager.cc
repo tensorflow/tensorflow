@@ -17,6 +17,7 @@
 #include <glob.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -27,21 +28,24 @@
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin_api.h"
 #include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 namespace lrt::internal {
 
-const LrtPluginApi* LrtPluginManager::Api() {
-  return IsLoaded() ? &plugin_api_ : nullptr;
+const LrtPluginApi& LrtPluginManager::Api() { return plugin_api_; }
+
+LrtCompilerPlugin LrtPluginManager::PluginHandle() { return plugin_handle_; }
+
+LrtCompiledResult LrtPluginManager::CompiledResultHandle() {
+  return compiled_result_handle_;
 }
 
-bool LrtPluginManager::IsLoaded() const { return lib_handle_ != nullptr; }
+void LrtPluginManager::DumpLibInfo() const { ::lrt::DumpLibInfo(lib_handle_); }
 
-void LrtPluginManager::DumpLibInfo() const {
-  if (!IsLoaded()) {
-    LITE_RT_LOG(LRT_INFO, "%s", "Lib is not loaded\n");
-    return;
-  }
-  ::lrt::DumpLibInfo(lib_handle_);
+void LrtPluginManager::DumpPluginInfo() const {
+  LITE_RT_LOG(LRT_INFO, "CompilerPlugin: %s : %d",
+              plugin_api_.soc_manufacturer(),
+              plugin_api_.num_supported_models(plugin_handle_));
 }
 
 LrtStatus LrtPluginManager::LoadPlugins(
@@ -70,21 +74,63 @@ LrtStatus LrtPluginManager::LoadPlugins(
       continue;
     }
 
+    LrtCompilerPlugin plugin_handle;
+    if (api.init(&plugin_handle) != kLrtStatusOk) {
+      LITE_RT_LOG(LRT_WARNING, "Failed to initialize plugin at: %s",
+                  lib_path.c_str());
+      if (CloseLib(lib_handle) != kLrtStatusOk) {
+        LITE_RT_LOG(LRT_WARNING, "Failed to close loaded library at: %s",
+                    lib_path.c_str());
+      }
+      continue;
+    }
+
     auto& new_plugin_manager = loaded_plugins.emplace_back();
     new_plugin_manager.plugin_api_ = api;
     new_plugin_manager.lib_handle_ = lib_handle;
+    new_plugin_manager.plugin_handle_ = plugin_handle;
   }
 
   return kLrtStatusOk;
 }
 
-LrtStatus LrtPluginManager::FreeLib() {
-  if (IsLoaded()) {
-    LRT_RETURN_STATUS_IF_NOT_OK(CloseLib(lib_handle_));
-    plugin_api_ = LrtPluginApi();
-    lib_handle_ = nullptr;
+LrtPluginManager::LrtPluginManager(LrtPluginManager&& other)
+    : lib_handle_(other.lib_handle_),
+      plugin_api_(std::move(other.plugin_api_)),
+      plugin_handle_(other.plugin_handle_),
+      compiled_result_handle_(other.compiled_result_handle_) {
+  other.plugin_api_ = LrtPluginApi();
+  other.lib_handle_ = nullptr;
+  other.plugin_handle_ = nullptr;
+  other.compiled_result_handle_ = nullptr;
+}
+
+LrtPluginManager& LrtPluginManager::operator=(LrtPluginManager&& other) {
+  if (this != &other) {
+    lib_handle_ = other.lib_handle_;
+    other.lib_handle_ = nullptr;
+
+    plugin_api_ = std::move(other.plugin_api_);
+    other.plugin_api_ = LrtPluginApi();
+
+    plugin_handle_ = other.plugin_handle_;
+    other.plugin_handle_ = nullptr;
   }
-  return kLrtStatusOk;
+  return *this;
+}
+
+LrtPluginManager::~LrtPluginManager() {
+  if (compiled_result_handle_ != nullptr) {
+    Api().compiled_result_destroy(CompiledResultHandle());
+  }
+  if (plugin_handle_ != nullptr) {
+    Api().destroy(PluginHandle());
+  }
+  if (lib_handle_ != nullptr) {
+    if (kLrtStatusOk != CloseLib(lib_handle_)) {
+      LITE_RT_LOG(LRT_WARNING, "%s", "Failed to close shared library\n");
+    }
+  }
 }
 
 }  // namespace lrt::internal
