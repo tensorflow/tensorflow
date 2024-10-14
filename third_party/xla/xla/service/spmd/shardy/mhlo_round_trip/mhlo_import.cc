@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -95,7 +96,6 @@ using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 // The information of a sub-dimension in IotaTileAssignment. One tile dimension
 // in tile assignment may correspond to multiple sub-dimensions. See
@@ -553,8 +553,7 @@ LogicalResult importShardings(
             mlir::cast<ShapedType>(resType).getRank(),
             /*openDims=*/false));
       }
-      op->setAttr(kShardingAttr, TensorShardingPerValueAttr::get(
-                                     globalMesh.getContext(), newShardings));
+      mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
     }
   });

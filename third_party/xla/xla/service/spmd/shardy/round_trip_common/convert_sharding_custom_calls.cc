@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/sharding_op_util.h"
@@ -48,10 +49,8 @@ using ::mlir::StringRef;
 
 using ::mlir::mhlo::CustomCallOp;
 
-using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::TensorShardingAttr;
-using ::mlir::sdy::TensorShardingPerValueAttr;
 
 class ShardingCustomCallPattern
     : public mlir::OpConversionPattern<CustomCallOp> {
@@ -75,18 +74,15 @@ class ShardingCustomCallPattern
           &unspecDims));
     }
 
-    auto shardingPerValue =
-        op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr);
-    if (!shardingPerValue) {
-      op.emitError() << "expected CustomCallOp with sharding attribute";
+    if (op->getNumResults() != 1) {
+      op.emitError() << "expected CustomCallOp with exactly one result";
       return mlir::failure();
     }
-    if (shardingPerValue.size() != 1) {
-      op.emitError() << "expected CustomCallOp with exactly one sharding "
-                        "attribute";
+    TensorShardingAttr sharding = mlir::sdy::getSharding(op->getResult(0));
+    if (!sharding) {
+      op.emitError() << "expected CustomCallOp with a sharding attribute";
       return mlir::failure();
     }
-    TensorShardingAttr sharding = shardingPerValue.getShardings().front();
 
     if (!unspecDims.empty()) {
       sharding = sharding.openShardingDims(unspecDims);
