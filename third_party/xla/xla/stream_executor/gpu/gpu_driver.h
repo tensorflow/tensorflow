@@ -57,11 +57,6 @@ namespace gpu {
 // Thread safety: these functions should not be used from signal handlers.
 class GpuDriver {
  public:
-  // Destroys a CUDA/HIP stream associated with the given context.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g244c8833de4596bcd31a06cdf21ee758
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
-  static void DestroyStream(Context* context, GpuStreamHandle stream);
-
   // Creates a new GPU graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd885f719186010727b75c3315f865fdf
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management

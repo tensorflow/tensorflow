@@ -19,6 +19,7 @@
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin_api.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 namespace lrt::internal {
 
@@ -28,7 +29,8 @@ class LrtPluginManager {
   // Search for shared library files with prefix "libLrtPlugin" in the
   // directories passed through "lib_search_paths". Populates "loaded_plugins"
   // with resolved plugin apis for each found library that can be succesfully
-  // loaded.
+  // loaded. Additionally initializes the compiler plugin instances
+  // and stores handle.
   static LrtStatus LoadPlugins(
       absl::Span<const absl::string_view> lib_search_paths,
       std::vector<LrtPluginManager>& loaded_plugins);
@@ -37,24 +39,39 @@ class LrtPluginManager {
   // See "dlinfo".
   void DumpLibInfo() const;
 
+  // Dump static information about a compiler plugin. Does nothing if it
+  // isn't loaded.
+  void DumpPluginInfo() const;
+
   // Resolved function pointers to a dynamically loaded `LrtCompilerPlugin`
   // instance. Lifetimes of all such funtions are tied to the underlying
   // shared library handle.
-  const LrtPluginApi* Api();
+  const LrtPluginApi& Api();
 
-  // Unloads the shared library (invalidating the members of this class).
-  // This behvior is optional and should be explicitly called rather than
-  // tying to the destructor. In practice this decrement the reference
-  // count of the underlying library (see dlclose), but instances of
-  // `LrtPluginManager` are likely to be a sole reference holder. Does
-  // nothing if already unloaded.
-  LrtStatus FreeLib();
+  // Handle to current LrtCompilerPlugin instances instatiated through
+  // the Api.
+  LrtCompilerPlugin PluginHandle();
+
+  // Handle to current LrtCompiledResult instances instatiated through
+  // the Api.
+  LrtCompiledResult CompiledResultHandle();
+
+  LrtPluginManager() = default;
+
+  LrtPluginManager(LrtPluginManager&& other);
+  LrtPluginManager& operator=(LrtPluginManager&& other);
+
+  LrtPluginManager(const LrtPluginManager& other) = delete;
+  LrtPluginManager& operator=(const LrtPluginManager& other) = delete;
+
+  // Destroys any living `LrtCompilerPlugin`. Does not free library.
+  ~LrtPluginManager();
 
  private:
-  bool IsLoaded() const;
-
   void* lib_handle_ = nullptr;
-  LrtPluginApi plugin_api_;
+  LrtPluginApi plugin_api_ = {};
+  LrtCompilerPlugin plugin_handle_ = nullptr;
+  LrtCompiledResult compiled_result_handle_ = nullptr;
 };
 
 }  // namespace lrt::internal

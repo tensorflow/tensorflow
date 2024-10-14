@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -26,6 +27,7 @@ int main(int argc, char** argv) {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
+  mlir::registerAllPasses();
   xla::ifrt::registerIfrtIrPasses();
   xla::ifrt::RegisterIfrtPassesAndPipelines();
 

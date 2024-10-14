@@ -82,6 +82,7 @@ cc_library(
     deps = [
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

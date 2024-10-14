@@ -40,12 +40,8 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-using stream_executor::gpu::ScopedActivateContext;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-using stream_executor::gpu::ScopedActivateContext;
 #endif  // TENSORFLOW_USE_ROCM
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -296,7 +292,8 @@ class WhereGPUOp : public AsyncOpKernel {
       // configured.
       auto stream = context->op_device_context()->stream();
       {
-        ScopedActivateContext scoped_activation{stream->parent()};
+        std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
+            stream->parent()->Activate();
 
         // TODO(ebrevdo): Properly copy back found_true value to CPU for
         // validation checking.  Currently Where<GPUDevice>::Compute()
@@ -348,7 +345,7 @@ class WhereGPUOp : public AsyncOpKernel {
         //         num_true, " elements; but when writing their indices, saw ",
         //         found_true, " elements."),
         //     done);
-      }  // Release ScopedActivateContext to prevent deadlock when done
+      }  // Release ActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
 

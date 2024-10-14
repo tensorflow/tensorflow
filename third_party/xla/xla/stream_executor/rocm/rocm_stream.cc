@@ -199,18 +199,18 @@ absl::Status RocmStream::WaitFor(Stream* other) {
 
   TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
 
-  return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
+  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }
 
 absl::Status RocmStream::RecordEvent(Event* event) {
   return stream_executor::gpu::RecordEvent(
       executor_->gpu_context(), static_cast<RocmEvent*>(event)->GetHandle(),
-      gpu_stream());
+      stream_handle_);
 }
 
 absl::Status RocmStream::WaitFor(Event* event) {
-  return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
+  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
                            static_cast<RocmEvent*>(event)->GetHandle());
 }
 
@@ -218,9 +218,33 @@ absl::Status RocmStream::RecordCompletedEvent() {
   return RecordEvent(&completed_event_);
 }
 
+namespace {
+void DestroyStream(Context* context, hipStream_t stream) {
+  if (stream == nullptr) {
+    return;
+  }
+  hipError_t res = wrap::hipStreamQuery(stream);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "stream not idle on destroy: " << ToString(res);
+  }
+
+  ScopedActivateContext activated(context);
+  res = wrap::hipStreamDestroy(stream);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "failed to destroy ROCM stream for device "
+               << context->device_ordinal() << ": " << ToString(res);
+  } else {
+    VLOG(2) << "successfully destroyed stream " << stream << " for device "
+            << context->device_ordinal();
+  }
+}
+}  // namespace
+
 RocmStream::~RocmStream() {
   BlockHostUntilDone().IgnoreError();
   executor_->DeallocateStream(this);
+
+  DestroyStream(executor_->gpu_context(), stream_handle_);
 }
 
 absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
@@ -232,7 +256,7 @@ absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
     return absl::InvalidArgumentError("size must be a multiple of 4 bytes.");
   }
   return ToStatus(wrap::hipMemsetD32Async(location->opaque(), pattern, size / 4,
-                                          gpu_stream()),
+                                          stream_handle_),
                   "Failed to memset memory");
 }
 
@@ -243,7 +267,7 @@ absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   } else {
     ScopedActivateContext activation{executor_->gpu_context()};
     return ToStatus(
-        wrap::hipMemsetAsync(location->opaque(), 0x0, size, gpu_stream()),
+        wrap::hipMemsetAsync(location->opaque(), 0x0, size, stream_handle_),
         "Failed to enqueue async memset operation");
   }
 }
@@ -254,7 +278,7 @@ absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst,
   return AsynchronousMemcpyD2D(
       executor_->gpu_context(),
       absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
-      absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, gpu_stream());
+      absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, stream_handle_);
 }
 
 absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
@@ -262,14 +286,14 @@ absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
   return AsynchronousMemcpyH2D(
       executor_->gpu_context(),
       absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src, size,
-      gpu_stream());
+      stream_handle_);
 }
 
 absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_->gpu_context(), host_dst,
                                absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),
-                               size, gpu_stream());
+                               size, stream_handle_);
 }
 
 namespace {
@@ -290,7 +314,7 @@ absl::Status RocmStream::DoHostCallbackWithStatus(
         }
       });
   return ToStatus(
-      wrap::hipLaunchHostFunc(gpu_stream(), (hipHostFn_t)InternalHostCallback,
+      wrap::hipLaunchHostFunc(stream_handle_, (hipHostFn_t)InternalHostCallback,
                               callback_ptr),
       "unable to add host callback");
 }
@@ -376,17 +400,18 @@ absl::Status RocmStream::Launch(const ThreadDim& thread_dims,
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
     if (cluster_dims.has_value()) {
-      return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
-                          cluster_dims->x, cluster_dims->y, cluster_dims->z,
-                          block_dims.x, block_dims.y, block_dims.z,
-                          thread_dims.x, thread_dims.y, thread_dims.z,
-                          packed.number_of_shared_bytes(), gpu_stream(), params,
-                          /*extra=*/nullptr);
+      return LaunchKernel(
+          executor_->gpu_context(), kernel.name(), function, cluster_dims->x,
+          cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
+          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+          packed.number_of_shared_bytes(), stream_handle_, params,
+          /*extra=*/nullptr);
     } else {
       return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
                           block_dims.x, block_dims.y, block_dims.z,
                           thread_dims.x, thread_dims.y, thread_dims.z,
-                          packed.number_of_shared_bytes(), gpu_stream(), params,
+                          packed.number_of_shared_bytes(), stream_handle_,
+                          params,
                           /*extra=*/nullptr);
     }
   };

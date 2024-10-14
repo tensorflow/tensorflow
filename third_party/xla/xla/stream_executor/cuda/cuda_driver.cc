@@ -621,27 +621,6 @@ absl::Status GpuDriver::GraphAddChildNode(CUgraphNode* node, CUgraph graph,
                         "Failed to set CUDA graph child node params");
 }
 
-void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
-  if (stream == nullptr) {
-    return;
-  }
-
-  ScopedActivateContext activated{context};
-  CUresult res = cuStreamQuery(stream);
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "stream not idle on destroy: " << cuda::ToStatus(res);
-  }
-
-  auto status = cuda::ToStatus(cuStreamDestroy(stream));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to destroy CUDA stream for context " << context
-               << ": " << status;
-  } else {
-    VLOG(2) << "successfully destroyed stream " << stream << " for context "
-            << context;
-  }
-}
-
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);

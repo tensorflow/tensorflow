@@ -483,26 +483,6 @@ absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
                   "Failed to set memset node params");
 }
 
-void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
-  if (stream == nullptr) {
-    return;
-  }
-  hipError_t res = wrap::hipStreamQuery(stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "stream not idle on destroy: " << ToString(res);
-  }
-
-  ScopedActivateContext activated(context);
-  res = wrap::hipStreamDestroy(stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to destroy ROCM stream for device "
-               << context->device_ordinal() << ": " << ToString(res);
-  } else {
-    VLOG(2) << "successfully destroyed stream " << stream << " for device "
-            << context->device_ordinal();
-  }
-}
-
 absl::Status GpuDriver::SynchronizeStream(Context* context,
                                           GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
