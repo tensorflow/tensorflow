@@ -132,7 +132,7 @@ llvm::CallInst* EmitCallToIntrinsic(
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
     absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
-  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+  llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }

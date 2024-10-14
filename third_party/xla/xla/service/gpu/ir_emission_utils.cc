@@ -272,7 +272,7 @@ llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
     llvm_intrinsic_id = llvm::Intrinsic::nvvm_shfl_sync_down_i32;
   }
   llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, llvm_intrinsic_id, {});
+      llvm::Intrinsic::getOrInsertDeclaration(module, llvm_intrinsic_id, {});
   return b->CreateCall(
       intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
 }

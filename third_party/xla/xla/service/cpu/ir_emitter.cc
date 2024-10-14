@@ -3844,12 +3844,13 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
-        llvm::Intrinsic::getDeclaration(module,
-                                        llvm::Intrinsic::readcyclecounter);
+        llvm::Intrinsic::getOrInsertDeclaration(
+            module, llvm::Intrinsic::readcyclecounter);
     return b->CreateCall(func_llvm_readcyclecounter);
   }
   llvm::Function* func_llvm_x86_rdtscp =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
+      llvm::Intrinsic::getOrInsertDeclaration(module,
+                                              llvm::Intrinsic::x86_rdtscp);
   llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
   return b->CreateExtractValue(rdtscp_call, {0});
 }
