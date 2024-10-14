@@ -16,7 +16,7 @@
 
 load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "append_rule_kwargs", "lite_rt_lib", "make_rpaths")
 
-_QNN_LIBCC = [
+_QNN_LIBCC_X86_64 = [
     # copybara:uncomment_begin(google-only)
     # "//third_party/qairt:lib/x86_64-linux-clang/libc++.so.1",
     # "//third_party/qairt:lib/x86_64-linux-clang/libc++abi.so.1",
@@ -24,19 +24,19 @@ _QNN_LIBCC = [
 ]  # @unused
 
 # TODO: Make rpaths dynamic with "$(location {})".
-_QNN_LIB_RPATHS = [
+_QNN_LIB_RPATHS_X86_64 = [
     # copybara:uncomment_begin(google-only)
     # "third_party/qairt/lib/x86_64-linux-clang",
     # copybara:uncomment_end
 ]
 
-_QNN_LIB_HTP = [
+_QNN_LIB_HTP_X86_64 = [
     # copybara:uncomment_begin(google-only)
     # "//third_party/qairt:lib/x86_64-linux-clang/libQnnHtp.so",
     # copybara:uncomment_end
 ]
 
-_QNN_LIB_SYSTEM = [
+_QNN_LIB_SYSTEM_X86_64 = [
     # copybara:uncomment_begin(google-only)
     # "//third_party/qairt:lib/x86_64-linux-clang/libQnnSystem.so",
     # copybara:uncomment_end
@@ -62,15 +62,22 @@ def lite_rt_lib_with_qnn(
         # TODO: Figure out strategy for custom libcc.
         fail("Custom libcc not yet supported")
 
-    data = []
-    data.extend(_QNN_LIB_HTP)
+    data_x86_64 = []
+    data_x86_64.extend(_QNN_LIB_HTP_X86_64)
     if include_system:
-        data.extend(_QNN_LIB_SYSTEM)
+        data_x86_64.extend(_QNN_LIB_SYSTEM_X86_64)
+    data = select({
+        "//tensorflow:linux_x86_64": data_x86_64,
+        "//conditions:default": [],
+    })
 
     append_rule_kwargs(
         lite_rt_lib_kwargs,
         data = data,
-        linkopts = [make_rpaths(_QNN_LIB_RPATHS)],
+        linkopts = select({
+            "//tensorflow:linux_x86_64": [make_rpaths(_QNN_LIB_RPATHS_X86_64)],
+            "//conditions:default": [],
+        }),
     )
 
     lite_rt_lib(**lite_rt_lib_kwargs)

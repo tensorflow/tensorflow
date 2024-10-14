@@ -52,14 +52,14 @@ def _make_script_linkopt(script):
 ####################################################################################################
 # Explicitly Link System Libraries ("ungrte")
 
-_SYS_RPATHS = [
+_SYS_RPATHS_X86_64 = [
     "/usr/lib/x86_64-linux-gnu",
     "/lib/x86_64-linux-gnu",
 ]
-_SYS_RPATHS_LINKOPT = make_rpaths(_SYS_RPATHS)
+_SYS_RPATHS_LINKOPT_X86_64 = make_rpaths(_SYS_RPATHS_X86_64)
 
-_SYS_ELF_INTERPRETER = "/lib64/ld-linux-x86-64.so.2"
-_SYS_ELF_INTERPRETER_LINKOPT = make_linkopt("--dynamic-linker={}".format(_SYS_ELF_INTERPRETER))
+_SYS_ELF_INTERPRETER_X86_64 = "/lib64/ld-linux-x86-64.so.2"
+_SYS_ELF_INTERPRETER_LINKOPT_X86_64 = make_linkopt("--dynamic-linker={}".format(_SYS_ELF_INTERPRETER_X86_64))
 
 ####################################################################################################
 # Symbol Hiding
@@ -74,7 +74,7 @@ _EXPORT_LRT_ONLY_LINKOPT = _make_script_linkopt(_EXPORT_LRT_ONLY_SCRIPT)
 
 def _lite_rt_base(
         rule,
-        ungrte,
+        ungrte = False,
         **cc_rule_kwargs):
     """
     Base rule for LiteRT targets.
@@ -87,10 +87,10 @@ def _lite_rt_base(
     if ungrte:
         append_rule_kwargs(
             cc_rule_kwargs,
-            linkopts = [
-                _SYS_ELF_INTERPRETER_LINKOPT,
-                _SYS_RPATHS_LINKOPT,
-            ],
+            linkopts = select({
+                "//tensorflow:linux_x86_64": [_SYS_ELF_INTERPRETER_LINKOPT_X86_64, _SYS_RPATHS_LINKOPT_X86_64],
+                "//conditions:default": [],
+            }),
         )
     rule(**cc_rule_kwargs)
 
