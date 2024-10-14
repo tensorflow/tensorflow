@@ -206,18 +206,18 @@ absl::Status CudaStream::WaitFor(Stream* other) {
   CudaStream* other_stream = static_cast<CudaStream*>(other);
 
   TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
-  return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
+  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }
 
 absl::Status CudaStream::RecordEvent(Event* event) {
   return stream_executor::gpu::RecordEvent(
       executor_->gpu_context(), static_cast<CudaEvent*>(event)->GetHandle(),
-      gpu_stream());
+      stream_handle_);
 }
 
 absl::Status CudaStream::WaitFor(Event* event) {
-  return WaitStreamOnEvent(executor_->gpu_context(), gpu_stream(),
+  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
                            static_cast<CudaEvent*>(event)->GetHandle());
 }
 
@@ -225,9 +225,34 @@ absl::Status CudaStream::RecordCompletedEvent() {
   return RecordEvent(&completed_event_);
 }
 
+namespace {
+void DestroyStream(Context* context, CUstream stream) {
+  if (stream == nullptr) {
+    return;
+  }
+
+  ScopedActivateContext activated{context};
+  CUresult res = cuStreamQuery(stream);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "stream not idle on destroy: " << cuda::ToStatus(res);
+  }
+
+  auto status = cuda::ToStatus(cuStreamDestroy(stream));
+  if (!status.ok()) {
+    LOG(ERROR) << "failed to destroy CUDA stream for context " << context
+               << ": " << status;
+  } else {
+    VLOG(2) << "successfully destroyed stream " << stream << " for context "
+            << context;
+  }
+}
+}  // namespace
+
 CudaStream::~CudaStream() {
   BlockHostUntilDone().IgnoreError();
   executor_->DeallocateStream(this);
+
+  DestroyStream(executor_->gpu_context(), stream_handle_);
 }
 
 absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
@@ -241,7 +266,7 @@ absl::Status CudaStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
   ScopedActivateContext activation(executor_->gpu_context());
   return cuda::ToStatus(
       cuMemsetD32Async(absl::bit_cast<CUdeviceptr>(location->opaque()), pattern,
-                       size / 4, gpu_stream()),
+                       size / 4, stream_handle_),
       "Failed to enqueue async memset operation");
 }
 
@@ -254,7 +279,7 @@ absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
     ScopedActivateContext activation(executor_->gpu_context());
     return cuda::ToStatus(
         cuMemsetD8Async(absl::bit_cast<CUdeviceptr>(location->opaque()), 0x0,
-                        size, gpu_stream()),
+                        size, stream_handle_),
         "Failed to enqueue async memset operation");
   }
 }
@@ -264,21 +289,21 @@ absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
       executor_->gpu_context(), absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
-      absl::bit_cast<CUdeviceptr>(gpu_src.opaque()), size, gpu_stream());
+      absl::bit_cast<CUdeviceptr>(gpu_src.opaque()), size, stream_handle_);
 }
 
 absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
                                 uint64_t size) {
   return AsynchronousMemcpyH2D(executor_->gpu_context(),
                                absl::bit_cast<CUdeviceptr>(gpu_dst->opaque()),
-                               host_src, size, gpu_stream());
+                               host_src, size, stream_handle_);
 }
 
 absl::Status CudaStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_->gpu_context(), host_dst,
                                absl::bit_cast<CUdeviceptr>(gpu_src.opaque()),
-                               size, gpu_stream());
+                               size, stream_handle_);
 }
 
 namespace {
@@ -299,7 +324,7 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
         }
       });
   return cuda::ToStatus(
-      cuLaunchHostFunc(gpu_stream(), InternalHostCallback, callback_ptr));
+      cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr));
 }
 
 namespace {
@@ -422,17 +447,18 @@ absl::Status CudaStream::Launch(const ThreadDim& thread_dims,
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
     if (cluster_dims.has_value()) {
-      return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
-                          cluster_dims->x, cluster_dims->y, cluster_dims->z,
-                          block_dims.x, block_dims.y, block_dims.z,
-                          thread_dims.x, thread_dims.y, thread_dims.z,
-                          packed.number_of_shared_bytes(), gpu_stream(), params,
-                          /*extra=*/nullptr);
+      return LaunchKernel(
+          executor_->gpu_context(), kernel.name(), function, cluster_dims->x,
+          cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
+          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+          packed.number_of_shared_bytes(), stream_handle_, params,
+          /*extra=*/nullptr);
     } else {
       return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
                           block_dims.x, block_dims.y, block_dims.z,
                           thread_dims.x, thread_dims.y, thread_dims.z,
-                          packed.number_of_shared_bytes(), gpu_stream(), params,
+                          packed.number_of_shared_bytes(), stream_handle_,
+                          params,
                           /*extra=*/nullptr);
     }
   };
@@ -460,7 +486,7 @@ absl::Status CudaStream::Launch(const ThreadDim& thread_dims,
 
 void CudaStream::SetName(std::string name) {
   tsl::profiler::NameStream(
-      absl::bit_cast<tsl::profiler::StreamHandle>(gpu_stream()), name);
+      absl::bit_cast<tsl::profiler::StreamHandle>(stream_handle_), name);
   StreamCommon::SetName(std::move(name));
 }
 

@@ -863,9 +863,9 @@ void RocmExecutor::DeallocateStream(Stream* stream) {
       dnn_->NotifyStreamDestroyed(stream);
     }
   }
-  GpuStream* rocm_stream = AsGpuStream(stream);
+  RocmStream* rocm_stream = static_cast<RocmStream*>(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(rocm_stream->gpu_stream());
+  alive_gpu_streams_.erase(rocm_stream->stream_handle());
 }
 
 absl::Status RocmExecutor::BlockHostUntilDone(Stream* stream) {
@@ -1000,8 +1000,7 @@ absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, RocmStream::Create(this, priority));
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  auto gpu_stream = stream->gpu_stream();
-  alive_gpu_streams_[gpu_stream] = stream.get();
+  alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
 

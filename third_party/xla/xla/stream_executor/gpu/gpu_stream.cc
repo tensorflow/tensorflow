@@ -15,14 +15,12 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
-#include <memory>
 #include <optional>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -31,22 +29,6 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
-
-
-Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
-  PlatformSpecificHandle handle;
-  handle.stream = gpu_stream_;
-  return handle;
-}
-
-GpuStream::~GpuStream() {
-  GpuDriver::DestroyStream(parent_->gpu_context(), gpu_stream_);
-}
-
-absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-GpuStream::CreateEventBasedTimer(bool use_delay_kernel) {
-  return parent_->CreateEventBasedTimer(this, use_delay_kernel);
-}
 
 absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
                                const BlockDim& block_dims, const Kernel& kernel,
@@ -69,7 +51,8 @@ GpuStream* AsGpuStream(Stream* stream) {
 
 GpuStreamHandle AsGpuStreamValue(Stream* stream) {
   DCHECK(stream != nullptr);
-  return AsGpuStream(stream)->gpu_stream();
+  return absl::bit_cast<GpuStreamHandle>(
+      AsGpuStream(stream)->platform_specific_handle().stream);
 }
 
 }  // namespace gpu

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/kernel.h"
@@ -60,19 +61,31 @@ class CudaStream : public GpuStream {
 
   void SetName(std::string name) override;
 
+  Stream::PlatformSpecificHandle platform_specific_handle() const override {
+    return {stream_handle_};
+  }
+
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      bool use_delay_kernel) override {
+    return executor_->CreateEventBasedTimer(this, use_delay_kernel);
+  }
+
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       GpuExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~CudaStream() override;
 
+  CUstream stream_handle() const { return stream_handle_; }
+
  private:
   CudaStream(GpuExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              CUstream stream_handle)
-      : GpuStream(executor, priority, stream_handle),
+      : GpuStream(executor, priority),
         executor_(executor),
-        completed_event_(std::move(completed_event)) {}
+        completed_event_(std::move(completed_event)),
+        stream_handle_(stream_handle) {}
 
   absl::Status RecordCompletedEvent();
 
@@ -82,6 +95,7 @@ class CudaStream : public GpuStream {
 
   GpuExecutor* executor_;
   CudaEvent completed_event_;
+  CUstream stream_handle_;
 };
 }  // namespace gpu
 
