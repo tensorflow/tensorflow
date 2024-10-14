@@ -87,8 +87,27 @@ class RaggedRangeOp : public OpKernel {
         size = 0;
       } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
-        size = Eigen::divup(Eigen::numext::abs(limit - start),
-                            Eigen::numext::abs(delta));
+        uint64_t range;
+        if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit)) +
+                  static_cast<uint64_t>(Eigen::numext::abs(start));
+        } else {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+        }
+
+        uint64_t size_unsigned = Eigen::divup(
+            range, static_cast<uint64_t>(Eigen::numext::abs(delta)));
+        OP_REQUIRES(
+            context, size_unsigned <= std::numeric_limits<int64_t>::max(),
+            errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                    std::numeric_limits<int64_t>::max()));
+        OP_REQUIRES(
+            context,
+            size_unsigned <=
+                std::numeric_limits<SPLITS_TYPE>::max() - rt_nested_splits(row),
+            InvalidArgument("The total range size overflowed. Consider using "
+                            "int64 instead of int32 for row_splits_dtype."));
+        size = static_cast<SPLITS_TYPE>(size_unsigned);
       } else {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
