@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/sharding_op_util.h"
@@ -99,8 +100,7 @@ class ReshardPattern : public OpConversionPattern<ReshardOp> {
         rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, adaptor.getInput());
 
     TensorShardingAttr sdySharding = adaptor.getShardingAttr();
-    copyOp->setAttr(kShardingAttr, TensorShardingPerValueAttr::get(
-                                       op.getContext(), sdySharding));
+    mlir::sdy::setShardings(copyOp, sdySharding);
 
     SmallVector<int64_t> unspecifiedDims;
     for (auto [dim, dimSharding] :
