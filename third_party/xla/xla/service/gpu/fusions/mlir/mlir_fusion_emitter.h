@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/stream_executor/device_description.h"
@@ -78,6 +79,14 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::MLIRContext* mlir_context) const {
     return {};
   }
+
+  // Creates an epilogue with the raw thread/block/symbol indices, as defined
+  // by the fusion's thread->output mapping.
+  mlir_converter::EpilogueSpecification GetEpilogueForOutputIndexing(
+      const HloFusionAnalysis& analysis,
+      const std::vector<const HloInstruction*>& heroes,
+      const std::vector<const HloInstruction*>& roots,
+      mlir::MLIRContext* mlir_context) const;
 
   virtual absl::Status EmitEntryFunction(
       const mlir_converter::PartitionedComputations& computations,

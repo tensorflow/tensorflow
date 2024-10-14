@@ -78,8 +78,7 @@ MlirInputSlicesFusion::GetEpilogues(const HloFusionInstruction& fusion,
 
   // We don't actually use epilogues here, but this is how we tell the base
   // class not to emit code for the slices.
-  return {mlir_converter::EpilogueSpecification::FromOutputIndexing(
-      analysis_, roots, roots, *this, mlir_context)};
+  return {GetEpilogueForOutputIndexing(analysis_, roots, roots, mlir_context)};
 }
 
 LaunchDimensions MlirInputSlicesFusion::launch_dimensions() const {

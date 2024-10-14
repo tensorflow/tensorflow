@@ -440,8 +440,7 @@ MlirReductionFusion::GetEpilogues(const HloFusionInstruction& fusion,
   for (const auto& [heroes, roots] :
        llvm::zip(reduction_heroes_, reduction_roots_)) {
     epilogues.push_back(
-        mlir_converter::EpilogueSpecification::FromOutputIndexing(
-            analysis_, heroes, roots, *this, mlir_context));
+        GetEpilogueForOutputIndexing(analysis_, heroes, roots, mlir_context));
   }
   // Add empty epilogues for the side outputs. This ensures their roots don't
   // get "fused" into the tuple function.
