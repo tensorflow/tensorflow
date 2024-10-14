@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -56,6 +57,8 @@ class CudaStream : public GpuStream {
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
+
+  void SetName(std::string name) override;
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
       GpuExecutor* executor,

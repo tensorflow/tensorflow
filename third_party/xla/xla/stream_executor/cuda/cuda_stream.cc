@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -45,8 +46,10 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -453,6 +456,12 @@ absl::Status CudaStream::Launch(const ThreadDim& thread_dims,
   }
 
   return absl::InternalError("Unsupported kernel arguments type");
+}
+
+void CudaStream::SetName(std::string name) {
+  tsl::profiler::NameStream(
+      absl::bit_cast<tsl::profiler::StreamHandle>(gpu_stream()), name);
+  StreamCommon::SetName(std::move(name));
 }
 
 }  // namespace gpu

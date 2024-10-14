@@ -20,10 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -221,6 +223,16 @@ TEST_F(RocmStreamTest, LaunchKernel) {
   std::array<int32_t, kLength> host_buffer;
   EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)), IsOk());
   EXPECT_THAT(host_buffer, Each(3));
+}
+
+TEST_F(RocmStreamTest, SetName) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  constexpr absl::string_view kStreamName = "Test stream";
+  stream->SetName(std::string(kStreamName));
+  EXPECT_EQ(stream->GetName(), kStreamName);
 }
 
 }  // namespace

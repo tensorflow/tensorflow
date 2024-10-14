@@ -69,7 +69,6 @@ class GpuStream : public StreamCommon {
     return gpu_stream_;
   }
 
-  void set_name(absl::string_view name) override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       bool use_delay_kernel) override;
   absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,

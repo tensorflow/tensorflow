@@ -83,8 +83,8 @@ class StreamCommon : public Stream {
   }
 
   // Doesn't do anything interesting by default; GpuStream connects this to NVTX
-  absl::string_view name() const override { return name_; }
-  void set_name(absl::string_view name) override { name_ = name; }
+  const std::string &GetName() const override { return name_; }
+  void SetName(std::string name) override { name_ = std::move(name); }
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {

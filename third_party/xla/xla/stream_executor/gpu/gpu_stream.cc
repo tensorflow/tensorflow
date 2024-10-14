@@ -15,26 +15,19 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
-#include <utility>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -48,12 +41,6 @@ Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
 
 GpuStream::~GpuStream() {
   GpuDriver::DestroyStream(parent_->gpu_context(), gpu_stream_);
-}
-
-void GpuStream::set_name(absl::string_view name) {
-  name_ = name;
-  tsl::profiler::NameStream(
-      reinterpret_cast<tsl::profiler::StreamHandle>(gpu_stream()), name_);
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>

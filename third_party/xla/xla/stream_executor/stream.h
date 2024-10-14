@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -287,8 +288,8 @@ class Stream {
   }
 
   // Get/set a name for a stream, which can be shown in profiling tools
-  virtual absl::string_view name() const = 0;
-  virtual void set_name(absl::string_view name) = 0;
+  virtual const std::string &GetName() const = 0;
+  virtual void SetName(std::string name) = 0;
 
   // Create an EventBasedTimer that can be used to time operations on this
   // stream using Events.
