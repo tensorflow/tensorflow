@@ -370,7 +370,7 @@ mlrt::bc::Buffer CreateExecutableForIfrtLoadVariableOp(
   return buffer;
 }
 
-class KernelTest : public ::testing::Test {
+class KernelTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     mlrt::RegisterBuiltinKernels(registry_);
@@ -410,7 +410,8 @@ class KernelTest : public ::testing::Test {
             ifrt_serving::kIfrtModelRestoreContextName,
             std::make_unique<tensorflow::ifrt_serving::CheckpointLoader>(
                 &ifrt_model_context_->GetRestoreTensorRegistry(),
-                ifrt_model_context_->checkpoint_loader_queue()));
+                ifrt_model_context_->checkpoint_loader_queue(),
+                /*use_async_restore=*/GetParam()));
 
     serving_device_selector_ =
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();
@@ -440,7 +441,7 @@ class KernelTest : public ::testing::Test {
   tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context_;
 };
 
-TEST_F(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
+TEST_P(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
   auto buffer = CreateExecutableForIfrtLoadVariableOp(
       /*redundant_ifrt_load_variable_op=*/false, /*used_by_host=*/true);
 
@@ -488,7 +489,7 @@ TEST_F(KernelTest, IfrtLoadVariableOpCanGetTensorFromResourceManager) {
               TensorEq(input_tensor));
 }
 
-TEST_F(KernelTest, IfrtLoadVariableOp) {
+TEST_P(KernelTest, IfrtLoadVariableOp) {
   auto buffer = CreateExecutableForIfrtLoadVariableOp();
 
   mlrt::bc::Executable executable(buffer.data());
@@ -540,7 +541,7 @@ TEST_F(KernelTest, IfrtLoadVariableOp) {
               TensorEq(tensorflow::Tensor()));
 }
 
-TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
+TEST_P(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   auto buffer = CreateExecutableForIfrtLoadVariableOp(
       /*redundant_ifrt_load_variable_op=*/true);
 
@@ -594,7 +595,7 @@ TEST_F(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
               TensorEq(tensorflow::Tensor()));
 }
 
-TEST_F(KernelTest, IfrtRestoreVariableOp) {
+TEST_P(KernelTest, IfrtRestoreVariableOp) {
   std::string checkpoint_prefix =
       tensorflow::GetDataDependencyFilepath(
           "tensorflow/core/tfrt/mlrt/kernel/testdata/"
@@ -656,7 +657,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp) {
   EXPECT_THAT(*restored_tensor, TensorEq(AsTensor<int16_t>({1, 2, 3}, {3})));
 }
 
-TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
+TEST_P(KernelTest, IfrtRestoreVariableOp4Variables) {
   std::string checkpoint_prefix =
       tensorflow::GetDataDependencyFilepath(
           "tensorflow/core/tfrt/mlrt/kernel/testdata/"
@@ -748,7 +749,7 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
               TensorEq(AsTensor<int16_t>({10, 11, 12}, {3})));
 }
 
-TEST_F(KernelTest, IfrtRestoreVariableOpInValidInput) {
+TEST_P(KernelTest, IfrtRestoreVariableOpInValidInput) {
   std::string checkpoint_prefix =
       tensorflow::GetDataDependencyFilepath(
           "tensorflow/core/tfrt/mlrt/kernel/testdata/"
@@ -809,6 +810,8 @@ TEST_F(KernelTest, IfrtRestoreVariableOpInValidInput) {
   EXPECT_THAT(execution_context.status(),
               ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
+
+INSTANTIATE_TEST_SUITE_P(KernelTest, KernelTest, ::testing::Bool());
 
 }  // namespace
 }  // namespace tf_mlrt
