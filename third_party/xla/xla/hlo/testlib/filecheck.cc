@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/filecheck.h"
+#include "xla/hlo/testlib/filecheck.h"
 
 #include <string>
 
