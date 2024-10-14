@@ -166,9 +166,6 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   void StartCheckStaleness();
   void Stop() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   bool ServiceHasStopped() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  // Report service error to a specified task.
-  void ReportServiceErrorToTaskAsync(const CoordinatedTask& destination_task,
-                                     absl::Status error);
   // Report error from a task to all other connected tasks if the task is not
   // recoverable.
   // Note: SetTaskError() must be called before propagating its error.
@@ -910,38 +907,6 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
   }
 
   return s;
-}
-
-void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
-    const CoordinatedTask& destination_task, absl::Status error) {
-  assert(!error.ok());
-
-  // Don't report error if there is no service-to-client connection.
-  if (client_cache_ == nullptr) {
-    LOG(ERROR) << error;
-    return;
-  }
-
-  auto request = std::make_shared<ReportErrorToTaskRequest>();
-  auto response = std::make_shared<ReportErrorToTaskResponse>();
-  request->set_error_code(error.raw_code());
-  request->set_error_message(std::string(error.message()));
-  CoordinatedTask* error_source =
-      request->mutable_error_payload()->mutable_source_task();
-  error_source->set_job_name("coordination_service");
-  auto call_opts = std::make_shared<CallOptions>();
-  call_opts->SetTimeout(kServiceToClientTimeoutMs);
-
-  const std::string task_name = GetTaskName(destination_task);
-  CoordinationClient* client = client_cache_->GetClient(task_name);
-  client->ReportErrorToTaskAsync(
-      call_opts.get(), request.get(), response.get(),
-      [request, response, task_name, call_opts](absl::Status s) {
-        if (!s.ok()) {
-          LOG(ERROR) << "Encountered another error while reporting to "
-                     << task_name << ": " << s;
-        }
-      });
 }
 
 void CoordinationServiceStandaloneImpl::PropagateError(
