@@ -483,60 +483,6 @@ absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
                   "Failed to set memset node params");
 }
 
-absl::Status GpuDriver::LaunchKernel(
-    Context* context, absl::string_view kernel_name, hipFunction_t function,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
-    unsigned int block_dim_z, unsigned int shared_mem_bytes,
-    GpuStreamHandle stream, void** kernel_params, void** extra) {
-  ScopedActivateContext activation{context};
-  VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << " smem: " << shared_mem_bytes
-          << " func: " << (const void*)function;
-
-  auto res = hipSuccess;
-#if TF_ROCM_VERSION < 60200
-  // for in-process kernel this function returns mangled kernel function name,
-  // and null otherwise
-  auto name = wrap::hipKernelNameRefByPtr((const void*)function, stream);
-  if (name != nullptr) {
-    res = wrap::hipLaunchKernel((const void*)function,
-                                dim3(grid_dim_x, grid_dim_y, grid_dim_z),
-                                dim3(block_dim_x, block_dim_y, block_dim_z),
-                                kernel_params, shared_mem_bytes, stream);
-  } else  // NOLINT(readability/braces)
-#endif    // TF_ROCM_VERSION < 60200
-  {
-    res = wrap::hipModuleLaunchKernel(
-        function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
-        block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
-  }
-  TF_RETURN_IF_ERROR(
-      ToStatus(res, absl::StrCat("Failed to launch ROCm kernel: ", kernel_name,
-                                 " with block dimensions: ", block_dim_x, "x",
-                                 block_dim_y, "x", block_dim_z)));
-
-  VLOG(2) << "successfully launched kernel";
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::LaunchKernel(
-    Context* context, absl::string_view kernel_name, hipFunction_t function,
-    unsigned int cluster_dim_x, unsigned int cluster_dim_y,
-    unsigned int cluster_dim_z, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, GpuStreamHandle stream, void** kernel_params,
-    void** extra) {
-  if (cluster_dim_x != 1 || cluster_dim_y != 1 || cluster_dim_z != 1)
-    return absl::UnimplementedError("Not implemented for ROCm");
-  return LaunchKernel(context, kernel_name, function, grid_dim_x, grid_dim_y,
-                      grid_dim_z, block_dim_x, block_dim_y, block_dim_z,
-                      shared_mem_bytes, stream, kernel_params, extra);
-}
-
 void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
     return;

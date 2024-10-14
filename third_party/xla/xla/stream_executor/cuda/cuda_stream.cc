@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdalign.h>
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -28,15 +29,20 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
@@ -291,6 +297,162 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
       });
   return cuda::ToStatus(
       cuLaunchHostFunc(gpu_stream(), InternalHostCallback, callback_ptr));
+}
+
+namespace {
+absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
+                          CUfunction function, unsigned int grid_dim_x,
+                          unsigned int grid_dim_y, unsigned int grid_dim_z,
+                          unsigned int block_dim_x, unsigned int block_dim_y,
+                          unsigned int block_dim_z,
+                          unsigned int shared_mem_bytes, CUstream stream,
+                          void** kernel_params, void** extra) {
+  ScopedActivateContext activation(context);
+  VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  return cuda::ToStatus(
+      cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
+                     block_dim_y, block_dim_z, shared_mem_bytes, stream,
+                     kernel_params, extra),
+      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
+                   "; block dims: ", block_dim_x, "x", block_dim_y, "x",
+                   block_dim_z, "; grid dims: ", grid_dim_x, "x", grid_dim_y,
+                   "x", grid_dim_z,
+                   "; shared memory size: ", shared_mem_bytes));
+}
+
+absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
+                          CUfunction function, unsigned int cluster_dim_x,
+                          unsigned int cluster_dim_y,
+                          unsigned int cluster_dim_z, unsigned int grid_dim_x,
+                          unsigned int grid_dim_y, unsigned int grid_dim_z,
+                          unsigned int block_dim_x, unsigned int block_dim_y,
+                          unsigned int block_dim_z,
+                          unsigned int shared_mem_bytes, CUstream stream,
+                          void** kernel_params, void** extra) {
+  ScopedActivateContext activation(context);
+  VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
+          << " cdy: " << cluster_dim_y << " cdz: " << cluster_dim_z
+          << " gdx: " << grid_dim_x << " gdy: " << grid_dim_y
+          << " gdz: " << grid_dim_z << " bdx: " << block_dim_x
+          << " bdy: " << block_dim_y << " bdz: " << block_dim_z
+          << "; shared_mem_bytes: " << shared_mem_bytes;
+
+  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
+  // should be moved one level up to se::Kernel level, and done just once (or
+  // updated once we get a new larger shared memory request).
+  if (shared_mem_bytes != 0) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetAttribute(function,
+                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                           shared_mem_bytes),
+        "Failed to set shared memory size"));
+  }
+
+  CUlaunchConfig launch_config;
+  memset(&launch_config, 0, sizeof(launch_config));
+  launch_config.blockDimX = block_dim_x;
+  launch_config.blockDimY = block_dim_y;
+  launch_config.blockDimZ = block_dim_z;
+  launch_config.gridDimX = grid_dim_x;
+  launch_config.gridDimY = grid_dim_y;
+  launch_config.gridDimZ = grid_dim_z;
+  launch_config.hStream = stream;
+  launch_config.sharedMemBytes = shared_mem_bytes;
+
+  CUlaunchAttribute cluster_dims;
+  memset(&cluster_dims, 0, sizeof(cluster_dims));
+  cluster_dims.id = CU_LAUNCH_ATTRIBUTE_CLUSTER_DIMENSION;
+  cluster_dims.value.clusterDim.x = cluster_dim_x;
+  cluster_dims.value.clusterDim.y = cluster_dim_y;
+  cluster_dims.value.clusterDim.z = cluster_dim_z;
+
+  launch_config.attrs = &cluster_dims;
+  launch_config.numAttrs = 1;
+
+  return cuda::ToStatus(
+      cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
+      absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
+                   "; cluster dims: ", cluster_dim_x, "x", cluster_dim_y, "x",
+                   cluster_dim_z, "; block dims: ", block_dim_x, "x",
+                   block_dim_y, "x", block_dim_z, "; grid dims: ", grid_dim_x,
+                   "x", grid_dim_y, "x", grid_dim_z,
+                   "; shared memory size: ", shared_mem_bytes));
+}
+
+}  // namespace
+
+absl::Status CudaStream::Launch(const ThreadDim& thread_dims,
+                                const BlockDim& block_dims,
+                                const std::optional<ClusterDim>& cluster_dims,
+                                const Kernel& kernel, const KernelArgs& args) {
+  const CudaKernel* gpu_kernel = static_cast<const CudaKernel*>(&kernel);
+  CUfunction function = gpu_kernel->gpu_function();
+
+  // Launch kernels with packed arguments.
+  auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
+                 &function](const KernelArgsPackedArrayBase& packed) {
+    int32_t expected_number_of_arguments =
+        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
+
+    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
+        << " arguments, but expected " << expected_number_of_arguments
+        << "; arity=" << kernel.Arity()
+        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
+
+    void** params = const_cast<void**>(packed.argument_addresses().data());
+
+    if (cluster_dims.has_value()) {
+      return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
+                          cluster_dims->x, cluster_dims->y, cluster_dims->z,
+                          block_dims.x, block_dims.y, block_dims.z,
+                          thread_dims.x, thread_dims.y, thread_dims.z,
+                          packed.number_of_shared_bytes(), gpu_stream(), params,
+                          /*extra=*/nullptr);
+    } else {
+      return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
+                          block_dims.x, block_dims.y, block_dims.z,
+                          thread_dims.x, thread_dims.y, thread_dims.z,
+                          packed.number_of_shared_bytes(), gpu_stream(), params,
+                          /*extra=*/nullptr);
+    }
+  };
+
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return launch(*packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return launch(*packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 }  // namespace gpu

@@ -75,64 +75,6 @@ absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
                 kernel, args);
 }
 
-absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
-                               const BlockDim& block_dims,
-                               const std::optional<ClusterDim>& cluster_dims,
-                               const Kernel& kernel, const KernelArgs& args) {
-  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
-  GpuFunctionHandle function = gpu_kernel->gpu_function();
-
-  // Launch kernels with packed arguments.
-  auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
-                 &function](const KernelArgsPackedArrayBase& packed) {
-    int32_t expected_number_of_arguments =
-        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
-
-    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
-        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
-        << " arguments, but expected " << expected_number_of_arguments
-        << "; arity=" << kernel.Arity()
-        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
-
-    void** params = const_cast<void**>(packed.argument_addresses().data());
-
-    if (cluster_dims.has_value()) {
-      return GpuDriver::LaunchKernel(
-          parent_->gpu_context(), kernel.name(), function, cluster_dims->x,
-          cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-          packed.number_of_shared_bytes(), gpu_stream(), params,
-          /*extra=*/nullptr);
-    } else {
-      return GpuDriver::LaunchKernel(
-          parent_->gpu_context(), kernel.name(), function, block_dims.x,
-          block_dims.y, block_dims.z, thread_dims.x, thread_dims.y,
-          thread_dims.z, packed.number_of_shared_bytes(), gpu_stream(), params,
-          /*extra=*/nullptr);
-    }
-  };
-
-  // If arguments are already packed we can just launch the kernel.
-  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
-    return launch(*packed);
-  }
-
-  // For device memory array we rely on a custom kernel arguments packing.
-  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
-    auto& pack = kernel.args_packing();
-    if (!pack) {
-      return absl::InternalError(
-          "Kernel is missing a custom arguments packing function for device "
-          "memory arguments array");
-    }
-
-    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
-    return launch(*packed);
-  }
-
-  return absl::InternalError("Unsupported kernel arguments type");
-}
-
 GpuStream* AsGpuStream(Stream* stream) {
   DCHECK(stream != nullptr);
   return static_cast<GpuStream*>(stream);

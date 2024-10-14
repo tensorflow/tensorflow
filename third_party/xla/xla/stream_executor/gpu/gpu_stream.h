@@ -80,9 +80,10 @@ class GpuStream : public StreamCommon {
 
  private:
   // Helper method to launch a kernel with optional cluster dimensions.
-  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
-                      const std::optional<ClusterDim>& cluster_dims,
-                      const Kernel& kernel, const KernelArgs& args);
+  virtual absl::Status Launch(const ThreadDim& thread_dims,
+                              const BlockDim& block_dims,
+                              const std::optional<ClusterDim>& cluster_dims,
+                              const Kernel& kernel, const KernelArgs& args) = 0;
 
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.

@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 
@@ -70,6 +72,10 @@ class CudaStream : public GpuStream {
         completed_event_(std::move(completed_event)) {}
 
   absl::Status RecordCompletedEvent();
+
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      const Kernel& kernel, const KernelArgs& args) override;
 
   GpuExecutor* executor_;
   CudaEvent completed_event_;

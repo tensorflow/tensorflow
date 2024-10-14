@@ -28,9 +28,14 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -184,6 +189,39 @@ TEST_F(CudaStreamTest, DoHostCallback) {
 
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_EQ(callback_call_counter, 1);
+}
+
+TEST_F(CudaStreamTest, LaunchKernel) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  using AddI32Kernel =
+      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
+                         DeviceMemory<int32_t>>;
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
+
+  constexpr int64_t kLength = 4;
+  constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
+
+  // Prepare arguments: a=1, b=2, c=0
+  DeviceMemory<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
+
+  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
+  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
+  EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
+  EXPECT_THAT(stream->ThenLaunch(ThreadDim(), BlockDim(kLength), add, a, b, c),
+              IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+
+  std::array<int32_t, kLength> host_buffer;
+  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(host_buffer, Each(3));
 }
 
 }  // namespace
