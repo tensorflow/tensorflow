@@ -1039,6 +1039,7 @@ cc_library(
         ":cuda_timer",
         ":cuda_version_parser",
         "//xla/stream_executor",
+        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:dnn",

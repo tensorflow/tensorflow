@@ -42,6 +42,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hip/hip_version.h"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
@@ -490,6 +491,10 @@ RocmExecutor::~RocmExecutor() {
   set_context(nullptr);
   CHECK(kernel_to_gpu_binary_.empty()) << "GpuExecutor has live kernels.";
   CHECK(gpu_binary_to_module_.empty()) << "GpuExecutor has loaded modules.";
+}
+
+std::unique_ptr<ActivateContext> RocmExecutor::Activate() {
+  return std::make_unique<ScopedActivateContext>(gpu_context());
 }
 
 bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {

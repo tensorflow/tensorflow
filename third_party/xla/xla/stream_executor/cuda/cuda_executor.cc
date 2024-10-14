@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
@@ -552,6 +553,10 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetMemoryRange(
   TF_RETURN_IF_ERROR(cuda::ToStatus(
       cuMemGetAddressRange(&device_pointer, &size, AsCudaDevicePtr(location))));
   return DeviceMemoryBase(reinterpret_cast<void*>(device_pointer), size);
+}
+
+std::unique_ptr<ActivateContext> CudaExecutor::Activate() {
+  return std::make_unique<ScopedActivateContext>(gpu_context());
 }
 
 CudaExecutor::~CudaExecutor() {

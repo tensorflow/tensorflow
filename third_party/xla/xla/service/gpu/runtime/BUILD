@@ -206,7 +206,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor",
-        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",

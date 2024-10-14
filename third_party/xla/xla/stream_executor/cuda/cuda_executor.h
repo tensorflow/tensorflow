@@ -1,3 +1,4 @@
+#include "xla/stream_executor/activate_context.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,6 +61,7 @@ class CudaExecutor : public GpuExecutor {
   CudaExecutor(Platform* platform, int device_ordinal)
       : GpuExecutor(platform, device_ordinal) {}
   ~CudaExecutor() override;
+  std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<DeviceMemoryBase> GetMemoryRange(

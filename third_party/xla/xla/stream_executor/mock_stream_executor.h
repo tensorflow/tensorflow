@@ -1,3 +1,4 @@
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/fft.h"
@@ -52,6 +53,7 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(int, device_ordinal, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, LoadKernel,
               (const MultiKernelLoaderSpec& spec), (override));
+  MOCK_METHOD(std::unique_ptr<ActivateContext>, Activate, (), (override));
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
   MOCK_METHOD(absl::Status, LoadModule,
               (const MultiModuleLoaderSpec& spec, ModuleHandle* module_handle),

@@ -85,6 +85,7 @@ cc_library(
         ":stream_executor_api_headers",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -260,6 +261,7 @@ cc_library(
     testonly = True,
     hdrs = ["mock_stream_executor.h"],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -498,6 +500,7 @@ cc_library(
         "stream_executor.h",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -734,6 +737,7 @@ cc_library(
     srcs = ["stream_executor_common.cc"],
     hdrs = ["stream_executor_common.h"],
     deps = [
+        ":activate_context",
         ":device_description",
         ":platform",
         ":stream_executor_h",
