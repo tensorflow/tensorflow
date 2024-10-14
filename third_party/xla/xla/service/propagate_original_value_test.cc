@@ -62,7 +62,7 @@ CHECK:   ROOT %[[ADD:.*]] = u32[2]{0:T(256)} add(%[[PAD]], %[[PAD1]]), origin={{
 
 CHECK: ENTRY %test
 CHECK:   %Arg_0 = s32[]{:T(256)} parameter(0), origin={{[{]}}{"Arg_0"}
-CHECK:   ROOT %pad_add_fusion = u32[2]{0:T(256)} fusion(%Arg_0), kind=kLoop, calls=%fused_computation
+CHECK:   ROOT %pad_add_fusion = u32[2]{0:T(256)} fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{[{]}}{"concatenate"}
 )");
 }
 
