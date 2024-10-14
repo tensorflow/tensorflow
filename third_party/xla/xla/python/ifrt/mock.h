@@ -335,11 +335,28 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
       (absl::StatusOr<
           std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
       Disassemble, (const Shape& shape), (const, final));
+  MOCK_METHOD(
+      (absl::StatusOr<
+          std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
+      Disassemble,
+      (const Shape& shape,
+       SingleDeviceShardSemantics single_device_shard_semantics),
+      (const, final));
   MOCK_METHOD((absl::StatusOr<std::vector<
                    std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>),
               Disassemble, (const DynamicShape& dynamic_shape), (const final));
+  MOCK_METHOD((absl::StatusOr<std::vector<
+                   std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>),
+              Disassemble,
+              (const DynamicShape& dynamic_shape,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (const final));
   MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
               (const Shape& shape), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
+              (const Shape& shape,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (const, final));
   MOCK_METHOD(std::string, DebugString, (), (const, final));
   MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
               (const, final));

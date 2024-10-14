@@ -70,7 +70,8 @@ bool NextIndex(Index::Elements* index, absl::Span<const int64_t> limit) {
 // Note that this is O(N^2) where N is the number of devices (shards).
 std::vector<IndexDomain> IndexDomainsSlowPath(
     const xla::HloSharding& hlo_sharding,
-    const tsl::RCReference<DeviceList>& devices, const Shape& shape) {
+    const tsl::RCReference<DeviceList>& devices, const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
   // Only shape dimensions are used.
   auto xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
       xla::PrimitiveType::S32, shape.dims());
@@ -85,14 +86,20 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 
   Index::Elements origin(shape.dims().size());
   Shape::Dimensions shard_shape(shape.dims().size());
-  for (int device_idx = 0; device_idx < devices->size(); ++device_idx) {
-    auto tile_offset = hlo_sharding.TileOffsetForDevice(xla_shape, device_idx);
-    auto tile_limit = hlo_sharding.TileLimitForDevice(xla_shape, device_idx);
-    for (int i = 0; i < shape.dims().size(); ++i) {
-      origin[i] = tile_offset[i];
-      shard_shape[i] = tile_limit[i] - tile_offset[i];
+  const absl::Span<Device* const> device_ptrs = devices->devices();
+  for (int device_idx = 0; device_idx < device_ptrs.size(); ++device_idx) {
+    if (single_device_shard_semantics ==
+            SingleDeviceShardSemantics::kAllShards ||
+        device_ptrs[device_idx]->IsAddressable()) {
+      auto tile_offset =
+          hlo_sharding.TileOffsetForDevice(xla_shape, device_idx);
+      auto tile_limit = hlo_sharding.TileLimitForDevice(xla_shape, device_idx);
+      for (int i = 0; i < shape.dims().size(); ++i) {
+        origin[i] = tile_offset[i];
+        shard_shape[i] = tile_limit[i] - tile_offset[i];
+      }
+      result.push_back(IndexDomain(Index(origin), Shape(shard_shape)));
     }
-    result.push_back(IndexDomain(Index(origin), Shape(shard_shape)));
   }
   return result;
 }
@@ -179,9 +186,17 @@ absl::StatusOr<std::unique_ptr<Sharding>> HloSharding::WithDeviceAssignment(
   return Create(devices.value_or(devices_), memory_kind.value_or(memory_kind_),
                 xla_hlo_sharding_);
 }
-
 absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const Shape& shape) const {
+  DCHECK(this);
+  return Disassemble(shape, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+HloSharding::Disassemble(
+    const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) const {
+  DCHECK(this);
   bool is_even_sharding = false;
   if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
     is_even_sharding = true;
@@ -212,12 +227,21 @@ HloSharding::Disassemble(const Shape& shape) const {
     // Fast path for even sharding.
     TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape, GetShardShape(shape));
     std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
-    result.reserve(devices_->size());
+    if (single_device_shard_semantics ==
+        SingleDeviceShardSemantics::kAllShards) {
+      result.reserve(devices_->size());
+    } else {
+      result.reserve(devices_->AddressableDeviceList()->size());
+    }
     for (int i = 0; i < devices_->size(); ++i) {
-      result.push_back({
-          shard_shape,
-          SingleDeviceSharding::Create(devices[i], memory_kind_),
-      });
+      if (single_device_shard_semantics ==
+              SingleDeviceShardSemantics::kAllShards ||
+          devices[i]->IsAddressable()) {
+        result.push_back({
+            shard_shape,
+            SingleDeviceSharding::Create(devices[i], memory_kind_),
+        });
+      }
     }
     return result;
   } else {
@@ -226,12 +250,21 @@ HloSharding::Disassemble(const Shape& shape) const {
                         IndexDomains(shape));
     CHECK_EQ(index_domains.size(), devices_->size());
     std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>> result;
-    result.reserve(index_domains.size());
+    if (single_device_shard_semantics ==
+        SingleDeviceShardSemantics::kAllShards) {
+      result.reserve(devices_->size());
+    } else {
+      result.reserve(devices_->AddressableDeviceList()->size());
+    }
     for (int i = 0; i < index_domains.size(); ++i) {
-      result.push_back({
-          index_domains[i].shape(),
-          SingleDeviceSharding::Create(devices[i], memory_kind_),
-      });
+      if (single_device_shard_semantics ==
+              SingleDeviceShardSemantics::kAllShards ||
+          devices[i]->IsAddressable()) {
+        result.push_back({
+            index_domains[i].shape(),
+            SingleDeviceSharding::Create(devices[i], memory_kind_),
+        });
+      }
     }
     return result;
   }
@@ -240,6 +273,16 @@ HloSharding::Disassemble(const Shape& shape) const {
 absl::StatusOr<
     std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
 HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  DCHECK(this);
+  return Disassemble(dynamic_shape, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<
+    std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+HloSharding::Disassemble(
+    const DynamicShape& dynamic_shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) const {
+  DCHECK(this);
   return InvalidArgument(
       "HloSharding can only disassemble static shape, but was asked "
       "to disassemble dynamic shape %s",
@@ -248,6 +291,13 @@ HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
 
 absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     const Shape& shape) const {
+  DCHECK(this);
+  return IndexDomains(shape, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
+    const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) const {
   std::vector<IndexDomain> result;
   const int num_devices = devices_->size();
 
@@ -258,16 +308,24 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
   if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
-    result.resize(/*count=*/num_devices, /*value=*/element);
+    if (single_device_shard_semantics ==
+        SingleDeviceShardSemantics::kAllShards) {
+      result.resize(/*count=*/num_devices, /*value=*/element);
+    } else {
+      result.resize(/*count=*/devices_->AddressableDeviceList()->size(),
+                    /*value=*/element);
+    }
     return result;
   }
   if (!xla_hlo_sharding_.IsTiled()) {
-    return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape);
+    return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
+                                single_device_shard_semantics);
   }
   for (const xla::OpSharding::Type subgroup_type :
        xla_hlo_sharding_.subgroup_types()) {
     if (subgroup_type != xla::OpSharding::REPLICATED) {
-      return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape);
+      return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
+                                  single_device_shard_semantics);
     }
   }
   if (xla_hlo_sharding_.tile_assignment().num_elements() != num_devices) {
@@ -338,16 +396,25 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     }
   } while (NextIndex(&unique_tile_index, tile_assignment_dims));
 
-  result.reserve(num_devices);
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    result.reserve(num_devices);
+  } else {
+    result.reserve(devices_->AddressableDeviceList()->size());
+  }
+  const absl::Span<Device* const> devices = devices_->devices();
   for (int device_idx = 0; device_idx < num_devices; ++device_idx) {
-    Shape::Dimensions actual_tile_shape;
-    actual_tile_shape.reserve(tile_shape_dims.size());
-    for (int i = 0; i < tile_shape_dims.size(); ++i) {
-      actual_tile_shape.push_back(std::min(
-          tile_shape_dims[i], shape.dims()[i] - origins[device_idx][i]));
+    if (single_device_shard_semantics ==
+            SingleDeviceShardSemantics::kAllShards ||
+        devices[device_idx]->IsAddressable()) {
+      Shape::Dimensions actual_tile_shape;
+      actual_tile_shape.reserve(tile_shape_dims.size());
+      for (int i = 0; i < tile_shape_dims.size(); ++i) {
+        actual_tile_shape.push_back(std::min(
+            tile_shape_dims[i], shape.dims()[i] - origins[device_idx][i]));
+      }
+      result.push_back(IndexDomain(Index(origins[device_idx]),
+                                   Shape(std::move(actual_tile_shape))));
     }
-    result.push_back(IndexDomain(Index(origins[device_idx]),
-                                 Shape(std::move(actual_tile_shape))));
   }
   return result;
 }
@@ -358,9 +425,11 @@ std::string HloSharding::DebugString() const {
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(
-    const HloSharding& hlo_sharding, const Shape& shape) {
+    const HloSharding& hlo_sharding, const Shape& shape,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
   return IndexDomainsSlowPath(hlo_sharding.xla_hlo_sharding(),
-                              hlo_sharding.devices(), shape);
+                              hlo_sharding.devices(), shape,
+                              single_device_shard_semantics);
 }
 
 }  // namespace ifrt
