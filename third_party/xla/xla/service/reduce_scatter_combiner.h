@@ -69,7 +69,6 @@ class ReduceScatterCombiner : public HloModulePass {
           const HloInstruction*, const HloDomainMap&, bool)>
           combine_key);
 
- private:
   // Combine reduce-scatter ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 
