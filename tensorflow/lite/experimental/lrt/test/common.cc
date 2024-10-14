@@ -72,5 +72,11 @@ UniqueLrtModel LoadTestFileModel(absl::string_view filename) {
   return UniqueLrtModel(model);
 }
 
+void TouchTestFile(absl::string_view filename, absl::string_view dir) {
+  std::filesystem::path path(dir.data());
+  path.append(filename.data());
+  std::ofstream f(path);
+}
+
 }  // namespace testing
 }  // namespace lrt

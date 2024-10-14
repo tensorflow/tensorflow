@@ -47,6 +47,8 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
 
 UniqueLrtModel LoadTestFileModel(absl::string_view filename);
 
+void TouchTestFile(absl::string_view filename, absl::string_view dir);
+
 }  // namespace testing
 }  // namespace lrt
 

@@ -123,12 +123,51 @@ cc_library(
 )
 
 cc_library(
+    name = "plugin_manager",
+    srcs = ["plugin_manager.cc"],
+    hdrs = ["plugin_manager.h"],
+    deps = [
+        ":compiler_plugin_api",
+        ":dynamic_loading",
+        ":logging",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+# copybara:uncomment_begin(no OSS for unique-test-directory)
+# cc_test(
+#     name = "plugin_manager_test",
+#     srcs = ["plugin_manager_test.cc"],
+#     data = ["//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so"],
+#     tags = [
+#         # Sanitizer runtimes are incompatible with RTLD_DEEPBIND.
+#         "noasan",
+#         "nomsan",
+#         "nosan",
+#     ],
+#     deps = [
+#         ":plugin_manager",
+#         "@com_google_googletest//:gtest_main",
+#         "//testing/base/public:unique-test-directory",
+#         "@com_google_absl//absl/strings:string_view",
+#         "@com_google_absl//absl/types:span",
+#         "//tensorflow/lite/experimental/lrt/test:common",
+#     ],
+# )
+# copybara:uncomment_end
+
+cc_library(
     name = "compiler_plugin_api",
     srcs = ["compiler_plugin_api.cc"],
     hdrs = ["compiler_plugin_api.h"],
     deps = [
         ":api_internal",
         ":dynamic_loading",
+        ":logging",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -160,9 +199,32 @@ cc_library(
     deps = [
         ":logging",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
+
+# copybara:uncomment_begin(no OSS for unique-test-directory)
+# cc_test(
+#     name = "dynamic_loading_test",
+#     srcs = ["dynamic_loading_test.cc"],
+#     tags = [
+#         # Sanitizer runtimes are incompatible with RTLD_DEEPBIND.
+#         "noasan",
+#         "nomsan",
+#         "nosan",
+#     ],
+#     deps = [
+#         ":dynamic_loading",
+#         "@com_google_googletest//:gtest_main",
+#         "//testing/base/public:unique-test-directory",
+#         "@com_google_absl//absl/strings:string_view",
+#         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+#         "//tensorflow/lite/experimental/lrt/test:common",
+#     ],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "tensor_buffer",

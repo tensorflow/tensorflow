@@ -14,6 +14,7 @@
 
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin_api.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"

@@ -27,8 +27,13 @@
 
 namespace lrt {
 
+constexpr absl::string_view kLrtSharedLibPrefix = "libLrt";
+
 // Loads shared library at given path.
 LrtStatus OpenLib(absl::string_view so_path, void** lib_handle);
+
+// Closes reference to loaded shared library held by lib_handle.
+LrtStatus CloseLib(void* lib_handle);
 
 // Dumps loading details of given lib handle.
 void DumpLibInfo(void* lib_handle, std::ostream& out = std::cerr);
@@ -47,6 +52,11 @@ inline static LrtStatus ResolveLibSymbol(void* lib_handle,
   *sym_handle = ptr;
   return kLrtStatusOk;
 }
+
+// All internal dynamically linked dependencies for lite_rt should be prefixed
+// "libLrt". Find all lite_rt shared libraries in "search_path"
+LrtStatus FindLrtSharedLibs(absl::string_view search_path,
+                            std::vector<std::string>& results);
 
 }  // namespace lrt
 

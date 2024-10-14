@@ -16,16 +16,20 @@
 
 #include <dlfcn.h>
 
-#include <ostream>
 #ifndef __ANDROID__
+#include <glob.h>
 #include <link.h>
 #endif
 
-#include <iostream>
+#include <cstddef>
+#include <ostream>
 #include <string>
+#include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 
 namespace lrt {
@@ -45,6 +49,14 @@ LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
     return kLrtStatusDynamicLoadErr;
   }
   *lib_handle = res;
+  return kLrtStatusOk;
+}
+
+LrtStatus CloseLib(void* lib_handle) {
+  if (0 != ::dlclose(lib_handle)) {
+    LITE_RT_LOG(LRT_ERROR, "Failed to close .so with error: %s", ::dlerror());
+    return kLrtStatusDynamicLoadErr;
+  }
   return kLrtStatusOk;
 }
 
@@ -94,6 +106,51 @@ void DumpLibInfo(void* lib_handle, std::ostream& out) {
 
   out << "\n";
 #endif
+}
+
+LrtStatus MakePluginLibGlobPattern(absl::string_view search_path,
+                                   std::string& pattern) {
+  LRT_ENSURE(!search_path.ends_with("/"), kLrtStatusErrorInvalidArgument,
+             "Search paths must not have trailing slash");
+
+  // NOTE: Compiler plugin shared libraries also have "Plugin" appended
+  // to the standard prefix.
+  constexpr absl::string_view kGlobPluginLibTemplate = "%s/%sPlugin*.so";
+  pattern =
+      absl::StrFormat(kGlobPluginLibTemplate, search_path, kLrtSharedLibPrefix);
+  return kLrtStatusOk;
+}
+
+LrtStatus FindLrtSharedLibs(absl::string_view search_path,
+                            std::vector<std::string>& results) {
+#ifndef __ANDROID__
+  std::string glob_pattern;
+  LRT_RETURN_STATUS_IF_NOT_OK(
+      MakePluginLibGlobPattern(search_path, glob_pattern));
+
+  glob_t glob_result = {};
+  const int glob_status =
+      glob(glob_pattern.c_str(), GLOB_ERR, nullptr, &glob_result);
+  if (glob_status == GLOB_NOMATCH) {
+    LITE_RT_LOG(LRT_WARNING, "%s", "Didn't find any plugin libs to load\n");
+    globfree(&glob_result);
+    return kLrtStatusOk;
+  } else if (glob_status != 0) {
+    LITE_RT_LOG(LRT_ERROR, "Glob failed with code: %d\n", glob_status);
+    globfree(&glob_result);
+    return kLrtStatusErrorNotFound;
+  }
+
+  for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
+    results.emplace_back().assign(glob_result.gl_pathv[i]);
+    LITE_RT_LOG(LRT_INFO, "Glob matched: %s\n", results.back().c_str());
+  }
+
+  globfree(&glob_result);
+  return kLrtStatusOk;
+#endif
+  // TODO: Glob is not supported on android.
+  return kLrtStatusErrorUnsupported;
 }
 
 }  // namespace lrt
