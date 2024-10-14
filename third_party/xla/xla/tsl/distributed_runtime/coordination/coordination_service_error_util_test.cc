@@ -143,6 +143,7 @@ TEST(CoordinationServiceErrorUtil, TrimCoordinationErrorMessage_NetworkError) {
   auto message = trimmed_error.message();
   EXPECT_EQ(trimmed_error.code(), error.code());
   EXPECT_TRUE(absl::StrContains(message, "Check earlier logs"));
+  EXPECT_TRUE(absl::StrContains(message, "preempted"));
   // Message is not duplicated.
   EXPECT_EQ(message.find("failed to connect"),
             message.rfind("failed to connect"))
