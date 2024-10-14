@@ -309,12 +309,6 @@ class GpuDriver {
   static absl::Status SynchronizeStream(Context* context,
                                         GpuStreamHandle stream);
 
-  // -- Pointer-specific calls.
-
-  // Returns the base address and size of the device pointer dptr.
-  static absl::Status GetPointerAddressRange(GpuDevicePtr dptr,
-                                             GpuDevicePtr* base, size_t* size);
-
   // -- Context- and device-independent calls.
 
   // Returns the number of visible CUDA device via cuDeviceGetCount.

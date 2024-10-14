@@ -525,26 +525,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::Status GpuDriver::GetPointerAddressRange(hipDeviceptr_t dptr,
-                                               hipDeviceptr_t* base,
-                                               size_t* size) {
-  hipError_t result = wrap::hipMemGetAddressRange(base, size, dptr);
-  if (result == hipSuccess) {
-    return absl::OkStatus();
-  } else if (result == hipErrorNotFound) {
-    // We differentiate between "this pointer is unknown" (return here) and
-    // "there was an internal error while performing this operation" (return
-    // below).
-    return absl::NotFoundError(absl::StrFormat("not a device pointer %p; %s",
-                                               reinterpret_cast<void*>(dptr),
-                                               ToString(result).c_str()));
-  }
-
-  return absl::InternalError(
-      absl::StrFormat("failed to get pointer into for device pointer %p; %s",
-                      reinterpret_cast<void*>(dptr), ToString(result).c_str()));
-}
-
 absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   int32_t version;
   TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&version),

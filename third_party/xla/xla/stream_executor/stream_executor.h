@@ -193,6 +193,14 @@ class StreamExecutor {
   virtual absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                           uint64_t size) = 0;
 
+  // Returns a DeviceMemoryBase representing the range [base, base + size)
+  // for the given DeviceMemoryBase, such that location is contained within the
+  // returned range.
+  virtual absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
+      const DeviceMemoryBase& location) {
+    return absl::UnimplementedError("Not implemented for this executor.");
+  }
+
   virtual bool HostMemoryUnregister(void* location) { return false; };
   virtual bool HostMemoryRegister(void* location, uint64_t size) {
     return false;

@@ -660,12 +660,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
-                                               CUdeviceptr* base,
-                                               size_t* size) {
-  return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
-}
-
 absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   int32_t version;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&version),

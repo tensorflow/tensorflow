@@ -62,6 +62,8 @@ class CudaExecutor : public GpuExecutor {
   ~CudaExecutor() override;
   absl::Status Init() override;
   bool SynchronizeAllActivity() override;
+  absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
+      const DeviceMemoryBase& location) override;
 
   absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) override {
     return CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);

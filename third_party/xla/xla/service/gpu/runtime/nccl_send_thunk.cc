@@ -95,7 +95,7 @@ absl::Status NcclSendThunk::RunNcclCollective(
   VLOG(3) << "Performing Send from device ordinal: " << device_ordinal
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode);
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
                                           comm_wrapper.comm_handle));
 
   const std::optional<int64_t> target_id = source_target.target;
