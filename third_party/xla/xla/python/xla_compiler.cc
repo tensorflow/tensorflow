@@ -417,6 +417,32 @@ void DefRepeatedEnumProperty(nb::class_<T>& cls, const char* name,
       });
 }
 
+template <typename T>
+Array<T> NDArrayToArray(nb::ndarray<T, nb::c_contig> ndarray) {
+  std::vector<int64_t> shapes;
+  shapes.reserve(ndarray.ndim());
+  for (int i = 0; i < ndarray.ndim(); ++i) {
+    shapes.push_back(ndarray.shape(i));
+  }
+  xla::Array<int64_t> array(shapes);
+  array.Each([&](absl::Span<const int64_t> indices, int64_t* val) {
+    int64_t offset = indices.back();
+    int64_t multiplier = 1;
+    for (int i = ndarray.ndim() - 1; i > 0; --i) {
+      multiplier *= ndarray.shape(i);
+      offset += indices[i - 1] * multiplier;
+    }
+    *val = *(ndarray.data() + offset);
+  });
+  return array;
+}
+
+absl::StatusOr<HloSharding> SubgroupWithTileAssignmentHelper(
+    nb::ndarray<int64_t, nb::c_contig> tile_assignment,
+    absl::Span<const OpSharding::Type> subgroup_types) {
+  return HloSharding::Subgroup(NDArrayToArray(tile_assignment), subgroup_types);
+}
+
 }  // namespace
 
 void BuildXlaCompilerSubmodule(nb::module_& m) {
@@ -1385,6 +1411,11 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
       .def_static("manual", [] { return HloSharding::Manual(); })
       .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def_static("unknown", [] { return HloSharding::Unknown(); })
+      .def_static(
+          "subgroup_with_device_ordering",
+          xla::ValueOrThrowWrapper(SubgroupWithTileAssignmentHelper),
+          nb::arg("tile_assignment"),
+          nb::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
