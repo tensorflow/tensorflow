@@ -725,7 +725,7 @@ inline bool isGfx10orGfx11(OpKernelContext* ctx) {
   result = hipGetDeviceProperties(&props, dev);
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
-    return (gcnArchName.substr(0,5)=="gfx10" || gcnArchName.substr(0,5)=="gfx11");
+    return gcnArchName.substr(0,4)=="gfx1";
   }
   return false;
 }
