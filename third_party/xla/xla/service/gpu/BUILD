@@ -3126,7 +3126,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:all_gather_combiner",
-        "//xla/service:collective_utils",
         "//xla/service:hlo_domain_map",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_set",

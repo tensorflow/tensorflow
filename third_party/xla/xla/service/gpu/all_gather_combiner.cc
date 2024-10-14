@@ -30,22 +30,11 @@ limitations under the License.
 #include "xla/service/gpu/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_domain_map.h"
-#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 namespace {
-
-// In the absence of combiner threshold flag we try to determine the appropriate
-// value.
-int64_t SuggestCombinerThreshold(HloModule* module,
-                                 const se::DeviceDescription& device_info,
-                                 int64_t pointer_size) {
-  return ComputeSuggestedCombinerThreshold(*module, device_info,
-                                           ScheduleGpuModuleWithMemoryScheduler,
-                                           HloOpcode::kAllGather, pointer_size);
-}
 
 std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
