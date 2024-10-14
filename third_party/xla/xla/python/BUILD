@@ -945,11 +945,8 @@ cc_library(
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
-        ":py_client",
-        ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
@@ -961,6 +958,7 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "//xla/python/profiler:xplane_visitor_lib",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",
         "//xla/tsl/profiler/rpc/client:profiler_client_impl",
