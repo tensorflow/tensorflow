@@ -61,16 +61,9 @@ add-apt-repository -y 'ppa:deadsnakes/ppa'
 
 # Install Python packages for this container's version
 cat >pythons.txt <<EOF
-<<<<<<< HEAD
-$PY_VERSION
-$PY_VERSION-dev
-$PY_VERSION-venv
-$PY_VERSION-distutils
-=======
 $VERSION
 $VERSION-dev
 $VERSION-venv
->>>>>>> upstream/master
 EOF
 /setup.packages.sh pythons.txt
 

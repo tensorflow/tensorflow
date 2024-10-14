@@ -397,7 +397,6 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     int64_t usecs = std::min(timeout_microseconds, mio);
     SchedNonBlockingClosureAfter(
-<<<<<<< HEAD
         usecs, [this, is_callback_called, done, timeout_microseconds, usecs]() {
           for(auto cnt = timeout_microseconds - usecs; cnt > 0; cnt -= mio) {
             if(bool called = is_callback_called->exchange(false); called) {
@@ -410,14 +409,6 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
             Status status(
               absl::StatusCode::kDeadlineExceeded,
               "Collective has timed out waiting for other workers.");
-=======
-        timeout_microseconds, [this, is_callback_called, done]() {
-          bool called = is_callback_called->exchange(true);
-          if (!called) {
-            absl::Status status(
-                absl::StatusCode::kDeadlineExceeded,
-                "Collective has timed out waiting for other workers.");
->>>>>>> upstream/master
             StartAbort(status);
             done(status);
           }

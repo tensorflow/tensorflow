@@ -85,23 +85,12 @@ def verify_build_defines(params):
 def find_cc(repository_ctx, use_rocm_clang):
     """Find the C++ compiler."""
 
-<<<<<<< HEAD
-    if _is_clang_enabled(repository_ctx):
-        target_cc_name = "clang"
-        cc_path_envvar = "CLANG_COMPILER_PATH"
-    else:
-        # Return a dummy value for GCC detection here to avoid error
-        target_cc_name = "gcc"
-        cc_path_envvar = _GCC_HOST_COMPILER_PATH
-
-=======
     if use_rocm_clang:
         target_cc_name = "clang"
         cc_path_envvar = _CLANG_COMPILER_PATH
     else:
         target_cc_name = "gcc"
         cc_path_envvar = _GCC_HOST_COMPILER_PATH
->>>>>>> upstream/master
     cc_name = target_cc_name
 
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
@@ -241,8 +230,6 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.llvm_path + "/lib/clang/18/include")
     inc_dirs.append(rocm_config.llvm_path + "/lib/clang/19/include")
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
-<<<<<<< HEAD
-=======
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
@@ -256,7 +243,6 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17/include")
     inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/17/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
->>>>>>> upstream/master
     if int(rocm_config.rocm_version_number) >= 60200:
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/17/include")
         inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
@@ -949,10 +935,7 @@ _ENVIRONS = [
     _GCC_HOST_COMPILER_PREFIX,
     "TF_NEED_ROCM",
     "TF_ROCM_CLANG",
-<<<<<<< HEAD
-=======
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
->>>>>>> upstream/master
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
     "CLANG_COMPILER_PATH",

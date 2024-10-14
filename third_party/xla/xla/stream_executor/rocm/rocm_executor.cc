@@ -1089,14 +1089,8 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-<<<<<<< HEAD
-  desc.set_model_str(absl::StrFormat("cc_%d.%d.%d with %dB RAM, %d cores",
-                                     cc_major, cc_minor, device_ordinal, device_memory_size,
-                                     core_count));
-=======
   desc.set_model_str(
       absl::StrFormat("%dB RAM, %d cores", device_memory_size, core_count));
->>>>>>> upstream/master
 
   return std::make_unique<DeviceDescription>(std::move(desc));
 }

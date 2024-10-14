@@ -262,20 +262,6 @@ using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_gemm_batched_ex_get_solutions)         \
   __macro(rocblas_gemm_batched_ex_get_solutions_by_type) \
   __macro(rocblas_gemm_strided_batched_ex_get_solutions) \
-<<<<<<< HEAD
-  __macro(rocblas_strsm_batched)                \
-  __macro(rocblas_dtrsm_batched)                \
-  __macro(rocblas_ctrsm_batched)                \
-  __macro(rocblas_ztrsm_batched)                \
-  __macro(rocblas_create_handle)                \
-  __macro(rocblas_destroy_handle)               \
-  __macro(rocblas_get_stream)                   \
-  __macro(rocblas_set_stream)                   \
-  __macro(rocblas_set_atomics_mode)             \
-  __macro(rocblas_is_managing_device_memory)    \
-  __macro(rocblas_is_user_managing_device_memory) \
-  __macro(rocblas_set_workspace)
-=======
   __macro(rocblas_is_managing_device_memory)             \
   __macro(rocblas_is_user_managing_device_memory)        \
   __macro(rocblas_set_workspace)                         \
@@ -290,7 +276,6 @@ using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
   __macro(rocblas_set_atomics_mode)                      \
   __macro(rocblas_get_version_string_size)               \
   __macro(rocblas_get_version_string)
->>>>>>> upstream/master
 
 // clang-format on
 

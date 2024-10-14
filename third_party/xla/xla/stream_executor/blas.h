@@ -35,10 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
-<<<<<<< HEAD
-#include "xla/stream_executor/platform/port.h"
-=======
->>>>>>> upstream/master
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/protobuf/dnn.pb.h"

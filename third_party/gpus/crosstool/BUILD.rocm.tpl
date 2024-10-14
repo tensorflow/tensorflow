@@ -90,12 +90,7 @@ cc_toolchain_config(
     link_libs = [
         "-lstdc++",
         "-lm",
-<<<<<<< HEAD
-    ] + [%{link_flags}],
-    link_libs = [],
-=======
     ],
->>>>>>> upstream/master
     opt_link_flags = [],
     unfiltered_compile_flags = [
         "-Wno-builtin-macro-redefined",

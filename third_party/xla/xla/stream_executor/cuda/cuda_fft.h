@@ -28,10 +28,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-<<<<<<< HEAD
-#include "xla/stream_executor/platform/port.h"
-=======
->>>>>>> upstream/master
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 

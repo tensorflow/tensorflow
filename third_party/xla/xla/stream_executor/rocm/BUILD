@@ -802,11 +802,6 @@ cc_library(
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_executor_header",
-<<<<<<< HEAD
-        "//xla/stream_executor/platform",
-        "//xla/stream_executor/platform:dso_loader",
-=======
->>>>>>> upstream/master
         "@com_google_absl//absl/status",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:dso_loader",

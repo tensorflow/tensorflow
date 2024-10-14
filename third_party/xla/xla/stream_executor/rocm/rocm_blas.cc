@@ -1242,11 +1242,6 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-<<<<<<< HEAD
-
-#if TF_ROCM_VERSION >= 60200  // Not available in ROCM-6.1
-=======
->>>>>>> upstream/master
   absl::MutexLock lock{&mu_};
   size_t len = 0;
   if (auto res = wrap::rocblas_get_version_string_size(&len);

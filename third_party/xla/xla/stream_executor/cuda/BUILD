@@ -169,9 +169,6 @@ cc_library(
     ),
 )
 
-<<<<<<< HEAD
-cuda_only_cc_library(
-=======
 cc_library(
     name = "cuda_context",
     srcs = ["cuda_context.cc"],
@@ -196,7 +193,6 @@ cc_library(
 )
 
 cc_library(
->>>>>>> upstream/master
     name = "cuda_driver",
     srcs = ["cuda_driver.cc"],
     tags = [

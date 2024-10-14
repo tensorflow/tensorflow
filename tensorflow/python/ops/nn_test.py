@@ -16,13 +16,10 @@
 
 import functools
 import math
-<<<<<<< HEAD
 import os
 import time
-=======
 import sys
 
->>>>>>> upstream/master
 from absl.testing import parameterized
 import numpy as np
 
