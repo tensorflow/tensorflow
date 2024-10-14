@@ -22,8 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/protobuf_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"

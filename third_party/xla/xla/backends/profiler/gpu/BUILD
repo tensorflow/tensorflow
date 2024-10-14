@@ -12,6 +12,7 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
+    "if_nvcc",
     "internal_visibility",
     "tsl_copts",
     "tsl_gpu_library",
@@ -126,17 +127,14 @@ cuda_library(
     testonly = 1,
     srcs = ["cuda_test.cu.cc"],
     hdrs = ["cuda_test.h"],
-    copts = select({
-        "@local_config_cuda//cuda:using_nvcc": [
-            "-nvcc_options",
-            "ptxas-options=-v",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = if_nvcc([
+        "-nvcc_options",
+        "ptxas-options=-v",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart_static",
+        "@local_config_cuda//cuda:cuda_runtime",
         "@local_tsl//tsl/platform:test",
     ],
 )

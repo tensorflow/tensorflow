@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"
@@ -56,28 +57,6 @@ absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
-absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
-
-absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
-                        const se::DeviceDescription& device_info,
-                        const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn,
-                        const BlockLevelParameters& block_level_parameters) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
-
-absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters) {
-  return absl::UnimplementedError("not supported for this build configuration");
-}
-
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {}
 
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
@@ -103,7 +82,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, llvm::Module* llvm_module,
-    mlir::MLIRContext& mlir_context) {
+    mlir::MLIRContext& mlir_context, bool emit_kernel) {
   return absl::UnimplementedError("not supported for this build configuration");
 }
 
@@ -121,10 +100,16 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 
 namespace ir_emitter_triton_internal {
 
+llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
+    mlir::ImplicitLocOpBuilder& b,
+    absl::Span<const int64_t> num_output_tiles_per_dim) {
+  return {};
+}
+
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
     const TiledHloInstruction& tiled_hlo, mlir::Value argument_block) {
-  return MakeTensorPtrOpAndBoundaryChecks();
+  return absl::UnimplementedError("not supported for this build configuration");
 }
 }  // namespace ir_emitter_triton_internal
 

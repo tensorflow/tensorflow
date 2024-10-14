@@ -904,7 +904,6 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:ragged_math_ops_gen",
         "//tensorflow/python/platform:test",
-        "//third_party/py/numpy",
     ],
 )
 

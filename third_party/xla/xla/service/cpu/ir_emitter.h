@@ -69,6 +69,8 @@ namespace cpu {
 // Forward declare emitter for XLA:CPU thunks.
 class IrEmitter2;
 
+bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string);
+
 // This class is the top-level API for the XLA HLO --> LLVM IR compiler.  It
 // implements the DfsHloVisitor interface and emits HLO computations as LLVM IR
 // functions.

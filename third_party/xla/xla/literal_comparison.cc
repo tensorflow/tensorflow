@@ -354,8 +354,16 @@ class NearComparator {
     return primitive_util::FloatingPointTypeSwitch<int>(
         [&](const auto kType) -> int {
           using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
-          return CalculateDistanceInFloats(NarrowNativeT(expected),
-                                           NarrowNativeT(actual));
+          // TODO(b/370786669): Once ml_dtypes is updated to include
+          // https://github.com/jax-ml/ml_dtypes/pull/205, do not special-case
+          // e3m4 by casting to half first.
+          if constexpr (std::is_same_v<NarrowNativeT, tsl::float8_e3m4>) {
+            return CalculateDistanceInFloats(NarrowNativeT(half(expected)),
+                                             NarrowNativeT(half(actual)));
+          } else {
+            return CalculateDistanceInFloats(NarrowNativeT(expected),
+                                             NarrowNativeT(actual));
+          }
         },
         error_.low_precision_fp_error_spec.type);
   }

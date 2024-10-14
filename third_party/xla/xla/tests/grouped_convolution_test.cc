@@ -18,8 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "xla/client/xla_computation.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/despecializer.h"
 #include "xla/service/float_normalization.h"
 #include "xla/status_macros.h"

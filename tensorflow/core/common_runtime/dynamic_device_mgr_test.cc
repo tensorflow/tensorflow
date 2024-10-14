@@ -34,7 +34,7 @@ static Device* CreateDevice(const char* type, const char* name,
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
 
@@ -159,7 +159,7 @@ TEST(DynamicDeviceMgrTest, AddRepeatedDeviceToMgr) {
 
   std::vector<std::unique_ptr<Device>> added_devices;
   added_devices.emplace_back(std::move(d1));
-  Status s = dm->AddDevices(std::move(added_devices));
+  absl::Status s = dm->AddDevices(std::move(added_devices));
   EXPECT_TRUE(
       absl::StrContains(s.message(), "name conflicts with an existing device"));
 }
@@ -177,7 +177,7 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceFromMgr) {
   EXPECT_EQ(dm->ListDevices().size(), 1);
 
   std::vector<Device*> removed_devices{d0_ptr, d1_ptr};
-  Status s = dm->RemoveDevices(removed_devices);
+  absl::Status s = dm->RemoveDevices(removed_devices);
   EXPECT_TRUE(absl::StrContains(s.message(), "Unknown device"));
   EXPECT_EQ(dm->ListDevices().size(), 1);  // d0 *not* removed.
 }
@@ -194,7 +194,7 @@ TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceByNameFromMgr) {
   EXPECT_EQ(dm->ListDevices().size(), 1);
 
   std::vector<string> removed_devices{d0_name, d1_name};
-  Status s = dm->RemoveDevicesByName(removed_devices);
+  absl::Status s = dm->RemoveDevicesByName(removed_devices);
   EXPECT_TRUE(absl::StrContains(s.message(), "unknown device"));
   EXPECT_EQ(dm->ListDevices().size(), 1);  // d0 *not* removed
 }

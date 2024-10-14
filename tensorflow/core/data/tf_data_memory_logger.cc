@@ -57,7 +57,7 @@ void LogDatasetMemoryUsage() {
     int64_t total_buffered_bytes =
         metric_collector->GetModel()->output()->TotalBufferedBytes();
     model::ModelProto model_proto;
-    Status s = metric_collector->GetModel()->ToProto(&model_proto);
+    absl::Status s = metric_collector->GetModel()->ToProto(&model_proto);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to convert model to proto: " << s;
     }

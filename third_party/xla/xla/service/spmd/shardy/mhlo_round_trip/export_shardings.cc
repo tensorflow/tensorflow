@@ -152,7 +152,7 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
-        return mlir::sdy::getMeshAttr(symbolTable, sharding.getMeshName());
+        return sharding.getMesh(symbolTable);
       };
 
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {

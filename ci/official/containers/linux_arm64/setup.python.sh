@@ -36,7 +36,6 @@ else
 $VERSION
 $VERSION-dev
 $VERSION-venv
-$VERSION-distutils
 EOF
 fi
 /setup.packages.sh pythons.txt

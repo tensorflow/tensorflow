@@ -85,8 +85,8 @@ class DeadnessAnalysis {
 
   // Run the deadness analysis over `graph` and returns an error or a populated
   // instance of DeadnessAnalysis in `result`.
-  static Status Run(const Graph& graph,
-                    std::unique_ptr<DeadnessAnalysis>* result);
+  static absl::Status Run(const Graph& graph,
+                          std::unique_ptr<DeadnessAnalysis>* result);
 
  protected:
   static DeadnessPredicate MakeDeadnessPredicate(void* pred) {

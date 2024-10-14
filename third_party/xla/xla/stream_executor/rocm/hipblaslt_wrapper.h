@@ -17,8 +17,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_HIPBLASLT_WRAPPER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_HIPBLASLT_WRAPPER_H_
 
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-
 #include "rocm/rocm_config.h"
 
 #if TF_HIPBLASLT
@@ -27,8 +25,7 @@ limitations under the License.
 #else
 #include "rocm/include/hipblaslt.h"
 #endif
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 
 namespace stream_executor {
@@ -47,22 +44,21 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define HIPBLASLT_API_WRAPPER(api_name)                                       \
-  template <typename... Args>                                                 \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) {              \
-    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;            \
-    static FuncPtrT loaded = []() -> FuncPtrT {                               \
-      static const char* kName = TO_STR(api_name);                            \
-      void* f;                                                                \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
-          stream_executor::internal::CachedDsoLoader::GetHipblasltDsoHandle() \
-              .value(),                                                       \
-          kName, &f);                                                         \
-      CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in hipblaslt lib; dlerror: " << s.message();         \
-      return reinterpret_cast<FuncPtrT>(f);                                   \
-    }();                                                                      \
-    return loaded(args...);                                                   \
+#define HIPBLASLT_API_WRAPPER(api_name)                                    \
+  template <typename... Args>                                              \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) {           \
+    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;         \
+    static FuncPtrT loaded = []() -> FuncPtrT {                            \
+      static const char* kName = TO_STR(api_name);                         \
+      void* f;                                                             \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
+          tsl::internal::CachedDsoLoader::GetHipblasltDsoHandle().value(), \
+          kName, &f);                                                      \
+      CHECK(s.ok()) << "could not find " << kName                          \
+                    << " in hipblaslt lib; dlerror: " << s.message();      \
+      return reinterpret_cast<FuncPtrT>(f);                                \
+    }();                                                                   \
+    return loaded(args...);                                                \
   }
 
 #endif

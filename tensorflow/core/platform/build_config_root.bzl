@@ -9,6 +9,7 @@ load(
     _if_llvm_powerpc_available = "if_llvm_powerpc_available",
     _if_llvm_system_z_available = "if_llvm_system_z_available",
     _if_llvm_x86_available = "if_llvm_x86_available",
+    _if_pywrap = "if_pywrap",
     _if_static = "if_static",
     _if_static_and_not_mobile = "if_static_and_not_mobile",
     _tf_additional_grpc_deps_py = "tf_additional_grpc_deps_py",
@@ -35,6 +36,7 @@ if_llvm_system_z_available = _if_llvm_system_z_available
 if_llvm_x86_available = _if_llvm_x86_available
 if_dynamic_kernels = _if_dynamic_kernels
 if_static = _if_static
+if_pywrap = _if_pywrap
 if_static_and_not_mobile = _if_static_and_not_mobile
 tf_additional_grpc_deps_py = _tf_additional_grpc_deps_py
 tf_additional_license_deps = _tf_additional_license_deps

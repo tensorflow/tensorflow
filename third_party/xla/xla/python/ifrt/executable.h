@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/execute_options.pb.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -122,6 +123,10 @@ struct ExecuteOptions {
   // input arrays.
   absl::flat_hash_set<int> non_donatable_input_indices;
 
+  // If true, populate `ExecuteResult::status`. Otherwise, the status is left as
+  // an invalid future.
+  bool fill_status = false;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
 
   static absl::StatusOr<ExecuteOptions> FromProto(
@@ -204,7 +209,8 @@ class LoadedExecutable
 
   // Result from an execution.
   struct ExecuteResult {
-    // Resulting status of the execution.
+    // Resulting status of the execution. Filled only if
+    // `ExecuteOptions::fill_status` is true.
     Future<> status;
     // Output arrays.
     std::vector<tsl::RCReference<Array>> outputs;

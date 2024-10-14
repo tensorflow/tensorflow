@@ -42,7 +42,6 @@ from . import ifrt_proxy
 from . import jax_jit
 from . import mlir
 from . import ops
-from . import outfeed_receiver
 from . import pmap_lib
 from . import profiler
 from . import pytree
@@ -73,6 +72,8 @@ class PrimitiveType(enum.IntEnum):
   U16: PrimitiveType
   U32: PrimitiveType
   U64: PrimitiveType
+  F8E3M4: PrimitiveType
+  F8E4M3: PrimitiveType
   F8E4M3FN: PrimitiveType
   F8E4M3B11FNUZ: PrimitiveType
   F8E4M3FNUZ: PrimitiveType
@@ -497,6 +498,7 @@ class Client:
   def local_device_count(self) -> int: ...
   def devices(self) -> List[Device]: ...
   def local_devices(self) -> List[Device]: ...
+  def _get_all_devices(self) -> List[Device]: ...
   def device_from_local_hardware_id(self, int) -> Device: ...
   def live_buffers(self) -> List[Any]: ...
   def live_arrays(self) -> List[ArrayImpl]: ...
@@ -821,6 +823,7 @@ def get_distributed_runtime_client(
     max_missing_heartbeats: Optional[int] = ...,
     missed_heartbeat_callback: Optional[Any] = ...,
     shutdown_on_destruction: Optional[bool] = ...,
+    use_compression: Optional[bool] = ...,
 ) -> DistributedRuntimeClient: ...
 
 class PreemptionSyncManager:

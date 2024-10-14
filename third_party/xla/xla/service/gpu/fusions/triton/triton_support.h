@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_SUPPORT_H_
 
@@ -22,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -47,6 +49,16 @@ absl::Status EnsureTritonSupportsComputeCapability(
 // instead.
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
+
+// Returns `CodegenDecision`'s equivalent of `true` if all the instructions in
+// the parameter computation are supported by the Triton emitters for the given
+// compute capability.
+//
+// This function has the same caveats as `IsTritonSupportedInstruction` as
+// defined in the present namespace.
+CodegenDecision IsTritonSupportedComputation(
+    const HloComputation& computation,
+    const se::GpuComputeCapability& gpu_compute_capability);
 
 // Returns `true` if the parameter computation is a Triton fused computation,
 // i.e. the calling fusion instruction has `FusionKind::kCustom` and

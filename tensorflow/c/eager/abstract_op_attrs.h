@@ -41,7 +41,7 @@ class AbstractOpAttrs {
   virtual bool GetFloat(absl::string_view attr_name, float* result) const = 0;
   virtual bool GetBool(absl::string_view attr_name, bool* result) const = 0;
   virtual bool GetType(absl::string_view attr_name, DataType* result) const = 0;
-  virtual Status GetTypeList(
+  virtual absl::Status GetTypeList(
       absl::string_view attr_name,
       absl::InlinedVector<DataType, 4>* type_list) const = 0;
 

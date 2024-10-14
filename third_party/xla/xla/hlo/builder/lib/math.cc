@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <vector>
@@ -122,6 +123,10 @@ static absl::Status EnsureOperandIsRealFp(absl::string_view op_name,
   return absl::OkStatus();
 }
 
+XlaOp PredFalse(XlaBuilder* builder, const Shape& shape) {
+  return Broadcast(ConstantR0<bool>(builder, false), shape.dimensions());
+}
+
 XlaOp IsPosInf(XlaOp operand) {
   auto& b = *operand.builder();
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -129,7 +134,9 @@ XlaOp IsPosInf(XlaOp operand) {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
     // to be correct for all types, we'd need to Gt(MaxFiniteValue).
-    return Eq(operand, MaxValue(&b, shape.element_type()));
+    return primitive_util::HasInfinity(shape.element_type())
+               ? Eq(operand, MaxValue(&b, shape.element_type()))
+               : PredFalse(&b, shape);
   });
 }
 
@@ -140,7 +147,9 @@ XlaOp IsNegInf(XlaOp operand) {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     // Note that this is only correct for floating-point types.  If we wanted it
     // to be correct for all types, we'd need to Lt(MinFiniteValue).
-    return Eq(operand, MinValue(&b, shape.element_type()));
+    return primitive_util::HasInfinity(shape.element_type())
+               ? Eq(operand, MinValue(&b, shape.element_type()))
+               : PredFalse(&b, shape);
   });
 }
 
@@ -175,11 +184,10 @@ XlaOp IsNegZero(XlaOp operand) {
       case F32:
         return Eq(BitcastConvertType(operand, U32),
                   ConstantR0WithType(&b, U32, uint32_t{1} << 31));
+      case F8E3M4:
+      case F8E4M3:
       case F8E5M2:
       case F8E4M3FN:
-      case F8E4M3B11FNUZ:
-      case F8E5M2FNUZ:
-      case F8E4M3FNUZ:
       case F16:
       case BF16:
         // Not all XLA backends handle U16 well, so we convert to F32/U32.
@@ -187,6 +195,12 @@ XlaOp IsNegZero(XlaOp operand) {
         // backends that *do* support it.
         return Eq(BitcastConvertType(ConvertElementType(operand, F32), U32),
                   ConstantR0WithType(&b, U32, uint32_t{1} << 31));
+      case F8E4M3B11FNUZ:
+      case F8E5M2FNUZ:
+      case F8E4M3FNUZ: {
+        // FP8 types with no unsigned zero representation.
+        return PredFalse(&b, shape);
+      }
       default:
         LOG(FATAL) << "Expected real fp type.";
     }
@@ -325,30 +339,6 @@ XlaOp Erfc(XlaOp x) {
                     ScalarLike(x, 1) - ErfImpl32Cephes(x));
     });
   });
-}
-
-// Compute a rational approximation of the error function.
-static XlaOp ErfImpl32(XlaOp x) {
-  static const std::array<float, 5> kAlpha{
-      0.00022905065861350646f, 0.0034082910107109506f, 0.050955695062380861f,
-      0.18520832239976145f, 1.128379143519084f};
-
-  static const std::array<float, 7> kBeta{-1.1791602954361697e-7,
-                                          0.000023547966471313185f,
-                                          0.0010179625278914885f,
-                                          0.014070470171167667f,
-                                          0.11098505178285362f,
-                                          0.49746925110067538f,
-                                          1.0f};
-
-  // We clamp x to be within [-c;c] where c = erfinv(1-2^-23), outside of
-  // which x should be +/-1.
-  constexpr float kErfInvOneMinusHalfULP = 3.7439211627767994f;
-  x = Clamp(ScalarLike(x, -kErfInvOneMinusHalfULP), x,
-            ScalarLike(x, kErfInvOneMinusHalfULP));
-  auto x2 = x * x;
-  return (x * EvaluatePolynomial<float>(x2, kAlpha)) /
-         EvaluatePolynomial<float>(x2, kBeta);
 }
 
 namespace {
@@ -973,8 +963,8 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
     PrimitiveType a_x_type = a_shape.element_type();
     bool needs_upcast = false;
-    for (PrimitiveType type :
-         {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
+    for (PrimitiveType type : {BF16, F16, F8E3M4, F8E4M3, F8E5M2, F8E4M3FN,
+                               F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;
@@ -1026,8 +1016,8 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IgammaGradA", a));
     bool needs_upcast = false;
-    for (PrimitiveType type :
-         {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
+    for (PrimitiveType type : {BF16, F16, F8E3M4, F8E4M3, F8E5M2, F8E4M3FN,
+                               F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
       if (a_shape.element_type() == type) {
         needs_upcast = true;
         break;
@@ -1485,6 +1475,23 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
                Broadcast(ScalarLike(from_as_int, -1), shape.dimensions()),
                Broadcast(ScalarLike(from_as_int, 1), shape.dimensions()));
     auto result = Add(from_as_int, magnitude_adjustment);
+
+    if (shape.element_type() == F8E5M2FNUZ ||
+        shape.element_type() == F8E4M3FNUZ ||
+        shape.element_type() == F8E4M3B11FNUZ) {
+      // Handle 'from' is the negative value closest to zero and 'to' is
+      // positive. For FNUZ dtypes, the result is +0 instead of -0 since -0
+      // represents a NaN value.
+      const int64_t least_negative = sign_mask | 1;
+      auto to_is_nonnegative = Not(ConvertElementType(to_sign, PRED));
+      auto predicate =
+          And(Eq(from_as_int, ScalarLike(from_as_int, least_negative)),
+              to_is_nonnegative);
+      auto result_if_predicate =
+          Broadcast(ScalarLike(from_as_int, 0), shape.dimensions());
+      result = Select(predicate, result_if_predicate, result);
+    }
+
     // Handle from == ±0.
     result = Select(from_is_zero,
                     Select(to_is_zero, result_for_both_zero,

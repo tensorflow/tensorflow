@@ -101,7 +101,7 @@ inline LrtResult<llvm::SmallVector<TensorUseInfo>> GetTensorUses(
 inline LrtResult<TensorUseInfo> GetTensorOnlyUse(LrtTensor tensor) {
   LRT_ASSIGN_OR_RETURN_RESULT(auto uses, GetTensorUses(tensor), TensorUseInfo);
   if (uses.size() != 1) {
-    return LrtResult<TensorUseInfo>::FromCode(kLrtStatusGraphInvariantError);
+    return LrtResult<TensorUseInfo>::FromStatus(kLrtStatusGraphInvariantError);
   }
   return LrtResult<TensorUseInfo>::FromValue(uses[0]);
 }
@@ -123,7 +123,7 @@ inline LrtResult<llvm::ArrayRef<LrtTensor>> GetOpIns(LrtOp op) {
 inline LrtResult<LrtTensor> GetOnlyOpIn(LrtOp op) {
   LRT_ASSIGN_OR_RETURN_RESULT(auto ins, GetOpIns(op), LrtTensor);
   if (ins.size() != 1) {
-    return LrtResult<LrtTensor>::FromCode(kLrtStatusGraphInvariantError);
+    return LrtResult<LrtTensor>::FromStatus(kLrtStatusGraphInvariantError);
   }
   return LrtResult<LrtTensor>::FromValue(ins[0]);
 }
@@ -145,7 +145,7 @@ inline LrtResult<llvm::ArrayRef<LrtTensor>> GetOpOuts(LrtOp op) {
 inline LrtResult<LrtTensor> GetOnlyOpOut(LrtOp op) {
   LRT_ASSIGN_OR_RETURN_RESULT(auto outs, GetOpOuts(op), LrtTensor);
   if (outs.size() != 1) {
-    return LrtResult<LrtTensor>::FromCode(kLrtStatusGraphInvariantError);
+    return LrtResult<LrtTensor>::FromStatus(kLrtStatusGraphInvariantError);
   }
   return LrtResult<LrtTensor>::FromValue(outs[0]);
 }
@@ -195,7 +195,7 @@ inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
                               LrtSubgraph);
 
   if (num_subgraphs != 1) {
-    return LrtResult<LrtSubgraph>::FromCode(kLrtStatusErrorUnsupported);
+    return LrtResult<LrtSubgraph>::FromStatus(kLrtStatusErrorUnsupported);
   }
 
   LrtSubgraph subgraph = nullptr;
@@ -246,7 +246,7 @@ inline bool MatchTensorHasUses(LrtTensor tensor,
 }
 
 // Matches a tensor with no uses.
-inline bool MatchkTensorNoUses(LrtTensor tensor) {
+inline bool MatchTensorNoUses(LrtTensor tensor) {
   lrt_param_index_t num_uses;
   lrt_param_index_t* use_user_arg_ind;
   LrtOpArray users = nullptr;
@@ -321,16 +321,16 @@ inline bool ValidateTopology(llvm::ArrayRef<LrtOp> ops) {
   return true;
 }
 
-// Match buffer behind given tensor contains data.
+// Match weights behind given tensor contains data.
 template <typename T>
-inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+inline bool MatchWeights(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
+  LrtWeights weights = nullptr;
+  LRT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LRT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
   MATCH_TRUE(data != nullptr);
 
   MATCH_EQ(size, expected_data.size() * sizeof(T));
@@ -338,15 +338,15 @@ inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
          expected_data;
 }
 
-// Match given tensor having no (empty) buffer.
-inline bool MatchNoBuffer(LrtTensor tensor) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+// Match given tensor having no (empty) weights.
+inline bool MatchNoWeights(LrtTensor tensor) {
+  LrtWeights weights = nullptr;
+  LRT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LRT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
 
   return size == 0;
 }

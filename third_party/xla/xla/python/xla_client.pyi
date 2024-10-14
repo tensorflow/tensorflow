@@ -59,6 +59,9 @@ _version: int
 mlir_api_version: int
 
 bfloat16: type[numpy.generic]
+# TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+# float8_e3m4: type[numpy.generic]
+# float8_e4m3: type[numpy.generic]
 float8_e4m3fn: type[numpy.generic]
 float8_e4m3b11fnuz: type[numpy.generic]
 float8_e4m3fnuz: type[numpy.generic]
@@ -70,13 +73,6 @@ _NameValueMapping = Mapping[str, Union[str, int, list[int], float, bool]]
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
   ...
-
-def execute_with_python_values(executable: LoadedExecutable, arguments: Sequence[Any],
-                               backend: Client) -> Sequence[numpy.ndarray]: ...
-
-def execute_with_python_values_replicated(
-    executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
-    backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
 def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ...
 
@@ -101,6 +97,7 @@ def make_gpu_client(
     platform_name: str | None = ...,
     allowed_devices: set[int] | None = ...,
     mock: bool | None = ...,
+    mock_gpu_topology: str | None = ...,
 ) -> Client:
   ...
 

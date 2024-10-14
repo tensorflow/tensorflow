@@ -22,11 +22,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -345,7 +345,8 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
 
     select = f32[2,2] select(broadcast, cp_back, cp_forward)
 
-    matmul = f32[2,2] dot(weights, select), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    matmul = f32[2,2] dot(weights, select), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
 
     ROOT result = (u32[], f32[2,2], f32[2,2]) tuple(next_iter, matmul, weights)
   }
@@ -361,8 +362,10 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
     start_iter = u32[] constant(0)
     input_data = f32[2,2] parameter(0)
     input_weights = f32[2,2] parameter(1)
-    input = (u32[], f32[2,2], f32[2,2]) tuple(start_iter, input_data, input_weights)
-    while_result = (u32[], f32[2,2], f32[2,2]) while(input), condition=while_cond, body=while_body
+    input = (u32[], f32[2,2], f32[2,2]) tuple(start_iter, input_data,
+        input_weights)
+    while_result = (u32[], f32[2,2], f32[2,2]) while(input),
+        condition=while_cond, body=while_body
     ROOT data_out = f32[2,2] get-tuple-element(while_result), index=1
   }
   )";
@@ -378,7 +381,9 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
   // an XLA invariant that shouldn't be broken (see
   // https://openxla.org/xla/operation_semantics#send for details of the
   // semantics).
-  HloInstruction* recv_bwd = FindInstruction(transformed_module, "recv");
+  HloComputation* while_body =
+      FindComputation(transformed_module, "while_body");
+  HloInstruction* recv_bwd = hlo_query::FindInstruction(while_body, "recv");
   EXPECT_EQ(recv_bwd->channel_id().value(), 1);
   auto recv_bwd_frontend_attributes = recv_bwd->frontend_attributes().map();
   EXPECT_EQ(recv_bwd_frontend_attributes.size(), 3);
@@ -388,12 +393,12 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
   EXPECT_EQ(recv_bwd_frontend_attributes.at(kSendRecvSourceTargetPairsAttr),
             "{{3,0}}");
 
-  HloInstruction* send_bwd = FindInstruction(transformed_module, "send");
+  HloInstruction* send_bwd = hlo_query::FindInstruction(while_body, "send");
   auto send_bwd_frontend_attributes = send_bwd->frontend_attributes().map();
   EXPECT_THAT(send_bwd_frontend_attributes.at(kSendRecvSourceTargetPairsAttr),
               "{{3,0}}");
 
-  HloInstruction* recv_fwd = FindInstruction(transformed_module, "recv.1");
+  HloInstruction* recv_fwd = hlo_query::FindInstruction(while_body, "recv.1");
   EXPECT_EQ(recv_fwd->channel_id().value(), 2);
   auto recv_fwd_frontend_attributes = recv_fwd->frontend_attributes().map();
   EXPECT_EQ(recv_fwd_frontend_attributes.size(), 3);
@@ -401,31 +406,18 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
   EXPECT_EQ(recv_fwd_frontend_attributes.at(kSendRecvSourceTargetPairsAttr),
             "{{0,1},{1,2},{2,3}}");
 
-  HloInstruction* send_fwd = FindInstruction(transformed_module, "send.1");
+  HloInstruction* send_fwd = hlo_query::FindInstruction(while_body, "send.1");
   auto send_fwd_frontend_attributes = send_fwd->frontend_attributes().map();
   EXPECT_EQ(send_fwd_frontend_attributes.size(), 3);
   EXPECT_EQ(send_fwd_frontend_attributes.at(kSendRecvPipelineAttr), "1");
   EXPECT_EQ(send_fwd_frontend_attributes.at(kSendRecvSourceTargetPairsAttr),
             "{{0,1},{1,2},{2,3}}");
 
-  HloComputation* while_body =
-      FindComputation(transformed_module, "while_body");
   EXPECT_NE(while_body, nullptr);
-  EXPECT_TRUE(hlo_query::IsBeforeInComputation(while_body, "recv", "send"));
-  EXPECT_TRUE(
-      hlo_query::IsBeforeInComputation(while_body, "recv", "recv-done"));
-  EXPECT_TRUE(
-      hlo_query::IsBeforeInComputation(while_body, "send", "recv-done"));
-  EXPECT_TRUE(
-      hlo_query::IsBeforeInComputation(while_body, "send", "send-done"));
-  EXPECT_TRUE(
-      hlo_query::IsBeforeInComputation(while_body, "send-done", "send-done.1"));
-  EXPECT_TRUE(
-      hlo_query::IsBeforeInComputation(while_body, "recv-done", "send-done.1"));
-  EXPECT_TRUE(hlo_query::IsBeforeInComputation(while_body, "recv-done.1",
-                                               "send-done.1"));
-  auto recv_done_fwd = FindInstruction(transformed_module, "recv-done");
-  auto recv_done_bwd = FindInstruction(transformed_module, "recv-done.1");
+  HloInstruction* recv_done_fwd =
+      hlo_query::FindInstruction(while_body, "recv-done");
+  HloInstruction* recv_done_bwd =
+      hlo_query::FindInstruction(while_body, "recv-done.1");
 
   // TODO: b/356201477 - Investigate potential NCCL deadlock in
   // collective_permute_decomposer

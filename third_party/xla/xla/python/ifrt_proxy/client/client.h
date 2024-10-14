@@ -110,12 +110,13 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return addressable_devices().size();
   }
   absl::Span<xla::ifrt::Device* const> devices() const override {
-    return device_ptrs_;
+    return primary_device_ptrs_;
   }
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override {
     return addressable_device_ptrs_;
   }
   int process_index() const override { return process_index_; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override;
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
   absl::StatusOr<xla::ifrt::Device*> LookupDevice(
@@ -148,8 +149,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
          std::string platform_name, std::string platform_version,
          uint64_t platform_id, uint64_t process_index, std::string runtime_type,
          absl::flat_hash_map<int, std::unique_ptr<Device>> devices,
-         std::vector<xla::ifrt::Device*> device_ptrs,
+         std::vector<xla::ifrt::Device*> primary_device_ptrs,
          std::vector<xla::ifrt::Device*> addressable_device_ptrs,
+         std::vector<xla::ifrt::Device*> all_device_ptrs,
          absl::flat_hash_map<int, std::unique_ptr<Memory>> memories);
 
   // rpc_helper_ will be referenced by various IFRT objects whose lifetime is
@@ -166,8 +168,9 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   const AttributeMap attributes_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Device>> devices_;
-  const std::vector<xla::ifrt::Device*> device_ptrs_;
+  const std::vector<xla::ifrt::Device*> primary_device_ptrs_;
   const std::vector<xla::ifrt::Device*> addressable_device_ptrs_;
+  const std::vector<xla::ifrt::Device*> all_device_ptrs_;
 
   const absl::flat_hash_map<int, std::unique_ptr<Memory>> memories_;
 

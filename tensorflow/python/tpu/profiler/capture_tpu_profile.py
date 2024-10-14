@@ -19,15 +19,15 @@ import sys
 
 from absl import app
 from absl import flags
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
-from tensorflow.python.profiler import profiler_client
-from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import versions
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import profiler_client
+from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.tpu.profiler import version as profiler_version
 
 FLAGS = flags.FLAGS
@@ -139,7 +139,7 @@ def main(unused_argv=None):
   print('TensorFlow version %s detected' % tf_version)
   print('Welcome to the Cloud TPU Profiler v%s' % profiler_version.__version__)
 
-  if LooseVersion(tf_version) < LooseVersion('2.2.0'):
+  if Version(tf_version) < Version('2.2.0'):
     sys.exit('You must install tensorflow >= 2.2.0 to use this plugin.')
 
   if not FLAGS.service_addr and not FLAGS.tpu:
@@ -188,7 +188,7 @@ def main(unused_argv=None):
       gfile.MakeDirs(FLAGS.logdir)
 
     try:
-      if LooseVersion(tf_version) < LooseVersion('2.3.0'):
+      if Version(tf_version) < Version('2.3.0'):
         profiler_client.trace(service_addr, os.path.expanduser(FLAGS.logdir),
                               duration_ms, workers_list,
                               FLAGS.num_tracing_attempts)

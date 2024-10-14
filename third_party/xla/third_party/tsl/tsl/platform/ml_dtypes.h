@@ -20,6 +20,8 @@ limitations under the License.
 #include "ml_dtypes/include/intn.h"  // from @ml_dtypes
 
 namespace tsl {
+using float8_e3m4 = ::ml_dtypes::float8_e3m4;
+using float8_e4m3 = ::ml_dtypes::float8_e4m3;
 using float8_e4m3fn = ::ml_dtypes::float8_e4m3fn;
 using float8_e4m3fnuz = ::ml_dtypes::float8_e4m3fnuz;
 using float8_e4m3b11fnuz = ::ml_dtypes::float8_e4m3b11fnuz;

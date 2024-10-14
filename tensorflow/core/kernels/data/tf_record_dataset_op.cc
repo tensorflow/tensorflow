@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -265,6 +266,14 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       }
 
       // Actually move on to next file.
+      tsl::profiler::TraceMe traceme(
+          [&, current_file_index = current_file_index_] {
+            return tsl::profiler::TraceMeEncode(
+                "TFRecordDatasetOp::Iterator::SetupStreamsLocked",
+                {{"filename", dataset()->filenames_[current_file_index]}});
+          },
+          tsl::profiler::kInfo);
+
       TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
           TranslateFileName(dataset()->filenames_[current_file_index_]),
           &file_));

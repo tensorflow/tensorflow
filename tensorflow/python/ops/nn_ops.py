@@ -3748,8 +3748,13 @@ def gelu(features, approximate=False, name=None):
     if approximate:
       return gen_nn_ops.gelu(features, name=name)
     else:
-      return 0.5 * features * (1.0 + math_ops.erf(
-          features / math_ops.cast(1.4142135623730951, features.dtype)))
+      return (
+          0.5
+          * features
+          * math_ops.erfc(
+              -features * math_ops.cast(0.7071067811865476, features.dtype)
+          )
+      )
 
 
 def _flatten_outer_dims(logits):

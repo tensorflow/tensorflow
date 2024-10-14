@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -106,6 +107,13 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       }
       return false;
     }
+    // Reduction.
+    case HloOpcode::kReduce:
+      return absl::c_all_of(hlo.called_computations().front()->instructions(),
+                            [this](const HloInstruction* hlo) {
+                              return hlo->opcode() == HloOpcode::kParameter ||
+                                     this->IsSupported(*hlo);
+                            });
     default:
       return false;
   }

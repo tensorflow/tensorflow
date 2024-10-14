@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/cpu/compiler_functor.h"
 #include "xla/service/llvm_compiler.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -79,7 +82,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       LLVMCompiler::ModuleHook post_optimization_hook,
       absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
           post_codegen_hook,
-      size_t num_jit_dylibs = 1);
+      size_t num_jit_dylibs, absl::string_view max_cpu_isa);
 
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
       const llvm::TargetOptions& target_options,
@@ -90,7 +93,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       LLVMCompiler::ModuleHook post_optimization_hook,
       absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
           post_codegen_hook,
-      size_t num_jit_dylibs = 1);
+      size_t num_jit_dylibs, absl::string_view max_cpu_isa);
 
   ~SimpleOrcJIT() override;
 
@@ -117,7 +120,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   // the current machine.
   static std::unique_ptr<llvm::TargetMachine> InferTargetMachineForJIT(
       const llvm::TargetOptions& target_options,
-      llvm::CodeGenOptLevel opt_level);
+      llvm::CodeGenOptLevel opt_level, absl::string_view max_cpu_isa);
 
   int64_t SizeOfGeneratedCodeInBytes() const {
     return size_of_generated_code_in_bytes_;
@@ -167,6 +170,22 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   llvm::JITEventListener* perf_jit_event_listener_;
 };
 
+std::optional<tsl::port::CPUFeature> ISAStringToFeature(
+    absl::string_view feature_string);
+
+bool ShouldEnableCPUFeature(llvm::StringRef feature,
+                            const tsl::port::CPUFeature& max_feature);
+
+struct DetectedMachineAttributes {
+  std::vector<std::string> features;
+  bool features_filtered;
+};
+
+DetectedMachineAttributes DetectMachineAttributes(
+    std::optional<tsl::port::CPUFeature> max_feature);
+
+// TODO(penporn): PJRT's CPU client also calls this function. We should
+// make it get the same filtered attributes according to the `max_isa` setting.
 std::vector<std::string> DetectMachineAttributes();
 
 }  // namespace xla::cpu

@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   cpuinfo
   GIT_REPOSITORY https://github.com/pytorch/cpuinfo
   # Sync with tensorflow/workspace2.bzl
-  GIT_TAG fa1c679da8d19e1d87f20175ae1ec10995cd3dd3
+  GIT_TAG 1e83a2fdd3102f65c6f1fb602c1b320486218a99
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/cpuinfo"
 )

@@ -59,11 +59,11 @@ namespace functor {
 
 template <typename T>
 struct StatelessRandomGammaFunctor<CPUDevice, T> {
-  static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64_t num_samples, int64_t num_alphas,
-                     int64_t samples_per_alpha, const uint64* key,
-                     const uint64* counter, random::PhiloxRandom random,
-                     T* samples_flat) {
+  static absl::Status Fill(OpKernelContext* ctx, const T* alpha_flat,
+                           int64_t num_samples, int64_t num_alphas,
+                           int64_t samples_per_alpha, const uint64* key,
+                           const uint64* counter, random::PhiloxRandom random,
+                           T* samples_flat) {
     if (key != nullptr && counter != nullptr) {
       random = GetPhiloxRandomFromCounterKeyMem(counter, key);
     }

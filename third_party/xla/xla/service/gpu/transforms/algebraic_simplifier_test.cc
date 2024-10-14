@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/algebraic_simplifier.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -27,7 +30,121 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+namespace m = ::xla::match;
+
 class GpuAlgebraicSimplifierTest : public HloTestBase {};
+
+TEST_F(GpuAlgebraicSimplifierTest, SinkBroadcastOperandsOfChainedAdds) {
+  const std::string& hlo_string = R"(
+    HloModule m
+    test {
+      in = bf16[1,3,3,1] parameter(0)
+      filter = bf16[2,2,1,1] constant({{{{1.1}}, {{2.1}}},
+                                      {{{3.1}}, {{4.1}}}})
+      conv = bf16[1,2,2,1] convolution(in, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      const0 = bf16[2] constant({0, 0.25})
+      bcast0 = bf16[1,2,2,1] broadcast(const0), dimensions={1}
+      add0 = bf16[1,2,2,1] add(conv, bcast0)
+      const1 = bf16[2] constant({1, 1.25})
+      bcast1 = bf16[1,2,2,1] broadcast(const1), dimensions={1}
+      ROOT add1 = bf16[1,2,2,1] add(add0, bcast1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_sink_broadcast(true);
+  ASSERT_TRUE(
+      GpuAlgebraicSimplifier(options, se::CudaComputeCapability::Ampere())
+          .Run(module.get())
+          .value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::AddAnyOrder(
+                  m::Broadcast(m::Add(m::Constant(), m::Constant())),
+                  m::Convolution(m::Op(), m::Op()))));
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       DoNotSinkBroadcastOperandsOfChainedAddsWhenDisabled) {
+  const std::string& hlo_string = R"(
+    HloModule m
+    test {
+      in = bf16[1,3,3,1] parameter(0)
+      filter = bf16[2,2,1,1] constant({{{{1.1}}, {{2.1}}},
+                                      {{{3.1}}, {{4.1}}}})
+      conv = bf16[1,2,2,1] convolution(in, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      const0 = bf16[2] constant({0, 0.25})
+      bcast0 = bf16[1,2,2,1] broadcast(const0), dimensions={1}
+      add0 = bf16[1,2,2,1] add(conv, bcast0)
+      const1 = bf16[2] constant({1, 1.25})
+      bcast1 = bf16[1,2,2,1] broadcast(const1), dimensions={1}
+      ROOT add1 = bf16[1,2,2,1] add(add0, bcast1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_sink_broadcast(false);
+  EXPECT_FALSE(
+      GpuAlgebraicSimplifier(options, se::CudaComputeCapability::Ampere())
+          .Run(module.get())
+          .value());
+}
+
+TEST_F(GpuAlgebraicSimplifierTest,
+       DoNotSinkBroadcastOperandsOfChainedAddsWithoutConvolution) {
+  const std::string& hlo_string = R"(
+    HloModule m
+    test {
+      p = bf16[4, 4] parameter(0)
+      const0 = bf16[4] constant({0, 0.25, 0.5, 0.75})
+      bcast0 = bf16[4,4] broadcast(const0), dimensions={0}
+      add0 = bf16[4,4] add(p, bcast0)
+      const1 = bf16[4] constant({1, 1.25, 1.5, 1.75})
+      bcast1 = bf16[4,4] broadcast(const1), dimensions={0}
+      ROOT add1 = bf16[4,4] add(add0, bcast1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_sink_broadcast(true);
+  EXPECT_FALSE(
+      GpuAlgebraicSimplifier(options, se::CudaComputeCapability::Ampere())
+          .Run(module.get())
+          .value());
+}
+
+TEST_F(
+    GpuAlgebraicSimplifierTest,
+    DoNotSinkBroadcastOperandsOfChainedAddsWithMismatchedBroadcastDimensions) {
+  const std::string& hlo_string = R"(
+    HloModule m
+    test {
+      in = bf16[1,3,3,1] parameter(0)
+      filter = bf16[2,2,1,1] constant({{{{1.1}}, {{2.1}}},
+                                      {{{3.1}}, {{4.1}}}})
+      conv = bf16[1,2,2,1] convolution(in, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      const0 = bf16[2] constant({0, 0.25})
+      bcast0 = bf16[1,2,2,1] broadcast(const0), dimensions={1}
+      add0 = bf16[1,2,2,1] add(conv, bcast0)
+      const1 = bf16[2] constant({1, 1.25})
+      bcast1 = bf16[1,2,2,1] broadcast(const1), dimensions={2}
+      ROOT add1 = bf16[1,2,2,1] add(add0, bcast1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options;
+  options.set_enable_sink_broadcast(true);
+  EXPECT_FALSE(
+      GpuAlgebraicSimplifier(options, se::CudaComputeCapability::Ampere())
+          .Run(module.get())
+          .value());
+}
 
 TEST_F(GpuAlgebraicSimplifierTest, VectorVectorDotShouldBeStrengthReduced) {
   const std::string& hlo_string = R"(

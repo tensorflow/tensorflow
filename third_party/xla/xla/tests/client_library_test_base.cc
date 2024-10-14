@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"

@@ -31,6 +31,7 @@ bzl_library(
     srcs = ["build_defs.bzl"],
     deps = [
         "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ] + stream_executor_build_defs_bzl_deps(),
@@ -104,7 +105,6 @@ cc_library(
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
-        "//xla/stream_executor/platform",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_type",
         "//xla/tsl/lib/gtl:int_type",
@@ -147,6 +147,11 @@ tf_proto_library(
     srcs = ["device_description.proto"],
     make_default_target_header_only = True,
     protodeps = ["//xla:autotune_results_proto"],
+)
+
+cc_library(
+    name = "activate_context",
+    hdrs = ["activate_context.h"],
 )
 
 cc_library(
@@ -413,10 +418,14 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
+<<<<<<< HEAD
         "//xla/stream_executor/platform",
+=======
+>>>>>>> upstream/master
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -434,7 +443,10 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
+<<<<<<< HEAD
         "//xla/stream_executor/platform",
+=======
+>>>>>>> upstream/master
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -459,7 +471,6 @@ cc_library(
     name = "fft",
     hdrs = ["fft.h"],
     deps = [
-        "//xla/stream_executor/platform",
     ],
 )
 

@@ -20,15 +20,10 @@ import json
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 
-# pylint: disable=g-import-not-at-top
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
-# pylint: enable=g-import-not-at-top
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
@@ -163,9 +158,9 @@ def get_python_path(environ_cp, python_bin_path):
   except subprocess.CalledProcessError:
     library_paths = [
         run_shell([
-            python_bin_path, '-c',
-            'from distutils.sysconfig import get_python_lib;'
-            'print(get_python_lib())'
+            python_bin_path,
+            '-c',
+            'import sysconfig;print(sysconfig.get_path("purelib")',
         ])
     ]
 
@@ -425,9 +420,9 @@ def retrieve_bazel_version():
   Returns:
     The bazel version detected.
   """
-  bazel_executable = which('bazel')
+  bazel_executable = shutil.which('bazel')
   if bazel_executable is None:
-    bazel_executable = which('bazelisk')
+    bazel_executable = shutil.which('bazelisk')
     if bazel_executable is None:
       print('Cannot find bazel. Please install bazel/bazelisk.')
       sys.exit(1)
@@ -617,7 +612,7 @@ def set_clang_cuda_compiler_path(environ_cp):
     if not os.path.exists(default_clang_path):
       default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
-      default_clang_path = which('clang') or ''
+      default_clang_path = shutil.which('clang') or ''
 
   clang_cuda_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -779,7 +774,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
 
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
-  default_gcc_host_compiler_path = which('gcc') or ''
+  default_gcc_host_compiler_path = shutil.which('gcc') or ''
 
   gcc_host_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -840,7 +835,7 @@ def set_clang_compiler_path(environ_cp):
     if not os.path.exists(default_clang_path):
       default_clang_path = '/usr/lib/llvm-16/bin/clang'
     if not os.path.exists(default_clang_path):
-      default_clang_path = which('clang') or ''
+      default_clang_path = shutil.which('clang') or ''
 
   clang_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -879,7 +874,7 @@ def set_clang_compiler_path_win(environ_cp):
   # Default path if clang-16 is installed by using apt-get install
   default_clang_path = 'C:/Program Files/LLVM/bin/clang.exe'
   if not os.path.exists(default_clang_path):
-    default_clang_path = which('clang') or ''
+    default_clang_path = shutil.which('clang') or ''
 
   clang_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -1181,7 +1176,7 @@ def configure_ios(environ_cp):
 
 
 def get_gcc_compiler(environ_cp):
-  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or which('gcc')
+  gcc_env = environ_cp.get('CXX') or environ_cp.get('CC') or shutil.which('gcc')
   if gcc_env is not None:
     gcc_version = run_shell([gcc_env, '--version']).split()
     if gcc_version[0] in ('gcc', 'g++'):

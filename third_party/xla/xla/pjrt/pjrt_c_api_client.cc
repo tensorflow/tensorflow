@@ -41,10 +41,11 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -394,8 +395,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
-      xla::Serialize(module, plugin_attributes()->pjrt_c_api_minor_version,
-                     xla::GetDefaultStablehloVersion()));
+      xla::Serialize(module,
+                     xla::GetDefaultStablehloVersion(
+                         plugin_attributes()->pjrt_c_api_minor_version)));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -642,8 +644,7 @@ absl::StatusOr<Layout> PjRtCApiClient::GetDefaultLayout(
       pjrt::FindExtension<PJRT_Layouts_Extension>(
           c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
   if (extension == nullptr) {
-    return absl::UnimplementedError(
-        "Layouts extension not implemented in this PJRT plugin.");
+    return LayoutUtil::MakeDescendingLayout(dims.size());
   }
   PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args args;
   args.struct_size = PJRT_Layouts_PJRT_Client_GetDefaultLayout_Args_STRUCT_SIZE;
@@ -1796,39 +1797,36 @@ std::unique_ptr<PjRtLayout> PjRtCApiBuffer::layout() const {
           pjrt::FindExtension<PJRT_Layouts_Extension>(
               c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
       if (extension == nullptr) {
-        // TODO(b/343274728): implement some generic layouts behavior for
-        // plugins that don't support it.
-        LOG(WARNING) << "PJRT_Layouts_Extension is not found when "
-                        "PjRtCApiBuffer::layout is called.";
-        return nullptr;
+        layout_.emplace(LayoutUtil::MakeDescendingLayout(dimensions().size()));
+      } else {
+        std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                        pjrt::PJRT_Layouts_MemoryLayoutDeleter>
+            layout = pjrt::GetMemoryLayout(c_api, buffer_.get());
+
+        // TODO(b/343274093): returns a PjRtLayout that wraps a C API layout
+        // directly instead of de/serializing into an xla::Layout.
+        PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+        serialize_args.struct_size =
+            PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+        serialize_args.extension_start = nullptr;
+        serialize_args.layout = layout.get();
+        pjrt::LogFatalIfPjrtError(
+            extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args),
+            c_api);
+
+        // Clean up `PJRT_Layouts_SerializedLayout`.
+        absl::Cleanup cleanup = [&serialize_args] {
+          serialize_args.serialized_layout_deleter(
+              serialize_args.serialized_layout);
+        };
+
+        std::string serialized_layout(serialize_args.serialized_bytes,
+                                      serialize_args.serialized_bytes_size);
+        absl::StatusOr<PjRtXlaLayout> pjrt_xla_layout =
+            PjRtXlaLayout::Deserialize(serialized_layout);
+        TF_CHECK_OK(pjrt_xla_layout.status());
+        layout_.emplace(*pjrt_xla_layout);
       }
-      std::unique_ptr<PJRT_Layouts_MemoryLayout,
-                      pjrt::PJRT_Layouts_MemoryLayoutDeleter>
-          layout = pjrt::GetMemoryLayout(c_api, buffer_.get());
-
-      // TODO(b/343274093): returns a PjRtLayout that wraps a C API layout
-      // directly instead of de/serializing into an xla::Layout.
-      PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
-      serialize_args.struct_size =
-          PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
-      serialize_args.extension_start = nullptr;
-      serialize_args.layout = layout.get();
-      pjrt::LogFatalIfPjrtError(
-          extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args),
-          c_api);
-
-      // Clean up `PJRT_Layouts_SerializedLayout`.
-      absl::Cleanup cleanup = [&serialize_args] {
-        serialize_args.serialized_layout_deleter(
-            serialize_args.serialized_layout);
-      };
-
-      std::string serialized_layout(serialize_args.serialized_bytes,
-                                    serialize_args.serialized_bytes_size);
-      absl::StatusOr<PjRtXlaLayout> pjrt_xla_layout =
-          PjRtXlaLayout::Deserialize(serialized_layout);
-      TF_CHECK_OK(pjrt_xla_layout.status());
-      layout_.emplace(*pjrt_xla_layout);
     }
   }
   return std::make_unique<PjRtXlaLayout>(*layout_);
@@ -2314,9 +2312,9 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
   if (client) {
     plugin_version = client->plugin_attributes()->pjrt_c_api_minor_version;
   }
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module, plugin_version,
-                                     xla::GetDefaultStablehloVersion()));
+  TF_ASSIGN_OR_RETURN(
+      std::string serialized,
+      xla::Serialize(module, xla::GetDefaultStablehloVersion(plugin_version)));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);

@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/client/xla_builder.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tests/test_macros.h"

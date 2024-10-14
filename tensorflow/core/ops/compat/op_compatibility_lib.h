@@ -70,8 +70,8 @@ class OpCompatibilityLib {
   // generate a new history adding all changed ops.  Sets
   // *changed_ops/*added_ops to the number of changed/added ops
   // (ignoring doc changes).
-  Status ValidateCompatible(Env* env, int* changed_ops, int* added_ops,
-                            OpHistory* out_op_history);
+  absl::Status ValidateCompatible(Env* env, int* changed_ops, int* added_ops,
+                                  OpHistory* out_op_history);
 
  private:
   const string ops_file_;

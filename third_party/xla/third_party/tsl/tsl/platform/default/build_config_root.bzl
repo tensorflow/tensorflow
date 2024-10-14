@@ -3,6 +3,7 @@
 # be separate to avoid cyclic references.
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
+load("//third_party/py/rules_pywrap:pywrap.bzl", "use_pywrap_rules")
 
 # RBE settings for tests that require a GPU. This is used in exec_properties of rules
 # that need GPU access.
@@ -39,12 +40,16 @@ def tf_additional_license_deps():
 def tf_additional_tpu_ops_deps():
     return []
 
+# TODO(b/356020232): remove completely after migration is done
 # Include specific extra dependencies when building statically, or
 # another set of dependencies otherwise. If "macos" is provided, that
 # dependency list is used when using the framework_shared_object config
 # on MacOS platforms. If "macos" is not provided, the "otherwise" list is
 # used for all framework_shared_object platforms including MacOS.
 def if_static(extra_deps, otherwise = [], macos = []):
+    if use_pywrap_rules():
+        return extra_deps
+
     ret = {
         str(Label("@local_xla//xla/tsl:framework_shared_object")): otherwise,
         "//conditions:default": extra_deps,
@@ -53,13 +58,21 @@ def if_static(extra_deps, otherwise = [], macos = []):
         ret[str(Label("@local_xla//xla/tsl:macos_with_framework_shared_object"))] = macos
     return select(ret)
 
+# TODO(b/356020232): remove completely after migration is done
 def if_static_and_not_mobile(extra_deps, otherwise = []):
+    if use_pywrap_rules():
+        return extra_deps
+
     return select({
         str(Label("@local_xla//xla/tsl:framework_shared_object")): otherwise,
         str(Label("@local_xla//xla/tsl:android")): otherwise,
         str(Label("@local_xla//xla/tsl:ios")): otherwise,
         "//conditions:default": extra_deps,
     })
+
+# TODO(b/356020232): remove completely after migration is done
+def if_pywrap(if_true = [], if_false = []):
+    return if_true if use_pywrap_rules() else if_false
 
 def if_llvm_aarch32_available(then, otherwise = []):
     return select({

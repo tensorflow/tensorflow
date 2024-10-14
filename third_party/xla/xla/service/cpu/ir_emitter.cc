@@ -109,13 +109,21 @@ using llvm_ir::SetToFirstInsertPoint;
 
 namespace cpu {
 
+bool IsNativeConvertSupportedOnTargetCPU(std::string feature_string) {
+  return (absl::StrContains(feature_string, "+avxneconvert") ||
+          absl::StrContains(feature_string, "+amx-bf16"));
+}
+
 class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
       : ElementalIrEmitter(
             module, ir_emitter->b(),
-            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/
+                    !IsNativeConvertSupportedOnTargetCPU(
+                        ir_emitter->target_machine_features_
+                            .get_target_feature_string())}),
         hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
 
@@ -3836,12 +3844,13 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   if (!use_rdtscp_) {
     llvm::Function* func_llvm_readcyclecounter =
-        llvm::Intrinsic::getDeclaration(module,
-                                        llvm::Intrinsic::readcyclecounter);
+        llvm::Intrinsic::getOrInsertDeclaration(
+            module, llvm::Intrinsic::readcyclecounter);
     return b->CreateCall(func_llvm_readcyclecounter);
   }
   llvm::Function* func_llvm_x86_rdtscp =
-      llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::x86_rdtscp);
+      llvm::Intrinsic::getOrInsertDeclaration(module,
+                                              llvm::Intrinsic::x86_rdtscp);
   llvm::Value* rdtscp_call = b->CreateCall(func_llvm_x86_rdtscp);
   return b->CreateExtractValue(rdtscp_call, {0});
 }

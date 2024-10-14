@@ -54,6 +54,14 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
         is_shutdown_(false),
         default_session_config_(default_session_config) {
     builder->RegisterService(&master_service_);
+    // gRPC by default will cancel requests that sit in a completion queue for
+    // more than 30s. See
+    // https://github.com/grpc/grpc/blob/e52e48b7ef83feeff56ed0894ce39841ea8bd483/include/grpc/impl/channel_arg_names.h#L106-L111
+    // Extending this to 1 hour for Tensorflow since some graphs may have
+    // periods of heavy load which may cause the server to run into these
+    // cancellations.
+    builder->AddChannelArgument("grpc.server_max_unrequested_time_in_server",
+                                3600);
     cq_ = builder->AddCompletionQueue();
   }
 
@@ -154,11 +162,12 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
     CreateSessionRequest* rewritten_req = new CreateSessionRequest;
     rewritten_req->mutable_config()->MergeFrom(default_session_config_);
     rewritten_req->MergeFrom(call->request);
-    master_impl_->CreateSession(rewritten_req, &call->response,
-                                [call, rewritten_req](const Status& status) {
-                                  call->SendResponse(ToGrpcStatus(status));
-                                  delete rewritten_req;
-                                });
+    master_impl_->CreateSession(
+        rewritten_req, &call->response,
+        [call, rewritten_req](const absl::Status& status) {
+          call->SendResponse(ToGrpcStatus(status));
+          delete rewritten_req;
+        });
     ENQUEUE_REQUEST(CreateSession, true);
   }
 
@@ -166,7 +175,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void ExtendSessionHandler(
       MasterCall<ExtendSessionRequest, ExtendSessionResponse>* call) {
     master_impl_->ExtendSession(&call->request, &call->response,
-                                [call](const Status& status) {
+                                [call](const absl::Status& status) {
                                   call->SendResponse(ToGrpcStatus(status));
                                 });
     ENQUEUE_REQUEST(ExtendSession, false);
@@ -176,7 +185,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void PartialRunSetupHandler(
       MasterCall<PartialRunSetupRequest, PartialRunSetupResponse>* call) {
     master_impl_->PartialRunSetup(&call->request, &call->response,
-                                  [call](const Status& status) {
+                                  [call](const absl::Status& status) {
                                     call->SendResponse(ToGrpcStatus(status));
                                   });
     ENQUEUE_REQUEST(PartialRunSetup, false);
@@ -199,7 +208,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
     master_impl_->RunStep(
         call_opts, wrapped_request, wrapped_response,
         [call, call_opts, wrapped_request, wrapped_response,
-         trace](const Status& status) {
+         trace](const absl::Status& status) {
           call->ClearCancelCallback();
           delete call_opts;
           delete wrapped_request;
@@ -222,7 +231,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void CloseSessionHandler(
       MasterCall<CloseSessionRequest, CloseSessionResponse>* call) {
     master_impl_->CloseSession(&call->request, &call->response,
-                               [call](const Status& status) {
+                               [call](const absl::Status& status) {
                                  call->SendResponse(ToGrpcStatus(status));
                                });
     ENQUEUE_REQUEST(CloseSession, false);
@@ -232,7 +241,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void ListDevicesHandler(
       MasterCall<ListDevicesRequest, ListDevicesResponse>* call) {
     master_impl_->ListDevices(&call->request, &call->response,
-                              [call](const Status& status) {
+                              [call](const absl::Status& status) {
                                 call->SendResponse(ToGrpcStatus(status));
                               });
     ENQUEUE_REQUEST(ListDevices, false);
@@ -241,7 +250,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   // RPC handler for resetting all sessions.
   void ResetHandler(MasterCall<ResetRequest, ResetResponse>* call) {
     master_impl_->Reset(&call->request, &call->response,
-                        [call](const Status& status) {
+                        [call](const absl::Status& status) {
                           call->SendResponse(ToGrpcStatus(status));
                         });
     ENQUEUE_REQUEST(Reset, false);
@@ -251,7 +260,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void MakeCallableHandler(
       MasterCall<MakeCallableRequest, MakeCallableResponse>* call) {
     master_impl_->MakeCallable(&call->request, &call->response,
-                               [call](const Status& status) {
+                               [call](const absl::Status& status) {
                                  call->SendResponse(ToGrpcStatus(status));
                                });
     ENQUEUE_REQUEST(MakeCallable, false);
@@ -267,13 +276,14 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
     // `MasterSession` implementation.
     call_opts->SetTimeout(default_session_config_.operation_timeout_in_ms());
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunCallable(call_opts, &call->request, &call->response,
-                              [call, call_opts, trace](const Status& status) {
-                                call->ClearCancelCallback();
-                                delete call_opts;
-                                delete trace;
-                                call->SendResponse(ToGrpcStatus(status));
-                              });
+    master_impl_->RunCallable(
+        call_opts, &call->request, &call->response,
+        [call, call_opts, trace](const absl::Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete trace;
+          call->SendResponse(ToGrpcStatus(status));
+        });
     ENQUEUE_REQUEST(RunCallable, false);
   }
 
@@ -281,7 +291,7 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
   void ReleaseCallableHandler(
       MasterCall<ReleaseCallableRequest, ReleaseCallableResponse>* call) {
     master_impl_->ReleaseCallable(&call->request, &call->response,
-                                  [call](const Status& status) {
+                                  [call](const absl::Status& status) {
                                     call->SendResponse(ToGrpcStatus(status));
                                   });
     ENQUEUE_REQUEST(ReleaseCallable, false);

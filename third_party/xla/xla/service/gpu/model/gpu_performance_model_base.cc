@@ -59,20 +59,6 @@ bool FusionUsesParameterElementwiseFromRoot(
              fusion->fused_expression_root()) == 1.f;
 }
 
-int GetCoalescingWasteFactor(PrimitiveType element_type,
-                             const se::DeviceDescription& gpu_device_info) {
-  int64_t element_size_bytes =
-      element_type == PrimitiveType::TUPLE ||
-              element_type == PrimitiveType::TOKEN
-          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
-          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
-  // Assume we use one element from the cache line and waste the remaining
-  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
-  // line.
-  return gpu_device_info.dram_to_l2_transaction_size_bytes() /
-         element_size_bytes;
-}
-
 // Limit the bandwidth for low occupancy cases. Each SM can issue at most
 // one 32B memory transaction per clock. H100 needs at least 56.8 active SMs
 // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
@@ -321,13 +307,11 @@ absl::Duration GpuPerformanceModelBase::ReadTime(
 absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
     int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
-    bool coalesced) {
-  int waste_factor =
-      coalesced ? 1 : GetCoalescingWasteFactor(element_type, gpu_device_info);
-
+    double hbm_bandwidth_utilization_rate) {
   // The first read of the input buffer always happens from DRAM. If reads are
   // no coaleced, bandwidth is reduced by the waste factor.
-  float dram_bandwidth = gpu_device_info.memory_bandwidth() / waste_factor;
+  float dram_bandwidth =
+      gpu_device_info.memory_bandwidth() * hbm_bandwidth_utilization_rate;
 
   // Two things can happed on re-reading the buffer:
   //   - If the buffer fits into cache, the L1/L2 cache speedup is applied.
@@ -341,7 +325,7 @@ absl::Duration GpuPerformanceModelBase::ReadTimeWithDRAMHeuristic(
       rest_bandwidth *= kL1CacheSpeedup;
     }
   } else {
-    rest_bandwidth /= waste_factor;
+    rest_bandwidth *= hbm_bandwidth_utilization_rate;
   }
 
   dram_bandwidth = AdjustBandwidth(gpu_device_info, dram_bandwidth, num_blocks);
@@ -439,6 +423,22 @@ void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
   VLOG(8) << "operand " << operand->name()
           << ", n_bytes_total: " << n_bytes_total
           << ", n_bytes_net: " << n_bytes_net << ", coalesced: " << coalesced;
+}
+
+double GetCoalescingUtilizationRate(
+    PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
+    bool coalesced) {
+  int64_t element_size_bytes =
+      element_type == PrimitiveType::TUPLE ||
+              element_type == PrimitiveType::TOKEN
+          ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
+          : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  // Assume we use one element from the cache line and waste the remaining
+  // bandwidth. For example, if we're reading f32s, we use 1/16nd of the cache
+  // line.
+  return coalesced ? 1.0
+                   : 1.0 * element_size_bytes /
+                         gpu_device_info.dram_to_l2_transaction_size_bytes();
 }
 
 }  // namespace gpu

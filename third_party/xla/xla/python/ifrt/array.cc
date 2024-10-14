@@ -18,6 +18,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "xla/tsl/concurrency/ref_count.h"
+
 namespace xla {
 namespace ifrt {
 

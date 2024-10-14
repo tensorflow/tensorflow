@@ -1078,6 +1078,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinFloor:
     case kTfLiteBuiltinGelu:
     case kTfLiteBuiltinLog:
+    case kTfLiteBuiltinLogicalNot:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
@@ -1099,6 +1100,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinGreater:
     case kTfLiteBuiltinGreaterEqual:
     case kTfLiteBuiltinLogicalAnd:
+    case kTfLiteBuiltinLogicalOr:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinMaximum:

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 #include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
@@ -62,6 +63,8 @@ using mlir::func::FuncOp;
 namespace {
 
 void CreateReplicatedBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateTPUValidateSessionInputsPass());
   pm.addPass(mlir::tf2xla::internal::CreateInferenceMetricsPass());
 
   // Convert to unified compilation and replication attributes.

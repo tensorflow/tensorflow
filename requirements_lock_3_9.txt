@@ -449,6 +449,7 @@ packaging==23.2 \
     --hash=sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5 \
     --hash=sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7
     # via -r ci/official/requirements_updater/requirements.in
+    #   tb-nightly
 portpicker==1.6.0 \
     --hash=sha256:b2787a41404cf7edbe29b07b9e0ed863b09f2665dcc01c1eb0c2261c1e7d0755 \
     --hash=sha256:bd507fd6f96f65ee02781f2e674e9dc6c99bbfa6e3c39992e3916204c9d431fa
@@ -532,8 +533,8 @@ six==1.16.0 \
     #   astunparse
     #   google-pasta
     #   tb-nightly
-tb-nightly==2.18.0a20240611 \
-    --hash=sha256:c299eb7dc3de22c7164a1b0c0091b784f2214d65b9a8b967eeeba9818314016d
+tb-nightly==2.19.0a20240926 \
+    --hash=sha256:4f2f4dd02eda684fbb2edd9cb46b7bd0ee7ba6ca35d38e4de2e293df8567c1b4
     # via -r ci/official/requirements_updater/requirements.in
 tblib==2.0.0 \
     --hash=sha256:9100bfa016b047d5b980d66e7efed952fbd20bd85b56110aaf473cb97d18709a \

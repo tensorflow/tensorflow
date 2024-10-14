@@ -152,6 +152,14 @@ void removeFrontendAttribute(FuncOp funcOp, StringRef attributeName,
       [&]() { funcOp.removeArgAttr(argNum, kFrontendAttributesAttr); });
 }
 
+bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key) {
+  return hasKey(getFrontendAttrs(op), key);
+}
+
+bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key) {
+  return dictAttr && dictAttr.contains(key);
+}
+
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);

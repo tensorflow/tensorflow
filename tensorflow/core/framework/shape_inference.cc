@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/full_type_util.h"
@@ -68,7 +69,7 @@ InferenceContext::InferenceContext(
     if (v == nullptr) {
       continue;
     }
-    handle_data[i].reset(new std::vector<ShapeAndType>(v->size()));
+    handle_data[i] = std::make_unique<std::vector<ShapeAndType>>(v->size());
     auto& new_v = *handle_data[i];
     for (int j = 0, end = v->size(); j < end; ++j) {
       const auto& p = (*v)[j];
@@ -1243,8 +1244,8 @@ bool InferenceContext::MergeHandleShapesAndTypes(
 bool InferenceContext::MergeOutputHandleShapesAndTypes(
     int idx, const std::vector<ShapeAndType>& shapes_and_types) {
   if (output_handle_shapes_and_types_[idx] == nullptr) {
-    output_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    output_handle_shapes_and_types_[idx] =
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
     return true;
   }
   return MergeHandleShapesAndTypes(shapes_and_types,
@@ -1254,8 +1255,8 @@ bool InferenceContext::MergeOutputHandleShapesAndTypes(
 bool InferenceContext::MergeInputHandleShapesAndTypes(
     int idx, const std::vector<ShapeAndType>& shapes_and_types) {
   if (input_handle_shapes_and_types_[idx] == nullptr) {
-    input_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    input_handle_shapes_and_types_[idx] =
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
     return true;
   }
   return MergeHandleShapesAndTypes(shapes_and_types,
@@ -1293,8 +1294,8 @@ bool InferenceContext::RelaxOutputHandleShapesAndMergeTypes(
       << "Got idx: " << idx << " but only "
       << output_handle_shapes_and_types_.size() << " inputs.";
   if (output_handle_shapes_and_types_[idx] == nullptr) {
-    output_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    output_handle_shapes_and_types_[idx] =
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
     return true;
   }
   return RelaxHandleShapesAndMergeTypes(
@@ -1308,8 +1309,8 @@ bool InferenceContext::RelaxInputHandleShapesAndMergeTypes(
       << "Got idx: " << idx << " but only "
       << input_handle_shapes_and_types_.size() << " inputs.";
   if (input_handle_shapes_and_types_[idx] == nullptr) {
-    input_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    input_handle_shapes_and_types_[idx] =
+        std::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
     return true;
   }
   return RelaxHandleShapesAndMergeTypes(

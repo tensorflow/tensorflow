@@ -439,7 +439,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 
   const string& name() override { return name_; }
 
-  tensorflow::Status CopyTensorToDevice(
+  absl::Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* handle,
       ImmediateExecutionTensorHandle** result) override {
     handle->Ref();
@@ -454,7 +454,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status CopyTensorFromDevice(
+  absl::Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* handle,
       const tensorflow::string& target_device_name,
       ImmediateExecutionTensorHandle** result) override {
@@ -471,9 +471,9 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status Execute(const ImmediateExecutionOperation* op,
-                             ImmediateExecutionTensorHandle** retvals,
-                             int* num_retvals) override {
+  absl::Status Execute(const ImmediateExecutionOperation* op,
+                       ImmediateExecutionTensorHandle** retvals,
+                       int* num_retvals) override {
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
     device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
@@ -488,8 +488,8 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
-                          ImmediateExecutionTensorHandle** result) override {
+  absl::Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
+                    ImmediateExecutionTensorHandle** result) override {
     TF_Status status;
     *result = tensorflow::unwrap(device_.pack(context_,
                                               tensorflow::wrap(handles.data()),
@@ -530,12 +530,12 @@ class CAPICustomDeviceTensorHandle
 
   ~CAPICustomDeviceTensorHandle() override { methods_.deallocator(data_); }
   void* DevicePointer() const override { return data_; }
-  Status NumDims(int* num_dims) const override {
+  absl::Status NumDims(int* num_dims) const override {
     TF_Status s;
     *num_dims = methods_.num_dims(data_, &s);
     return s.status;
   }
-  Status Dim(int dim_index, int64_t* dim) const override {
+  absl::Status Dim(int dim_index, int64_t* dim) const override {
     TF_Status s;
     *dim = methods_.dim(data_, dim_index, &s);
     return s.status;
@@ -545,7 +545,7 @@ class CAPICustomDeviceTensorHandle
     return methods_.summarize != nullptr;
   }
 
-  Status SummarizeValue(std::string& summary) const override {
+  absl::Status SummarizeValue(std::string& summary) const override {
     if (methods_.summarize == nullptr) {
       return tensorflow::CustomDeviceTensorHandle::SummarizeValue(summary);
     }

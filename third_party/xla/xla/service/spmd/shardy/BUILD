@@ -24,31 +24,6 @@ package_group(
 )
 
 cc_library(
-    name = "shardy_call_inliner",
-    srcs = ["shardy_call_inliner.cc"],
-    hdrs = ["shardy_call_inliner.h"],
-    deps = [
-        "//xla/hlo/ir:hlo",
-        "//xla/service:call_inliner",
-        "//xla/service/spmd/shardy:constants",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "shardy_call_inliner_test",
-    srcs = ["shardy_call_inliner_test.cc"],
-    deps = [
-        ":shardy_call_inliner",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "@com_google_absl//absl/log",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "shardy_xla_pass",
     srcs = ["shardy_xla_pass.cc"],
     hdrs = ["shardy_xla_pass.h"],
@@ -124,6 +99,7 @@ xla_cc_test(
     name = "shardy_xla_pass_test",
     srcs = ["shardy_xla_pass_test.cc"],
     deps = [
+        ":constants",
         ":shardy_xla_pass",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
@@ -148,11 +124,13 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/round_trip_common:convert_sharding_custom_calls",
+        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
+        "//xla/service/spmd/shardy/round_trip_common:import_backend_func_calls",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
         "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
-        "//xla/service/spmd/shardy/sdy_round_trip:export_shardings",
-        "//xla/service/spmd/shardy/sdy_round_trip:import_shardings",
+        "//xla/service/spmd/shardy/sdy_round_trip:export_shardy_attrs",
+        "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/service/spmd/shardy/sdy_round_trip:remove_size_one_axes",
         "//xla/service/spmd/shardy/sdy_round_trip:shard_map_export",

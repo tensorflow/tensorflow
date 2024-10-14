@@ -167,6 +167,19 @@ bool IsOpLineName(absl::string_view line_name) {
   return line_name == kXlaOpLineName || line_name == kTensorFlowOpLineName;
 }
 
+Timespan GetEventTimespan(const XEventVisitor& event) {
+  const std::optional<XStatVisitor> device_offset_ps =
+      event.GetStat(StatType::kDeviceOffsetPs);
+  const std::optional<XStatVisitor> device_duration_ps =
+      event.GetStat(StatType::kDeviceDurationPs);
+  if (device_offset_ps.has_value() && device_duration_ps.has_value()) {
+    return Timespan(device_offset_ps->IntOrUintValue(),
+                    device_duration_ps->IntOrUintValue());
+  }
+
+  return event.GetTimespan();
+}
+
 }  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
@@ -563,26 +576,27 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
     aggregated_line.SetName(line.Name());
     std::vector<XEventVisitor> event_stack;
     line.ForEachEvent([&](XEventVisitor event) {
+      Timespan timespan = GetEventTimespan(event);
       first_op_start_ps = first_op_start_ps <= event.TimestampPs()
                               ? first_op_start_ps
-                              : event.TimestampPs();
+                              : timespan.begin_ps();
       last_op_end_ps = last_op_end_ps >= event.EndTimestampPs()
                            ? last_op_end_ps
-                           : event.EndTimestampPs();
+                           : timespan.end_ps();
       const auto& group_stat = event.GetStat(StatType::kGroupId);
       int64_t group_id =
           group_stat.has_value() ? group_stat->IntOrUintValue() : kint64max;
 
       StatByEvent& line_stats = stats[line.Id()][group_id];
-      line_stats[event.Id()].stat.UpdateStat(event.DurationPs());
+      line_stats[event.Id()].stat.UpdateStat(timespan.duration_ps());
       DCHECK(event_stack.empty() || !(event < event_stack.back()));
       while (!event_stack.empty() &&
-             !event_stack.back().GetTimespan().Includes(event.GetTimespan())) {
+             !GetEventTimespan(event_stack.back()).Includes(timespan)) {
         event_stack.pop_back();
       }
       if (!event_stack.empty()) {
         line_stats[event_stack.back().Id()].children_duration +=
-            event.DurationPs();
+            timespan.duration_ps();
       }
       event_stack.push_back(std::move(event));
     });

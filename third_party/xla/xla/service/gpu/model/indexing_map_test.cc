@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <sstream>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -28,13 +27,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
@@ -116,18 +113,13 @@ TEST_F(IndexingMapTest, VerifySymbols) {
 }
 
 TEST_F(IndexingMapTest, RTVar) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-  std::vector<RTVar> rt_vars{RTVar{Interval{0, 2},
-                                   /*instr=*/nullptr, zero_dim_map},
-                             RTVar({Interval{0, 7},
-                                    /*instr=*/nullptr, zero_dim_map})};
-
   IndexingMap indexing_map(
       ParseAffineMap("(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
                      &mlir_context_),
-      {DimVar{0, 99, "d0"}, DimVar{0, 43, "d1"}}, {RangeVar{-99, 99, "range"}},
-      std::move(rt_vars));
+      {IndexingMap::Variable{0, 99, "d0"}, IndexingMap::Variable{0, 43, "d1"}},
+      {IndexingMap::Variable{-99, 99, "range"}},
+      {IndexingMap::Variable{Interval{0, 2}},
+       IndexingMap::Variable({Interval{0, 7}})});
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                 (d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1),
                 domain:
@@ -135,11 +127,7 @@ TEST_F(IndexingMapTest, RTVar) {
                 d1 in [0, 43],
                 range in [-99, 99],
                 rt0 in [0, 2],
-                  hlo: NULL,
-                  (d0, d1) -> (),
-                rt1 in [0, 7],
-                  hlo: NULL,
-                  (d0, d1) -> ()
+                rt1 in [0, 7]
               )"));
 }
 
@@ -274,23 +262,23 @@ TEST_F(IndexingMapTest, Composition_ProducerAndConsumerHaveConstraints) {
 }
 
 TEST_F(IndexingMapTest, Composition_RTVar) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-  std::vector<RTVar> rt_vars{
-      RTVar{Interval{0, 0}, /*instr=*/nullptr, zero_dim_map},
-      RTVar({Interval{0, 1}, /*instr=*/nullptr, zero_dim_map}),
-      RTVar({Interval{0, 226}, /*instr=*/nullptr, zero_dim_map})};
+  std::vector<IndexingMap::Variable> rt_vars{
+      IndexingMap::Variable{Interval{0, 0}},
+      IndexingMap::Variable({Interval{0, 1}}),
+      IndexingMap::Variable({Interval{0, 226}})};
 
   IndexingMap producer(
       ParseAffineMap(
           "(d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2)",
           &mlir_context_),
-      {DimVar{{0, 0}}, DimVar{{0, 1}}, DimVar{{0, 226}}}, {},
-      std::move(rt_vars));
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+       IndexingMap::Variable{{0, 226}}},
+      {}, std::move(rt_vars));
 
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s] -> (0, d1, s)", &mlir_context_),
-      {DimVar{0, 0}, DimVar{0, 1}}, {RangeVar{0, 31, "s"}}, {});
+      {IndexingMap::Variable{0, 0}, IndexingMap::Variable{0, 1}},
+      {IndexingMap::Variable{0, 31, "s"}}, {});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
@@ -300,35 +288,26 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
     d1 in [0, 1],
     s in [0, 31],
     rt0 in [0, 0],
-      hlo: NULL,
-      (d0, d1) -> (),
     rt1 in [0, 1],
-      hlo: NULL,
-      (d0, d1) -> (),
-    rt2 in [0, 226],
-      hlo: NULL,
-      (d0, d1) -> ()
+    rt2 in [0, 226]
   )"));
 }
 
 TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/2, /*symbolCount=*/0, &mlir_context_);
-
   IndexingMap producer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
                      &mlir_context_),
-      {DimVar{0, 24}, DimVar{0, 15}}, {},
-      {RTVar{Interval{0, 2}, /*instr=*/nullptr, zero_dim_map, "ps_0"},
-       RTVar{Interval{0, 1}, /*instr=*/nullptr, zero_dim_map, "ps_1"}});
+      {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
+      {IndexingMap::Variable{Interval{0, 2}, "ps_0"},
+       IndexingMap::Variable{Interval{0, 1}, "ps_1"}});
 
-  std::vector<RTVar> consumer_rt_vars;
+  std::vector<IndexingMap::Variable> consumer_rt_vars;
   IndexingMap consumer(
       ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
                      &mlir_context_),
-      {DimVar{0, 24}, DimVar{0, 15}}, {},
-      {RTVar{Interval{0, 25}, /*instr=*/nullptr, zero_dim_map, "cs_0"},
-       RTVar{Interval{0, 16}, /*instr=*/nullptr, zero_dim_map, "cs_1"}});
+      {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
+      {IndexingMap::Variable{Interval{0, 25}, "cs_0"},
+       IndexingMap::Variable{Interval{0, 16}, "cs_1"}});
 
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
@@ -338,17 +317,9 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
     d0 in [0, 24],
     d1 in [0, 15],
     ps_0 in [0, 2],
-      hlo: NULL,
-      (d0, d1) -> (),
     ps_1 in [0, 1],
-      hlo: NULL,
-      (d0, d1) -> (),
     cs_0 in [0, 25],
-      hlo: NULL,
-      (d0, d1) -> (),
     cs_1 in [0, 16],
-      hlo: NULL,
-      (d0, d1) -> (),
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15]
   )"));
@@ -583,16 +554,14 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
 }
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
-  auto zero_dim_map =
-      AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, &mlir_context_);
   IndexingMap indexing_map(
       ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                      &mlir_context_),
-      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-      {RTVar{Interval{0, 3},
-             /*instr=*/nullptr, zero_dim_map},
-       RTVar{Interval{0, 4},
-             /*instr=*/nullptr, zero_dim_map}});
+      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+       IndexingMap::Variable{{0, 2}}},
+      {IndexingMap::Variable{Interval{0, 3}},
+       IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
       ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
   indexing_map.RemoveUnusedSymbols();
@@ -603,21 +572,19 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
                               d0 in [0, 31],
                               s0 in [0, 1],
                               rt0 in [0, 3],
-                                hlo: NULL,
-                                (d0) -> (),
                               d0 * 4 + s0 + rt0 in [24, 459]
                             )"));
 };
 
 TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
   IndexingMap indexing_map(
       ParseAffineMap(
           "(d0)[s0, s1, s2, s3] -> (d0 * 4 + s0 + s1 + 2 * s2 + 3 * s3 - 42)",
           &mlir_context_),
-      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}},
-      {RTVar{Interval{0, 3}, /*instr=*/nullptr, zero_dim_map},
-       RTVar{Interval{0, 4}, /*instr=*/nullptr, zero_dim_map}});
+      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}}},
+      {IndexingMap::Variable{Interval{0, 3}},
+       IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
       ParseAffineExpr("d0 * 4 + s0 + 2 * s2", &mlir_context_),
       Interval{24, 459});
@@ -1601,46 +1568,35 @@ TEST_F(IndexingMapTest, IntervalSupportsLlvmStyleHashingAndEqAndNe) {
 }
 
 TEST_F(IndexingMapTest, DimVarSupportsAbslHashAndEqAndNe) {
-  ExpectSupportsAbslHashAndEqAndNe<DimVar>(
-      {DimVar{1, 1}, DimVar{0, 1}, DimVar{1, 2}});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{1, 1}, IndexingMap::Variable{0, 1},
+       IndexingMap::Variable{1, 2}});
 }
 
 TEST_F(IndexingMapTest, RangeVarSupportsAbslHashAndEqAndNe) {
-  ExpectSupportsAbslHashAndEqAndNe<RangeVar>(
-      {RangeVar{1, 1}, RangeVar{0, 1}, RangeVar{1, 2}});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{1, 1}, IndexingMap::Variable{0, 1},
+       IndexingMap::Variable{1, 2}});
 }
 
 TEST_F(IndexingMapTest, RTVarSupportsAbslHashAndEqAndNe) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY e {
-  ROOT %constant = s64[] constant(42)
-})"));
+                            HloModule m
+                            ENTRY e {
+                              ROOT %constant = s64[] constant(42)
+                            }
+                          )"));
   ASSERT_NE(hlo_module, nullptr);
-  const HloInstruction* constant_instr =
-      hlo_module->entry_computation()->root_instruction();
 
-  ExpectSupportsAbslHashAndEqAndNe<RTVar>(
-      {RTVar{Interval{1, 1}, nullptr,
-             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
-       RTVar{Interval{1, 2}, nullptr,
-             ParseAffineMap("(d0) -> (d0)", &mlir_context_)},
-       RTVar{
-           Interval{1, 2},
-           nullptr,
-           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
-       },
-       RTVar{
-           Interval{1, 2},
-           constant_instr,
-           ParseAffineMap("(d0) -> (d0 * 2)", &mlir_context_),
-       }});
+  ExpectSupportsAbslHashAndEqAndNe<IndexingMap::Variable>(
+      {IndexingMap::Variable{Interval{1, 1}},
+       IndexingMap::Variable{Interval{1, 2}},
+       IndexingMap::Variable{Interval{1, 2}},
+       IndexingMap::Variable{Interval{1, 2}}});
 }
 
 TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
-  auto zero_dim_map = AffineMap::get(&mlir_context_);
   ExpectSupportsAbslHashAndEqAndNe<IndexingMap>(
       {Parse(R"(
         (d0, d1)[s0, s1] -> (d1, d0, s1, s0),
@@ -1697,21 +1653,19 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &mlir_context_),
-           {DimVar{{0, 31}}},
-           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-           {RTVar{Interval{0, 3},
-                  /*instr=*/nullptr, zero_dim_map},
-            RTVar{Interval{0, 4},
-                  /*instr=*/nullptr, zero_dim_map}}),
+           {IndexingMap::Variable{{0, 31}}},
+           {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+            IndexingMap::Variable{{0, 2}}},
+           {IndexingMap::Variable{Interval{0, 3}},
+            IndexingMap::Variable{Interval{0, 4}}}),
        IndexingMap(
            ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
                           &mlir_context_),
-           {DimVar{{0, 31}}},
-           {RangeVar{{0, 0}}, RangeVar{{0, 1}}, RangeVar{{0, 2}}},
-           {RTVar{Interval{0, 3},
-                  /*instr=*/nullptr, zero_dim_map},
-            RTVar{Interval{0, 5},
-                  /*instr=*/nullptr, zero_dim_map}})});
+           {IndexingMap::Variable{{0, 31}}},
+           {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+            IndexingMap::Variable{{0, 2}}},
+           {IndexingMap::Variable{Interval{0, 3}},
+            IndexingMap::Variable{Interval{0, 5}}})});
 }
 
 }  // namespace

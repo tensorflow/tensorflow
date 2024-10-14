@@ -56,20 +56,14 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
+import glob
 import io
 import os
-import glob
 import platform
 import re
+import shutil
 import subprocess
 import sys
-
-# pylint: disable=g-import-not-at-top
-try:
-  from shutil import which
-except ImportError:
-  from distutils.spawn import find_executable as which
-# pylint: enable=g-import-not-at-top
 
 
 class ConfigError(Exception):
@@ -139,7 +133,7 @@ def _get_ld_config_paths():
   """Returns all directories from 'ldconfig -p'."""
   if not _is_linux():
     return []
-  ldconfig_path = which("ldconfig") or "/sbin/ldconfig"
+  ldconfig_path = shutil.which("ldconfig") or "/sbin/ldconfig"
   output = subprocess.check_output([ldconfig_path, "-p"])
   pattern = re.compile(".* => (.*)")
   result = set()

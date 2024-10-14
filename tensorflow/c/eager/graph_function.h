@@ -30,7 +30,7 @@ class GraphFunction : public AbstractFunction {
 
   // GraphFunction maybe stay alive for the duration of the returned
   // FunctionDef.
-  Status GetFunctionDef(const FunctionDef** fdef) override;
+  absl::Status GetFunctionDef(const FunctionDef** fdef) override;
 
   // Returns a shared reference to the wrapped function.
   absl::StatusOr<core::RefCountPtr<FunctionRecord>> GetFunctionRecord()

@@ -246,6 +246,19 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16}, cc);
 }
 
+TEST_P(BitcastOrReshapeTest, IsTritonSupported0DBitcastOrReshape) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[1,1,1] parameter(0)
+  ROOT bitcast_or_reshape = $0[] $1(parameter_0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc);
+}
+
 constexpr std::array kTestedOpsBitcastReshape = {HloOpcode::kBitcast,
                                                  HloOpcode::kReshape};
 
@@ -442,6 +455,39 @@ ENTRY triton_computation {
        data_type == PrimitiveType::F8E4M3FN);
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash);
+}
+
+TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise0D) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[] parameter(0)
+  parameter_1 = $0[] parameter(1)
+  ROOT binary = $0[] $1(parameter_0, parameter_1)
+})";
+
+  const std::string kHloCompareTestTemplate = R"(
+ENTRY triton_computation {
+  parameter_0 = $0[] parameter(0)
+  parameter_1 = $0[] parameter(1)
+  ROOT compare = pred[] $1(parameter_0, parameter_1), direction=GE
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(opcode == HloOpcode::kCompare
+                                         ? kHloCompareTestTemplate
+                                         : kHloTestTemplate,
+                                     data_type, opcode));
+
+  bool skip_failure_branch_to_avoid_crash =
+      opcode == HloOpcode::kDivide &&
+      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+       data_type == PrimitiveType::F8E5M2 ||
+       data_type == PrimitiveType::F8E4M3FN);
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc,
                  skip_failure_branch_to_avoid_crash);
 }
 
@@ -1061,6 +1107,24 @@ INSTANTIATE_TEST_SUITE_P(
     TritonSupportTestTypeAndDeviceToString);
 
 using ConstantTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(ConstantTest, ConstantEffectiveScalar) {
+  // The IsTritonSupportedReduction effectively tests the scalar constant
+  // support.
+  auto [data_type, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+ENTRY triton_computation {
+  ROOT const = $0[1,1] constant({{$1}})
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kConstant));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1}, cc);
+}
 
 TEST_P(ConstantTest, Constant2D) {
   // The IsTritonSupportedReduction effectively tests the scalar constant

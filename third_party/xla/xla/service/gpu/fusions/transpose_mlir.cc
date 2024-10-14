@@ -239,6 +239,7 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   SmallVector<Value> callee_operands(
       entry_function.getArguments().take_front(num_inputs));
+  auto tids_and_bids = EmitThreadAndBlockIds(builder);
   auto identity_map =
       IndexingMapAttr::get(ctx, CreateIdentityMap(shmem_tensor_size, ctx));
 
@@ -259,7 +260,8 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     write_indexing.GetMutableSymbolBound(index) = bound;
   }
   write_indexing.Simplify();
-
+  auto dimensions = SmallVector<int64_t>(operand_shape.dimensions().begin(),
+                                         operand_shape.dimensions().end());
   SmallVector<Value> shmem_tensors;
   for (auto* transpose : shmem_transposes_) {
     auto elem_type = mlir_converter::PrimitiveTypeToMlirType(
@@ -275,54 +277,69 @@ MlirTransposeFusion::WriteResult MlirTransposeFusion::EmitWriteToShMemMlir(
     auto materialized = builder.create<MaterializeOp>(
         /* result_type=*/indexed_vector,
         /*input=*/callee_operands,
-        /*indices(dimensions)=*/thread_and_block_ids,
+        /*indices(dimensions)=*/tids_and_bids,
         /*callee=*/callee,
         /*map=*/IndexingMapAttr::get(ctx, indexing));
 
     auto insert = builder.create<InsertOp>(
         /*result_type=*/shmem.getType(),
         /*source=*/materialized.getResult(),
-        /*indices(dimensions)=*/thread_and_block_ids,
+        /*indices(dimensions)=*/tids_and_bids,
         /*dest=*/shmem,
         /*map=*/identity_map);
     shmem_tensors.push_back(insert.getResult());
   }
 
-  WriteResult result;
-  result.updated_outputs = output_args;
-  for (auto [index, root] :
-       llvm::zip(side_output_root_indices_, side_output_roots_)) {
-    auto elem_type = mlir_converter::PrimitiveTypeToMlirType(
-        root->shape().element_type(), builder);
-    auto callee = mlir::SymbolRefAttr::get(call_target_provider(root));
-    auto side_indexing = GetIndexing(/*input=*/true, root->shape(), ctx);
-    auto side_dims = SmallVector<int64_t>(root->shape().dimensions().begin(),
-                                          root->shape().dimensions().end());
-    auto indexed_vector = IndexedVectorType::get(
-        ctx, side_dims, elem_type, IndexingMapAttr::get(ctx, side_indexing));
-    auto materialize = builder.create<MaterializeOp>(
-        /* result_type=*/indexed_vector,
-        /*input=*/callee_operands,
-        /*indices(dimensions)=*/thread_and_block_ids,
-        /*callee=*/callee,
-        /*map=*/IndexingMapAttr::get(ctx, side_indexing));
+  // Produce all side outputs and then write them.
+  SmallVector<Value> side_output_inits;
+  for (int index : side_output_root_indices_) {
+    side_output_inits.push_back(entry_function.getArgument(num_inputs + index));
+  }
+  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
+                          ValueRange output_tensors) -> SmallVector<Value> {
+    auto input_indices = [&](const HloInstruction* instr) {
+      return ApplyIndexing(GetIndexing(/*input=*/true, instr->shape(), ctx),
+                           thread_and_block_ids, symbol_values, builder);
+    };
 
-    auto init = entry_function.getArgument(num_inputs + index);
-    auto side_identity_map =
-        IndexingMapAttr::get(ctx, CreateIdentityMap(side_dims, ctx));
-    auto insert = builder.create<InsertOp>(
-        /*result_type=*/init.getType(),
-        /*source=*/materialize.getResult(),
-        /*indices(dimensions)=*/thread_and_block_ids,
-        /*dest=*/init,
-        /*map=*/side_identity_map);
-    result.updated_outputs[index] = insert.getResult();
+    SmallVector<Value> side_outputs;
+    SmallVector<SmallVector<Value>> side_output_indices;
+    auto* root_tuple = fusion.fused_expression_root();
+    for (auto root : side_output_roots_) {
+      side_output_indices.push_back(input_indices(root));
+      ValueRange param_values = mlir_converter::ProvideParameter(
+          root_computation, root_tuple, root_tuple->operand_index(root),
+          side_output_indices.back(), call_target_provider, entry_function,
+          builder);
+      side_outputs.append(param_values.begin(), param_values.end());
+    }
+
+    SmallVector<Value> result_tensors;
+    for (const auto& [value, indices, output] :
+         llvm::zip(side_outputs, side_output_indices, output_tensors)) {
+      result_tensors.push_back(
+          builder.create<mlir::tensor::InsertOp>(value, output, indices));
+    }
+
+    return result_tensors;
+  };
+  mlir::ValueRange side_output_vector;
+  if (!side_output_inits.empty()) {
+    side_output_vector = mlir_converter::EmitXlaLoopOp(
+        builder, thread_and_block_ids, side_output_inits, indexing,
+        body_builder);
   }
 
+  WriteResult result;
   result.shmem_tensors =
       builder
           .create<SyncThreadsOp>(mlir::TypeRange(shmem_tensors), shmem_tensors)
           .getResults();
+  result.updated_outputs = output_args;
+  for (auto [index, side_output_result] :
+       llvm::zip(side_output_root_indices_, side_output_vector)) {
+    result.updated_outputs[index] = side_output_result;
+  }
   return result;
 }
 

@@ -287,7 +287,7 @@ int64_t GatherLoopTripCount(HloInstruction* gather_instr) {
   return trip_count;
 }
 
-int64_t GatherIsBroadcast(HloInstruction* gather_instr) {
+bool GatherIsBroadcast(HloInstruction* gather_instr) {
   return absl::c_equal(gather_instr->gather_slice_sizes(),
                        gather_instr->operand(0)->shape().dimensions());
 }
@@ -412,8 +412,7 @@ bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
          // which can be represented without a loop -- i.e. we only simplify
          // gathers which have a trip count of 1.
          (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1 ||
-          absl::c_equal(inst->gather_slice_sizes(),
-                        inst->operand(0)->shape().dimensions()));
+          GatherIsBroadcast(inst));
 }
 
 }  // namespace xla

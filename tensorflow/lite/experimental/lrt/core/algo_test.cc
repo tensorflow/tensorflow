@@ -24,7 +24,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
@@ -60,7 +60,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
   std::unordered_set<LrtTensor> implied_subgraph_ins;
   for (auto tensor : subgraph->tensors) {
     if (tensor->defining_op == nullptr &&
-        tensor->buffer.fb_buffer->data.empty()) {
+        tensor->weights.fb_buffer->data.empty()) {
       implied_subgraph_ins.insert(tensor);
     }
   }
@@ -82,7 +82,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
 // NOLINTEND
 
 TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
@@ -151,7 +151,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
 }
 
 TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
@@ -228,12 +228,12 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
     ASSERT_EQ(sliced_subgraph_outputs.size(), 1);
     ASSERT_TRUE(graph_tools::MatchTensorDefiningOp(
         sliced_subgraph_outputs[0], 0, sliced_subgraph_ops.back()));
-    ASSERT_TRUE(graph_tools::MatchkTensorNoUses(sliced_subgraph_outputs[0]));
+    ASSERT_TRUE(graph_tools::MatchTensorNoUses(sliced_subgraph_outputs[0]));
   }
 }
 
 TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));

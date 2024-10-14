@@ -207,9 +207,12 @@ message InitResponse {
     AttributeMapProto attributes = 10;  // New in Version 4.
   }
 
-  repeated Device devices = 6;  // == ifrt::Client::devices()
+  repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
+  repeated int32 primary_device_ids =
+      10;  // == [device.id for device in ifrt::Client::devices()]
   repeated int32 addressable_device_ids =
-      7;  // == ifrt::Client::addressable_devices()
+      7;  // == [device.id for device in ifrt::Client::GetAllDevices() if
+          // device.IsAddressable()]
 
   message Memory {
     int32 id = 1;

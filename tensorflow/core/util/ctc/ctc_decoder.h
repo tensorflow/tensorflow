@@ -56,9 +56,10 @@ class CTCDecoder {
   //  - input[t].rows(b) - t = 0 to timesteps; b = 0 t batch_size_
   //  - output.size() specifies the number of beams to be returned.
   //  - scores(b, i) - b = 0 to batch_size; i = 0 to output.size()
-  virtual Status Decode(const SequenceLength& seq_len,
-                        const std::vector<Input>& input,
-                        std::vector<Output>* output, ScoreOutput* scores) = 0;
+  virtual absl::Status Decode(const SequenceLength& seq_len,
+                              const std::vector<Input>& input,
+                              std::vector<Output>* output,
+                              ScoreOutput* scores) = 0;
 
   int batch_size() { return batch_size_; }
   int num_classes() { return num_classes_; }
@@ -79,10 +80,10 @@ class CTCGreedyDecoder : public CTCDecoder<T> {
   CTCGreedyDecoder(int num_classes, int batch_size, bool merge_repeated)
       : CTCDecoder<T>(num_classes, batch_size, merge_repeated) {}
 
-  Status Decode(const typename CTCDecoder<T>::SequenceLength& seq_len,
-                const std::vector<typename CTCDecoder<T>::Input>& input,
-                std::vector<typename CTCDecoder<T>::Output>* output,
-                typename CTCDecoder<T>::ScoreOutput* scores) override {
+  absl::Status Decode(const typename CTCDecoder<T>::SequenceLength& seq_len,
+                      const std::vector<typename CTCDecoder<T>::Input>& input,
+                      std::vector<typename CTCDecoder<T>::Output>* output,
+                      typename CTCDecoder<T>::ScoreOutput* scores) override {
     if (output->empty() || (*output)[0].size() < Decoder::batch_size_) {
       return errors::InvalidArgument(
           "output needs to be of size at least (1, batch_size).");

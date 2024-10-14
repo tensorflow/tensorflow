@@ -68,6 +68,12 @@ class HostOffloader : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
+  // Process the next "MoveToHost" instruction that resides at the beginning of
+  // a host memory offload instruction chain. This ensures that redundant
+  // "MoveToHost" (those already residing inside of a host memory offload
+  // instruction chain) are ignored.
+  absl::StatusOr<bool> ProcessNextMoveToHostInstr(HloComputation* computation);
+
   const int64_t kHostMemorySpaceColor;
   absl::flat_hash_set<HloInstruction*>
       already_visited_move_to_host_custom_calls_;

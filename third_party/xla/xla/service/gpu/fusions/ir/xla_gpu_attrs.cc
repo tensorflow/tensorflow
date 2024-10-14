@@ -88,8 +88,8 @@ IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
 
 mlir::LogicalResult IndexingMapAttr::verify(
     mlir::function_ref<mlir::InFlightDiagnostic()> emitError,
-    mlir::AffineMap map, ArrayRef<DimVar> dim_vars,
-    ArrayRef<RangeVar> range_vars,
+    mlir::AffineMap map, ArrayRef<IndexingMap::Variable> dim_vars,
+    ArrayRef<IndexingMap::Variable> range_vars,
     ArrayRef<std::pair<AffineExpr, Interval>> constraints) {
   auto indexing_map =
       IndexingMap(map, dim_vars, range_vars, /*rt_vars=*/{}, constraints);

@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 
 namespace xla {
 
@@ -40,9 +40,15 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple);
 
+// Export an MHLO + Shardy module into a pure MHLO module, to prepare for a
+// round trip to HLO, such that the Shardy ops and attributes are preserved when
+// going back to MLIR for Shardy propagation.
+absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module);
+
 // Returns a version of StableHLO ~12w old, for forward compatibility with PJRT
 // plugins on a quarterly update cycle.
-std::string GetDefaultStablehloVersion();
+std::string GetDefaultStablehloVersion(
+    std::optional<int64_t> plugin_version = std::nullopt);
 
 // Serialize using MLIR Bytecode Format which does not guarantee forward or
 // backward compatiblity of the dialects used. If passing StableHLO with forward
@@ -52,7 +58,6 @@ std::string GetDefaultStablehloVersion();
 //   For plugin_version < 41, returns `SerializeUsingNativeBytecode`.
 //   For plugin_version >= 41, returns `SerializeUsingVersionedStablehlo`.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
-                                      std::optional<int64_t> plugin_version,
                                       absl::string_view target,
                                       bool inplace = false);
 

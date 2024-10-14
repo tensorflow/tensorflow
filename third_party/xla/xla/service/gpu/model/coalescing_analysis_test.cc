@@ -538,6 +538,28 @@ class CoalescingForTiledHloTest : public CoalescingTest {
     }
     return result;
   }
+
+  std::vector<double> EffectiveBandwidthUtilizationRatePerOperand(
+      const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+    SymbolicTileAnalysis symbolic_tile_analysis =
+        std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, &mlir_context_));
+
+    TiledHloComputation tiled_hlo_computation =
+        *symbolic_tile_analysis.ComputeTiledHloInstructions(
+            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            /*compute_all_tile_offset_indexing_maps=*/true);
+
+    const TiledHloInstruction* tiled_hlo_root = tiled_hlo_computation.GetRoot();
+    std::vector<double> result;
+    for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
+      result.push_back(BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+          *operand, device_info_));
+    }
+    return result;
+  }
 };
 
 TEST_F(CoalescingForTiledHloTest, TiledReadCoalescedHeuristic_Transpose) {
@@ -641,6 +663,51 @@ ENTRY main {
               ElementsAre(true, true));
   EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 128}),
               ElementsAre(true, true));
+}
+
+TEST_F(
+    CoalescingForTiledHloTest,
+    EffectiveBandwidthUtilizationRateIsComputedCorrectlyForTiledMemoryAccess) {  // NOLINT(whitespace/line_length)
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = s8[256, 16] parameter(0)
+  ROOT convert = s8[256, 16] convert(p0)
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  // Note: the tests below rely strongly on this value for the transaction size.
+  // If the transaction size is changed, the tests will need to be updated.
+  constexpr int kExpectedDramToL2TransactionSize = 64;
+  ASSERT_EQ(device_info_.dram_to_l2_transaction_size_bytes(),
+            kExpectedDramToL2TransactionSize);
+
+  // By reading only one byte at a time, we expect to exploit exactly
+  // 1 / kExpectedDramToL2TransactionSize of the bandwidth.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {1, 1}),
+              ElementsAre(1.0 / kExpectedDramToL2TransactionSize));
+
+  // Reading one full row won't cut it; by reading 16 bytes at a time, we expect
+  // to exploit exactly 16 / kExpectedDramToL2TransactionSize of the bandwidth.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {1, 16}),
+              ElementsAre(16.0 / kExpectedDramToL2TransactionSize));
+
+  // Reading 4 rows at a time will allow us to exploit 100% of the bandwidth.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {4, 16}),
+              ElementsAre(1.0));
+
+  // Reading 8 rows at a time will allow us to exploit 100% of the bandwidth.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {8, 16}),
+              ElementsAre(1.0));
+
+  // Reading 6 rows at a time will however only allow us to exploit 75% of the
+  // bandwidth; the first four rows are read fully coalesced, but the last two
+  // rows use only half of the transaction size---i.e. 3/4 of the transactions
+  // are coalesced.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {6, 16}),
+              ElementsAre(0.75));
 }
 
 }  // namespace

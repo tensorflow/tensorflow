@@ -52,7 +52,7 @@ bool IsStaticShard(const ProcessingModeDef& processing_mode) {
          processing_mode.sharding_policy() == ProcessingModeDef::HINT;
 }
 
-Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
+absl::Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
   if (!IsNoShard(processing_mode) && !IsDynamicShard(processing_mode) &&
       !IsStaticShard(processing_mode)) {
     return errors::Internal(
@@ -131,7 +131,7 @@ absl::StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
                                  "COLOCATED, REMOTE, and HYBRID.");
 }
 
-bool IsPreemptedError(const Status& status) {
+bool IsPreemptedError(const absl::Status& status) {
   return errors::IsAborted(status) || errors::IsCancelled(status) ||
          errors::IsUnavailable(status);
 }

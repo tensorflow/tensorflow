@@ -113,10 +113,10 @@ class TensorInterface : public AbstractTensorInterface {
   std::string SummarizeValue() const override;
 
   void SetShape(const int64_t* dims, int num_dims);
-  Status ToTensor(tensorflow::Tensor* dst) const;
-  Status BitcastFrom(const TensorInterface& from, DataType type,
-                     const int64_t* new_dims, int num_new_dims);
-  Status FromProto(const tensorflow::TensorProto& from);
+  absl::Status ToTensor(tensorflow::Tensor* dst) const;
+  absl::Status BitcastFrom(const TensorInterface& from, DataType type,
+                           const int64_t* new_dims, int num_new_dims);
+  absl::Status FromProto(const tensorflow::TensorProto& from);
 
   tensorflow::Tensor& Tensor() { return tensor_; }
 
@@ -129,7 +129,7 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
 }
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
-                                                   Status* status);
+                                                   absl::Status* status);
 
 }  // namespace tensorflow
 

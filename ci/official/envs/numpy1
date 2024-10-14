@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-TFCI_ARTIFACT_FINAL_GCS_ENABLE=0
-TFCI_ARTIFACT_FINAL_PYPI_ENABLE=0
-TFCI_ARTIFACT_STAGING_GCS_ENABLE=0
-TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow_numpy1"
-TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=0
+TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tf_nightly_numpy1"
+TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
 TFCI_WHL_NUMPY_VERSION=1

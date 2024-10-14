@@ -61,7 +61,9 @@ class FakeDevice : public Device {
   explicit FakeDevice(const DeviceAttributes& device_attributes)
       : Device(nullptr, device_attributes) {}
 
-  Status Sync() override { return errors::Unimplemented("FakeDevice::Sync()"); }
+  absl::Status Sync() override {
+    return errors::Unimplemented("FakeDevice::Sync()");
+  }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
@@ -76,8 +78,8 @@ class FakeDevice : public Device {
 const char* kHostName = "/job:worker/replica:0/task:0/device:CPU:0";
 const char* kDeviceName = "/job:worker/replica:0/task:0/device:GPU:0";
 
-Status IncreaseDynamismForAutoJit(const Scope& s,
-                                  std::unique_ptr<Graph>* result) {
+absl::Status IncreaseDynamismForAutoJit(const Scope& s,
+                                        std::unique_ptr<Graph>* result) {
   std::vector<std::unique_ptr<Device>> devices;
   devices.push_back(FakeDevice::Make(kDeviceName, DEVICE_GPU));
   devices.push_back(FakeDevice::Make(kHostName, DEVICE_CPU));

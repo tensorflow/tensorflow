@@ -29,11 +29,11 @@ namespace functor {
 // nullptr, they provide the input; otherwise `random` provides the input.
 template <typename Device, typename T>
 struct StatelessRandomGammaFunctor {
-  static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
-                     int64_t num_samples, int64_t num_alphas,
-                     int64_t samples_per_alpha, const uint64* key,
-                     const uint64* counter, const random::PhiloxRandom& random,
-                     T* samples_flat);
+  static absl::Status Fill(OpKernelContext* ctx, const T* alpha_flat,
+                           int64_t num_samples, int64_t num_alphas,
+                           int64_t samples_per_alpha, const uint64* key,
+                           const uint64* counter,
+                           const random::PhiloxRandom& random, T* samples_flat);
 };
 
 }  // namespace functor

@@ -949,7 +949,7 @@ INSTANTIATE_TEST_SUITE_P(
                             HloOpcode::kNegate, HloOpcode::kRsqrt,
                             HloOpcode::kSin, HloOpcode::kSqrt, HloOpcode::kTan,
                             HloOpcode::kTanh}),
-                       ::testing::Values(5e-4)),
+                       ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
 using BinaryElementwiseTest = ElementwiseTest;

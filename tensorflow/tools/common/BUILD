@@ -3,6 +3,7 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "VERSION_MAJOR")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -23,11 +24,13 @@ py_strict_library(
 py_strict_test(
     name = "public_api_test",
     srcs = ["public_api_test.py"],
-    data = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-    }),
+    data = if_pywrap(
+        if_false = select({
+            "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
+            "//tensorflow:windows": [],
+            "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
+        }),
+    ),
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
@@ -47,11 +50,13 @@ py_strict_library(
 py_strict_test(
     name = "traverse_test",
     srcs = ["traverse_test.py"],
-    data = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-    }),
+    data = if_pywrap(
+        if_false = select({
+            "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
+            "//tensorflow:windows": [],
+            "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
+        }),
+    ),
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [

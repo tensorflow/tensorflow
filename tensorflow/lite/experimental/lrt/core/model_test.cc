@@ -32,7 +32,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
-#include "tensorflow/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
@@ -44,7 +44,7 @@ inline bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
 }
 
 inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
-  auto model = LoadTestFileModel(path);
+  auto model = lrt::testing::LoadTestFileModel(path);
 
   uint8_t* buf = nullptr;
   size_t buf_size;
@@ -72,7 +72,7 @@ class TopologyTest : public ::testing::TestWithParam<LrtModel> {
     std::vector<LrtModel> result;
 
     for (auto p : paths) {
-      result.push_back(LoadTestFileModel(p).release());
+      result.push_back(lrt::testing::LoadTestFileModel(p).release());
       result.push_back(LoadModelThroughRoundTrip(p).release());
     }
 
@@ -108,7 +108,7 @@ TEST(LrtModelTest, TestLoadTestDataBadFileData) {
 }
 
 TEST(TestSerializeModel, TestAllocations) {
-  auto model = LoadTestFileModel("add_simple.tflite");
+  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
 
   uint8_t* buf = nullptr;
   size_t buf_size;
@@ -120,7 +120,7 @@ TEST(TestSerializeModel, TestAllocations) {
 }
 
 TEST(TestSerializeModel, TestMetadata) {
-  auto model = LoadTestFileModel("add_simple.tflite");
+  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
   constexpr static std::string_view kMetadataData = "My_Meta_Data";
@@ -164,7 +164,7 @@ TEST(TestSerializeModel, TestMetadata) {
 }
 
 TEST(TestSerializeModel, TestCustomOpCode) {
-  auto model = LoadTestFileModel("add_simple.tflite");
+  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kCustomCode = "MyCustomCode";
   ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
@@ -193,7 +193,7 @@ TEST(TestSerializeModel, TestCustomOpCode) {
 }
 
 TEST_P(TestWithPath, TestConstructDestroy) {
-  UniqueLrtModel model = LoadTestFileModel(GetParam());
+  UniqueLrtModel model = lrt::testing::LoadTestFileModel(GetParam());
 }
 
 TEST_P(TestWithPath, TestConstructDestroyRoundTrip) {
@@ -243,8 +243,8 @@ TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
   ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -285,14 +285,14 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
   ASSERT_EQ(op_inputs[0], subgraph_inputs[0]);
-  ASSERT_TRUE(graph_tools::MatchBuffer(
+  ASSERT_TRUE(graph_tools::MatchWeights(
       op_inputs[1], llvm::ArrayRef<float>{1.0, 2.0, 3.0, 4.0}));
 
   ASSERT_RESULT_OK_ASSIGN(auto op_out, graph_tools::GetOnlyOpOut(op));
   ASSERT_EQ(op_out, subgraph_outputs[0]);
 
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_outputs[0]));
-  ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_outputs[0]));
+  ASSERT_TRUE(graph_tools::MatchNoWeights(subgraph_inputs[0]));
 }
 
 INSTANTIATE_TEST_SUITE_P(

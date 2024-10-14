@@ -29,12 +29,12 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_function.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -118,6 +118,65 @@ TEST_F(IrEmitterTest, ComputeFuncStack) {
             funcname);
 
   ir_emitter.PopComputeFunction();
+}
+
+TEST_F(IrEmitterTest, CheckNativeConvertSupportOnTargetCPU) {
+  std::string spr_feature_string =
+      "+prfchw,+cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,+xsaves,+"
+      "avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,+avx512ifma,+xsave,+sse4.2,+"
+      "tsxldtrk,-sm3,+ptwrite,-widekl,+invpcid,+64bit,+xsavec,-avx10.1-512,+"
+      "avx512vpopcntdq,+cmov,-avx512vp2intersect,+avx512cd,+movbe,-avxvnniint8,"
+      "-ccmp,+amx-int8,-kl,-avx10.1-256,+evex512,+avxvnni,-rtm,+adx,+avx2,-"
+      "hreset,+movdiri,+serialize,-sha512,+vpclmulqdq,+avx512vl,+uintr,-cf,+"
+      "clflushopt,-raoint,-cmpccxadd,+bmi,+amx-tile,+sse,-avx10.2-256,+gfni,-"
+      "avxvnniint16,-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,+avx512f,+amx-bf16,+"
+      "avx512bf16,+avx512vnni,-push2pop2,+cx8,+avx512bw,+sse3,+pku,-nf,+"
+      "fsgsbase,-clzero,-mwaitx,-lwp,+lzcnt,+sha,+movdir64b,-ppx,+wbnoinvd,+"
+      "enqcmd,-avx10.2-512,-avxneconvert,-tbm,-pconfig,-amx-complex,+ssse3,+"
+      "cx16,+bmi2,+fma,+popcnt,-avxifma,+f16c,+avx512bitalg,-rdpru,+clwb,+mmx,+"
+      "sse2,+rdseed,+avx512vbmi2,-prefetchi,+rdpid,-fma4,+avx512vbmi,+shstk,+"
+      "vaes,+waitpkg,-sgx,+fxsr,+avx512dq,-sse4a";
+
+  std::string skx_feature_string =
+      "+prfchw,-cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,+xsaves,-"
+      "avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,-avx512ifma,+xsave,+sse4.2,-"
+      "tsxldtrk,-sm3,-ptwrite,-widekl,+invpcid,+64bit,+xsavec,-avx10.1-512,-"
+      "avx512vpopcntdq,+cmov,-avx512vp2intersect,+avx512cd,+movbe,-avxvnniint8,"
+      "-ccmp,-amx-int8,-kl,-avx10.1-256,+evex512,-avxvnni,+rtm,+adx,+avx2,-"
+      "hreset,-movdiri,-serialize,-sha512,-vpclmulqdq,+avx512vl,-uintr,-cf,+"
+      "clflushopt,-raoint,-cmpccxadd,+bmi,-amx-tile,+sse,-avx10.2-256,-gfni,-"
+      "avxvnniint16,-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,+avx512f,-amx-bf16,-"
+      "avx512bf16,-avx512vnni,-push2pop2,+cx8,+avx512bw,+sse3,+pku,-nf,+"
+      "fsgsbase,-clzero,-mwaitx,-lwp,+lzcnt,-sha,-movdir64b,-ppx,-wbnoinvd,-"
+      "enqcmd,-avx10.2-512,-avxneconvert,-tbm,-pconfig,-amx-complex,+ssse3,+"
+      "cx16,+bmi2,+fma,+popcnt,-avxifma,+f16c,-avx512bitalg,-rdpru,+clwb,+mmx,+"
+      "sse2,+rdseed,-avx512vbmi2,-prefetchi,-rdpid,-fma4,-avx512vbmi,-shstk,-"
+      "vaes,-waitpkg,-sgx,+fxsr,+avx512dq,-sse4a";
+
+  std::string srf_feature_string =
+      "+prfchw,+cldemote,+avx,+aes,+sahf,+pclmul,-xop,+crc32,+xsaves,-"
+      "avx512fp16,-usermsr,-sm4,-egpr,+sse4.1,-avx512ifma,+xsave,+sse4.2,-"
+      "tsxldtrk,-sm3,+ptwrite,-widekl,+invpcid,+64bit,+xsavec,-avx10.1-512,-"
+      "avx512vpopcntdq,+cmov,-avx512vp2intersect,-avx512cd,+movbe,+avxvnniint8,"
+      "-ccmp,-amx-int8,-kl,-avx10.1-256,-sha512,+avxvnni,-rtm,+adx,+avx2,-"
+      "hreset,+movdiri,+serialize,+vpclmulqdq,-avx512vl,+uintr,-cf,+clflushopt,"
+      "-raoint,+cmpccxadd,+bmi,-amx-tile,+sse,-avx10.2-256,+gfni,-avxvnniint16,"
+      "-amx-fp16,-zu,-ndd,+xsaveopt,+rdrnd,-avx512f,-amx-bf16,-avx512bf16,-"
+      "avx512vnni,-push2pop2,+cx8,-avx512bw,+sse3,+pku,-nf,+fsgsbase,-clzero,-"
+      "mwaitx,-lwp,+lzcnt,+sha,+movdir64b,-ppx,+wbnoinvd,+enqcmd,-avx10.2-512,+"
+      "avxneconvert,-tbm,+pconfig,-amx-complex,+ssse3,+cx16,+bmi2,+fma,+popcnt,"
+      "+avxifma,+f16c,-avx512bitalg,-rdpru,+clwb,+mmx,+sse2,+rdseed,-"
+      "avx512vbmi2,-prefetchi,+rdpid,-fma4,-avx512vbmi,+shstk,+vaes,+waitpkg,+"
+      "sgx,+fxsr,-avx512dq,-sse4a";
+
+  // Testing sapphire-rapids target
+  ASSERT_TRUE(IsNativeConvertSupportedOnTargetCPU(spr_feature_string));
+
+  // Testing skylake target
+  ASSERT_FALSE(IsNativeConvertSupportedOnTargetCPU(skx_feature_string));
+
+  // Testing sierra-forest target
+  ASSERT_TRUE(IsNativeConvertSupportedOnTargetCPU(srf_feature_string));
 }
 
 }  // namespace

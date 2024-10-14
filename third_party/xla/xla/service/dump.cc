@@ -460,13 +460,17 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(DumpToFileInDirOrStdoutImpl(
         StrCat(filename, ".txt"), module.ToString(print_options), opts));
     if (buffer_assn) {
-      DataProducer data_producer;
-      data_producer.Append([&] { return buffer_assn->ToString(); });
-      data_producer.Append([&] { return "\n\n"; });
-      data_producer.Append(
+      DataProducer buffer_assignment;
+      buffer_assignment.Append([&] { return buffer_assn->ToString(); });
+      buffer_assignment.Append([&] { return "\n\n"; });
+      buffer_assignment.Append(
           [&] { return buffer_assn->hlo_live_range().ToString(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
-          StrCat(filename, "-buffer-assignment.txt"), data_producer, opts));
+          StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
+      DataProducer summary_report;
+      summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
+      file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+          StrCat(filename, "-memory-usage-report.txt"), summary_report, opts));
     }
   }
 

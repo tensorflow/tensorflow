@@ -575,6 +575,7 @@ tf_proto_library(
         ":internal_visibility_allowlist_package",
         # To be visible from `lib_internal_impl`.
         "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

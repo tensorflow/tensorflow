@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/service/local_service.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/local_client_test_base.h"

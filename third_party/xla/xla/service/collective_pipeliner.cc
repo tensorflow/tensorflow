@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
@@ -2958,7 +2958,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
           tuple_points_to_analysis.get(), call_graph.get());
       loop_analysis->ComputeLoopStatistics();
       if (loop_analysis->GetLoopIterationCount() &&
-          loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 0) {
+          loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 1) {
         loop_analyses.push_back(
             std::make_pair(instruction, std::move(loop_analysis)));
       }

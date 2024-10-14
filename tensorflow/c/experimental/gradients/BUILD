@@ -55,7 +55,9 @@ cc_library(
     hdrs = [
         "nn_grad.h",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/python/framework/experimental:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:gradients_internal",
