@@ -130,6 +130,9 @@ message DebugOptions {
   // Experimentally disables binary libraries in GPU compiler passes.
   bool xla_gpu_experimental_disable_binary_libraries = 329;
 
+  // Dump FDO profiles in a binary format to a separate file.
+  bool xla_gpu_experimental_dump_fdo_profiles = 338;
+
   // Enabling this flag will attempt to redirect every already-constructed
   // fusion possible to the Triton emitter.
   //
@@ -1022,7 +1025,7 @@ message DebugOptions {
   //   coll.2-done = collective(coll.2-start)
   int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
 
-  // Next id: 338
+  // Next id: 339
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

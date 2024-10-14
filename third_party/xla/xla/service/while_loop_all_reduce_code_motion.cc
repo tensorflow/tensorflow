@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_replication_analysis.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {

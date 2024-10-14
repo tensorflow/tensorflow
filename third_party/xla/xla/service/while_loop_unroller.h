@@ -86,7 +86,7 @@ std::optional<int64_t> MatchEffectivelyStaticDynamicSliceInsideLoop(
 //
 // The trip count for loops is calculated based on
 // `MatchTrivialLoopTripCount` function in
-// tensorflow/compiler/xla/service/while_loop_analysis.h`
+// tensorflow/compiler/xla/hlo/analysis/while_loop_analysis.h`
 //
 // TODO(b/301472793): Add utility functions to unroll specific loops.
 class WhileLoopUnroller : public HloModulePass {
