@@ -340,7 +340,7 @@ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(hipGraph_t graph) {
 
 /*static*/ absl::Status GpuDriver::GraphExecKernelNodeSetParams(
     GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    absl::string_view kernel_name, GpuFunctionHandle function,
+    absl::string_view kernel_name, hipFunction_t function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes,
@@ -401,8 +401,8 @@ absl::Status GpuDriver::GraphAddChildNode(hipGraphNode_t* node,
 
 absl::Status GpuDriver::GraphAddMemcpyD2DNode(
     Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
-    GpuDevicePtr gpu_src, uint64_t size) {
+    absl::Span<const GpuGraphNodeHandle> deps, hipDeviceptr_t gpu_dst,
+    hipDeviceptr_t gpu_src, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
@@ -416,7 +416,7 @@ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
 
 absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
     Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
+    hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src, uint64_t size) {
   VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
@@ -462,7 +462,7 @@ struct BitPatternToValue {
 
 absl::Status GpuDriver::GraphAddMemsetNode(
     Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr dst,
+    absl::Span<const GpuGraphNodeHandle> deps, hipDeviceptr_t dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph
@@ -489,7 +489,7 @@ absl::Status GpuDriver::GraphAddMemsetNode(
 
 absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
     Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    GpuDevicePtr dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
+    hipDeviceptr_t dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Set memset node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(dst)
@@ -551,7 +551,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 absl::Status GpuDriver::LaunchKernel(
-    Context* context, absl::string_view kernel_name, GpuFunctionHandle function,
+    Context* context, absl::string_view kernel_name, hipFunction_t function,
     unsigned int cluster_dim_x, unsigned int cluster_dim_y,
     unsigned int cluster_dim_z, unsigned int grid_dim_x,
     unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,

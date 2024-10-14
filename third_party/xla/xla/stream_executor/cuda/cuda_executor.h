@@ -142,16 +142,16 @@ class CudaExecutor : public GpuExecutor {
                                  KernelMetadata* kernel_metadata);
 
   // (supported on CUDA only)
-  absl::Status LoadModuleFromCuBin(const char* cubin, GpuModuleHandle* module)
+  absl::Status LoadModuleFromCuBin(const char* cubin, CUmodule* module)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
   // (supported on CUDA only)
-  absl::Status LoadModuleFromPtx(const char* ptx, GpuModuleHandle* module)
+  absl::Status LoadModuleFromPtx(const char* ptx, CUmodule* module)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // (supported on ROCm only)
-  absl::Status LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
+  absl::Status LoadModuleFromHsaco(const char* hsaco, CUmodule* module)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(const void* gpu_binary)
@@ -163,17 +163,17 @@ class CudaExecutor : public GpuExecutor {
   // Guards the on-disk-module mapping.
   absl::Mutex disk_modules_mu_;
 
-  // Mapping from filename to GPUModuleHandle, if it was already retrieved.
-  // Multiple GPUFunctionHandle are usually obtained from a single
-  // GPUModuleHandle so we attempt to hit in this mapping first, before
+  // Mapping from filename to CUmodule, if it was already retrieved.
+  // Multiple CUfunctions are usually obtained from a single
+  // CUmodule so we attempt to hit in this mapping first, before
   // retrieving it.
-  std::map<std::string, GpuModuleHandle> disk_modules_
+  std::map<std::string, CUmodule> disk_modules_
       ABSL_GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
 
-  std::map<const char*, GpuModuleHandle> in_memory_modules_
+  std::map<const char*, CUmodule> in_memory_modules_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   absl::Mutex shared_constants_mu_;
@@ -187,7 +187,7 @@ class CudaExecutor : public GpuExecutor {
   std::unordered_map<const Kernel*, const void*> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
   // GPU binary (PTX or CUBIN or HSACO) -> {CUDA module, reference count}.
-  std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>
+  std::unordered_map<const void*, std::pair<CUmodule, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the CUDA device being operated on. Immutable

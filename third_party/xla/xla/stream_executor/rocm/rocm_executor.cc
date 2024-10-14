@@ -635,7 +635,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 
 #if TF_ROCM_VERSION >= 60200
     TF_ASSIGN_OR_RETURN(
-        GpuFunctionHandle function,
+        hipFunction_t function,
         RocmRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
     rocm_kernel->set_gpu_function(function);
 #else
@@ -651,7 +651,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
   // from a module, as ROCm runtime did that automatically for us.
   if (!spec.has_in_process_symbol()) {
     VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    GpuFunctionHandle function;
+    hipFunction_t function;
     TF_RETURN_IF_ERROR(GetModuleFunction(gpu_context(), module,
                                          kernel_name->c_str(), &function));
     rocm_kernel->set_gpu_function(function);

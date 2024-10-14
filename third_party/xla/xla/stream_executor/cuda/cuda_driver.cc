@@ -514,7 +514,7 @@ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
 
 absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
     Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
+    CUdeviceptr gpu_dst, CUdeviceptr gpu_src, uint64_t size) {
   CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
   VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
@@ -685,7 +685,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 absl::Status GpuDriver::LaunchKernel(
-    Context* context, absl::string_view kernel_name, GpuFunctionHandle function,
+    Context* context, absl::string_view kernel_name, CUfunction function,
     unsigned int cluster_dim_x, unsigned int cluster_dim_y,
     unsigned int cluster_dim_z, unsigned int grid_dim_x,
     unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,

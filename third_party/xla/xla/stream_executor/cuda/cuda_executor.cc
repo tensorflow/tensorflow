@@ -686,7 +686,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     VLOG(2) << "Resolve CUDA kernel " << *kernel_name
             << " from symbol pointer: " << symbol;
     TF_ASSIGN_OR_RETURN(
-        GpuFunctionHandle function,
+        CUfunction function,
         CudaRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
     cuda_kernel->set_gpu_function(function);
 
@@ -698,7 +698,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   // from a module, as CUDA runtime did that automatically for us.
   if (!spec.has_in_process_symbol()) {
     VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    GpuFunctionHandle function;
+    CUfunction function;
     TF_RETURN_IF_ERROR(GetModuleFunction(gpu_context(), module,
                                          kernel_name->c_str(), &function));
     cuda_kernel->set_gpu_function(function);
@@ -1126,7 +1126,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
     auto it = gpu_binary_to_module_.find(module_handle.id());
     CHECK(it != gpu_binary_to_module_.end());
 
-    GpuModuleHandle gpu_module_handle = it->second.first;
+    CUmodule gpu_module_handle = it->second.first;
     CHECK(gpu_module_handle != nullptr);
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(gpu_context(), gpu_module_handle, symbol_name.c_str(),

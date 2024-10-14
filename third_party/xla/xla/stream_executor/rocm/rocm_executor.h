@@ -74,7 +74,7 @@ class RocmExecutor : public GpuExecutor {
       CommandBuffer::Mode mode) override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const MultiKernelLoaderSpec& spec) override;
-  void UnloadKernel(const Kernel* kernel);
+  void UnloadKernel(const Kernel* kernel) override;
   absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
@@ -132,7 +132,7 @@ class RocmExecutor : public GpuExecutor {
                                  KernelMetadata* kernel_metadata);
 
   // Loads a module in HSACO format.
-  absl::Status LoadModuleFromHsaco(const char* hsaco, GpuModuleHandle* module)
+  absl::Status LoadModuleFromHsaco(const char* hsaco, hipModule_t* module)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(const void* gpu_binary)
@@ -144,17 +144,17 @@ class RocmExecutor : public GpuExecutor {
   // Guards the on-disk-module mapping.
   absl::Mutex disk_modules_mu_;
 
-  // Mapping from filename to GPUModuleHandle, if it was already retrieved.
-  // Multiple GPUFunctionHandle are usually obtained from a single
-  // GPUModuleHandle so we attempt to hit in this mapping first, before
+  // Mapping from filename to hipModule_t, if it was already retrieved.
+  // Multiple hipFunction_ts are usually obtained from a single
+  // hipModule_t so we attempt to hit in this mapping first, before
   // retrieving it.
-  std::map<std::string, GpuModuleHandle> disk_modules_
+  std::map<std::string, hipModule_t> disk_modules_
       ABSL_GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
 
-  std::map<const char*, GpuModuleHandle> in_memory_modules_
+  std::map<const char*, hipModule_t> in_memory_modules_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   absl::Mutex shared_constants_mu_;
@@ -168,7 +168,7 @@ class RocmExecutor : public GpuExecutor {
   std::unordered_map<const Kernel*, const void*> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
   // GPU binary (PTX or CUBIN or HSACO) -> {module, reference count}.
-  std::unordered_map<const void*, std::pair<GpuModuleHandle, uint64_t>>
+  std::unordered_map<const void*, std::pair<hipModule_t, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the ROCm device being operated on. Immutable
