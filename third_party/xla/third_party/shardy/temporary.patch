@@ -1,15 +1,749 @@
+diff --git a/shardy/dialect/sdy/ir/utils.cc b/shardy/dialect/sdy/ir/utils.cc
+index e62fd79..8de48da 100644
+--- a/shardy/dialect/sdy/ir/utils.cc
++++ b/shardy/dialect/sdy/ir/utils.cc
+@@ -261,7 +261,7 @@ Value getShardableValue(Value value) {
+       });
+ }
+ 
+-TensorShardingAttr getSharding(Value value, bool removeManualAxes) {
++TensorShardingAttr getSharding(Value value) {
+   value = getShardableValue(value);
+   if (!value) {
+     // This means the value is a scalar block argument, in which case it can't
+@@ -283,14 +283,11 @@ TensorShardingAttr getSharding(Value value, bool removeManualAxes) {
+           [](ReshardOp reshardOp) { return reshardOp.getShardingAttr(); })
+       .Case<ManualComputationOp>([&](ManualComputationOp manualComputationOp) {
+         if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+-          if (removeManualAxes) {
+-            // Block arguments of a `ManualComputationOp` can only be referred
+-            // to inside the body. Remove any of the manual axes that are
+-            // prefixed to it so the body of the MC op doesn't know about them.
+-            return manualComputationOp.getInShardingWithoutManualAxes(
+-                blockArg.getArgNumber());
+-          }
+-          return manualComputationOp.getInSharding(blockArg.getArgNumber());
++          // Block arguments of a `ManualComputationOp` can only be referred to
++          // inside the body. Remove any of the manual axes that are prefixed to
++          // it so the body of the MC op doesn't know about them.
++          return manualComputationOp.getInShardingWithoutManualAxes(
++              blockArg.getArgNumber());
+         }
+         // An op outside of a `ManualComputationOp`, that is a user of the
+         // `OpResult,` would request this value. As such keep the manual
+@@ -323,8 +320,7 @@ TensorShardingAttr getOrCreateSharding(Value value, StringRef meshName) {
+                                           getTensorRank(value), meshName);
+ }
+ 
+-void setSharding(Value value, TensorShardingAttr sharding,
+-                 bool addManualAxes) {
++void setSharding(Value value, TensorShardingAttr sharding) {
+   value = getShardableValue(value);
+   assert(value && "value should exist if its sharding is updated");
+   TypeSwitch<Operation*>(getOwningOp(value))
+@@ -342,17 +338,12 @@ void setSharding(Value value, TensorShardingAttr sharding,
+           [&](ReshardOp reshardOp) { reshardOp.setShardingAttr(sharding); })
+       .Case<ManualComputationOp>([&](ManualComputationOp manualComputationOp) {
+         if (auto blockArg = dyn_cast<BlockArgument>(value)) {
+-          if (addManualAxes) {
+-            // We only set `in_shardings` when propagating from a use inside
+-            // the body of the `ManualComputationOp` to the `in_shardings`, and
+-            // since propagation within the body of the op doesn't see the
+-            // manual axes, we need to add them back.
+-            manualComputationOp.setInShardingAddingManualAxes(
+-                blockArg.getArgNumber(), sharding);
+-          } else {
+-            manualComputationOp.setInSharding(blockArg.getArgNumber(),
+-                                              sharding);
+-          }
++          // We only set `in_shardings` when propagating from a use inside
++          // the body of the `ManualComputationOp` to the `in_shardings`, and
++          // since propagation within the body of the op doesn't see the manual
++          // axes, we need to add them back.
++          manualComputationOp.setInShardingAddingManualAxes(
++              blockArg.getArgNumber(), sharding);
+         } else {
+           // This would happen when an op outside of a `ManualComputationOp`
+           // is a user of a result of the `ManualComputationOp`. In this case,
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index ec47210..1bced76 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -189,6 +189,7 @@ Operation* getOwningOp(Value value);
+ //
+ // Returns an empty value if the given `value` has no shardable value, e.g., a
+ // scalar block argument of a reduction function.
++// TODO(tomnatan): consider moving this to a dedicated sdy/utils dir.
+ Value getShardableValue(Value value);
+ 
+ // Returns the sharding of the given `value`, whose location depends on the type
+@@ -202,10 +203,8 @@ Value getShardableValue(Value value);
+ //
+ // Returns an empty `TensorShardingAttr` if the given `value` has no sharding or
+ // if it has no shardable value (see `getShardableValue`)
+-//
+-// If `removeManualAxes` is true, then manual axes are removed from the returned
+-// sharding if `value` is a block argument of a `ManualComputationOp`.
+-TensorShardingAttr getSharding(Value value, bool removeManualAxes = true);
++// TODO(tomnatan): consider moving this to a dedicated sdy/utils dir.
++TensorShardingAttr getSharding(Value value);
+ 
+ // Returns the sharding of the given `value`, or a fully open empty
+ // `TensorShardingAttr` if `value` doesn't have a sharding.
+@@ -227,11 +226,8 @@ void replaceShardingAtIndex(Operation* op, unsigned index,
+ //
+ // Some op results and block arguments don't have shardings attached to them.
+ // Instead we recursively loop through the defining op of these ops' operands.
+-//
+-// If `addManualAxes` is true, then the manual axes are added to the given
+-// `sharding` if `value` is a block argument of a `ManualComputationOp`.
+-void setSharding(Value value, TensorShardingAttr sharding,
+-                 bool addManualAxes = true);
++// TODO(tomnatan): consider moving this to a dedicated sdy/utils dir.
++void setSharding(Value value, TensorShardingAttr sharding);
+ 
+ // Return the sharding of the `resNum` result of the given `funcOp`.
+ TensorShardingAttr getFuncResultSharding(func::FuncOp funcOp, int64_t resNum);
+diff --git a/shardy/dialect/sdy/transforms/common/sharding_walker.cc b/shardy/dialect/sdy/transforms/common/sharding_walker.cc
+index a054ec3..af6cbca 100644
+--- a/shardy/dialect/sdy/transforms/common/sharding_walker.cc
++++ b/shardy/dialect/sdy/transforms/common/sharding_walker.cc
+@@ -17,14 +17,13 @@ limitations under the License.
+ 
+ #include <cstdint>
+ #include <functional>
+-#include <variant>
++#include <iterator>
+ 
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/Value.h"
+-#include "mlir/IR/ValueRange.h"
+ #include "mlir/IR/Visitors.h"
+ #include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+@@ -39,72 +38,40 @@ using func::FuncOp;
+ 
+ // Applies `callback` on `sharding` if present, and calls `setShardingFn` on the
+ // result if `transformShardings` is true.
+-void processSharding(TensorShardingAttr sharding,
+-                     const ValueOrFuncResult& valueOrFuncResult,
+-                     bool transformShardings,
+-                     TransformShardingForTensorFn callback,
++void processSharding(TensorShardingAttr sharding, bool transformShardings,
++                     TransformShardingFn callback,
+                      std::function<void(TensorShardingAttr)> setShardingFn) {
+   if (!sharding) {
+     return;
+   }
+-  TensorShardingAttr newSharding = callback(sharding, valueOrFuncResult);
++  TensorShardingAttr newSharding = callback(sharding);
+   if (transformShardings && newSharding != sharding) {
+     setShardingFn(newSharding);
+   }
+ }
+ 
+-// Applies `callback` on the sharding of `valueOrFuncResult` if present, and
+-// replaces the sharding with the result if `transformShardings` is true.
+-void processSharding(const ValueOrFuncResult& valueOrFuncResult,
+-                     bool transformShardings,
+-                     TransformShardingForTensorFn callback) {
+-  if (auto* value = std::get_if<Value>(&valueOrFuncResult)) {
+-    processSharding(
+-        getSharding(*value, /*removeManualAxes=*/false), valueOrFuncResult,
+-        transformShardings, callback, [&](TensorShardingAttr newSharding) {
+-          setSharding(*value, newSharding, /*addManualAxes=*/false);
+-        });
+-  } else {
+-    auto [funcOp, resNum] = std::get<FuncResult>(valueOrFuncResult);
+-    processSharding(
+-        getFuncResultSharding(funcOp, resNum), valueOrFuncResult,
+-        transformShardings, callback,
+-        [funcOp = funcOp, resNum = resNum](TensorShardingAttr newSharding) {
+-          setFuncResultSharding(funcOp, resNum, newSharding);
+-        });
+-  }
+-}
+-
+-// Applies `callback` on each sharding in `shardings` if present, and
+-// corresponding value in `values`, and calls `setShardingsFn` on the results if
+-// `transformShardings` is true.
++// Applies `callback` on each sharding in `shardings` if present, and calls
++// `setShardingFn` on the results if `transformShardings` is true.
+ void processShardings(
+-    ArrayRef<TensorShardingAttr> shardings, ValueRange values,
+-    bool transformShardings, TransformShardingForTensorFn callback,
++    ArrayRef<TensorShardingAttr> shardings, bool transformShardings,
++    TransformShardingFn callback,
+     std::function<void(ArrayRef<TensorShardingAttr>)> setShardingsFn) {
+-  if (shardings.empty()) {
+-    return;
+-  }
+-  if (!transformShardings) {
+-    for (auto [sharding, value] : llvm::zip_equal(shardings, values)) {
+-      callback(sharding, value);
+-    }
++  if (shardings.empty() || !transformShardings) {
++    llvm::for_each(shardings, callback);
+     return;
+   }
+ 
+   SmallVector<TensorShardingAttr> newShardings;
+-  for (auto [sharding, value] : llvm::zip_equal(shardings, values)) {
+-    newShardings.push_back(callback(sharding, value));
+-  }
++  llvm::transform(shardings, std::back_inserter(newShardings), callback);
+   setShardingsFn(newShardings);
+ }
+ 
+ // Same as above but for `TensorShardingPerValueAttr`.
+ void processShardings(
+-    TensorShardingPerValueAttr shardings, ValueRange values,
+-    bool transformShardings, TransformShardingForTensorFn callback,
++    TensorShardingPerValueAttr shardings, bool transformShardings,
++    TransformShardingFn callback,
+     std::function<void(TensorShardingPerValueAttr)> setShardingsFn) {
+-  return processShardings(shardings.getShardings(), values, transformShardings,
++  return processShardings(shardings.getShardings(), transformShardings,
+                           callback,
+                           [&](ArrayRef<TensorShardingAttr> newShardings) {
+                             setShardingsFn(TensorShardingPerValueAttr::get(
+@@ -112,25 +79,30 @@ void processShardings(
+                           });
+ }
+ 
+-void walkShardings(Operation* rootOp, TransformShardingForTensorFn callback,
++void walkShardings(Operation* rootOp, TransformShardingFn callback,
+                    ConsumeOpFn consumeOpFn, bool transformShardings) {
+   rootOp->walk<WalkOrder::PreOrder>([&](Operation* op) {
+     consumeOpFn(op);
+     TypeSwitch<Operation*, void>(op)
+         .Case<FuncOp>([&](FuncOp funcOp) {
+           for (BlockArgument arg : funcOp.getArguments()) {
+-            processSharding(arg, transformShardings, callback);
++            processSharding(getSharding(arg), transformShardings, callback,
++                            [&](TensorShardingAttr newSharding) {
++                              setSharding(arg, newSharding);
++                            });
+           }
+           for (int64_t resNum = 0; resNum < funcOp.getNumResults(); ++resNum) {
+-            processSharding(FuncResult(funcOp, resNum), transformShardings,
+-                            callback);
++            processSharding(
++                getFuncResultSharding(funcOp, resNum), transformShardings,
++                callback, [&](TensorShardingAttr newSharding) {
++                  setFuncResultSharding(funcOp, resNum, newSharding);
++                });
+           }
+         })
+         .Case<ShardableDataFlowOpInterface>(
+             [&](ShardableDataFlowOpInterface shardableDataFlowOp) {
+               processShardings(
+                   shardableDataFlowOp.getBlockArgumentEdgeOwnerShardings(),
+-                  shardableDataFlowOp.getBlockArgumentEdgeOwners(),
+                   transformShardings, callback,
+                   [&](ArrayRef<TensorShardingAttr> newShardings) {
+                     shardableDataFlowOp.setBlockArgumentEdgeOwnerShardings(
+@@ -138,7 +110,6 @@ void walkShardings(Operation* rootOp, TransformShardingForTensorFn callback,
+                   });
+               processShardings(
+                   shardableDataFlowOp.getOpResultEdgeOwnerShardings(),
+-                  shardableDataFlowOp.getOpResultEdgeOwners(),
+                   transformShardings, callback,
+                   [&](ArrayRef<TensorShardingAttr> newShardings) {
+                     shardableDataFlowOp.setOpResultEdgeOwnerShardings(
+@@ -148,15 +119,12 @@ void walkShardings(Operation* rootOp, TransformShardingForTensorFn callback,
+         .Case<ManualComputationOp>(
+             [&](ManualComputationOp manualComputationOp) {
+               processShardings(
+-                  manualComputationOp.getInShardings(),
+-                  manualComputationOp.getBody().getArguments(),
+-                  transformShardings, callback,
+-                  [&](TensorShardingPerValueAttr newShardings) {
++                  manualComputationOp.getInShardings(), transformShardings,
++                  callback, [&](TensorShardingPerValueAttr newShardings) {
+                     manualComputationOp.setInShardingsAttr(newShardings);
+                   });
+               processShardings(
+-                  manualComputationOp.getOutShardings(),
+-                  manualComputationOp.getResults(), transformShardings,
++                  manualComputationOp.getOutShardings(), transformShardings,
+                   callback, [&](TensorShardingPerValueAttr newShardings) {
+                     manualComputationOp.setOutShardingsAttr(newShardings);
+                   });
+@@ -168,10 +136,12 @@ void walkShardings(Operation* rootOp, TransformShardingForTensorFn callback,
+             // unregistered sharding attribute, to also handle SDY ops like
+             // `ShardingConstraintOp`.
+             Value result = op->getResult(0);
+-            processSharding(result, transformShardings, callback);
++            processSharding(getSharding(result), transformShardings, callback,
++                            [&](TensorShardingAttr newSharding) {
++                              setSharding(result, newSharding);
++                            });
+           } else {
+-            processShardings(getShardings(op), op->getResults(),
+-                             transformShardings, callback,
++            processShardings(getShardings(op), transformShardings, callback,
+                              [&](ArrayRef<TensorShardingAttr> newShardings) {
+                                setShardings(op, newShardings);
+                              });
+@@ -182,52 +152,21 @@ void walkShardings(Operation* rootOp, TransformShardingForTensorFn callback,
+ 
+ }  // namespace
+ 
+-void transformSharding(const ValueOrFuncResult& valueOrFuncResult,
+-                       TransformShardingFn transformFn) {
+-  processSharding(
+-      valueOrFuncResult, /*transformShardings=*/true,
+-      [transformFn](TensorShardingAttr newSharding, const ValueOrFuncResult&) {
+-        return transformFn(newSharding);
+-      });
+-}
+-
+-void walkShardings(Operation* rootOp, ConsumeShardingAndTensorFn consumeFn,
++void walkShardings(Operation* rootOp, ConsumeShardingFn consumeFn,
+                    ConsumeOpFn consumeOpFn) {
+   walkShardings(
+       rootOp,
+-      [consumeFn](TensorShardingAttr sharding,
+-                  const ValueOrFuncResult& valueOrFuncResult) {
+-        consumeFn(sharding, valueOrFuncResult);
++      [consumeFn](TensorShardingAttr sharding) {
++        consumeFn(sharding);
+         return sharding;
+       },
+       consumeOpFn,
+       /*transformShardings=*/false);
+ }
+ 
+-void walkShardings(Operation* rootOp, ConsumeShardingFn consumeFn,
+-                   ConsumeOpFn consumeOpFn) {
+-  walkShardings(
+-      rootOp,
+-      [consumeFn](TensorShardingAttr sharding, const ValueOrFuncResult&) {
+-        consumeFn(sharding);
+-      },
+-      consumeOpFn);
+-}
+-
+-void transformShardings(Operation* rootOp,
+-                        TransformShardingForTensorFn transformFn,
+-                        ConsumeOpFn consumeOpFn) {
+-  walkShardings(rootOp, transformFn, consumeOpFn, /*transformShardings=*/true);
+-}
+-
+ void transformShardings(Operation* rootOp, TransformShardingFn transformFn,
+                         ConsumeOpFn consumeOpFn) {
+-  transformShardings(
+-      rootOp,
+-      [transformFn](TensorShardingAttr newSharding, const ValueOrFuncResult&) {
+-        return transformFn(newSharding);
+-      },
+-      consumeOpFn);
++  walkShardings(rootOp, transformFn, consumeOpFn, /*transformShardings=*/true);
+ }
+ 
+ }  // namespace sdy
+diff --git a/shardy/dialect/sdy/transforms/common/sharding_walker.h b/shardy/dialect/sdy/transforms/common/sharding_walker.h
+index 9133a14..59eda54 100644
+--- a/shardy/dialect/sdy/transforms/common/sharding_walker.h
++++ b/shardy/dialect/sdy/transforms/common/sharding_walker.h
+@@ -16,53 +16,18 @@ limitations under the License.
+ #ifndef SHARDY_DIALECT_SDY_TRANSFORMS_COMMON_SHARDING_WALKER_H_
+ #define SHARDY_DIALECT_SDY_TRANSFORMS_COMMON_SHARDING_WALKER_H_
+ 
+-#include <cstdint>
+ #include <functional>
+-#include <variant>
+ 
+-#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/Operation.h"
+-#include "mlir/IR/Value.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ 
+ namespace mlir {
+ namespace sdy {
+ 
+-// Reference to a specific result of a function.
+-struct FuncResult {
+-  func::FuncOp funcOp;
+-  int64_t resNum;
+-
+-  FuncResult(func::FuncOp funcOp, int64_t resNum)
+-      : funcOp(funcOp), resNum(resNum) {}
+-};
+-// A `Value` or a reference to a function result. Should be passed by const
+-// reference, as `sizeof(ValueOrFuncResult) >= 16`.
+-using ValueOrFuncResult = std::variant<Value, FuncResult>;
+-
+ using ConsumeOpFn = std::function<void(Operation*)>;
+-
+ using ConsumeShardingFn = std::function<void(TensorShardingAttr)>;
+-using ConsumeShardingAndTensorFn =
+-    std::function<void(TensorShardingAttr, const ValueOrFuncResult&)>;
+-
+ using TransformShardingFn =
+     std::function<TensorShardingAttr(TensorShardingAttr)>;
+-using TransformShardingForTensorFn = std::function<TensorShardingAttr(
+-    TensorShardingAttr, const ValueOrFuncResult&)>;
+-
+-// Updates the sharding of `valueOrFuncResult` by applying `transformFn` on it.
+-void transformSharding(const ValueOrFuncResult& valueOrFuncResult,
+-                       TransformShardingFn transformFn);
+-
+-// Walks the given `rootOp` in forward pre-order and applies `consumeFn` on
+-// any `TensorShardingAttr` encountered and corresponding `ValueOrFuncResult`.
+-//
+-// In addition, applies `consumeOpFn` on every encountered op, before consuming
+-// its shardings.
+-void walkShardings(
+-    Operation* rootOp, ConsumeShardingAndTensorFn consumeFn,
+-    ConsumeOpFn consumeOpFn = [](Operation*) {});
+ 
+ // Walks the given `rootOp` in forward pre-order and applies `consumeFn` on
+ // any `TensorShardingAttr` encountered.
+@@ -73,18 +38,9 @@ void walkShardings(
+     Operation* rootOp, ConsumeShardingFn consumeFn,
+     ConsumeOpFn consumeOpFn = [](Operation*) {});
+ 
+-// Walks the given `rootOp` in forward pre-order and updates any
+-// `TensorShardingAttr` encountered by applying `transformFn` on it and the
+-// corresponding `ValueOrFuncResult`.
+-//
+-// In addition, applies `consumeOpFn` on every encountered op, before
+-// transforming its shardings.
+-void transformShardings(
+-    Operation* rootOp, TransformShardingForTensorFn transformFn,
+-    ConsumeOpFn consumeOpFn = [](Operation*) {});
+-
+-// Walks the given `rootOp` in forward pre-order and updates any
+-// `TensorShardingAttr` encountered by applying `transformFn` on it.
++// Walks the given `rootOp` in forward pre-order and replaces any
++// `TensorShardingAttr` encountered with the result of applying `transformFn` on
++// it.
+ //
+ // In addition, applies `consumeOpFn` on every encountered op, before
+ // transforming its shardings.
+diff --git a/shardy/dialect/sdy/transforms/propagation/BUILD b/shardy/dialect/sdy/transforms/propagation/BUILD
+index 062118d..c7c2271 100644
+--- a/shardy/dialect/sdy/transforms/propagation/BUILD
++++ b/shardy/dialect/sdy/transforms/propagation/BUILD
+@@ -63,7 +63,6 @@ cc_library(
+         "//shardy/common:file_utils",
+         "//shardy/dialect/sdy/ir:dialect",
+         "//shardy/dialect/sdy/transforms/common:op_properties",
+-        "//shardy/dialect/sdy/transforms/common:sharding_walker",
+         "//shardy/dialect/sdy/transforms/export:passes",
+         "//shardy/dialect/sdy/transforms/import:passes",
+         "@llvm-project//llvm:Support",
+diff --git a/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir b/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
+index 636fc6f..3a1b98f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
++++ b/shardy/dialect/sdy/transforms/propagation/test/user_priority_propagation.mlir
+@@ -280,14 +280,14 @@ func.func @propagate_from_multi_result_op_with_priorities(
+ 
+ // CHECK-LABEL: func @manual_computation_shardings_with_priority(
+ // CHECK-SAME:      %arg0: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}, {?}]>},
+-// CHECK-SAME:      %arg1: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>})
++// CHECK-SAME:      %arg1: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {?}]>})
+ // CHECK-SAME:  -> (tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b", ?}]>}) {
+ func.func @manual_computation_shardings_with_priority(
+     %arg0: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}p2, {?}]>},
+     %arg1: tensor<32x32xf32> ) -> tensor<32x32xf32> {
+   // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"a", "b", ?}, {?}]>]>}
+   // CHECK-NEXT: sdy.manual_computation(%[[ADD_0]], %arg1)
+-  // CHECK-SAME:   in_shardings=[<@mesh, [{"a", "b"}, {?}]>, <@mesh, [{"a", ?}, {"b", ?}]>]
++  // CHECK-SAME:   in_shardings=[<@mesh, [{"a", "b"}, {?}]>, <@mesh, [{"a", ?}, {?}]>]
+   // CHECK-SAME:   out_shardings=[<@mesh, [{"a", ?}, {"b", ?}]>]
+   // CHECK-SAME:   manual_axes={"a"} (%arg2: tensor<16x32xf32>, %arg3: tensor<16x32xf32>) {
+   // CHECK-NEXT:   %[[ADD_1:.*]] = stablehlo.add %arg2, %arg3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{?}, {"b", ?}]>]>}
+@@ -304,34 +304,6 @@ func.func @manual_computation_shardings_with_priority(
+   func.return %1: tensor<32x32xf32>
+ }
+ 
+-// CHECK-LABEL: func @manual_computation_sharding_with_low_priority(
+-// CHECK-SAME:      %arg0: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}, {}]>},
+-// CHECK-SAME:      %arg1: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", "b", ?}, {?}]>})
+-// CHECK-SAME:  -> (tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}, {}]>}) {
+-func.func @manual_computation_sharding_with_low_priority(
+-    %arg0: tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}p1, {}]>},
+-    %arg1: tensor<32x32xf32>) -> (tensor<32x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}p1, {}]>}) {
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"c", ?}, {?}]>]>}
+-  // CHECK-NEXT: %[[MC:.*]] = sdy.manual_computation(%[[ADD_0]], %arg1)
+-  // CHECK-SAME:   in_shardings=[<@mesh, [{"a", "b"}, {}]>, <@mesh, [{"a", "b"}, {}]>]
+-  // CHECK-SAME:   out_shardings=[<@mesh, [{"a", "b"}, {}]>]
+-  // CHECK-SAME:   manual_axes={"a"} (%arg2: tensor<16x32xf32>, %arg3: tensor<16x32xf32>) {
+-  // CHECK-NEXT:   %[[ADD_1:.*]] = stablehlo.add %arg2, %arg3 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b", ?}, {?}]>]>}
+-  // CHECK-NEXT:   sdy.return %[[ADD_1]]
+-  // CHECK-NEXT: }
+-  // CHECK-NEXT: stablehlo.add %[[MC]], %[[MC]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"c", ?}, {?}]>]>}
+-  %0 = stablehlo.add %arg0, %arg0 : tensor<32x32xf32>
+-  %1 = sdy.manual_computation(%0, %arg1)
+-      in_shardings=[<@mesh, [{"a", "b"}p2, {}]>, <@mesh, [{"a", "b"}p0, {}]>]
+-      out_shardings=[<@mesh, [{"a", "b"}p2, {}]>] manual_axes={"a"}
+-      (%arg2: tensor<16x32xf32>, %arg3: tensor<16x32xf32>) {
+-    %3 = stablehlo.add %arg2, %arg3 : tensor<16x32xf32>
+-    sdy.return %3 : tensor<16x32xf32>
+-  } : (tensor<32x32xf32>, tensor<32x32xf32>) -> tensor<32x32xf32>
+-  %2 = stablehlo.add %1, %1 : tensor<32x32xf32>
+-  func.return %2: tensor<32x32xf32>
+-}
+-
+ // Tests user based priority propagation with op based priority propagation.
+ // - For %arg0/%arg1 we make use of user based priorities. Since %arg0 is p1 but
+ //   %arg1 is p0, then the first `stablehlo.add` uses the sharding from %arg1
+diff --git a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+index e1868f5..60d4c0f 100644
+--- a/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
++++ b/shardy/dialect/sdy/transforms/propagation/user_priority_propagation.cc
+@@ -25,6 +25,7 @@ limitations under the License.
+ #include "llvm/ADT/MapVector.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/FormatVariadic.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/MLIRContext.h"
+@@ -37,7 +38,7 @@ limitations under the License.
+ #include "mlir/Support/LogicalResult.h"
+ #include "shardy/common/file_utils.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
++#include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/propagation/auto_partitioner_registry.h"
+ #include "shardy/dialect/sdy/transforms/propagation/basic_propagation.h"
+ #include "shardy/dialect/sdy/transforms/propagation/op_priority_propagation.h"
+@@ -51,18 +52,40 @@ namespace sdy {
+ 
+ namespace {
+ 
+-// A value or func result and its original sharding.
+-struct ShardingReference {
+-  ValueOrFuncResult valueOrFuncResult;
++using func::FuncOp;
++
++// A value and its original sharding.
++struct ValueSharding {
++  Value value;
+   TensorShardingAttr sharding;
+ 
+-  ShardingReference(const ValueOrFuncResult& valueOrFuncResult,
+-                    TensorShardingAttr sharding)
+-      : valueOrFuncResult(valueOrFuncResult), sharding(sharding) {}
++  ValueSharding(Value value, TensorShardingAttr sharding)
++      : value(value), sharding(sharding) {}
++};
++
++// A function result number and its original sharding.
++struct FuncResultSharding {
++  int64_t resNum;
++  TensorShardingAttr sharding;
++
++  FuncResultSharding(int64_t resNum, TensorShardingAttr sharding)
++      : resNum(resNum), sharding(sharding) {}
++};
++
++struct FuncOpAndResultShardings {
++  FuncOp funcOp;
++  SmallVector<FuncResultSharding> funcResultShardings;
++
++  explicit FuncOpAndResultShardings(
++      FuncOp funcOp, ArrayRef<FuncResultSharding> funcResultShardings = {})
++      : funcOp(funcOp), funcResultShardings(funcResultShardings) {}
+ };
+ 
+ // References to a subset of value and function result shardings of a function.
+-using ShardingReferences = SmallVector<ShardingReference>;
++struct ShardingReferences {
++  SmallVector<ValueSharding> valueShardings;
++  SmallVector<FuncOpAndResultShardings> funcOpAndResultShardingsVec;
++};
+ 
+ using PriorityToShardingReferences =
+     llvm::SmallMapVector<int64_t, ShardingReferences, 4>;
+@@ -105,13 +128,19 @@ TensorShardingAttr getUpdatedShardingForPriority(
+ // `getUpdatedShardingForPriority`).
+ void updateReferencedShardingsForPriority(
+     const ShardingReferences& shardingReferences, int64_t curPriority) {
+-  for (const auto& [valueOrFuncResult, originalSharding] : shardingReferences) {
+-    transformSharding(
+-        valueOrFuncResult,
+-        [&, originalSharding = originalSharding](TensorShardingAttr sharding) {
+-          return getUpdatedShardingForPriority(sharding, originalSharding,
+-                                               curPriority);
+-        });
++  for (auto [value, originalSharding] : shardingReferences.valueShardings) {
++    setSharding(value, getUpdatedShardingForPriority(
++                           getSharding(value), originalSharding, curPriority));
++  }
++
++  for (const auto& [funcOp, resultShardings] :
++       shardingReferences.funcOpAndResultShardingsVec) {
++    for (auto [resNum, originalSharding] : resultShardings) {
++      setFuncResultSharding(
++          funcOp, resNum,
++          getUpdatedShardingForPriority(getFuncResultSharding(funcOp, resNum),
++                                        originalSharding, curPriority));
++    }
+   }
+ }
+ 
+@@ -123,7 +152,7 @@ void updateReferencedShardingsForPriority(
+ // Dimension shardings with an explicit priority 0 will be the same except their
+ // priority is dropped.
+ TensorShardingAttr getInitializedSharding(TensorShardingAttr originalSharding,
+-                                          const SymbolTable& symbolTable) {
++                                          Operation* op) {
+   MLIRContext* ctx = originalSharding.getContext();
+   SmallVector<DimensionShardingAttr> newDimShardings(
+       originalSharding.getDimShardings());
+@@ -138,7 +167,7 @@ TensorShardingAttr getInitializedSharding(TensorShardingAttr originalSharding,
+       dimSharding = DimensionShardingAttr::get(ctx, {}, /*isClosed=*/true);
+     }
+   }
+-  MeshAttr mesh = originalSharding.getMesh(symbolTable);
++  MeshAttr mesh = originalSharding.getMesh(op);
+   assert(mesh && "unknown mesh");
+   llvm::sort(newReplicatedAxes, AxisRefAttr::getMeshComparator(mesh));
+   // TODO(tomnatan): we need to merge split axes and split them again when
+@@ -159,8 +188,67 @@ void clearAndAddNonZeroPriorities(TensorShardingAttr sharding,
+   }
+ }
+ 
+-// Traverses `moduleOp` and for each value or func result with a sharding:
+-//   - Adds {value / func result, sharding} to the sharding references of each
++// If `value` has a sharding, adds that original sharding to
++// `priorityToShardingReferences` for every non-zero priority in its dimension
++// shardings, and initializes the sharding for the first iteration (see
++// `getInitializedSharding`).
++void addValueShardingToPriorityMapAndInitialize(
++    Value value, PriorityToShardingReferences& priorityToShardingReferences,
++    llvm::SmallDenseSet<int64_t>& prioritiesInSharding) {
++  TensorShardingAttr sharding = getSharding(value);
++  if (!sharding) {
++    return;
++  }
++  clearAndAddNonZeroPriorities(sharding, prioritiesInSharding);
++  for (int64_t priority : prioritiesInSharding) {
++    priorityToShardingReferences[priority].valueShardings.emplace_back(
++        value, sharding);
++  }
++  setSharding(value, getInitializedSharding(sharding, getOwningOp(value)));
++}
++
++// Gets the result shardings of a `funcOp` for a given `priority`. If `funcOp`
++// doesn't have a result sharding for `priority`, adds it and initializes it,
++// and returns a reference to it.
++SmallVector<FuncResultSharding>& getFuncResultShardings(
++    SmallVector<FuncOpAndResultShardings>& funcOpAndResultShardingsVec,
++    FuncOp funcOp) {
++  // Add a new entry for `funcOp` if any of the conditions holds:
++  // 1. this is the first time we are adding func shardings for this priority,
++  //    so there is no `FuncOp` yet
++  // 2. this is a new `funcOp` that this function is running on
++  if (funcOpAndResultShardingsVec.empty() ||
++      funcOpAndResultShardingsVec.back().funcOp != funcOp) {
++    funcOpAndResultShardingsVec.emplace_back(funcOp);
++  }
++  return funcOpAndResultShardingsVec.back().funcResultShardings;
++}
++
++// If `funcOp` has a sharding for result `resNum`, adds that original sharding
++// to `priorityToShardingReferences` for every non-zero priority in its
++// dimension shardings, and initializes the sharding for the first iteration
++// (see `getInitializedSharding`).
++void addFuncResultShardingToPriorityMapAndInitialize(
++    FuncOp funcOp, int resNum,
++    PriorityToShardingReferences& priorityToShardingReferences,
++    llvm::SmallDenseSet<int64_t>& prioritiesInSharding) {
++  auto sharding = getFuncResultSharding(funcOp, resNum);
++  if (!sharding) {
++    return;
++  }
++  clearAndAddNonZeroPriorities(sharding, prioritiesInSharding);
++  for (int64_t priority : prioritiesInSharding) {
++    getFuncResultShardings(
++        priorityToShardingReferences[priority].funcOpAndResultShardingsVec,
++        funcOp)
++        .emplace_back(resNum, sharding);
++  }
++  setFuncResultSharding(funcOp, resNum,
++                        getInitializedSharding(sharding, funcOp));
++}
++
++// Traverses `funcOp` and for each value or func result with a sharding:
++//   - Adds {value / result number, sharding} to the sharding references of each
+ //     non-zero priority in its dimension shardings.
+ //   - Initializes the tensor's current sharding for the first iteration (see
+ //     `getInitializedSharding`).
+@@ -169,23 +257,32 @@ void clearAndAddNonZeroPriorities(TensorShardingAttr sharding,
+ //
+ // Returns a vector of `PriorityShardingReferences` sorted by priority.
+ SmallVector<PriorityShardingReferences>
+-getShardingReferencesPerPriorityAndInitialize(ModuleOp moduleOp,
+-                                              const SymbolTable& symbolTable) {
+-  PriorityToShardingReferences priorityToShardingReferences;
++getShardingReferencesPerPriorityAndInitialize(ModuleOp moduleOp) {
++  PriorityToShardingReferences priorityToValueShardings;
+   llvm::SmallDenseSet<int64_t> prioritiesInSharding;
+-  transformShardings(moduleOp, [&](TensorShardingAttr sharding,
+-                                   const ValueOrFuncResult& valueOrFuncResult) {
+-    clearAndAddNonZeroPriorities(sharding, prioritiesInSharding);
+-    for (int64_t priority : prioritiesInSharding) {
+-      priorityToShardingReferences[priority].emplace_back(valueOrFuncResult,
+-                                                          sharding);
++  moduleOp.walk([&](Operation* op) {
++    if (isa<FuncOp, ManualComputationOp>(op)) {
++      // These ops have block arguments with attached shardings.
++      for (Value arg : op->getRegion(0).getArguments()) {
++        addValueShardingToPriorityMapAndInitialize(
++            arg, priorityToValueShardings, prioritiesInSharding);
++      }
++    }
++    for (Value result : op->getResults()) {
++      addValueShardingToPriorityMapAndInitialize(
++          result, priorityToValueShardings, prioritiesInSharding);
+     }
+-    return getInitializedSharding(sharding, symbolTable);
+   });
+-  // Finally we take the vector of `priorityToShardingReferences` and sort it by
++  for (auto funcOp : moduleOp.getOps<FuncOp>()) {
++    for (int resNum = 0; resNum < funcOp.getNumResults(); resNum++) {
++      addFuncResultShardingToPriorityMapAndInitialize(
++          funcOp, resNum, priorityToValueShardings, prioritiesInSharding);
++    }
++  }
++  // Finally we take the vector of `PriorityValueShardings` and sort it by
+   // priority.
+   SmallVector<PriorityShardingReferences> priorityShardingReferencesVec =
+-      priorityToShardingReferences.takeVector();
++      priorityToValueShardings.takeVector();
+   llvm::sort(
+       priorityShardingReferencesVec,
+       [](const PriorityShardingReferences& a,
+@@ -236,7 +333,7 @@ LogicalResult UserPriorityPropagationPassImpl::propagate(
+     const ShardingGroupMap& shardingGroupMap,
+     GetDirectionToPropagateFn getDirectionToPropagate) {
+   SmallVector<PriorityShardingReferences> shardingReferencesPerPriority =
+-      getShardingReferencesPerPriorityAndInitialize(moduleOp, symbolTable);
++      getShardingReferencesPerPriorityAndInitialize(moduleOp);
+   // We first run the first iteration (priority 0):
+   if (failed(OpPriorityPropagationPassImpl::propagate(
+           moduleOp, symbolTable, shardingGroupMap, getDirectionToPropagate))) {
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a41bd24..c21b314 100644
+index c21b314..619f928 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "23309d7d9553af69b2912a159bc2e488acf69255"
--    LLVM_SHA256 = "d2f80fd052b6326eb6143e0c655335fa50617d66f0c8293dc68a9ac9cb42308a"
-+    LLVM_COMMIT = "efcfa6e711689ada546c323316145ecd749d380a"
-+    LLVM_SHA256 = "81c9afd66109be46e60ff335c51f2ce9dfbf3998dc87497209bf7cfa6d4f2b22"
+-    LLVM_COMMIT = "efcfa6e711689ada546c323316145ecd749d380a"
+-    LLVM_SHA256 = "81c9afd66109be46e60ff335c51f2ce9dfbf3998dc87497209bf7cfa6d4f2b22"
++    LLVM_COMMIT = "1a787b3c8e71eeb333825ec4b76c7440290142e4"
++    LLVM_SHA256 = "2a4130e08013f7677deba3ba4bb11ce6b8711c54c6d210b261152a53a587adfa"
  
      tf_http_archive(
          name = name,
