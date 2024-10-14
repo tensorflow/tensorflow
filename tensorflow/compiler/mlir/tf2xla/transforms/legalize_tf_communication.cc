@@ -42,7 +42,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/primitive_util.h"
