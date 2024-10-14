@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
@@ -51,6 +52,8 @@ class RocmStream : public GpuStream {
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
 
   static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
       GpuExecutor* executor,

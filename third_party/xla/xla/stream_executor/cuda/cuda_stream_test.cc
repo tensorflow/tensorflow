@@ -172,6 +172,20 @@ TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
+TEST_F(CudaStreamTest, DoHostCallback) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  int callback_call_counter = 0;
+  EXPECT_THAT(stream->DoHostCallback(
+                  [&callback_call_counter]() { callback_call_counter++; }),
+              IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_EQ(callback_call_counter, 1);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace stream_executor

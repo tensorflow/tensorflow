@@ -320,13 +320,6 @@ class GpuDriver {
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gab95a78143bae7f21eebb978f91e7f3f
   typedef void (*StreamCallback)(void* data);
 
-  // Enqueues a callback operation into stream.
-  // See StreamCallback above and the NVIDIA documentation for additional
-  // details.
-  static absl::Status AddStreamCallback(Context* context,
-                                        GpuStreamHandle stream,
-                                        StreamCallback callback, void* data);
-
   // Blocks the calling thread until the operations enqueued onto stream have
   // been completed, via cuStreamSynchronize.
   //

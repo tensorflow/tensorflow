@@ -39,32 +39,11 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-namespace {
-void InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
-}
-}  // namespace
-
 
 Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
   handle.stream = gpu_stream_;
   return handle;
-}
-
-absl::Status GpuStream::DoHostCallbackWithStatus(
-    absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr =
-      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
-        absl::Status s = std::move(cb)();
-        if (!s.ok()) {
-          LOG(WARNING) << "Host callback failed: " << s;
-        }
-      });
-  return GpuDriver::AddStreamCallback(parent_->gpu_context(), gpu_stream(),
-                                      InternalHostCallback, callback_ptr);
 }
 
 GpuStream::~GpuStream() {

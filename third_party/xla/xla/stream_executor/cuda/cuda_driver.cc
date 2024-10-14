@@ -714,13 +714,6 @@ absl::Status GpuDriver::LaunchKernel(
                    "; shared memory size: ", shared_mem_bytes));
 }
 
-absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
-                                          StreamCallback callback, void* data) {
-  // Note: flags param is required to be zero according to CUDA 6.0.
-  return cuda::ToStatus(cuLaunchHostFunc(stream, callback, data));
-}
-
-
 void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
     return;

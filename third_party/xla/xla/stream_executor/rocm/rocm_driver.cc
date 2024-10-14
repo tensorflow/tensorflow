@@ -537,13 +537,6 @@ absl::Status GpuDriver::LaunchKernel(
                       shared_mem_bytes, stream, kernel_params, extra);
 }
 
-absl::Status GpuDriver::AddStreamCallback(Context* context,
-                                          GpuStreamHandle stream,
-                                          StreamCallback callback, void* data) {
-  return ToStatus(wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data),
-                  "unable to add host callback");
-}
-
 void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
     return;

@@ -170,6 +170,20 @@ TEST_F(RocmStreamTest, MemcpyDeviceToDevice) {
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
+TEST_F(RocmStreamTest, DoHostCallback) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<RocmStream> stream,
+                          RocmStream::Create(&executor_.value(),
+                                             /*priority=*/std::nullopt));
+
+  bool callback_called = false;
+  EXPECT_THAT(
+      stream->DoHostCallback([&callback_called]() { callback_called = true; }),
+      IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_TRUE(callback_called);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace stream_executor

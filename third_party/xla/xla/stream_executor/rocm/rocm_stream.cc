@@ -22,6 +22,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -263,4 +264,28 @@ absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),
                                size, gpu_stream());
 }
+
+namespace {
+void InternalHostCallback(void* data) {
+  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
+  std::move (*callback)();
+  delete callback;
+}
+}  // namespace
+
+absl::Status RocmStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  auto callback_ptr =
+      new absl::AnyInvocable<void() &&>([cb = std::move(callback)]() mutable {
+        absl::Status s = std::move(cb)();
+        if (!s.ok()) {
+          LOG(WARNING) << "Host callback failed: " << s;
+        }
+      });
+  return ToStatus(
+      wrap::hipLaunchHostFunc(gpu_stream(), (hipHostFn_t)InternalHostCallback,
+                              callback_ptr),
+      "unable to add host callback");
+}
+
 }  // namespace stream_executor::gpu
