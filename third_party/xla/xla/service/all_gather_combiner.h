@@ -75,7 +75,7 @@ class AllGatherCombiner : public HloModulePass {
           const HloInstruction*, const HloDomainMap&, bool, bool)>
           combine_key);
 
- private:
+ protected:
   // Combine all gather ops up to this threshold.
   int64_t combine_threshold_in_bytes_;
 
