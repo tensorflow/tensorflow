@@ -66,8 +66,8 @@ IfrtPersistentCompilationCache::LookupTf2HloResultOrCreate(
     tsl::RCReference<xla::ifrt::DeviceList> device_list,
     xla::ifrt::Client* client,
     absl::AnyInvocable<absl::StatusOr<Tf2HloResult>()> value_fn) {
-  return absl::UnimplementedError(
-      "LookupTf2HloResultOrCreate is not implemented");
+  // No tf2xla persistent cache is implemented, compile directly.
+  return value_fn();
 }
 
 }  // namespace ifrt_serving

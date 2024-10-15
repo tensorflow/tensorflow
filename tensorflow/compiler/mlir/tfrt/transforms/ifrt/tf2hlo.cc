@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
@@ -68,6 +69,14 @@ namespace ifrt_serving {
 namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
 }  // namespace
+
+Tf2HLOResultProto Tf2HloResult::ToProto() const {
+  Tf2HLOResultProto proto;
+  *proto.mutable_hlo_module_proto() = hlo_module_proto;
+  *proto.mutable_compile_metadata() = compile_metadata;
+  *proto.mutable_host_compute_metadata() = host_compute_metadata;
+  return proto;
+}
 
 absl::Status UpdateCompileMetadata(
     tensorflow::tpu::TPUCompileMetadataProto& metadata,
@@ -210,11 +219,12 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
 
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
+  result.hlo_module_proto = compilation_result.computation->proto();
   result.compile_metadata = std::move(compile_metadata);
   result.host_compute_metadata = compilation_result.host_compute_metadata;
 
-  TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
-      *result.mlir_hlo_module, &compilation_result.computation->proto()));
+  TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(*result.mlir_hlo_module,
+                                              &result.hlo_module_proto));
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",

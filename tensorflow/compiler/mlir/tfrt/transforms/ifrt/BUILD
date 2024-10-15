@@ -1,4 +1,8 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load(
+    "@local_tsl//tsl/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 
 package(
@@ -125,6 +129,7 @@ cc_library(
     srcs = ["tf2hlo.cc"],
     hdrs = ["tf2hlo.h"],
     deps = [
+        ":ifrt_compilation_proto_cc",
         ":ifrt_constants",
         ":ifrt_types",
         "//tensorflow/compiler/jit:xla_cpu_jit",
@@ -160,6 +165,7 @@ cc_library(
         "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
+        "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/service/llvm_ir:llvm_util",
         "@local_xla//xla/stream_executor",
     ],
@@ -290,5 +296,16 @@ tf_cc_test(
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@local_xla//xla/tsl/framework/test_util:mock_serving_device_selector",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_proto_library(
+    name = "ifrt_compilation_proto",
+    srcs = ["ifrt_compilation.proto"],
+    protodeps = [
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
+        "@local_xla//xla/service:hlo_proto",
+        "//tensorflow/core:protos_all",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
     ],
 )
