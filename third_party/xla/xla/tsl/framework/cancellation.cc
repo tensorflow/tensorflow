@@ -78,7 +78,7 @@ void CancellationManager::StartCancelWithStatus(const absl::Status& status) {
       LOG(WARNING) << "Cancellation callback \"" << config.name
                    << "\" is triggered due to a "
                    << (StatusGroup::IsDerived(status) ? "derived" : "root")
-                   << " error: " << status.ToString();
+                   << " error: " << status;
     }
     config.callback();
   }
