@@ -634,15 +634,15 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
     return CustomCallThunk::Create(
-        thunk_info, registration->bundle, std::move(ops), std::move(res),
-        std::move(attributes),
+        thunk_info, call_target_name, registration->bundle, std::move(ops),
+        std::move(res), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&](Slices ops, Slices res) {
-    return CustomCallThunk::Create(thunk_info, std::move(custom_call_target),
-                                   std::move(ops), std::move(res),
-                                   std::move(opaque));
+    return CustomCallThunk::Create(
+        thunk_info, call_target_name, std::move(custom_call_target),
+        std::move(ops), std::move(res), std::move(opaque));
   };
 
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(num_args);

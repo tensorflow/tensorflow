@@ -26,12 +26,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -49,9 +51,13 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -891,25 +897,28 @@ class CustomCallCmd : public CommandBufferCmd {
   // has different meaning in different translation units. We need to get rid of
   // GOOGLE_CUDA defines all over XLA to fix this! As a workaround just keep
   // constructor in a header file.
-  CustomCallCmd(ExecutionStreamId execution_stream_id,
+  CustomCallCmd(ExecutionStreamId execution_stream_id, std::string target_name,
                 CustomCallTarget call_target,
                 std::vector<std::optional<Slice>> operands,
                 std::vector<std::optional<Slice>> results,
                 absl::string_view opaque)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd,
                          execution_stream_id),
+        target_name_(std::move(target_name)),
         call_target_(std::move(call_target)),
         opaque_(opaque),
         operands_(std::move(operands)),
         results_(std::move(results)) {}
 
-  CustomCallCmd(ExecutionStreamId execution_stream_id, XLA_FFI_Handler* handler,
+  CustomCallCmd(ExecutionStreamId execution_stream_id, std::string target_name,
+                XLA_FFI_Handler* handler,
                 std::vector<std::optional<Slice>> operands,
                 std::vector<std::optional<Slice>> results,
                 AttributesMap attributes,
                 const HloComputation* called_computation)
       : CommandBufferCmd(CommandBufferCmdType::kCustomCallCmd,
                          execution_stream_id),
+        target_name_(std::move(target_name)),
         handler_(handler),
         attributes_(std::move(attributes)),
         called_computation_(called_computation),
@@ -930,6 +939,8 @@ class CustomCallCmd : public CommandBufferCmd {
   absl::Status RecordXlaFfiCall(const Thunk::ExecuteParams& execute_param,
                                 const RecordParams& record_params,
                                 se::CommandBuffer* command_buffer);
+
+  std::string target_name_;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.

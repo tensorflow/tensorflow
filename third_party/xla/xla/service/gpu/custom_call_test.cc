@@ -404,9 +404,10 @@ static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
 XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Arg<ffi::AnyBuffer>()  // src
-                           .Ret<ffi::AnyBuffer>()  // dst
-);
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
                          kMemcpy);
 

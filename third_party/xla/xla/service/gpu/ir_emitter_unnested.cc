@@ -43,7 +43,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
@@ -58,10 +57,8 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
@@ -128,6 +125,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime/nccl_all_to_all_thunk.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_broadcast_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
@@ -157,7 +156,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
@@ -1220,14 +1218,15 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
   auto ffi_thunk = [&] {
     auto& called_computations = instr->called_computations();
     return CustomCallThunk::Create(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), registration->bundle,
-        std::move(operands), std::move(results), std::move(attributes),
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), call_target_name,
+        registration->bundle, std::move(operands), std::move(results),
+        std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&] {
     return CustomCallThunk::Create(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), call_target_name,
         std::move(custom_call_target), std::move(operands), std::move(results),
         std::move(opaque));
   };

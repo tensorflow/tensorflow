@@ -367,6 +367,8 @@ cc_library(
         "//xla/service/gpu/runtime:nccl_all_reduce_thunk",
         "//xla/service/gpu/runtime:nccl_all_to_all_thunk",
         "//xla/service/gpu/runtime:nccl_api",
+        "//xla/service/gpu/runtime:nccl_clique",
+        "//xla/service/gpu/runtime:nccl_clique_key",
         "//xla/service/gpu/runtime:nccl_collective_broadcast_thunk",
         "//xla/service/gpu/runtime:nccl_collective_permute_thunk",
         "//xla/service/gpu/runtime:nccl_collective_thunk",
