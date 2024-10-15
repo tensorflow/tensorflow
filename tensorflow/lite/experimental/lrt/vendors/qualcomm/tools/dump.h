@@ -12,17 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_TOOLS_DUMP_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_TOOLS_DUMP_H_
 
-#include "third_party/qairt/include/QNN/QnnLog.h"
+#include <iostream>
+#include <ostream>
 
-namespace lrt::qnn {
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
-// Gets a default logger implementation to stdout.
-// This is used when initializing qnn logging.
-QnnLog_Callback_t GetDefaultStdOutLogger();
+namespace lrt::qnn::internal {
 
-}  // namespace lrt::qnn
+void Dump(const QnnManager& qnn, std::ostream& out = std::cerr);
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
+}
+
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_TOOLS_DUMP_H_

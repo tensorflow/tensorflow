@@ -26,6 +26,7 @@
 #include "third_party/qairt/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_log.h"
 
 //===----------------------------------------------------------------------===//
 //
@@ -48,7 +49,17 @@
 
 namespace lrt::qnn {
 
+class QnnManager;
+
+namespace internal {
+
+void Dump(const QnnManager& qnn, std::ostream& out);
+
+}  // namespace internal
+
 class QnnManager {
+  friend void internal::Dump(const QnnManager& qnn, std::ostream& out);
+
  public:
   QnnManager() = default;
   ~QnnManager() = default;
