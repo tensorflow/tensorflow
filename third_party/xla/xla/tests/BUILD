@@ -3039,11 +3039,13 @@ xla_test(
 
 xla_test(
     name = "iota_test",
+    timeout = "long",
     srcs = ["iota_test.cc"],
+    backend_tags = {
+        "cpu": ["optonly"],
+    },
     shard_count = 50,
     tags = [
-        # Require optimized builds, iota_test_cpu is very slow in fastbuild.
-        "optonly",
         "test_xla_cpu_thunks",
     ],
     deps = [
