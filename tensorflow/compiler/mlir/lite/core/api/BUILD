@@ -4,10 +4,7 @@ load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 

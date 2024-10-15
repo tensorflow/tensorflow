@@ -26,11 +26,7 @@ cc_library(
     hdrs = ["model_builder_base.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/core:__pkg__",
-        "//tensorflow/lite/experimental/lrt:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":macros",
         "//tensorflow/compiler/mlir/lite:allocation",
