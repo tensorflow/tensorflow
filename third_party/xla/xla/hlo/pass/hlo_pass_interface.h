@@ -116,7 +116,7 @@ class HloPassInterface {
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
-  virtual bool IsPassPipeline() { return false; }
+  virtual bool IsPassPipeline() const { return false; }
 };
 
 // Base class for passes which are module-scoped.

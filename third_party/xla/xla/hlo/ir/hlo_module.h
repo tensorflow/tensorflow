@@ -287,7 +287,8 @@ class HloModule {
   // with respect to HloInstruction::Identical() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloModule& module) {
-    h = H::combine(std::move(h), module.entry_computation_layout());
+    if (module.config().has_entry_computation_layout())
+      h = H::combine(std::move(h), module.entry_computation_layout());
     // Use MakeComputationSorted() instead of MakeComputationPostOrder()
     // because naming may affect the order of MakeComputationPostOrder() but not
     // MakeComputationSorted().

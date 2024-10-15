@@ -340,7 +340,7 @@ ENTRY main {
     ASSERT_IS_NOT_OK(status);
     EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
-    EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed after foo2bar"));
+    EXPECT_THAT(status.message(), ::testing::HasSubstr("after pass 'foo2bar'"));
   }
 
   {
@@ -353,7 +353,7 @@ ENTRY main {
     EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
     EXPECT_THAT(status.message(),
-                ::testing::HasSubstr("Failed after pipeline-start"));
+                ::testing::HasSubstr("after pass 'pipeline-start'"));
   }
 }
 
