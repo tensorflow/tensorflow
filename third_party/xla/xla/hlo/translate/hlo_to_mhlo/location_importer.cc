@@ -19,6 +19,9 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 
 namespace mlir {
