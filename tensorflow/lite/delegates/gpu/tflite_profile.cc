@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 
 namespace tflite {
 namespace gpu {
