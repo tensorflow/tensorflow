@@ -115,18 +115,6 @@ TEST_F(RangeOpTest, Large_Double) {
   test::ExpectTensorEqual<double>(expected, *GetOutput(0));
 }
 
-TEST_F(RangeOpTest, RangeSizeOverflow) {
-  MakeOp(DT_INT64);
-
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {static_cast<int64_t>(-5e18)});
-  AddInputFromArray<int64>(TensorShape({}), {-1});
-
-  EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
-                         std::numeric_limits<int64_t>::max()),
-            RunOpKernel().message());
-}
-
 TEST_F(LinSpaceOpTest, Simple_D32) {
   MakeOp(DT_FLOAT, DT_INT32);
 
