@@ -1464,6 +1464,10 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
   }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
+  }
   XlaBuilder builder(TestName());
   std::string ref_bnth = R"(
     custom-call.4.0 = (
@@ -1639,6 +1643,10 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
   }
   XlaBuilder builder(TestName());
 
@@ -1820,6 +1828,10 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  auto cc = GetCudaComputeCapability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP() << "Flash Attention fp8 requires at least Hopper.";
   }
   XlaBuilder builder(TestName());
   std::string hlo_string_ref = R"(
