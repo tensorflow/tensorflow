@@ -1,1 +1,75 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libc/src/math/generic/issignaling.cpp b/libc/src/math/generic/issignaling.cpp
+--- a/libc/src/math/generic/issignaling.cpp
++++ b/libc/src/math/generic/issignaling.cpp
+@@ -14,7 +14,7 @@
+ namespace LIBC_NAMESPACE_DECL {
+ 
+ LLVM_LIBC_FUNCTION(int, issignaling, (double x)) {
+-  return fputil::issignaling(x);
++  return fputil::issignaling_impl(x);
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/math/generic/issignalingf128.cpp b/libc/src/math/generic/issignalingf128.cpp
+--- a/libc/src/math/generic/issignalingf128.cpp
++++ b/libc/src/math/generic/issignalingf128.cpp
+@@ -14,7 +14,7 @@
+ namespace LIBC_NAMESPACE_DECL {
+ 
+ LLVM_LIBC_FUNCTION(int, issignalingf128, (float128 x)) {
+-  return fputil::issignaling(x);
++  return fputil::issignaling_impl(x);
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/math/generic/issignalingf16.cpp b/libc/src/math/generic/issignalingf16.cpp
+--- a/libc/src/math/generic/issignalingf16.cpp
++++ b/libc/src/math/generic/issignalingf16.cpp
+@@ -14,7 +14,7 @@
+ namespace LIBC_NAMESPACE_DECL {
+ 
+ LLVM_LIBC_FUNCTION(int, issignalingf16, (float16 x)) {
+-  return fputil::issignaling(x);
++  return fputil::issignaling_impl(x);
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/math/generic/issignalingf.cpp b/libc/src/math/generic/issignalingf.cpp
+--- a/libc/src/math/generic/issignalingf.cpp
++++ b/libc/src/math/generic/issignalingf.cpp
+@@ -14,7 +14,7 @@
+ namespace LIBC_NAMESPACE_DECL {
+ 
+ LLVM_LIBC_FUNCTION(int, issignalingf, (float x)) {
+-  return fputil::issignaling(x);
++  return fputil::issignaling_impl(x);
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/math/generic/issignalingl.cpp b/libc/src/math/generic/issignalingl.cpp
+--- a/libc/src/math/generic/issignalingl.cpp
++++ b/libc/src/math/generic/issignalingl.cpp
+@@ -14,7 +14,7 @@
+ namespace LIBC_NAMESPACE_DECL {
+ 
+ LLVM_LIBC_FUNCTION(int, issignalingl, (long double x)) {
+-  return fputil::issignaling(x);
++  return fputil::issignaling_impl(x);
+ }
+ 
+ } // namespace LIBC_NAMESPACE_DECL
+diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/BasicOperations.h b/libc/src/__support/FPUtil/BasicOperations.h
+--- a/libc/src/__support/FPUtil/BasicOperations.h
++++ b/libc/src/__support/FPUtil/BasicOperations.h
+@@ -247,8 +247,9 @@
+   return (x > y ? x - y : 0);
+ }
+ 
++// Avoid reusing `issignaling` macro.
+ template <typename T, cpp::enable_if_t<cpp::is_floating_point_v<T>, int> = 0>
+-LIBC_INLINE int issignaling(const T &x) {
++LIBC_INLINE int issignaling_impl(const T &x) {
+   FPBits<T> sx(x);
+   return sx.is_signaling_nan();
+ }
