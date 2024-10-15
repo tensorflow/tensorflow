@@ -1413,8 +1413,11 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
       collector_->GetOptions().max_activity_api_events;
   if (max_activity_event_count > 0 &&
       num_activity_events_in_cached_buffer_ >= max_activity_event_count) {
-    LOG(WARNING) << "Already too many activity events, drop the buffer of "
-                 << size << "bytes of event to reuse.";
+    LOG_EVERY_N(WARNING, 10000)
+        << "Already too many activity events, drop the buffer of " << size
+        << "bytes of event to reuse. This warning is logged once per 10000 "
+           "occurrences, the current count is "
+        << COUNTER << ".";
     num_activity_events_in_dropped_buffer_ += event_count_in_buffer;
     // buffer will be return to the pool
     return absl::OkStatus();
