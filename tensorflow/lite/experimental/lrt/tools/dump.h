@@ -46,6 +46,9 @@ void Dump(LrtElementType type, std::ostream& out = std::cerr);
 // Dump details about the given LrtRankedTensorType to the given stream.
 void Dump(const LrtRankedTensorType& type, std::ostream& out = std::cerr);
 
+// Dump details about options
+void DumpOptions(const LrtOpT& op, std::ostream& out = std::cerr);
+
 //
 // Library Utilities
 //

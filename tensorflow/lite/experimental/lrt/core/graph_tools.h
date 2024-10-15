@@ -186,7 +186,7 @@ inline LrtResult<llvm::ArrayRef<LrtTensor>> GetSubgraphOutputs(
       llvm::ArrayRef<LrtTensor>(outputs, num_outputs));
 }
 
-// Get only subgraph in given model, bad status if model doens't have exactly
+// Get only subgraph in given model, bad status if model doesn't have exactly
 // one subgraph.
 // TODO: b/365299994 - Add multi-subgraph getters for graph tools.
 inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {

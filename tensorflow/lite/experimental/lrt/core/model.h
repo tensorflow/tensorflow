@@ -78,10 +78,10 @@ struct LrtOpT {
 
   LrtOpCode op_code;
 
-  // This is a placeholder to be usd by just custom ops for now.
+  // This is a placeholder to be used by just custom ops for now.
   std::string custom_options;
 
-  // TODO: b/365299994 - Add support for op options.
+  tflite::BuiltinOptionsUnion option;
 };
 
 //

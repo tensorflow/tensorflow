@@ -20,6 +20,7 @@
 #include <link.h>
 #endif
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -244,4 +245,81 @@ void Dump(void* lib_handle, std::ostream& out) {
 #endif
 }
 
+void DumpOptions(const LrtOpT& op, std::ostream& out) {
+  switch (op.op_code) {
+    case kLrtOpCodeTflAdd:
+      out << "fused_activation_function: "
+          << op.option.AsAddOptions()->fused_activation_function << "\n";
+      break;
+    case kLrtOpCodeTflMul:
+      out << "fused_activation_function: "
+          << op.option.AsMulOptions()->fused_activation_function << "\n";
+      break;
+    case kLrtOpCodeTflBatchMatmul:
+      out << "adj_x: " << op.option.AsBatchMatMulOptions()->adj_x << "\n";
+      out << "adj_y: " << op.option.AsBatchMatMulOptions()->adj_y << "\n";
+      out << "asymmetric_quantize_input: "
+          << op.option.AsBatchMatMulOptions()->asymmetric_quantize_inputs
+          << "\n";
+      break;
+    case kLrtOpCodeTflConcatenation:
+      out << "fused_activation_function: "
+          << op.option.AsConcatenationOptions()->fused_activation_function
+          << "\n";
+      out << "axis: " << op.option.AsConcatenationOptions()->axis << "\n";
+      break;
+    case kLrtOpCodeTflDiv:
+      out << "fused_activation_function: "
+          << op.option.AsDivOptions()->fused_activation_function << "\n";
+      break;
+    case kLrtOpCodeTflFullyConnected:
+      out << "fused_activation_function: "
+          << op.option.AsFullyConnectedOptions()->fused_activation_function
+          << "\n";
+      out << "weights_format: "
+          << op.option.AsFullyConnectedOptions()->weights_format << "\n";
+      out << "keep_num_dims: "
+          << op.option.AsFullyConnectedOptions()->keep_num_dims << "\n";
+      out << "quantized_bias_type: "
+          << op.option.AsFullyConnectedOptions()->quantized_bias_type << "\n";
+      out << "asymmetric_quantize_input: "
+          << op.option.AsFullyConnectedOptions()->asymmetric_quantize_inputs
+          << "\n";
+      break;
+    case kLrtOpCodeTflSoftmax:
+      out << "beta: " << op.option.AsSoftmaxOptions()->beta << "\n";
+      break;
+    case kLrtOpCodeTflStridedSlice:
+      out << "begin_mask: " << op.option.AsStridedSliceOptions()->begin_mask
+          << "\n";
+      out << "end_mask: " << op.option.AsStridedSliceOptions()->end_mask
+          << "\n";
+      out << "ellipsis_mask: "
+          << op.option.AsStridedSliceOptions()->ellipsis_mask << "\n";
+      out << "new_axis_mask: "
+          << op.option.AsStridedSliceOptions()->new_axis_mask << "\n";
+      out << "shrink_axis_mask: "
+          << op.option.AsStridedSliceOptions()->shrink_axis_mask << "\n";
+      out << "offset: " << op.option.AsStridedSliceOptions()->offset << "\n";
+      break;
+    case kLrtOpCodeTflSub:
+      out << "fused_activation_function: "
+          << op.option.AsSubOptions()->fused_activation_function << "\n";
+      break;
+    case kLrtOpCodeTflReshape:
+      out << "new_shape: ";
+      if (op.option.AsReshapeOptions() != nullptr) {
+        const int32_t* new_shape =
+            op.option.AsReshapeOptions()->new_shape.data();
+        int32_t new_shape_size = op.option.AsReshapeOptions()->new_shape.size();
+        for (int i = 0; i < new_shape_size; ++i) {
+          out << new_shape[i] << " ";
+        }
+      }
+      break;
+    default:
+      out << "UKNOWN_OP_CODE: " << op.op_code;
+      break;
+  }
+}
 }  // namespace lrt::internal

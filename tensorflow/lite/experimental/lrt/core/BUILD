@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:lite_rt_common.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_model.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_op_code.h",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_options.h",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_support.h",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_support.h",
         "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
@@ -36,7 +37,24 @@ cc_library(
 
 cc_library(
     name = "model",
-    srcs = ["model.cc"],
+    srcs = [
+        "model.cc",
+    ],
+    hdrs = [
+        "model.h",
+    ],
+    deps = [
+        ":api_internal",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "option",
+    srcs = ["option.cc"],
     hdrs = [
         "model.h",
     ],
@@ -56,6 +74,7 @@ cc_library(
     deps = [
         ":api_internal",
         ":model",
+        ":option",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:framework",
@@ -70,6 +89,22 @@ cc_library(
 cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":api_internal",
+        ":graph_tools",
+        ":lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_test(
+    name = "option_test",
+    srcs = ["option_test.cc"],
     tags = ["no_oss"],
     deps = [
         ":api_internal",

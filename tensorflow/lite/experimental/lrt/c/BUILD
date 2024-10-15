@@ -23,6 +23,7 @@ cc_library(
         "lite_rt_common.h",
         "lite_rt_model.h",
         "lite_rt_op_code.h",
+        "lite_rt_options.h",
         "lite_rt_support.h",
     ],
     deps = [

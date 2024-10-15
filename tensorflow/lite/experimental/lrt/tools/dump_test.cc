@@ -24,6 +24,7 @@
 namespace {
 
 using ::lrt::internal::Dump;
+using ::lrt::internal::DumpOptions;
 using ::lrt::testing::LoadTestFileModel;
 
 TEST(DumpTest, TestDump) {
@@ -59,6 +60,20 @@ TEST(DumpTest, TestDump) {
               "LrtSubgraph : [ #ops=1 #tensors=3 ] (<2x2xf32>, <2x2xf32>) -> "
               "<2x2xf32>\n");
   }
+}
+
+TEST(DumpTest, TestDumpOptions) {
+  auto model = LoadTestFileModel("simple_strided_slice_op.tflite");
+  const LrtOpT& op = *model->subgraphs.front().ops.front();
+  std::ostringstream op_dump;
+  DumpOptions(op, op_dump);
+  EXPECT_EQ(op_dump.view(),
+            "begin_mask: 0\n"
+            "end_mask: 0\n"
+            "ellipsis_mask: 0\n"
+            "new_axis_mask: 0\n"
+            "shrink_axis_mask: 0\n"
+            "offset: 0\n");
 }
 
 }  // namespace

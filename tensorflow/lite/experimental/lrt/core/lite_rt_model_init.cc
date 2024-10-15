@@ -246,6 +246,7 @@ LrtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
 
     target->outputs.push_back(output_tensor);
   }
+  target->option = op.builtin_options;
 
   return kLrtStatusOk;
 }
