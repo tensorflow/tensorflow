@@ -48,6 +48,17 @@ class CompilerIrTest(xla_test.XLATestCase):
           f' \nhlo(concrete_input):\n{hlo_1}\nhlo(tensor_spec):\n{hlo_2}\n'
       )
 
+    # Check that StableHLO conversion succeeds
+    hlo_3 = f.experimental_get_compiler_ir(*args, **kwargs)(stage='stablehlo')
+    self.assertIn('stablehlo', hlo_3)
+
+    # Check that StableHLO bytecode conversion succeeds.
+    # MLIR bytecode files all begin with magic `MLiR` byte, check for byte.
+    hlo_4 = f.experimental_get_compiler_ir(*args, **kwargs)(
+        stage='stablehlo_serialized'
+    )
+    self.assertIn(b'ML\xefR', hlo_4)
+
   def test_zero_input(self):
     with ops.device('device:{}:0'.format(self.device)):
 

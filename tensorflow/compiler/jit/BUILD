@@ -844,6 +844,7 @@ cc_library(
         "@local_xla//xla:status_macros",
         "@local_xla//xla/client:executable_build_options",
         "@local_xla//xla/client:local_client",
+        "@local_xla//xla/hlo/translate:portable_api",
         "@local_xla//xla/service:hlo_graph_dumper",
         "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",

@@ -1,6 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,6 +10,26 @@ package(
         "//learning/brain/mlir:xla_friends",
     ]),
     licenses = ["notice"],
+)
+
+cc_library(
+    name = "portable_api",
+    srcs = ["portable_api.cc"],
+    hdrs = ["portable_api.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/mlir_hlo:hlo_dialect_registration",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeWriter",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:register",
+    ],
 )
 
 build_test(

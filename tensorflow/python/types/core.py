@@ -264,6 +264,9 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
       Function callable with the following kwargs:
         - `stage` at which the compiler IR should be serialized. Allowed values
           are:
+           - `stablehlo`: StableHLO module textual assembly.
+           - `stablehlo_serialized`: Like stage=`stablehlo`, but the output is a
+             serialized MLIR bytecode.
            - `hlo`: HLO output after conversion from TF
             (https://www.tensorflow.org/xla/operation_semantics).
            - `hlo_serialized`: Like stage=`hlo`, but the output is a serialized

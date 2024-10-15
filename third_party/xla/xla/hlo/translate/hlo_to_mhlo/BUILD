@@ -152,11 +152,15 @@ cc_library(
         ":hlo_module_importer",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
