@@ -401,9 +401,11 @@ cc_library(
 xla_test(
     name = "triton_fusion_emitter_device_legacy_test",
     srcs = if_gpu_is_configured(["triton_fusion_emitter_device_legacy_test.cc"]),
+    # TODO(b/372714955): Fix the memory leak!
     backend_args = if_google(
         {
             "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
         },
         {},
     ),

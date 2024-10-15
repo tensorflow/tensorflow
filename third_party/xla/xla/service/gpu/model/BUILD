@@ -967,6 +967,7 @@ xla_test(
     backend_args = if_google(
         {
             "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
         },
         {},
     ),
