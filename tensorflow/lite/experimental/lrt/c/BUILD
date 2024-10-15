@@ -44,16 +44,4 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "lite_rt_dispatch_c_api",
-    hdrs = [
-        "lite_rt_dispatch.h",
-        "lite_rt_dispatch_api.h",
-    ],
-    deps = [
-        ":lite_rt_c_api",
-        ":lite_rt_tensor_buffer_c_api",
-    ],
-)
-
-exports_files(srcs = glob(["lite_rt*.h"]))
+exports_files(srcs = glob(["lite_rt_*.h"]))

@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_API_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_API_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_API_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_API_H_
 
 #include <stdint.h>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_event.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -222,4 +222,4 @@ LrtStatus LrtDispatchGetApi(LrtDispatchApi* api);
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_API_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_API_H_

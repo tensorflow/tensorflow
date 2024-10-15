@@ -19,11 +19,11 @@
 #include "absl/log/absl_log.h"
 #include "absl/log/log.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/test/testdata/simple_model_test_vectors.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 
 TEST(DispatchApi, Qualcomm) {
 #if !defined(__ANDROID__)

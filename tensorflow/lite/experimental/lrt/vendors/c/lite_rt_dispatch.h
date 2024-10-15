@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_H_
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -266,4 +266,4 @@ LrtStatus LrtDispatchInvocationContextCreateFromGraph(
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_DISPATCH_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_DISPATCH_H_

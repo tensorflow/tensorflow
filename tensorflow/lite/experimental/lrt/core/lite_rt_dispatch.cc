@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -20,12 +20,12 @@
 #include <cstddef>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_api.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_event.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch_api.h"
 
 #define INVOKE_FUNC(function, ...)                              \
   if (!TheApi.interface) {                                      \

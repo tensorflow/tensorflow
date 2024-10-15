@@ -15,7 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_DISPATCH_API_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_DISPATCH_API_H_
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 
 namespace lrt {
 namespace pixel {

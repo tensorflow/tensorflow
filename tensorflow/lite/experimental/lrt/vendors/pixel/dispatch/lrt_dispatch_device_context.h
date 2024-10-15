@@ -21,8 +21,8 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/southbound.h"
 
 class LrtDispatchDeviceContextT {

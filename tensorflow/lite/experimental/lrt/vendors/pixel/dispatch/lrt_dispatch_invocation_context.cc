@@ -19,11 +19,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/core/utils.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
 
 namespace {
 

@@ -96,4 +96,4 @@ cc_test(
     ],
 )
 
-exports_files(srcs = glob(["lite_rt*.h"]))
+exports_files(srcs = glob(["lite_rt_*.h"]))

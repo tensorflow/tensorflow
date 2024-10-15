@@ -32,4 +32,16 @@ cc_library(
     ],
 )
 
-exports_files(srcs = ["lite_rt_compiler_plugin.h"])
+cc_library(
+    name = "lite_rt_dispatch_c_api",
+    hdrs = [
+        "lite_rt_dispatch.h",
+        "lite_rt_dispatch_api.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+    ],
+)
+
+exports_files(srcs = glob(["lite_rt_*.h"]))
