@@ -139,6 +139,7 @@ struct SchedulerConfig {
   bool enable_selective_resources = false;
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
+  int64_t parallel_collective_overlap_limit = 1;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.

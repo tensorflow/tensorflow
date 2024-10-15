@@ -39,19 +39,31 @@ using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
+int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
+                   absl::string_view hlo_name) {
+  return absl::c_find_if(instruction_sequence,
+                         [hlo_name](HloInstruction* instruction) {
+                           return instruction->name() == hlo_name;
+                         }) -
+         instruction_sequence.begin();
+}
+
 // TODO(b/346918304): Separate relevant tests from gpu_hlo_schedule_test.cc
 // into broader GPU scheduling related tests vs. tests related to components of
 // GPU LHS.
 
 class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
  protected:
-  absl::StatusOr<HloModule*> ScheduleModule(HloModule* module) {
+  absl::StatusOr<HloModule*> ScheduleModule(
+      HloModule* module, int64_t num_parallel_resources = 1) {
     auto& test_backend = backend();
     const auto& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
     HloModuleConfig config(module->config());
     DebugOptions dboptions(config.debug_options());
     dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+    dboptions.set_xla_gpu_experimental_parallel_collective_overlap_limit(
+        num_parallel_resources);
     config.set_debug_options(dboptions);
     module->set_config(config);
     TF_RETURN_IF_ERROR(
@@ -280,6 +292,60 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
   TF_EXPECT_OK(ScheduleModule(module.get()));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       MultipleParallelResourceShouldOverlapCollectives) {
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 100000.0 }
+    costs { name: "ar_0" cost_us: 10.0 }
+    costs { name: "rs_0" cost_us: 10.0 }
+  )pb";
+  ;
+  absl::string_view kHloModule = R"(
+    HloModule m
+
+    reduce {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT _ = f32[] add(x, y)
+    }
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[2] parameter(1)
+      p2 = f32[2] parameter(2)
+      ar_0 = f32[] all-reduce-start(p0), to_apply=reduce
+      ar_1 = f32[] all-reduce-done(ar_0)
+      rs_0 = ((f32[2]), f32[1]) reduce-scatter-start(p1), to_apply=reduce, dimensions={0}
+      rs_1 = f32[1] reduce-scatter-done(rs_0)
+      add_0 = f32[2] add(p1, p2)
+      ROOT _ = (f32[], f32[1], f32[2]) tuple(ar_1, rs_1, add_0)
+    }
+  )";
+
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  // Since we allow 2 collectives in-flight, we should expect this pattern:
+  // ar(rs)-start -> rs(ar)-start -> add -> ar(rs)-done -> ar(rs)-done
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "ar_0") <
+                  GetIndexByName(instruction_sequence, "rs_1") &&
+              GetIndexByName(instruction_sequence, "rs_0") <
+                  GetIndexByName(instruction_sequence, "ar_1"));
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "add_0") >
+                  GetIndexByName(instruction_sequence, "ar_0") &&
+              GetIndexByName(instruction_sequence, "add_0") >
+                  GetIndexByName(instruction_sequence, "rs_0") &&
+              GetIndexByName(instruction_sequence, "add_0") <
+                  GetIndexByName(instruction_sequence, "ar_1") &&
+              GetIndexByName(instruction_sequence, "add_0") <
+                  GetIndexByName(instruction_sequence, "rs_1"));
 }
 
 }  // namespace
