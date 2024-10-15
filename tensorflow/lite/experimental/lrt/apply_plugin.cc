@@ -62,22 +62,6 @@ static llvm::cl::opt<bool> dry_run(
     return 1;                  \
   }
 
-void DumpSubgraph(const LrtSubgraphT& subgraph, std::string_view label) {
-#ifndef NDEBUG
-  std::cerr << "===== " << label << " =====\n";
-  for (auto op : subgraph.ops) {
-    debug::DumpOp(*op);
-  }
-  for (auto tensor : subgraph.inputs) {
-    std::cerr << "SG_IN " << tensor << "\n";
-  }
-
-  for (auto tensor : subgraph.outputs) {
-    std::cerr << "SG_OUT " << tensor << "\n";
-  }
-#endif
-}
-
 bool IsSocModelSupported(LrtCompilerPlugin plugin,
                          std::string_view requested_soc_model) {
   const auto num_supported_configs = LrtPluginNumSupportedSocModels(plugin);
@@ -132,7 +116,6 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin,
 
   // TODO: b/366821557 - Support multiple subgraphs in plugin application.
   auto& main_subgraph = model->subgraphs.front();
-  DumpSubgraph(main_subgraph, "Main subgraph before partioning.");
 
   std::vector<LrtSubgraph> slices;
   std::vector<LrtOp> custom_ops;
@@ -146,11 +129,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin,
         main_subgraph, new_subgraph, partition);
     custom_ops.push_back(custom_op);
     slices.push_back(new_subgraph);
-
-    DumpSubgraph(*new_subgraph, "New subgraph");
   }
-
-  DumpSubgraph(main_subgraph, "Main subgraph after partioning.");
 
   if (dry_run) {
     return kLrtStatusOk;

@@ -17,18 +17,27 @@ package(
     default_visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
 )
 
-cc_binary(
-    name = "apply_plugin",
-    srcs = [
-        "apply_plugin.cc",
-        # TODO: b/366821557 - Support pre-compiled plugins as data dependencies.
-        "//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so",
-    ],
+cc_library(
+    name = "dump",
+    srcs = ["dump.cc"],
+    hdrs = ["dump.h"],
     deps = [
-        "//tensorflow/lite/experimental/lrt/core:algo",
-        "//tensorflow/lite/experimental/lrt/core:api_internal",
-        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/core:model",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_test(
+    name = "dump_test",
+    srcs = ["dump_test.cc"],
+    deps = [
+        ":dump",
+        "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

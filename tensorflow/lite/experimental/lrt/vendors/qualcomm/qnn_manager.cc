@@ -96,22 +96,6 @@ LrtStatus QnnManager::LoadSystemLib(absl::string_view path) {
   return kLrtStatusOk;
 }
 
-void QnnManager::DumpLibDetails() const {
-  if (lib_so_ == nullptr) {
-    return;
-  }
-  lrt::DumpLibInfo(lib_so_);
-}
-
-void QnnManager::DumpSystemLibDetails() const {
-  if (lib_system_so_ == nullptr) {
-    return;
-  }
-  lrt::DumpLibInfo(lib_system_so_);
-}
-
-void QnnManager::DumpApiDetails() const { DumpInterface(interface_); }
-
 const QnnApi* QnnManager::Api() const {
   if (interface_ == nullptr) {
     return nullptr;
@@ -188,10 +172,6 @@ const QnnSystemApi* QnnManager::SystemApi() const {
     return nullptr;
   }
   return &system_interface_->QNN_SYSTEM_INTERFACE_VER_NAME;
-}
-
-void QnnManager::DumpSystemApiDetails() const {
-  DumpSystemInterface(system_interface_);
 }
 
 LrtStatus QnnManager::FreeSystemContext() {
@@ -275,14 +255,10 @@ LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
 LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
                    QnnManager& qnn, bool load_system, bool load_context) {
   LRT_RETURN_STATUS_IF_NOT_OK(qnn.LoadLib(kLibQnnHtpSo));
-  qnn.DumpLibDetails();
-
   LRT_RETURN_STATUS_IF_NOT_OK(qnn.ResolveApi());
 
   if (load_system) {
     LRT_RETURN_STATUS_IF_NOT_OK(qnn.LoadSystemLib(kLibQnnSystemSo));
-    qnn.DumpSystemLibDetails();
-
     LRT_RETURN_STATUS_IF_NOT_OK(qnn.ResolveSystemApi());
 
     if (auto status =

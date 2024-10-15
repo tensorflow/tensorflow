@@ -35,14 +35,6 @@ class LrtPluginManager {
       absl::Span<const absl::string_view> lib_search_paths,
       std::vector<LrtPluginManager>& loaded_plugins);
 
-  // Dump information about the loaded shared library like library dependencies.
-  // See "dlinfo".
-  void DumpLibInfo() const;
-
-  // Dump static information about a compiler plugin. Does nothing if it
-  // isn't loaded.
-  void DumpPluginInfo() const;
-
   // Resolved function pointers to a dynamically loaded `LrtCompilerPlugin`
   // instance. Lifetimes of all such funtions are tied to the underlying
   // shared library handle.

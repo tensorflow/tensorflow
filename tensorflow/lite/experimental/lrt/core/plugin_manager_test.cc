@@ -42,7 +42,6 @@ TEST(PluginManagerTest, LoadTestPlugin) {
 
   ASSERT_STATUS_OK(
       LrtPluginManager::LoadPlugins({kTestPluginSearchPath}, plugins));
-  plugins.front().DumpPluginInfo();
 
   ASSERT_EQ(plugins.size(), 1);
   EXPECT_TRUE(PluginOk(plugins[0]));

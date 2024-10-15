@@ -40,14 +40,6 @@ LrtCompiledResult LrtPluginManager::CompiledResultHandle() {
   return compiled_result_handle_;
 }
 
-void LrtPluginManager::DumpLibInfo() const { ::lrt::DumpLibInfo(lib_handle_); }
-
-void LrtPluginManager::DumpPluginInfo() const {
-  LITE_RT_LOG(LRT_INFO, "CompilerPlugin: %s : %d",
-              plugin_api_.soc_manufacturer(),
-              plugin_api_.num_supported_models(plugin_handle_));
-}
-
 LrtStatus LrtPluginManager::LoadPlugins(
     absl::Span<const absl::string_view> lib_search_paths,
     std::vector<LrtPluginManager>& loaded_plugins) {

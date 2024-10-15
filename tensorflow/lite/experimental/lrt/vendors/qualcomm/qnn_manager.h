@@ -63,14 +63,6 @@ class QnnManager {
   // Loads the libQnnSystem.so at given path.
   LrtStatus LoadSystemLib(absl::string_view path);
 
-  // Dumps dynamic loading info about the loaded libQnn*.so. Does
-  // nothing if it has not been loaded yet.
-  void DumpLibDetails() const;
-
-  // Dumps dynamic loading info about the loaded libQnnSystem.so. Does
-  // nothing if it has not been loaded yet.
-  void DumpSystemLibDetails() const;
-
   //
   // Resolve and Access QNN SDK Functions
   //
@@ -84,10 +76,6 @@ class QnnManager {
   // have not been resolved yet.
   const QnnApi* Api() const;
 
-  // Dumps information relevant to the loaded api provider. Does nothing if
-  // a successful ResolveFuncs hasn't occurred.
-  void DumpApiDetails() const;
-
   // Resolve all available QNN SDK functions from (already) loaded so. If
   // multiple providers are found, selects the first one with a suitable
   // version. Fails if none can be found.
@@ -96,10 +84,6 @@ class QnnManager {
   // Get resolved function pointers for qnn sdk calls. Nullptr if functions
   // have not been resolved yet.
   const QnnSystemApi* SystemApi() const;
-
-  // Dumps information relevant to the loaded api provider. Does nothing if
-  // a successful ResolveFuncs hasn't occurred.
-  void DumpSystemApiDetails() const;
 
   //
   // QNN SDK Objects.
