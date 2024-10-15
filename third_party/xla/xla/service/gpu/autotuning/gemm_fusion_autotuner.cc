@@ -626,13 +626,19 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
       AutotuneResult autotune_result,
       AutotunerUtil::Autotune(
           fusion_instr, config_, [&]() -> absl::StatusOr<AutotuneResult> {
+            absl::Status s;
             if (config_.IsDeviceless()) {
-              return absl::InternalError(absl::StrCat(
+              s = absl::InternalError(absl::StrCat(
                   "Expect autotune result cache hit for deviceless "
                   "compilation (HLO: ",
                   fusion_instr->ToString(), ")"));
+            } else {
+              s = absl::InternalError("Expect autotune result cache hit.");
             }
-            return absl::InternalError("Expect autotune result cache hit.");
+            tsl::errors::InsertPayloads(
+                s, {{std::string(kAutotuneCacheRequiredErrorPayloadKey), ""}});
+
+            return s;
           }));
   VLOG(4) << "Autotuning result: " << autotune_result.ShortDebugString();
 

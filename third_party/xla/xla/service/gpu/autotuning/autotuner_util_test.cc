@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
+using ::testing::Ne;
 using ::testing::Not;
 using ::testing::TempDir;
 using ::testing::UnorderedElementsAre;
@@ -221,13 +223,16 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
   AutotuneConfig config(DeviceConfig{executor}, options);
+  absl::Status s = AutotunerUtil::Autotune(instruction, config, [&] {
+                     return AutotuneResult();
+                   }).status();
   EXPECT_THAT(
-      AutotunerUtil::Autotune(instruction, config,
-                              [&] { return AutotuneResult(); }),
-      StatusIs(
-          absl::StatusCode::kNotFound,
-          HasSubstr("Complete XLA AOT autotuning results are required, but "
-                    "no AOT result was found for key: <key model")));
+      s, StatusIs(
+             absl::StatusCode::kNotFound,
+             HasSubstr("Complete XLA AOT autotuning results are required, but "
+                       "no AOT result was found for key: <key model")));
+  EXPECT_THAT(s.GetPayload(kAutotuneCacheRequiredErrorPayloadKey),
+              Ne(std::nullopt));
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
   EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }
