@@ -228,6 +228,7 @@ cc_library(
 cc_library(
     name = "tensor_buffer",
     srcs = [
+        "ahwb_buffer.cc",
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
         "ion_buffer.cc",
@@ -237,6 +238,7 @@ cc_library(
         "tensor_buffer.cc",
     ],
     hdrs = [
+        "ahwb_buffer.h",
         "dmabuf_buffer.h",
         "fastrpc_buffer.h",
         "ion_buffer.h",
@@ -265,7 +267,6 @@ cc_test(
         "//tensorflow:android": ["-landroid"],
         "//conditions:default": [],
     }),
-    tags = ["manual"],
     deps = [
         ":tensor_buffer",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",

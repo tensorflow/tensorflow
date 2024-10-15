@@ -21,10 +21,6 @@
 #include <utility>
 #include <vector>
 
-#if LRT_HAS_AHWB_SUPPORT
-#include <android/hardware_buffer.h>
-#endif  // LRT_HAS_AHWB_SUPPORT
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -32,6 +28,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_event.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/ahwb_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"
@@ -139,14 +136,13 @@ LrtTensorBufferT::CreateManagedOnHostMemory(
 absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromAhwb(
     const LrtRankedTensorType& tensor_type, AHardwareBuffer* ahwb,
     size_t ahwb_offset, LrtAhwbDeallocator deallocator) {
-#if LRT_HAS_AHWB_SUPPORT
-  AHardwareBuffer_Desc ahwb_desc;
-  AHardwareBuffer_describe(ahwb, &ahwb_desc);
-  size_t buffer_size = static_cast<size_t>(ahwb_desc.width) * ahwb_desc.height *
-                       ahwb_desc.layers;
+  auto buffer_size = lrt::internal::AhwbBuffer::GetSize(ahwb);
+  if (!buffer_size.ok()) {
+    return buffer_size.status();
+  }
 
   Ptr tensor_buffer(new LrtTensorBufferT(tensor_type, kLrtTensorBufferTypeAhwb,
-                                         buffer_size, ahwb_offset));
+                                         *buffer_size, ahwb_offset));
   tensor_buffer->buffer_ = AhwbBuffer{
       .ahwb = ahwb,
       .deallocator = deallocator,
@@ -157,33 +153,16 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromAhwb(
   }
 
   return tensor_buffer;
-#else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
 }
 
 absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateManagedAhwbBuffer(
     const LrtRankedTensorType& tensor_type, size_t buffer_size) {
-#if LRT_HAS_AHWB_SUPPORT
-  AHardwareBuffer* ahwb;
-  AHardwareBuffer_Desc ahwb_desc = {
-      .width = static_cast<uint32_t>(buffer_size),
-      .height = 1,
-      .layers = 1,
-      .format = AHARDWAREBUFFER_FORMAT_BLOB,
-      .usage = AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY |
-               AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
-               AHARDWAREBUFFER_USAGE_GPU_DATA_BUFFER};
-  if (AHardwareBuffer_allocate(&ahwb_desc, &ahwb) != 0) {
-    return absl::InternalError("Failed to allocate AHWB");
+  auto buffer = lrt::internal::AhwbBuffer::Alloc(buffer_size);
+  if (!buffer.ok()) {
+    return buffer.status();
   }
-  return CreateFromAhwb(tensor_type, ahwb, /*ahwb_offset=*/0,
-                        /*deallocator=*/AHardwareBuffer_release);
-#else
-  return absl::InternalError(
-      "AHardwareBuffers are not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
+  return CreateFromAhwb(tensor_type, buffer->ahwb, /*ahwb_offset=*/0,
+                        /*deallocator=*/lrt::internal::AhwbBuffer::Free);
 }
 
 absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromIonBuffer(
@@ -413,28 +392,8 @@ absl::StatusOr<void*> LrtTensorBufferT::Lock(LrtEvent event) {
   switch (buffer_type()) {
     case kLrtTensorBufferTypeHostMemory:
       return *GetHostBuffer();
-    case kLrtTensorBufferTypeAhwb: {
-#if LRT_HAS_AHWB_SUPPORT
-      auto ahwb = *GetAhwbBuffer();
-      int fence = -1;
-      if (event) {
-        if (auto status = LrtEventGetSyncFenceFd(event, &fence);
-            status != kLrtStatusOk) {
-          return absl::InternalError("Failed to get sync fence fd from event");
-        }
-      }
-      void* host_addr;
-      if (AHardwareBuffer_lock(ahwb,
-                               AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
-                                   AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
-                               fence, /*rect=*/nullptr, &host_addr) != 0) {
-        return absl::InternalError("Failed to lock AHWB");
-      }
-      return host_addr;
-#else
-      return absl::InternalError("AHWB is not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
-    }
+    case kLrtTensorBufferTypeAhwb:
+      return lrt::internal::AhwbBuffer::Lock(*GetAhwbBuffer(), event);
     case kLrtTensorBufferTypeIon:
       return GetIonBuffer()->first;
     case kLrtTensorBufferTypeDmaBuf:
@@ -448,14 +407,8 @@ absl::StatusOr<void*> LrtTensorBufferT::Lock(LrtEvent event) {
 
 absl::Status LrtTensorBufferT::Unlock() {
   if (buffer_type() == kLrtTensorBufferTypeAhwb) {
-#if LRT_HAS_AHWB_SUPPORT
     auto ahwb = std::get<AhwbBuffer>(buffer_).ahwb;
-    if (AHardwareBuffer_unlock(ahwb, /*fence=*/nullptr) != 0) {
-      return absl::InternalError("Failed to unlock AHWB");
-    }
-#else
-    return absl::InternalError("AHWB is not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
+    return lrt::internal::AhwbBuffer::Unlock(ahwb);
   }
 
   return {};

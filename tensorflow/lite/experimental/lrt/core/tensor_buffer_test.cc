@@ -19,6 +19,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/ahwb_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"  // IWYU pragma: keep
@@ -82,8 +83,12 @@ TEST(TensorBuffer, HostMemory) {
   LrtDestroyTensorBuffer(tensor_buffer);
 }
 
-#if LRT_HAS_AHWB_SUPPORT
 TEST(TensorBuffer, Ahwb) {
+  if (!lrt::internal::AhwbBuffer::IsSupported()) {
+    GTEST_SKIP() << "AHardwareBuffers are not supported on this platform; "
+                    "skipping the test";
+  }
+
   LrtTensorBuffer tensor_buffer;
   ASSERT_EQ(LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeAhwb, &kTensorType,
                                          sizeof(kTensorData), &tensor_buffer),
@@ -124,9 +129,7 @@ TEST(TensorBuffer, Ahwb) {
 
   LrtDestroyTensorBuffer(tensor_buffer);
 }
-#endif  // LRT_HAS_AHWB_SUPPORT
 
-#if LRT_HAS_ION_SUPPORT
 TEST(TensorBuffer, Ion) {
   if (!lrt::internal::IonBuffer::IsSupported()) {
     GTEST_SKIP()
@@ -173,9 +176,7 @@ TEST(TensorBuffer, Ion) {
 
   LrtDestroyTensorBuffer(tensor_buffer);
 }
-#endif  // LRT_HAS_ION_SUPPORT
 
-#if LRT_HAS_DMABUF_SUPPORT
 TEST(TensorBuffer, DmaBuf) {
   if (!lrt::internal::DmaBufBuffer::IsSupported()) {
     GTEST_SKIP()
@@ -224,9 +225,7 @@ TEST(TensorBuffer, DmaBuf) {
 
   LrtDestroyTensorBuffer(tensor_buffer);
 }
-#endif  // LRT_HAS_DMABUF_SUPPORT
 
-#if LRT_HAS_FASTRPC_SUPPORT
 TEST(TensorBuffer, FastRpc) {
   if (!lrt::internal::FastRpcBuffer::IsSupported()) {
     GTEST_SKIP()
@@ -275,4 +274,3 @@ TEST(TensorBuffer, FastRpc) {
 
   LrtDestroyTensorBuffer(tensor_buffer);
 }
-#endif  // LRT_HAS_FASTRPC_SUPPORT
