@@ -166,6 +166,30 @@ cc_library(
 # )
 # copybara:uncomment_end
 
+cc_test(
+    name = "layout_cc_test",
+    srcs = [
+        "layout_cc_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "ranked_tensor_type_cc_test",
+    srcs = [
+        "ranked_tensor_type_cc_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tensor_buffer",
     srcs = [
@@ -212,6 +236,54 @@ cc_test(
         ":tensor_buffer",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_buffer_cc_test",
+    srcs = [
+        "tensor_buffer_cc_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:android": ["-landroid"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor_buffer_cc_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_buffer_requirements_test",
+    srcs = [
+        "tensor_buffer_requirements_test.cc",
+    ],
+    deps = [
+        ":tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "tensor_buffer_requirements_cc_test",
+    srcs = [
+        "tensor_buffer_requirements_cc_test.cc",
+    ],
+    deps = [
+        ":tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor_buffer_cc_api",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

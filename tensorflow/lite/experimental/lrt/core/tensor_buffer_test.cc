@@ -41,15 +41,16 @@ constexpr const LrtRankedTensorType kTensorType = {
 }  // namespace
 
 TEST(TensorBuffer, HostMemory) {
+  constexpr auto kTensorBufferType = kLrtTensorBufferTypeHostMemory;
+
   LrtTensorBuffer tensor_buffer;
-  ASSERT_EQ(
-      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeHostMemory, &kTensorType,
-                                   sizeof(kTensorData), &tensor_buffer),
-      kLrtStatusOk);
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
+                                         sizeof(kTensorData), &tensor_buffer),
+            kLrtStatusOk);
 
   LrtTensorBufferType buffer_type;
   ASSERT_EQ(LrtGetTensorBufferType(tensor_buffer, &buffer_type), kLrtStatusOk);
-  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeHostMemory);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
 
   LrtRankedTensorType tensor_type;
   ASSERT_EQ(LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
@@ -89,14 +90,16 @@ TEST(TensorBuffer, Ahwb) {
                     "skipping the test";
   }
 
+  constexpr auto kTensorBufferType = kLrtTensorBufferTypeAhwb;
+
   LrtTensorBuffer tensor_buffer;
-  ASSERT_EQ(LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeAhwb, &kTensorType,
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
                                          sizeof(kTensorData), &tensor_buffer),
             kLrtStatusOk);
 
   LrtTensorBufferType buffer_type;
   ASSERT_EQ(LrtGetTensorBufferType(tensor_buffer, &buffer_type), kLrtStatusOk);
-  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeAhwb);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
 
   LrtRankedTensorType tensor_type;
   ASSERT_EQ(LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
@@ -136,14 +139,16 @@ TEST(TensorBuffer, Ion) {
         << "ION buffers are not supported on this platform; skipping the test";
   }
 
+  constexpr auto kTensorBufferType = kLrtTensorBufferTypeIon;
+
   LrtTensorBuffer tensor_buffer;
-  ASSERT_EQ(LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeIon, &kTensorType,
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
                                          sizeof(kTensorData), &tensor_buffer),
             kLrtStatusOk);
 
   LrtTensorBufferType buffer_type;
   ASSERT_EQ(LrtGetTensorBufferType(tensor_buffer, &buffer_type), kLrtStatusOk);
-  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeIon);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
 
   LrtRankedTensorType tensor_type;
   ASSERT_EQ(LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
@@ -184,15 +189,16 @@ TEST(TensorBuffer, DmaBuf) {
            "the test";
   }
 
+  constexpr auto kTensorBufferType = kLrtTensorBufferTypeDmaBuf;
+
   LrtTensorBuffer tensor_buffer;
-  ASSERT_EQ(
-      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeDmaBuf, &kTensorType,
-                                   sizeof(kTensorData), &tensor_buffer),
-      kLrtStatusOk);
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
+                                         sizeof(kTensorData), &tensor_buffer),
+            kLrtStatusOk);
 
   LrtTensorBufferType buffer_type;
   ASSERT_EQ(LrtGetTensorBufferType(tensor_buffer, &buffer_type), kLrtStatusOk);
-  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeDmaBuf);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
 
   LrtRankedTensorType tensor_type;
   ASSERT_EQ(LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
@@ -233,15 +239,16 @@ TEST(TensorBuffer, FastRpc) {
            "the test";
   }
 
+  constexpr auto kTensorBufferType = kLrtTensorBufferTypeFastRpc;
+
   LrtTensorBuffer tensor_buffer;
-  ASSERT_EQ(
-      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeFastRpc, &kTensorType,
-                                   sizeof(kTensorData), &tensor_buffer),
-      kLrtStatusOk);
+  ASSERT_EQ(LrtCreateManagedTensorBuffer(kTensorBufferType, &kTensorType,
+                                         sizeof(kTensorData), &tensor_buffer),
+            kLrtStatusOk);
 
   LrtTensorBufferType buffer_type;
   ASSERT_EQ(LrtGetTensorBufferType(tensor_buffer, &buffer_type), kLrtStatusOk);
-  ASSERT_EQ(buffer_type, kLrtTensorBufferTypeFastRpc);
+  ASSERT_EQ(buffer_type, kTensorBufferType);
 
   LrtRankedTensorType tensor_type;
   ASSERT_EQ(LrtGetTensorBufferTensorType(tensor_buffer, &tensor_type),
