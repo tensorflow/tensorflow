@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 
 #if CUDNN_VERSION >= 8100
@@ -43,7 +44,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
 class CudnnRnnDescriptor;
 class CudnnRnnSequenceTensorDescriptor;
 class CudnnRnnStateTensorDescriptor;
@@ -90,7 +90,7 @@ class CudnnGraph : public dnn::DnnGraph {
 // functions, see dnn.h.
 class CudnnSupport : public dnn::DnnSupport {
  public:
-  explicit CudnnSupport(GpuExecutor* parent);
+  explicit CudnnSupport(StreamExecutor* parent);
 
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
@@ -564,7 +564,7 @@ class CudnnSupport : public dnn::DnnSupport {
   // Uses cuDNN handle for execution.
   friend class CudnnGraph;
 
-  GpuExecutor* parent_;  // Parent executor object. Not owned.
+  StreamExecutor* parent_;  // Parent executor object. Not owned.
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;

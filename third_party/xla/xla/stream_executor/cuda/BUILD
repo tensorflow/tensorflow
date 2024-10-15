@@ -545,8 +545,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cuda_diagnostics",
-        ":cuda_driver",
-        ":cuda_executor",
         ":cuda_platform_id",
         ":cudnn_frontend_helpers",
         "//xla/stream_executor",
@@ -559,8 +557,6 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/cuda:cudnn",
@@ -581,7 +577,7 @@ cc_library(
         "@cudnn_frontend_archive//:cudnn_frontend",
         "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudnn_header",
+        "@local_config_cuda//cuda:cudnn_header",  # build_cleaner: keep
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
