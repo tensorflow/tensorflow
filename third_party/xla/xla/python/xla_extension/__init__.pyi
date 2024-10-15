@@ -884,6 +884,7 @@ class NamedSharding(Sharding):
       memory_kind: Optional[str] = None,
       _parsed_pspec: Any = None,
       _manual_axes: frozenset[Any] = frozenset(),
+      _logical_device_ids: tuple[int, ...] | None = None,
   ): ...
   mesh: Any
   spec: Any
@@ -891,6 +892,7 @@ class NamedSharding(Sharding):
   _parsed_pspec: Any
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
+  _logical_device_ids: tuple[int, ...] | None
 
 class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...
