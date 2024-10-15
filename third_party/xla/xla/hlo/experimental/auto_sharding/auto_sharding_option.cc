@@ -141,6 +141,10 @@ std::string AutoShardingOption::ToString() const {
   lines.push_back(absl::StrCat("insert_resharding_reshapes_for_non_dot_ops: ",
                                insert_resharding_reshapes_for_non_dot_ops));
 
+  if (num_dcn_slices.has_value()) {
+    lines.push_back(absl::StrCat("num_dcn_slices: ", *num_dcn_slices));
+  }
+
   return absl::StrJoin(lines, "\n");
 }
 
@@ -164,14 +168,16 @@ absl::Status AutoShardingOption::CheckAndSetup() {
   if (device_mesh_alpha.empty()) {
     // Generates simple device_mesh_alpha based on the size of
     // device_mesh_shape.
-    device_mesh_alpha = std::vector(device_mesh_shape.size(), kDeviceMeshAlpha);
+    device_mesh_alpha =
+        std::vector(device_mesh_shape.size(), kIciDeviceMeshAlpha);
     VLOG(0) << "Using default values for device_mesh_alpha: "
             << absl::StrJoin(device_mesh_alpha, ",");
   }
   if (device_mesh_beta.empty()) {
     // Generates simple device_mesh_beta based on the size of
     // device_mesh_shape.
-    device_mesh_beta = std::vector(device_mesh_shape.size(), kDeviceMeshBeta);
+    device_mesh_beta =
+        std::vector(device_mesh_shape.size(), kIciDeviceMeshBeta);
     VLOG(0) << "Using default values for device_mesh_beta: "
             << absl::StrJoin(device_mesh_beta, ",");
   }
