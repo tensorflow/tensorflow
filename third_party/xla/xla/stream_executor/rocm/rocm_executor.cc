@@ -90,19 +90,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
-#define RETURN_IF_ROCM_ERROR(expr, ...)                                  \
-  do {                                                                   \
-    hipError_t _res = (expr);                                            \
-    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                          \
-      if (_res == hipErrorOutOfMemory)                                   \
-        return absl::ResourceExhaustedError(absl::StrCat(                \
-            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res)));  \
-      else                                                               \
-        return absl::InternalError(absl::StrCat(                         \
-            __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
-    }                                                                    \
-  } while (0)
-
 namespace stream_executor {
 namespace gpu {
 
@@ -139,10 +126,9 @@ int fpus_per_core(std::string gcn_arch_name) {
 
 absl::Status FuncGetAttribute(hipFunction_attribute attribute,
                               hipFunction_t func, int* attribute_value) {
-  RETURN_IF_ROCM_ERROR(
+  return ToStatus(
       wrap::hipFuncGetAttribute(attribute_value, attribute, func),
-      "Failed to query kernel attribute: ", attribute);
-  return absl::OkStatus();
+      absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
 // ROCM driver routines may require a large amount of stack (particularly
@@ -189,10 +175,8 @@ absl::Status GetModuleFunction(Context* context, hipModule_t module,
                                hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipModuleGetFunction(function, module, kernel_name),
-      "Failed to get kernel");
-  return absl::OkStatus();
+  return ToStatus(wrap::hipModuleGetFunction(function, module, kernel_name),
+                  "Failed to get kernel");
 }
 
 // Retrieves a named global/constant symbol from a loaded module, and returns
@@ -205,10 +189,8 @@ absl::Status GetModuleSymbol(Context* context, hipModule_t module,
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && symbol_name != nullptr &&
         (dptr != nullptr || bytes != nullptr));
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
-      absl::StrCat("Failed to get symbol '", symbol_name, "'"));
-  return absl::OkStatus();
+  return ToStatus(wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
+                  absl::StrCat("Failed to get symbol '", symbol_name, "'"));
 }
 
 // Unloads module from the current context via cuModuleUnload.
@@ -225,9 +207,9 @@ void UnloadRocmModule(Context* context, hipModule_t module) {
 absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
-      "Failed to get device name");
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+               "Failed to get device name"));
   chars[kCharLimit - 1] = '\0';
   return chars.begin();
 }
@@ -310,19 +292,22 @@ absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
 
 absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   int value;
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
-                           &value, hipDeviceAttributeMaxGridDimX, device),
-                       "failed to query max grid dim x");
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipDeviceGetAttribute(
+                   &value, hipDeviceAttributeMaxGridDimX, device),
+               "failed to query max grid dim x"));
   *x = value;
 
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
-                           &value, hipDeviceAttributeMaxGridDimY, device),
-                       "failed to query max grid dim y");
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipDeviceGetAttribute(
+                   &value, hipDeviceAttributeMaxGridDimY, device),
+               "failed to query max grid dim y"));
   *y = value;
 
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetAttribute(
-                           &value, hipDeviceAttributeMaxGridDimZ, device),
-                       "failed to query max grid dim z");
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipDeviceGetAttribute(
+                   &value, hipDeviceAttributeMaxGridDimZ, device),
+               "failed to query max grid dim z"));
   *z = value;
   return absl::OkStatus();
 }
