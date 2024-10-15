@@ -18,14 +18,14 @@ COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 # Setup Python
-# TODO(quoct): Add python 3.13 when it's available on Oct 7th.
 COPY setup.python.sh /setup.python.sh
 COPY builder.requirements.txt /builder.requirements.txt
 RUN /setup.python.sh python3.9 builder.requirements.txt
 RUN /setup.python.sh python3.10 builder.requirements.txt
 RUN /setup.python.sh python3.11 builder.requirements.txt
 RUN /setup.python.sh python3.12 builder.requirements.txt
-RUN /setup.python.sh python3.13 builder.requirements.txt
+# TODO(quoct): Fix python3.13 build.
+# RUN /setup.python.sh python3.13 builder.requirements.txt
 
 # Make sure clang is on the path
 RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
