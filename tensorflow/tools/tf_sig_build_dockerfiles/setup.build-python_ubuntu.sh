@@ -83,4 +83,4 @@ python3 --version
 echo "Install Requirements"
 # Disable the cache dir to save image space, and install packages
 python3 -m pip install --no-cache-dir -r $REQUIREMENTS -U
-python3 -m pip install --no-cache-dir --no-deps tf-keras-nightly
+python3 -m pip install --no-cache-dir --no-deps tf-keras-nightly~=2.18.0.dev

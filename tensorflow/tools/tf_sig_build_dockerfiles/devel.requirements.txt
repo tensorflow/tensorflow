@@ -30,8 +30,8 @@ gast == 0.4.0
 # For release jobs, we will pin these on the release branch
 # Note that the CACHEBUSTER variable, set in the CI builds, will force these to
 # be the latest version.
-keras-nightly >= 3.2.0.dev
-tb-nightly ~= 2.17.0.a
+keras >= 3.5.0
+tensorboard ~= 2.18.0
 # Test dependencies
 grpcio ~= 1.59.0 # Earliest version for Python 3.12
 portpicker ~= 1.6.0
