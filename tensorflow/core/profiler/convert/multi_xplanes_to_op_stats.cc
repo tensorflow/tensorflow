@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-Status ConvertMultiXSpacesToCombinedOpStats(
+absl::Status ConvertMultiXSpacesToCombinedOpStats(
     const SessionSnapshot& session_snapshot, const OpStatsOptions& options,
     OpStats* combined_op_stats) {
   // Read multiple XSpaces and convert to multiple OpStats.

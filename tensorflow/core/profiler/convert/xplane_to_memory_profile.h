@@ -32,8 +32,8 @@ namespace profiler {
 MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
                                            int64_t max_num_snapshots = 1000);
 
-Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
-                                        std::string* json_output);
+absl::Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
+                                              std::string* json_output);
 }  // namespace profiler
 }  // namespace tensorflow
 

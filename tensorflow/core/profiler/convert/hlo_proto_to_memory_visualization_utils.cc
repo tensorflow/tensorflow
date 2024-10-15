@@ -569,7 +569,8 @@ struct HeapSimulatorStats {
   }
 
   // Update stats when memory usage decrease.
-  Status DecreaseMemoryUsage(LogicalBufferStruct* canonical_logical_buffer) {
+  absl::Status DecreaseMemoryUsage(
+      LogicalBufferStruct* canonical_logical_buffer) {
     int64_t canonical_buffer_id = canonical_logical_buffer->proto.id();
     logical_buffers.remove(canonical_buffer_id);
     heap_size_bytes -= canonical_logical_buffer->size();
@@ -587,7 +588,7 @@ struct HeapSimulatorStats {
   }
 
   // Finalize the memory usage stats from heap simulator trace.
-  Status FinalizeMemoryUsage() {
+  absl::Status FinalizeMemoryUsage() {
     // Add the final heap size after simulating the entire heap trace.
     heap_size_bytes_timeline.push_back(heap_size_bytes);
     unpadded_heap_size_bytes_timeline.push_back(unpadded_heap_size_bytes);
@@ -640,9 +641,9 @@ struct HeapSimulatorStats {
   int64_t simulator_trace_event_size;
 };
 
-Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
-                                 const int64_t memory_color,
-                                 HeapSimulatorStats* stats) {
+absl::Status ProcessHeapSimulatorTrace(const HloProtoBufferWrapper& wrapper,
+                                       const int64_t memory_color,
+                                       HeapSimulatorStats* stats) {
   int64_t heap_simulator_trace_id =
       wrapper.GetHeapSimulatorTraceId(memory_color);
 
