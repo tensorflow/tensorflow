@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
@@ -50,13 +53,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
-namespace {
-using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
-
-struct IfrtBackendCompilerTestParams {
-  std::string mlir_file_name;
-};
 
 tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
@@ -84,6 +80,17 @@ class IfrtBackendCompilerTest : public ::testing::Test {
         /*compilation_environment_proto=*/nullptr);
   }
 
+  void verifyModules() {
+    absl::MutexLock l(&ServingExecutableRegistry::mu_);
+    for (const auto& [_, executable] :
+         *ServingExecutableRegistry::executables_) {
+      absl::MutexLock l(&executable->mutex_);
+      executable->module_->walk([](mlir::func::FuncOp func) {
+        ASSERT_FALSE(func->hasAttr("tfrt_ifrt_serving.program_id"));
+      });
+    }
+  }
+
   mlir::DialectRegistry registry_;
   mlir::MLIRContext context_;
   std::shared_ptr<xla::ifrt::Client> client_;
@@ -100,6 +107,14 @@ class IfrtBackendCompilerTest : public ::testing::Test {
   tsl::test_util::MockServingDeviceSelector mock_serving_device_selector_;
   std::unique_ptr<IfrtServingCoreSelector> core_selector_;
   IfrtBackendCompiler compiler_;
+};
+
+namespace {
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
+
+struct IfrtBackendCompilerTestParams {
+  std::string mlir_file_name;
 };
 
 class IfrtBackendCompilerParameterizedTest
@@ -120,6 +135,7 @@ TEST_P(IfrtBackendCompilerParameterizedTest, CompilesOk) {
 
   TF_ASSERT_OK(
       compiler_.CompileTensorflow(runtime_context_, mlir_module.get()));
+  verifyModules();
 }
 
 INSTANTIATE_TEST_SUITE_P(IfrtBackendCompilerParameterizedTest,
