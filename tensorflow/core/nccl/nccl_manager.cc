@@ -28,15 +28,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 
 namespace tensorflow {
 
-using stream_executor::gpu::ScopedActivateContext;
 #if TENSORFLOW_USE_ROCM
 // Local hipify of cuda symbols
 #define cudaError_t hipError_t
@@ -719,7 +716,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
 #else
   se::Stream* comm_stream = nccl_stream->stream.get();
 #endif
-  ScopedActivateContext scoped_context(nccl_stream->executor);
+  std::unique_ptr<se::ActivateContext> scoped_context =
+      nccl_stream->executor->Activate();
   cudaStream_t cu_stream = reinterpret_cast<cudaStream_t>(
       comm_stream->platform_specific_handle().stream);
 
