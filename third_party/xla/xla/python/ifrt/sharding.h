@@ -167,7 +167,23 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // `Sharding` subclasses. See `serdes.h`.
   absl::StatusOr<ShardingProto> ToProto() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual std::string DebugString() const = 0;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Sharding& sharding) {
+    sink.Append(sharding.DebugString());
+  }
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink,
+                            const std::shared_ptr<const Sharding>& sharding) {
+    if (sharding == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(sharding->DebugString());
+    }
+  }
 
   static char ID;  // NOLINT
 

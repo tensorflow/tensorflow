@@ -88,6 +88,16 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
     sink.Append(device_list.ToString());
   }
 
+  template <class Sink>
+  friend void AbslStringify(Sink& sink,
+                            const tsl::RCReference<DeviceList>& device_list) {
+    if (device_list == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(device_list->ToString());
+    }
+  }
+
   // Returns the hash of devices. This hash is stable only within the process.
   virtual uint64_t hash() const = 0;
 

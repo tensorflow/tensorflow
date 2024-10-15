@@ -62,9 +62,6 @@ MockArray::MockArray(tsl::RCReference<xla::ifrt::Array> delegated)
   ON_CALL(*this, IsDeleted).WillByDefault([this]() {
     return delegated_->IsDeleted();
   });
-  ON_CALL(*this, DebugString).WillByDefault([this]() {
-    return delegated_->DebugString();
-  });
   ON_CALL(*this, dtype).WillByDefault([this]() { return delegated_->dtype(); });
   ON_CALL(*this, shape).WillByDefault([this]() -> const Shape& {
     return delegated_->shape();
@@ -217,12 +214,6 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
     return delegated_->ProcessIndex();
   });
   ON_CALL(*this, Kind).WillByDefault([this]() { return delegated_->Kind(); });
-  ON_CALL(*this, DebugString).WillByDefault([this]() {
-    return delegated_->DebugString();
-  });
-  ON_CALL(*this, ToString).WillByDefault([this]() {
-    return delegated_->ToString();
-  });
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();
   });
