@@ -1036,6 +1036,7 @@ xla_test(
         "manual",
     ]),
     deps = [
+        ":rocm_event",
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_stream",
@@ -1048,6 +1049,7 @@ xla_test(
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
