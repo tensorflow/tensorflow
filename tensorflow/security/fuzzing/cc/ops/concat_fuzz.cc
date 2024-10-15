@@ -45,7 +45,7 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
                 const int32& axis) final {
     Tensor axis_tensor(DT_INT32, {});
     axis_tensor.scalar<int32_t>()() = axis;
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"value1", value1}, {"value2", value2}, {"axis", axis_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();

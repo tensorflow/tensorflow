@@ -34,7 +34,7 @@ class FuzzIdentity : public FuzzSession<Tensor> {
     tensorflow::ops::Identity(scope.WithOpName("output"), op_node);
   }
   void FuzzImpl(const Tensor& input_tensor) final {
-    Status s = RunInputsWithStatus({{"input", input_tensor}});
+    absl::Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
     }

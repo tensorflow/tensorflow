@@ -31,7 +31,7 @@ class FuzzStringToNumber : public FuzzSession<std::string> {
   void FuzzImpl(const std::string& input_string) final {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<tensorflow::tstring>()() = input_string;
-    Status s = RunInputsWithStatus({{"input", input_tensor}});
+    absl::Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();
     }
