@@ -43,10 +43,10 @@ cc_library(
     hdrs = ["hlo_bisect_state.h"],
     deps = [
         "//xla:literal",
+        "//xla:literal_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_dce",
-        "//xla/tests:test_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
