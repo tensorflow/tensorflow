@@ -266,7 +266,7 @@ class Tensor {
   /// \brief Move constructor. After this call, <other> is safely destructible
   /// can be assigned to, and IsInitialized() can be called and will return
   /// false. Other calls on <other> (e.g. shape manipulation) are not valid.
-  Tensor(Tensor&& other);
+  Tensor(Tensor&& other) noexcept;
 
   // Explicitly delete constructor that take a pointer (except char*)
   // so that the pointer doesn't get implicitly cast to bool.
@@ -335,7 +335,7 @@ class Tensor {
   }
 
   /// Move operator.  See move constructor for details.
-  Tensor& operator=(Tensor&& other);
+  Tensor& operator=(Tensor&& other) noexcept;
 
   /// \brief Copy the other tensor into this tensor and reshape it.
   ///
@@ -1005,7 +1005,7 @@ inline Tensor::Tensor(const Tensor& other)
   if (buf_) buf_->Ref();
 }
 
-inline Tensor::Tensor(Tensor&& other)
+inline Tensor::Tensor(Tensor&& other) noexcept
     : shape_(std::move(other.shape_)), buf_(other.buf_) {
   other.buf_ = nullptr;
 }
@@ -1086,7 +1086,7 @@ Tensor::Tensor(T value, host_scalar_tag tag) {
   set_dtype(DataTypeToEnum<T>::value);
 }
 
-inline Tensor& Tensor::operator=(Tensor&& other) {
+inline Tensor& Tensor::operator=(Tensor&& other) noexcept {
   // Avoid self-assignment, since we might destroy our underlying buffer.
   if (&other != this) {
     shape_ = std::move(other.shape_);
