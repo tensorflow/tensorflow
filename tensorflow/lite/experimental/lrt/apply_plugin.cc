@@ -25,10 +25,13 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/core/algo.h"
+#include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
+
+using ::lrt::internal::GroupPartitions;
+using ::lrt::internal::OutlinePartition;
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> model_path(
@@ -111,8 +114,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin,
   LRT_RETURN_STATUS_IF_NOT_OK(
       LrtPluginPartitionModel(plugin, model, &selected_ops));
 
-  auto partitions =
-      algo::DisjointSets::GetPartitionsFromFlatList(selected_ops.ops);
+  auto partitions = GroupPartitions(selected_ops.ops);
 
   // TODO: b/366821557 - Support multiple subgraphs in plugin application.
   auto& main_subgraph = model->subgraphs.front();
@@ -125,8 +127,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin,
   for (auto& partition : partitions) {
     LrtSubgraph new_subgraph = &model->subgraphs.emplace_back();
 
-    LrtOp custom_op = algo::GraphSlicer::SlicePartitionFromGraph(
-        main_subgraph, new_subgraph, partition);
+    LrtOp custom_op = OutlinePartition(main_subgraph, new_subgraph, partition);
     custom_ops.push_back(custom_op);
     slices.push_back(new_subgraph);
   }

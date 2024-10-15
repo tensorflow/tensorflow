@@ -25,10 +25,10 @@ cc_binary(
         "//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so",
     ],
     deps = [
-        "//tensorflow/lite/experimental/lrt/core:algo",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
         "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/core/compiler_plugin:algo",
         "@llvm-project//llvm:Support",
     ],
 )

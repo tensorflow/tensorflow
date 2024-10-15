@@ -15,6 +15,7 @@
 #include "tensorflow/lite/experimental/lrt/tools/dump.h"
 
 #include <dlfcn.h>
+
 #ifndef __ANDROID__
 #include <link.h>
 #endif
@@ -27,6 +28,7 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
 namespace lrt::internal {
@@ -175,6 +177,23 @@ void Dump(const LrtSubgraphT& subgraph, std::ostream& out) {
                             subgraph.tensors.size());
   DumpSignature(subgraph.inputs, subgraph.outputs, out);
   out << "\n";
+}
+
+void Dump(const CompilerPlugin& plugin, std::ostream& out) {
+  constexpr absl::string_view kPluginDumpTpl =
+      "SocManufacturer: %s\nSocModels: { ";
+  out << absl::StreamFormat(kPluginDumpTpl, plugin.SocManufacturer());
+
+  for (auto it = plugin.SocModels().begin(); it < plugin.SocModels().end();
+       ++it) {
+    out << *it;
+    if (it != plugin.SocModels().end() - 1) {
+      out << ",";
+    }
+    out << " ";
+  }
+
+  out << "}\n";
 }
 
 void Dump(void* lib_handle, std::ostream& out) {

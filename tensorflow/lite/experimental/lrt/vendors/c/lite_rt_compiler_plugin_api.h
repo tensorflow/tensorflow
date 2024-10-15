@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_COMPILER_PLUGIN_API_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_COMPILER_PLUGIN_API_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_API_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_API_H_
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
@@ -22,7 +22,9 @@
 // Wrapper for dynamically loaded LrtCompilerPlugin library. See
 // "lrt_compiler_plugin.h".
 
-namespace lrt::internal {
+#ifdef __cplusplus
+extern "C" {
+#endif  // __cplusplus
 
 //
 // Api Interface
@@ -45,6 +47,7 @@ typedef LrtStatus (*LrtPluginApiPartitionModel)(LrtCompilerPlugin,
                                                 LrtOpList selected_ops);
 
 typedef LrtStatus (*LrtPluginApiCompile)(LrtCompilerPlugin,
+                                         const char* soc_model,
                                          LrtSubgraphArray partitions,
                                          lrt_param_index_t num_partitions,
                                          LrtCompiledResult* compiled_result);
@@ -64,11 +67,11 @@ typedef LrtStatus (*LrtCompiledResultApiGetNumCalls)(
     LrtCompiledResult, lrt_param_index_t* num_calls);
 
 //
-// Load Plugin Library Into Api Container
+// Function Pointer Container
 //
 
 // Wraps all resolved functions from api interface.
-struct LrtPluginApi {
+struct LrtCompilerPluginApi {
   LrtPluginApiInit init = nullptr;
   LrtPluginApiDestroy destroy = nullptr;
 
@@ -85,9 +88,8 @@ struct LrtPluginApi {
   LrtCompiledResultApiGetNumCalls compiled_result_get_num_calls = nullptr;
 };
 
-// Resolve all api interface symbols with given loaded shared library handle.
-LrtStatus ResolvePluginApi(void* lib_handle, LrtPluginApi& result);
+#ifdef __cplusplus
+}
+#endif  // __cplusplus
 
-}  // namespace lrt::internal
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_COMPILER_PLUGIN_API_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_C_LITE_RT_COMPILER_PLUGIN_API_H_

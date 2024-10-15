@@ -24,6 +24,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/core/compiler_plugin",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],

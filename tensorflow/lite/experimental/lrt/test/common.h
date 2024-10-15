@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_COMMON_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -29,6 +30,14 @@
 
 #define ASSERT_RESULT_OK_ASSIGN(decl, expr) \
   _ASSERT_RESULT_OK_ASSIGN(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
+
+#define _ASSERT_RESULT_OK_MOVE(decl, expr, result) \
+  auto result = (expr);                            \
+  ASSERT_TRUE(result.HasValue());                  \
+  decl = std::move(result.Value());
+
+#define ASSERT_RESULT_OK_MOVE(decl, expr) \
+  _ASSERT_RESULT_OK_MOVE(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
 
 #define ASSERT_STATUS_HAS_CODE(expr, code) \
   {                                        \

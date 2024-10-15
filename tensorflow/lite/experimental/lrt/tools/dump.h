@@ -19,6 +19,7 @@
 #include <ostream>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
 namespace lrt::internal {
@@ -48,6 +49,9 @@ void Dump(const LrtRankedTensorType& type, std::ostream& out = std::cerr);
 //
 // Library Utilities
 //
+
+// Dumps details about the loaded LrtCompilerPlugin library.
+void Dump(const CompilerPlugin& plugin, std::ostream& out = std::cerr);
 
 // Dumps details about the dynamic library (see "dlinfo").
 void Dump(void* lib_handle, std::ostream& out = std::cerr);
