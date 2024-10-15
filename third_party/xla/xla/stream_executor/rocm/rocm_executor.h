@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 
@@ -32,6 +31,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
@@ -40,10 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -144,20 +142,10 @@ class RocmExecutor : public GpuExecutor {
   // Creates a GpuEvent for the given stream.
   absl::StatusOr<std::unique_ptr<RocmEvent>> CreateGpuEvent(bool allow_timing);
 
-  // Guards the on-disk-module mapping.
-  absl::Mutex disk_modules_mu_;
-
-  // Mapping from filename to hipModule_t, if it was already retrieved.
-  // Multiple hipFunction_ts are usually obtained from a single
-  // hipModule_t so we attempt to hit in this mapping first, before
-  // retrieving it.
-  std::map<std::string, hipModule_t> disk_modules_
-      ABSL_GUARDED_BY(disk_modules_mu_);
-
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
 
-  std::map<const char*, hipModule_t> in_memory_modules_
+  absl::flat_hash_map<const char*, hipModule_t> in_memory_modules_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   absl::Mutex shared_constants_mu_;
@@ -168,10 +156,11 @@ class RocmExecutor : public GpuExecutor {
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
-  std::unordered_map<const Kernel*, const void*> kernel_to_gpu_binary_
+  absl::flat_hash_map<const Kernel*, const void*> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
-  // GPU binary (PTX or CUBIN or HSACO) -> {module, reference count}.
-  std::unordered_map<const void*, std::pair<hipModule_t, uint64_t>>
+
+  // GPU binary HSACO -> {module, reference count}.
+  absl::flat_hash_map<const void*, std::pair<hipModule_t, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the ROCm device being operated on. Immutable

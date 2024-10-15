@@ -165,9 +165,7 @@ absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, module, &returned_status, &notification]() {
         ScopedActivateContext activation{context};
-        void* hsaco_data = const_cast<char*>(hsaco_contents);
-
-        hipError_t res = wrap::hipModuleLoadData(module, hsaco_data);
+        hipError_t res = wrap::hipModuleLoadData(module, hsaco_contents);
 
         if (res != hipSuccess) {
           returned_status = absl::InternalError(
@@ -482,9 +480,6 @@ void* HostAllocate(Context* context, uint64_t bytes) {
 }  // namespace
 
 RocmExecutor::~RocmExecutor() {
-  for (auto& it : disk_modules_) {
-    UnloadRocmModule(gpu_context(), it.second);
-  }
   for (auto& it : in_memory_modules_) {
     UnloadRocmModule(gpu_context(), it.second);
   }

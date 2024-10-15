@@ -653,12 +653,6 @@ absl::Status CudaExecutor::LoadModuleFromPtx(const char* ptx,
   return absl::OkStatus();
 }
 
-absl::Status CudaExecutor::LoadModuleFromHsaco(const char* hsaco,
-                                               CUmodule* module) {
-  return absl::InternalError(
-      "Feature not supported on CUDA platform (LoadModuleFromHsaco)");
-}
-
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
   auto cuda_kernel = std::make_unique<CudaKernel>(this);
