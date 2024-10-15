@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
@@ -155,13 +154,8 @@ absl::Status LoadPtx(Context* context, const char* ptx_contents,
         CHECK(TF_ARRAYSIZE(options) == TF_ARRAYSIZE(option_values));
 
         absl::Status status;
-        {
-          // TODO(leary) Need to see if NVIDIA can expunge the leakiness in
-          // their module loading: see http://b/13248943
-          absl::LeakCheckDisabler disabler;
-          status = cuda::ToStatus(cuModuleLoadDataEx(
-              module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
-        }
+        status = cuda::ToStatus(cuModuleLoadDataEx(
+            module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
 
         // The PTX JIT mutates the values in the option values array to reflect
         // the size of the logs it output; now that we've made the call, read
