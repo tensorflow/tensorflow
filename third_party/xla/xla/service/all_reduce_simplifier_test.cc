@@ -76,7 +76,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -112,7 +112,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
@@ -153,7 +153,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -183,7 +183,7 @@ test {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
                                            kModuleStr, /*replica_count=*/8));
-  AllReduceSimplifier simplifier(/*replica_count=*/8);
+  AllReduceSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
@@ -213,7 +213,7 @@ test {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  AllReduceSimplifier simplifier(/*replica_count=*/1);
+  AllReduceSimplifier simplifier;
   EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(0)));
@@ -248,7 +248,7 @@ test {
       auto module, ParseAndReturnVerifiedModule(kModuleStr, /*replica_count=*/1,
                                                 /*num_partitions=*/8));
   module->mutable_config().set_use_spmd_partitioning(true);
-  AllReduceSimplifier simplifier(/*replica_count=*/1);
+  AllReduceSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 
@@ -275,7 +275,7 @@ test {
                                                 /*num_partitions=*/1));
   // Mark as MPMD.
   module->mutable_config().set_use_spmd_partitioning(false);
-  AllReduceSimplifier simplifier(/*replica_count=*/2);
+  AllReduceSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
 }  // namespace
