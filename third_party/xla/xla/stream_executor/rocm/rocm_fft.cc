@@ -16,12 +16,13 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_fft.h"
 
 #include <complex>
+#include <memory>
 
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
@@ -44,13 +45,13 @@ namespace wrap {
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                      \
-  struct WrapperShim__##__name {                                 \
-    template <typename... Args>                                  \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) { \
-      ScopedActivateContext sac{parent};                         \
-      return ::__name(args...);                                  \
-    }                                                            \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                             \
+  struct WrapperShim__##__name {                                        \
+    template <typename... Args>                                         \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {        \
+      std::unique_ptr<ActivateContext> activation = parent->Activate(); \
+      return ::__name(args...);                                         \
+    }                                                                   \
   } __name;
 
 #else
@@ -77,7 +78,7 @@ namespace wrap {
     }                                                                    \
     template <typename... Args>                                          \
     hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
-      ScopedActivateContext sac{parent};                                 \
+      std::unique_ptr<ActivateContext> activation = parent->Activate();  \
       return DynLoad()(args...);                                         \
     }                                                                    \
   } __name;                                                              \

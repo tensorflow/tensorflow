@@ -576,7 +576,7 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 RocmExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
-  TF_ASSIGN_OR_RETURN(auto timer, RocmTimer::Create(gpu_context(), stream));
+  TF_ASSIGN_OR_RETURN(auto timer, RocmTimer::Create(this, stream));
   return std::make_unique<RocmTimer>(std::move(timer));
 }
 
@@ -987,7 +987,7 @@ absl::Status FillBlockDimLimit(hipDevice_t device, BlockDim* block_dim_limit) {
 
 absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
   TF_ASSIGN_OR_RETURN(auto event,
-                      RocmEvent::Create(gpu_context(), /*allow_timing=*/false));
+                      RocmEvent::Create(this, /*allow_timing=*/false));
   return std::make_unique<RocmEvent>(std::move(event));
 }
 

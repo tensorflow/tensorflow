@@ -34,11 +34,10 @@ limitations under the License.
 #include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -52,9 +51,9 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
-int GetGpuStreamPriority(Context* context,
+int GetGpuStreamPriority(StreamExecutor* executor,
                          stream_executor::StreamPriority stream_priority) {
-  ScopedActivateContext activation(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   if (stream_priority == stream_executor::StreamPriority::Default) {
     return 0;
   }
@@ -69,8 +68,9 @@ int GetGpuStreamPriority(Context* context,
                                                                      : lowest;
 }
 
-absl::StatusOr<hipStream_t> CreateStream(Context* context, int priority) {
-  ScopedActivateContext activated(context);
+absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
+                                         int priority) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipStream_t stream;
   if (priority == 0) {
     TF_RETURN_IF_ERROR(ToStatus(
@@ -83,13 +83,13 @@ absl::StatusOr<hipStream_t> CreateStream(Context* context, int priority) {
   }
 
   VLOG(2) << "successfully created stream " << stream << " for device "
-          << context->device_ordinal() << " on thread";
+          << executor->device_ordinal() << " on thread";
   return stream;
 }
 
-absl::Status RecordEvent(Context* context, hipEvent_t event,
+absl::Status RecordEvent(StreamExecutor* executor, hipEvent_t event,
                          hipStream_t stream) {
-  ScopedActivateContext activated{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipError_t res = wrap::hipEventRecord(event, stream);
   switch (res) {
     case hipSuccess:
@@ -106,19 +106,19 @@ absl::Status RecordEvent(Context* context, hipEvent_t event,
   }
 }
 
-absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
+absl::Status WaitStreamOnEvent(StreamExecutor* executor, hipStream_t stream,
                                hipEvent_t event) {
-  ScopedActivateContext activation{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
                "could not wait stream on event"));
   return absl::OkStatus();
 }
 
-absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
+absl::Status AsynchronousMemcpyD2H(StreamExecutor* executor, void* host_dst,
                                    hipDeviceptr_t gpu_src, uint64_t size,
                                    hipStream_t stream) {
-  ScopedActivateContext activation{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(ToStatus(
       wrap::hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream),
       absl::StrFormat(
@@ -129,14 +129,14 @@ absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
   VLOG(2) << "successfully enqueued async memcpy d2h of " << size
           << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
           << host_dst << " on stream " << stream
-          << " device: " << context->device_ordinal();
+          << " device: " << executor->device_ordinal();
   return absl::OkStatus();
 }
 
-absl::Status AsynchronousMemcpyH2D(Context* context, hipDeviceptr_t gpu_dst,
-                                   const void* host_src, uint64_t size,
-                                   hipStream_t stream) {
-  ScopedActivateContext activation{context};
+absl::Status AsynchronousMemcpyH2D(StreamExecutor* executor,
+                                   hipDeviceptr_t gpu_dst, const void* host_src,
+                                   uint64_t size, hipStream_t stream) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(ToStatus(
       wrap::hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size,
                                stream),
@@ -148,14 +148,15 @@ absl::Status AsynchronousMemcpyH2D(Context* context, hipDeviceptr_t gpu_dst,
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size
           << " bytes from " << host_src << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
-          << " device: " << context->device_ordinal();
+          << " device: " << executor->device_ordinal();
   return absl::OkStatus();
 }
 
-absl::Status AsynchronousMemcpyD2D(Context* context, hipDeviceptr_t gpu_dst,
+absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
+                                   hipDeviceptr_t gpu_dst,
                                    hipDeviceptr_t gpu_src, uint64_t size,
                                    hipStream_t stream) {
-  ScopedActivateContext activation{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(ToStatus(
       wrap::hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream),
       absl::StrFormat("failed to enqueue async memcpy from device to device: "
@@ -166,7 +167,7 @@ absl::Status AsynchronousMemcpyD2D(Context* context, hipDeviceptr_t gpu_dst,
   VLOG(2) << "successfully enqueued async memcpy d2d of " << size
           << " bytes from " << absl::bit_cast<void*>(gpu_src) << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
-          << " device: " << context->device_ordinal();
+          << " device: " << executor->device_ordinal();
   return absl::OkStatus();
 }
 
@@ -180,14 +181,14 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
       return std::get<int>(priority.value());
     }
     return GetGpuStreamPriority(
-        executor->gpu_context(),
+        executor,
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,
-                      CreateStream(executor->gpu_context(), stream_priority));
+                      CreateStream(executor, stream_priority));
 
   TF_ASSIGN_OR_RETURN(auto completed_event,
-                      RocmEvent::Create(executor->gpu_context(),
+                      RocmEvent::Create(executor,
                                         /*allow_timing=*/false));
 
   return std::unique_ptr<RocmStream>(new RocmStream(
@@ -199,18 +200,17 @@ absl::Status RocmStream::WaitFor(Stream* other) {
 
   TF_RETURN_IF_ERROR(other_stream->RecordCompletedEvent());
 
-  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
+  return WaitStreamOnEvent(executor_, stream_handle_,
                            other_stream->completed_event_.GetHandle());
 }
 
 absl::Status RocmStream::RecordEvent(Event* event) {
   return stream_executor::gpu::RecordEvent(
-      executor_->gpu_context(), static_cast<RocmEvent*>(event)->GetHandle(),
-      stream_handle_);
+      executor_, static_cast<RocmEvent*>(event)->GetHandle(), stream_handle_);
 }
 
 absl::Status RocmStream::WaitFor(Event* event) {
-  return WaitStreamOnEvent(executor_->gpu_context(), stream_handle_,
+  return WaitStreamOnEvent(executor_, stream_handle_,
                            static_cast<RocmEvent*>(event)->GetHandle());
 }
 
@@ -219,7 +219,7 @@ absl::Status RocmStream::RecordCompletedEvent() {
 }
 
 namespace {
-void DestroyStream(Context* context, hipStream_t stream) {
+void DestroyStream(StreamExecutor* executor, hipStream_t stream) {
   if (stream == nullptr) {
     return;
   }
@@ -228,14 +228,14 @@ void DestroyStream(Context* context, hipStream_t stream) {
     LOG(ERROR) << "stream not idle on destroy: " << ToString(res);
   }
 
-  ScopedActivateContext activated(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   res = wrap::hipStreamDestroy(stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to destroy ROCM stream for device "
-               << context->device_ordinal() << ": " << ToString(res);
+               << executor->device_ordinal() << ": " << ToString(res);
   } else {
     VLOG(2) << "successfully destroyed stream " << stream << " for device "
-            << context->device_ordinal();
+            << executor->device_ordinal();
   }
 }
 }  // namespace
@@ -244,7 +244,7 @@ RocmStream::~RocmStream() {
   BlockHostUntilDone().IgnoreError();
   executor_->DeallocateStream(this);
 
-  DestroyStream(executor_->gpu_context(), stream_handle_);
+  DestroyStream(executor_, stream_handle_);
 }
 
 absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
@@ -265,7 +265,7 @@ absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
       size % sizeof(uint32_t) == 0) {
     return Memset32(location, 0x0, size);
   } else {
-    ScopedActivateContext activation{executor_->gpu_context()};
+    std::unique_ptr<ActivateContext> activation = executor_->Activate();
     return ToStatus(
         wrap::hipMemsetAsync(location->opaque(), 0x0, size, stream_handle_),
         "Failed to enqueue async memset operation");
@@ -276,22 +276,20 @@ absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst,
                                 const DeviceMemoryBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
-      executor_->gpu_context(),
-      absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
+      executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
       absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, stream_handle_);
 }
 
 absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
                                 uint64_t size) {
   return AsynchronousMemcpyH2D(
-      executor_->gpu_context(),
-      absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src, size,
-      stream_handle_);
+      executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src,
+      size, stream_handle_);
 }
 
 absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                                 uint64_t size) {
-  return AsynchronousMemcpyD2H(executor_->gpu_context(), host_dst,
+  return AsynchronousMemcpyD2H(executor_, host_dst,
                                absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),
                                size, stream_handle_);
 }
@@ -320,14 +318,14 @@ absl::Status RocmStream::DoHostCallbackWithStatus(
 }
 
 namespace {
-absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
-                          hipFunction_t function, unsigned int grid_dim_x,
-                          unsigned int grid_dim_y, unsigned int grid_dim_z,
-                          unsigned int block_dim_x, unsigned int block_dim_y,
-                          unsigned int block_dim_z,
+absl::Status LaunchKernel(StreamExecutor* executor,
+                          absl::string_view kernel_name, hipFunction_t function,
+                          unsigned int grid_dim_x, unsigned int grid_dim_y,
+                          unsigned int grid_dim_z, unsigned int block_dim_x,
+                          unsigned int block_dim_y, unsigned int block_dim_z,
                           unsigned int shared_mem_bytes, hipStream_t stream,
                           void** kernel_params, void** extra) {
-  ScopedActivateContext activation{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; gdx: " << grid_dim_x
           << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
@@ -360,8 +358,9 @@ absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
   return absl::OkStatus();
 }
 
-absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
-                          hipFunction_t function, unsigned int cluster_dim_x,
+absl::Status LaunchKernel(StreamExecutor* executor,
+                          absl::string_view kernel_name, hipFunction_t function,
+                          unsigned int cluster_dim_x,
                           unsigned int cluster_dim_y,
                           unsigned int cluster_dim_z, unsigned int grid_dim_x,
                           unsigned int grid_dim_y, unsigned int grid_dim_z,
@@ -371,7 +370,7 @@ absl::Status LaunchKernel(Context* context, absl::string_view kernel_name,
                           void** kernel_params, void** extra) {
   if (cluster_dim_x != 1 || cluster_dim_y != 1 || cluster_dim_z != 1)
     return absl::UnimplementedError("Not implemented for ROCm");
-  return LaunchKernel(context, kernel_name, function, grid_dim_x, grid_dim_y,
+  return LaunchKernel(executor, kernel_name, function, grid_dim_x, grid_dim_y,
                       grid_dim_z, block_dim_x, block_dim_y, block_dim_z,
                       shared_mem_bytes, stream, kernel_params, extra);
 }
@@ -401,18 +400,17 @@ absl::Status RocmStream::Launch(const ThreadDim& thread_dims,
 
     if (cluster_dims.has_value()) {
       return LaunchKernel(
-          executor_->gpu_context(), kernel.name(), function, cluster_dims->x,
-          cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
-          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+          executor_, kernel.name(), function, cluster_dims->x, cluster_dims->y,
+          cluster_dims->z, block_dims.x, block_dims.y, block_dims.z,
+          thread_dims.x, thread_dims.y, thread_dims.z,
           packed.number_of_shared_bytes(), stream_handle_, params,
           /*extra=*/nullptr);
     } else {
-      return LaunchKernel(executor_->gpu_context(), kernel.name(), function,
-                          block_dims.x, block_dims.y, block_dims.z,
-                          thread_dims.x, thread_dims.y, thread_dims.z,
-                          packed.number_of_shared_bytes(), stream_handle_,
-                          params,
-                          /*extra=*/nullptr);
+      return LaunchKernel(
+          executor_, kernel.name(), function, block_dims.x, block_dims.y,
+          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+          packed.number_of_shared_bytes(), stream_handle_, params,
+          /*extra=*/nullptr);
     }
   };
 

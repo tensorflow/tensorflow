@@ -30,12 +30,12 @@ limitations under the License.
 #include "Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
@@ -218,14 +218,16 @@ class MIOpenHandle {
   // using handle.
   MIOpenHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
                miopenHandle_t handle)
-      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
+      : context_(executor->Activate()),
+        lock_(std::move(lock)),
+        handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
   // a copy.
   miopenHandle_t handle() const { return handle_; }
 
  private:
-  ScopedActivateContext context_;
+  std::unique_ptr<ActivateContext> context_;
   std::unique_ptr<absl::MutexLock> lock_;
   miopenHandle_t handle_;  // Not owned.
 };
@@ -775,7 +777,7 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
 }
 
 absl::Status MIOpenSupport::Init() {
-  ScopedActivateContext context(parent_);
+  std::unique_ptr<ActivateContext> context = parent_->Activate();
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
       reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
