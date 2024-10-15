@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
+#include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "llvm/ADT/MapVector.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
@@ -30,9 +29,8 @@
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-// NOLINTBEGIN
-
-namespace algo {
+namespace lrt::internal {
+namespace {
 
 //
 // flatlist to partition(s)
@@ -47,7 +45,9 @@ class DisjointSets {
   void Insert(LrtOp op, LrtOp parent);
   std::vector<std::vector<LrtOp>> GetBuckets();
   LrtOp GetBucket(LrtOp op);
+  // NOLINTBEGIN
   llvm::MapVector<LrtOp, LrtOp> map_;
+  // NOLINTEND
 };
 
 inline std::vector<std::vector<LrtOp>> DisjointSets::GetPartitionsFromFlatList(
@@ -82,7 +82,9 @@ inline void DisjointSets::Insert(LrtOp op, LrtOp parent) {
 
 // Get all disjoint sets.
 inline std::vector<std::vector<LrtOp>> DisjointSets::GetBuckets() {
+  // NOLINTBEGIN
   std::unordered_map<LrtOp, std::vector<LrtOp>> invert_map;
+  // NOLINTEND
   for (const auto& entry : map_) {
     auto* bucket = GetBucket(entry.first);
 
@@ -169,7 +171,6 @@ inline void AddUse(LrtTensorT& tensor, LrtOpT& op) {
 }
 
 inline void AddOutput(LrtOpT& op, LrtTensorT& tensor) {
-  DCHECK(tensor.defining_op == nullptr);
   op.outputs.push_back(&tensor);
   tensor.defining_op = &op;
   tensor.defining_op_out_ind = op.outputs.size() - 1;
@@ -236,8 +237,10 @@ inline void DCE(LrtSubgraphT& subgraph) {
     }
   }
 
+  // NOLINTBEGIN
   std::set<LrtTensor> inputs(subgraph.inputs.begin(), subgraph.inputs.end());
   std::set<LrtTensor> outputs(subgraph.outputs.begin(), subgraph.outputs.end());
+  // NOLINTEND
 
   auto& tensors = subgraph.tensors_storage;
   for (auto it = tensors.begin(); it != tensors.end();) {
@@ -273,8 +276,10 @@ class GraphSlicer {
   void RerouteTensorsThroughCustomOp(const LrtSubgraphT& root);
 
   LrtSubgraph slice_;
-  // maps tensor in old subgraph to tensor in new subgraph.
+  // Maps tensor in old subgraph to tensor in new subgraph.
+  // NOLINTBEGIN
   llvm::MapVector<LrtTensor, LrtTensor> tensor_map_;
+  // NOLINTEND
   LrtOp hal_cal_op_ = nullptr;
 };
 
@@ -302,8 +307,6 @@ inline LrtOp GraphSlicer::SlicePartitionFromGraph(
   return slicer.hal_cal_op_;
 }
 
-// TODO replace this with iteration order sensitve one and fix the reversered
-// arg order issue
 inline void GraphSlicer::RerouteTensorsThroughCustomOp(
     const LrtSubgraphT& root) {
   for (auto& [old_tensor, new_tensor] : tensor_map_) {
@@ -317,8 +320,6 @@ inline void GraphSlicer::RerouteTensorsThroughCustomOp(
     // Reroute custom op as the definer of tensors within the removed partition
     // and referenced latern in the root graph.
     if (!old_tensor->users.empty() || IsOutput(root, old_tensor)) {
-      DCHECK(old_tensor->defining_op == nullptr)
-          << "Defining op should have been removed from the graph";
       AddOutput(*hal_cal_op_, *old_tensor);
       AddOutput(slice_, new_tensor);
     }
@@ -356,8 +357,15 @@ inline void GraphSlicer::CloneInto(const LrtOpT& old_op) {
   }
 }
 
-}  // namespace algo
+}  // namespace
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
+std::vector<std::vector<LrtOp>> GroupPartitions(const std::vector<LrtOp>& ops) {
+  return DisjointSets::GetPartitionsFromFlatList(ops);
+}
 
-// NOLINTEND
+LrtOp OutlinePartition(LrtSubgraphT& root, LrtSubgraph slice,
+                       std::vector<LrtOp>& partition) {
+  return GraphSlicer::SlicePartitionFromGraph(root, slice, partition);
+}
+
+}  // namespace lrt::internal

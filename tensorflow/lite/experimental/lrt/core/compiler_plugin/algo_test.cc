@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/core/algo.h"
+#include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 
 #include <memory>
 #include <unordered_set>
@@ -28,8 +28,8 @@
 
 namespace {
 
-using ::algo::DisjointSets;
-using ::algo::GraphSlicer;
+using ::lrt::internal::GroupPartitions;
+using ::lrt::internal::OutlinePartition;
 
 // NOLINTBEGIN
 bool HasValidGeneralTopology(LrtSubgraph subgraph) {
@@ -99,7 +99,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
     partition.push_back(ops[1]);
     partition.push_back(ops[2]);
 
-    auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
+    auto partitions = GroupPartitions(partition);
     ASSERT_EQ(partitions.size(), 1);
     ASSERT_EQ(partitions.front().size(), 2);
 
@@ -112,7 +112,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
     partition.push_back(ops[1]);
     partition.push_back(ops[3]);
 
-    auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
+    auto partitions = GroupPartitions(partition);
     ASSERT_EQ(partitions.size(), 2);
     ASSERT_EQ(partitions.front().size(), 1);
     ASSERT_EQ(partitions.back().size(), 1);
@@ -128,7 +128,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
   {
     std::vector<LrtOp> partition;
 
-    auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
+    auto partitions = GroupPartitions(partition);
     ASSERT_EQ(partitions.size(), 0);
   }
 
@@ -139,7 +139,7 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
     partition.push_back(ops[2]);
     partition.push_back(ops[3]);
 
-    auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
+    auto partitions = GroupPartitions(partition);
     ASSERT_EQ(partitions.size(), 1);
     ASSERT_EQ(partitions.front().size(), 4);
 
@@ -169,8 +169,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   partition.push_back(ops[2]);
 
   LrtSubgraph sliced_graph = &model->subgraphs.emplace_back();
-  auto* hal_cal_op =
-      GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph, partition);
+  auto* hal_cal_op = OutlinePartition(*subgraph, sliced_graph, partition);
 
   ASSERT_TRUE(HasValidGeneralTopology(sliced_graph));
   ASSERT_TRUE(HasValidGeneralTopology(subgraph));
@@ -249,7 +248,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
   partition_1.push_back(ops[0]);
 
   LrtSubgraph sliced_graph_1 = &model->subgraphs.emplace_back();
-  GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph_1, partition_1);
+  OutlinePartition(*subgraph, sliced_graph_1, partition_1);
 
   ASSERT_TRUE(HasValidGeneralTopology(sliced_graph_1));
   ASSERT_TRUE(HasValidGeneralTopology(subgraph));
@@ -259,7 +258,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
   partition_2.push_back(ops[3]);
 
   LrtSubgraph sliced_graph_2 = &model->subgraphs.emplace_back();
-  GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph_2, partition_2);
+  OutlinePartition(*subgraph, sliced_graph_2, partition_2);
 
   ASSERT_TRUE(HasValidGeneralTopology(sliced_graph_2));
   ASSERT_TRUE(HasValidGeneralTopology(subgraph));

@@ -23,4 +23,13 @@ cc_library(
     deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
 )
 
+cc_library(
+    name = "lite_rt_compiler_plugin_api",
+    hdrs = ["lite_rt_compiler_plugin_api.h"],
+    deps = [
+        ":lite_rt_compiler_plugin",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+    ],
+)
+
 exports_files(srcs = ["lite_rt_compiler_plugin.h"])
