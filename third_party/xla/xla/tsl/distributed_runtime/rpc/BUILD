@@ -83,9 +83,9 @@ cc_library(
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
+        "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/gtl:map_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",

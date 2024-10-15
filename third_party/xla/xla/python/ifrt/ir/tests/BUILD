@@ -93,7 +93,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/hlo:hlo_program",
-        "//xla/python/ifrt/ir:compiler",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",

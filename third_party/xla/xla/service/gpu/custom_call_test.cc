@@ -715,6 +715,7 @@ TEST_F(CustomCallTest, WithCalledComputation) {
 struct SomeExtraContext {
   explicit SomeExtraContext(int32_t value) : value(value) {}
   int32_t value;
+  bool prepared = false;
   bool initialized = false;
   bool executed = false;
 };
@@ -723,14 +724,24 @@ template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
   if (ctx->value != 42) return absl::InternalError("Unexpected value");
-  if constexpr (stage == ffi::ExecutionStage::kInitialize) {
+  if constexpr (stage == ffi::ExecutionStage::kPrepare) {
+    ctx->prepared = true;
+  } else if constexpr (stage == ffi::ExecutionStage::kInitialize) {
     ctx->initialized = true;
-  } else {
+  } else if constexpr (stage == ffi::ExecutionStage::kExecute) {
     ctx->executed = true;
+  } else {
+    return absl::InternalError("Unexpected stage");
   }
 
   return absl::OkStatus();
 }
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextPrepare,
+                       ExecutionContext<ffi::ExecutionStage::kPrepare>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kPrepare>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
 
 XLA_FFI_DEFINE_HANDLER(kExecutionContextInitialize,
                        ExecutionContext<ffi::ExecutionStage::kInitialize>,
@@ -748,7 +759,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
                          PLATFORM,
                          {
                              /*instantiate=*/nullptr,
-                             /*prepare=*/nullptr,
+                             /*prepare=*/kExecutionContextPrepare,
                              /*initialize=*/kExecutionContextInitialize,
                              /*execute=*/kExecutionContextExecute,
                          });
@@ -774,6 +785,7 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   // Check that FFI handler was called during initialization and execution.
   TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
                           execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->prepared);
   EXPECT_TRUE(user_context->initialized);
   EXPECT_TRUE(user_context->executed);
 }

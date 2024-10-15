@@ -62,8 +62,8 @@ Status ValidateOpIsSafeForSyncExecution(
 
 namespace {
 
-typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
+typedef absl::InlinedVector<TensorValue, 4UL> TensorValueVec;
+typedef absl::InlinedVector<AllocatorAttributes, 4UL> AllocatorAttributeVec;
 
 static const string& kSingleThreadedExecutor =
     *new string("SINGLE_THREADED_EXECUTOR");

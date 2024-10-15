@@ -119,7 +119,6 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":tf_op_utils",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
@@ -128,6 +127,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
     ],
 )
 
@@ -289,7 +289,6 @@ cc_library(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:dso_loader",
         "//tsl/platform:env",
         "//tsl/platform:logging",
@@ -301,6 +300,7 @@ cc_library(
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
     ],
 )
 
@@ -566,5 +566,29 @@ tsl_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "device_utils",
+    srcs = ["device_utils.cc"],
+    hdrs = ["device_utils.h"],
+    deps = [
+        ":xplane_schema",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_utils_test",
+    srcs = ["device_utils_test.cc"],
+    deps = [
+        ":device_utils",
+        ":xplane_schema",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

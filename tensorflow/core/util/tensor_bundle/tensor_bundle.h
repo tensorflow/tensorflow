@@ -72,6 +72,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/buffered_file.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -87,7 +88,6 @@ limitations under the License.
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
-#include "tsl/lib/io/buffered_file.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {

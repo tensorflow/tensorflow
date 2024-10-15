@@ -164,7 +164,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
   } else {
     // skeleton is the encoded TensorProto contents (dtype and shape), but
     // not the actual data
-    gtl::InlinedVector<char, 128> skeleton(SkeletonEncodingSizeUpperBound(val));
+    absl::InlinedVector<char, 128UL> skeleton(
+        SkeletonEncodingSizeUpperBound(val));
     io::ProtoEncodeHelper e_skeleton(skeleton.data(), skeleton.size());
     EncodeSkeleton(val, &e_skeleton);
 
@@ -196,7 +197,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
 
     // Encode all but the actual "tdata", but including the tag and
     // varlength header for the "tdata"
-    gtl::InlinedVector<char, 1024> space(encoder_size);
+    absl::InlinedVector<char, 1024UL> space(encoder_size);
     io::ProtoEncodeHelper e(space.data(), space.size());
     // (A)
     e.WriteRawBytes(header);

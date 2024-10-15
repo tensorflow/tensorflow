@@ -81,7 +81,7 @@ def cuda_only_cc_library(name, tags = [], **kwargs):
     )
     cc_library(
         name = "%s_cuda_only" % name,
-        tags = tags + ["manual", "no_rocm"],
+        tags = tags + ["manual", "cuda-only"],
         **kwargs
     )
     native.alias(

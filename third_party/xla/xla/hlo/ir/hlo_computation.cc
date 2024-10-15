@@ -51,9 +51,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -1156,7 +1156,8 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* root = builder.AddInstruction(
         instruction->CloneWithNewOperands(instruction->shape(), parameters));
     if (override_names) {
-      root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
+      parent()->SetAndUniquifyInstrName(
+          root, absl::StrCat(instruction->name(), ".cloned"));
     }
     HloComputation* async_computation =
         parent_->AddEmbeddedComputation(builder.Build(root));
@@ -1171,9 +1172,10 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     async_done = AddInstruction(
         HloInstruction::CreateAsyncDone(root->shape(), async_start));
     if (override_names) {
-      async_start->SetAndSanitizeName(
-          absl::StrCat(root->name(), ".call-start"));
-      async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+      parent()->SetAndUniquifyInstrName(
+          async_start, absl::StrCat(root->name(), ".call-start"));
+      parent()->SetAndUniquifyInstrName(
+          async_done, absl::StrCat(root->name(), ".call-done"));
     }
   }
   async_start->set_metadata(instruction->metadata());

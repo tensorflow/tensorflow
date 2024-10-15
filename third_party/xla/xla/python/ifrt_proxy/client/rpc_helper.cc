@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -24,7 +25,6 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -38,38 +38,88 @@ namespace xla {
 namespace ifrt {
 namespace proxy {
 
+namespace {
+
 using ::tsl::profiler::XFlow;
+
+// XFlowHelper makes it easier to create trace spans with a flow between them.
+// Typical usage:
+//
+// XFlowHelper flow("my_request");
+// ...
+//
+// auto response_handler = [flow](ResponseMsg msg) {
+//   flow.InstantActivity<kRecv>();
+//   LOG(INFO) << "Received response: " << msg;
+// }
+//
+// {
+//   auto request_span = flow.Span<kSend>();
+//   auto request_protobuf = CreateRequestProtobuf();
+//   transport.Send(request_protobuf, response_handler);
+// }
+//
+//
+class XFlowHelper {
+ public:
+  explicit XFlowHelper(absl::string_view name)
+      : xflow_id_(tsl::random::New64() >> 8 /*XFlow IDs are 56 bits*/),
+        name_(name) {}
+
+  typedef enum { kSend, kRecv, kRecvSend } Direction;
+
+  template <Direction D>
+  tsl::profiler::TraceMe Span() const {
+    return tsl::profiler::TraceMe([xflow_id = xflow_id_, name = name_] {
+      return Encode<D>(xflow_id, name);
+    });
+  }
+
+  template <Direction D>
+  void InstantActivity() const {
+    return tsl::profiler::TraceMe::InstantActivity(
+        [xflow_id = xflow_id_, name = name_] {
+          return Encode<D>(xflow_id, name);
+        });
+  }
+
+ private:
+  template <Direction D>
+  static std::string Encode(uint64_t xflow_id, absl::string_view name) {
+    static constexpr absl::string_view flow_dir_str =
+        D == kSend ? "send" : (D == kRecv ? "recv" : "recv_send");
+    const XFlow flow(xflow_id, D == kRecvSend ? XFlow::kFlowInOut
+                                              : (D == kRecv ? XFlow::kFlowIn
+                                                            : XFlow::kFlowOut));
+    return tsl::profiler::TraceMeEncode(
+        name, {{"dir", flow_dir_str}, {"flow", flow.ToStatValue()}});
+  };
+
+  const uint64_t xflow_id_;
+  const absl::string_view name_;
+};
+
+}  // namespace
 
 // DoRpc is a templated function that implements the logic of all RPC-wrapping
 // functions of `RpcHelper`, such as `RpcHelper::MakeArrayFromHostBuffer()`.
 template <typename Req, typename Resp>
 Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
-                                    RequestMetadata metadata,
                                     void (IfrtRequest::*set_req)(Req*),
                                     Resp* (IfrtResponse::*get_resp)(),
                                     bool (IfrtResponse::*has_resp)() const,
                                     std::unique_ptr<Req> req,
-                                    absl::string_view profiling_send_name,
-                                    absl::string_view profiling_recv_name) {
+                                    absl::string_view profiling_name) {
   auto ifrt_req = std::make_unique<IfrtRequest>();
-  *ifrt_req->mutable_request_metadata() = metadata;
   (ifrt_req.get()->*set_req)(req.release());
 
-  const uint64_t xflow_id = tsl::random::New64() >> 8;  // XFlow IDs are 56 bits
-  tsl::profiler::TraceMe traceme([xflow_id, profiling_send_name]() {
-    const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowOut);
-    return tsl::profiler::TraceMeEncode(profiling_send_name,
-                                        {{"flow", flow.ToStatValue()}});
-  });
+  XFlowHelper x_flow_helper(profiling_name);
+  auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
   auto promise = Future<std::shared_ptr<Resp>>::CreatePromise();
-  auto on_ready = [promise, has_resp, get_resp, xflow_id, profiling_recv_name](
+  auto on_ready = [promise, has_resp, get_resp, x_flow_helper](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
-    tsl::profiler::TraceMe traceme([xflow_id, profiling_recv_name]() {
-      const XFlow flow(xflow_id, XFlow::FlowDirection::kFlowIn);
-      return tsl::profiler::TraceMeEncode(profiling_recv_name,
-                                          {{"flow", flow.ToStatValue()}});
-    });
+    auto traceme = x_flow_helper.Span<XFlowHelper::kRecv>();
     if (!r.ok()) {
       LOG_EVERY_N_SEC(ERROR, 10)
           << "Connection to IFRT proxy server was terminated: " << r.status();
@@ -123,36 +173,13 @@ Future<std::shared_ptr<Resp>> DoRpc(ClientSession* session,
   return Future<std::shared_ptr<Resp>>(promise);
 }
 
-RequestMetadata RpcHelper::ManufactureRequestMetadata() {
-  RequestMetadata result;
-  {
-    absl::MutexLock l(&mu_);
-    result.set_op_id(next_op_id_++);
-  }
-  int prev_op_id = result.op_id() - 1;
-  if (prev_op_id != 0) {
-    // TODO(b/266635130): Depend only on necessary prior operations.
-    result.add_dependencies(prev_op_id);
-  }
-  // TODO(b/282757875): Add a ClearOps RPC for old dependencies.
-  return result;
-}
-
-void RpcHelper::Disconnect() {
-  session_->Finish(absl::CancelledError("Disconnected by client"));
-}
-
-// TODO(b/266635130): Remove this preprocessor macro. Preprocessor macros
-// go against the style guide, but are convenient as we are introducing more
-// RPCs and are making changes to the exact signature of the DoRpc function.
-#define RPC(METHOD, PROPERTY)                                              \
-  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(           \
-      std::unique_ptr<METHOD##Request> req) {                              \
-    return DoRpc(session_.get(), ManufactureRequestMetadata(),             \
-                 &IfrtRequest::set_allocated_##PROPERTY##_request,         \
-                 &IfrtResponse::mutable_##PROPERTY##_response,             \
-                 &IfrtResponse::has_##PROPERTY##_response, std::move(req), \
-                 "" #PROPERTY "_send", "" #PROPERTY "_recv");              \
+#define RPC(METHOD, PROPERTY)                                                 \
+  RpcHelper::ResponseFuture<METHOD##Response> RpcHelper::METHOD(              \
+      std::unique_ptr<METHOD##Request> req) {                                 \
+    return DoRpc(                                                             \
+        session_.get(), &IfrtRequest::set_allocated_##PROPERTY##_request,     \
+        &IfrtResponse::mutable_##PROPERTY##_response,                         \
+        &IfrtResponse::has_##PROPERTY##_response, std::move(req), #PROPERTY); \
   }
 
 RPC(Init, init);
@@ -191,6 +218,10 @@ Future<> RpcHelper::CheckFuture(uint64_t handle) {
                         response) mutable { promise.Set(response.status()); });
 
   return Future<>(std::move(promise));
+}
+
+void RpcHelper::Disconnect() {
+  session_->Finish(absl::CancelledError("Disconnected by client"));
 }
 
 }  // namespace proxy

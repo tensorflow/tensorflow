@@ -47,14 +47,12 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -74,6 +72,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_runtime.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
@@ -300,7 +299,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 #if TF_ROCM_VERSION >= 60200
     TF_ASSIGN_OR_RETURN(
         GpuFunctionHandle function,
-        GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
+        RocmRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
     rocm_kernel->set_gpu_function(function);
 #else
     rocm_kernel->set_gpu_function(
@@ -704,7 +703,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   desc.set_runtime_version(
-      ParseRocmVersion(GpuRuntime::GetRuntimeVersion().value_or(0))
+      ParseRocmVersion(RocmRuntime::GetRuntimeVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
   desc.set_driver_version(
       ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))

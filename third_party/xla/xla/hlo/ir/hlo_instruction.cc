@@ -76,10 +76,10 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/sort_json.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/status.h"
@@ -3681,7 +3681,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
   PrintExtraAttributes(attr_printer, options);
 
   if (original_value_) {
-    printer->Append(", original_value={");
+    printer->Append(", origin={");
     printer->Append(OriginalValueToString(*original_value()));
     printer->Append("}");
   }
@@ -4094,20 +4094,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_statistics_viz() = statistics_viz();
 
   if (original_value_) {
-    xla::OriginalValueProto* original_value_proto =
-        proto.mutable_original_value();
-    for (const auto& leaf : original_value_->leaves()) {
-      OriginalArrayProto* original_array_proto =
-          original_value_proto->add_leaves();
-      for (const auto& index : leaf.first) {
-        original_array_proto->add_leaf_shape_index(index);
-      }
-      *original_array_proto->mutable_instruction_name() =
-          leaf.second->instruction_name;
-      for (const auto& index : leaf.second->shape_index) {
-        original_array_proto->add_shape_index(index);
-      }
-    }
+    *proto.mutable_original_value() = OriginalValueToProto(*original_value_);
   }
 
   return proto;

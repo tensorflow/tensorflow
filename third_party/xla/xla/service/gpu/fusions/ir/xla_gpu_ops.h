@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/service/gpu/fusions/ir/xla_gpu_dialect.h.inc"
+#include "xla/service/gpu/fusions/ir/xla_gpu_enums.h.inc"
 #include "xla/service/gpu/model/indexing_map.h"  // IWYU pragma: keep
 #define GET_ATTRDEF_CLASSES
 #include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"

@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/lib/random/random_distributions_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
-#include "tsl/lib/random/random_distributions_utils.h"
 
 namespace tensorflow {
 namespace random {

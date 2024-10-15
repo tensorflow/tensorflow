@@ -36,7 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/transforms/dense_to_sparse_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -67,7 +68,7 @@ absl::Status SparsifyModel(const tflite::ModelT& input_model,
   }
 
   PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
-  pm.addPass(TFL::CreateDenseToSparsePass());
+  pm.addPass(TFL::Create<TFL::DenseToSparsePass>());
 
   if (failed(pm.run(module.get()))) {
     LOG(ERROR) << "Failed to sparsify: "

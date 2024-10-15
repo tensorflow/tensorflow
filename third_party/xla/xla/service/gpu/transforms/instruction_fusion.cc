@@ -91,31 +91,34 @@ FusionDecision GpuInstructionFusion::ShouldFuseInexpensiveChecks(
 
   // Output fusions are not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
-    return "the producer is a fusion";
+    return FusionDecision::Forbid("the producer is a fusion");
   }
 
   if (consumer->IsCustomFusion()) {
-    return "the consumer is a custom fusion";
+    return FusionDecision::Forbid("the consumer is a custom fusion");
   }
 
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
   // reuse operand elements).
   if (is_expensive(*producer) &&
       ReusesOperandElements(consumer, operand_index)) {
-    return "the producer is expensive, and the consumer reuses inputs";
+    return FusionDecision::Forbid(
+        "the producer is expensive, and the consumer reuses inputs");
   }
 
   // Do not fuse into fusions if the resulting kernel would suffer from
   // uncoalesced reads due to a transposed memory access pattern.
   if (IsInputFusibleReduction(*consumer) &&
       IsPhysicallyTransposing(*producer)) {
-    return "fusing the producer would break read coalescing";
+    return FusionDecision::Forbid(
+        "fusing the producer would break read coalescing");
   }
 
   RETURN_IF_NOT_FUSIBLE(IsProducerConsumerFusible(*producer, *consumer));
 
   if (CreatesHeavyComputation(*producer, *consumer)) {
-    return "the fusion would create a heavy computation";
+    return FusionDecision::Forbid(
+        "the fusion would create a heavy computation");
   }
 
   return InstructionFusion::ShouldFuse(consumer, operand_index);
@@ -133,7 +136,7 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                          /*is_consumer_producer_fusion=*/true));
 
   if (consumer->opcode() != HloOpcode::kFusion) {
-    return {};
+    return FusionDecision::Allow();
   }
 
   // Also check that our emitter can handle the fusion node. We currently can
@@ -149,9 +152,10 @@ FusionDecision GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                      FusionNodeIndexingEvaluation(consumer));
   }
   if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(producer)) {
-    return "the fusion would result in an overly large code duplication";
+    return FusionDecision::Forbid(
+        "the fusion would result in an overly large code duplication");
   }
-  return {};
+  return FusionDecision::Allow();
 }
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(

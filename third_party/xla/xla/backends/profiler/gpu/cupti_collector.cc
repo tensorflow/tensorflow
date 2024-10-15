@@ -157,6 +157,11 @@ class PerDeviceCollector {
     if (kernel_name.empty()) {
       kernel_name = GetTraceEventTypeName(event.type);
     }
+    // For CPU events like cuGraphLaunch(), add the graph id to the name.
+    if (event.graph_id != 0 && event.type == CuptiTracerEventType::CudaGraph &&
+        event.source == CuptiTracerEventSource::DriverCallback) {
+      absl::StrAppend(&kernel_name, " (CudaGraph:", event.graph_id, ")");
+    }
     XEventMetadata* event_metadata =
         plane->GetOrCreateEventMetadata(std::move(kernel_name));
     XEventBuilder xevent = line->AddEvent(*event_metadata);

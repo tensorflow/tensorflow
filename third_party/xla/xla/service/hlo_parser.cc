@@ -74,10 +74,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -1392,8 +1392,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &predecessors};
 
   optional<std::shared_ptr<OriginalValue>> original_value;
-  attrs["original_value"] = {/*required=*/false, AttrTy::kOriginalValue,
-                             &original_value};
+  attrs["origin"] = {/*required=*/false, AttrTy::kOriginalValue,
+                     &original_value};
 
   optional<OpMetadata> metadata;
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};

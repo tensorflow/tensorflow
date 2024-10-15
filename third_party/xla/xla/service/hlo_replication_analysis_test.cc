@@ -194,8 +194,6 @@ ENTRY entry {
       FindInstruction(module.get(), "subtract.2"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "add"), {}));
-  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
-      FindInstruction(module.get(), "add"), {}));
   EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "replica-id"), {}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(

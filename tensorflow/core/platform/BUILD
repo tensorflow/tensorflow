@@ -850,6 +850,7 @@ cc_library(
     hdrs = ["tensor_coding.h"],
     deps = [
         ":coding",
+        ":logging",
         ":platform",
         ":protobuf",
         ":refcount",

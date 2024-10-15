@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
@@ -74,10 +75,10 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   // Returns a list of output `OpSharding`.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
   GetParameterLayouts() const = 0;
   // Returns a list of output/result layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
   GetOutputLayouts() const = 0;
   // Returns an `HloModule` (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
@@ -153,10 +154,10 @@ class LoadedExecutable
   // Returns a list of output OpSharding.
   virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const = 0;
   // Returns a list of parameter layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
   GetParameterLayouts() const = 0;
   // Returns a list of output/result layouts.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<Layout>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
   GetOutputLayouts() const = 0;
   // Return an HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>

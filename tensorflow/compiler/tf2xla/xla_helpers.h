@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/service/computation_placer.h"
-#include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 

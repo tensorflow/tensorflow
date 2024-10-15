@@ -4,7 +4,7 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
-load("//tensorflow:tensorflow.bzl", "if_with_tpu_support", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
@@ -291,4 +291,36 @@ tf_wheel(
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
         ":xla_cmake",
     ],
+)
+
+genrule(
+    name = "empty_test",
+    outs = ["empty_test.py"],
+    cmd = "echo '' > $@",
+)
+
+py_test(
+    name = "import_api_packages_test_cpu",
+    srcs = if_wheel_dependency(
+        ["import_api_packages_test.py"],
+        [":empty_test"],
+    ),
+    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    tags = [
+        "cpu",
+    ],
+    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
+)
+
+py_test(
+    name = "import_api_packages_test_gpu",
+    srcs = if_wheel_dependency(
+        ["import_api_packages_test.py"],
+        [":empty_test"],
+    ),
+    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    tags = [
+        "gpu",
+    ],
+    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
 )

@@ -108,9 +108,7 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   if (lhs_parallel_dims->operand_parallel_dims !=
           rhs_parallel_dims->operand_parallel_dims ||
       lhs_parallel_dims->indices_parallel_dims !=
-          rhs_parallel_dims->indices_parallel_dims ||
-      lhs_parallel_dims->index_parallel_in_dim !=
-          rhs_parallel_dims->index_parallel_in_dim) {
+          rhs_parallel_dims->indices_parallel_dims) {
     return false;
   }
   if (lhs_parallel_dims->operand_parallel_dims.size() !=

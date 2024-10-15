@@ -1753,80 +1753,6 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceBFloat16Min) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGather_8BitFloat)) {
-  const char* const kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    a0 = f8e4m3fn[1,2] constant({{1,2}})
-    allgather = f8e4m3fn[2, 2] all-gather(a0), dimensions={0}
-    p = f8e4m3fn[4] reshape(allgather)
-    ROOT out = f32[4] convert(p)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  for (const Literal& result : results) {
-    LiteralTestUtil::ExpectR1Equal<float>({1, 2, 1, 2}, result);
-  }
-}
-
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_8BitFloat)) {
-  const char* const kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    a0 = f8e4m3fn[2] constant({1,2})
-    a2a = f8e4m3fn[2] all-to-all(a0), dimensions={0}
-    ROOT out = f32[2] convert(a2a)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<float>({1, 1}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<float>({2, 2}, results[1]);
-}
-
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_8BitFloat)) {
-  const char* const kModuleStr = R"(
-  HloModule test
-  ENTRY test_computation {
-    a0 = f8e5m2[2] constant({1,2})
-    a1 = f8e5m2[2] collective-permute(a0), source_target_pairs={{0,1}, {1,0}}
-    ROOT out = f32[2] convert(a1)
-  }
-  )";
-  const int64_t kNumReplicas = 2;
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        kNumReplicas,
-                        /*use_threads=*/true, /*run_hlo_passes=*/true));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  LiteralTestUtil::ExpectR1Equal<float>({1, 2}, results[0]);
-  LiteralTestUtil::ExpectR1Equal<float>({1, 2}, results[1]);
-}
-
 XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllGather)) {
   const char* const kModuleStr = R"(
   HloModule test
@@ -2271,6 +2197,111 @@ body {
                                      results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32_t>({3, 3}),
                                      results[1]));
+}
+
+class Fp8CollectiveOpsTest : public CollectiveOpsTest {
+ public:
+  Fp8CollectiveOpsTest() {
+    replacements_[kF8E4M3DatatypePlaceholder] =
+        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+    replacements_[kF8E5M2DatatypePlaceholder] =
+        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+  }
+
+ protected:
+  bool IsCuda() {
+    return std::holds_alternative<se::CudaComputeCapability>(Capability());
+  }
+
+  const se::GpuComputeCapability& Capability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
+
+ private:
+  static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
+  static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
+};
+
+XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllGather_8BitFloat)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a0 = <<F8E4M3>>[1,2] constant({{1,2}})
+    allgather = <<F8E4M3>>[2, 2] all-gather(a0), dimensions={0}
+    p = <<F8E4M3>>[4] reshape(allgather)
+    ROOT out = f32[4] convert(p)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrReplaceAll(kModuleStr, replacements_), config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<float>({1, 2, 1, 2}, result);
+  }
+}
+
+XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_8BitFloat)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a0 = <<F8E4M3>>[2] constant({1,2})
+    a2a = <<F8E4M3>>[2] all-to-all(a0), dimensions={0}
+    ROOT out = f32[2] convert(a2a)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrReplaceAll(kModuleStr, replacements_), config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 1}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2, 2}, results[1]);
+}
+
+XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_8BitFloat)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a0 = <<F8E5M2>>[2] constant({1,2})
+    a1 = <<F8E5M2>>[2] collective-permute(a0), source_target_pairs={{0,1}, {1,0}}
+    ROOT out = f32[2] convert(a1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrReplaceAll(kModuleStr, replacements_), config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
+                        kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 2}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({1, 2}, results[1]);
 }
 
 }  // namespace

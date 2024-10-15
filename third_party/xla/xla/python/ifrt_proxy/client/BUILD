@@ -64,6 +64,7 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
+        "//xla/python/ifrt_proxy/common:test_utils",
         "@com_github_grpc_grpc//:gpr",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",

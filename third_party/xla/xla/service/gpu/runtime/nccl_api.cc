@@ -112,6 +112,8 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
     case S8:
     case F8E5M2:
     case F8E4M3FN:
+    case F8E5M2FNUZ:
+    case F8E4M3FNUZ:
       return ncclInt8;
     case PRED:
     case U8:
@@ -346,6 +348,8 @@ NcclApi* NcclApi::Default() {
   static auto* nccl_api = new DefaultNcclApi();
   return nccl_api;
 }
+
+bool NcclApi::HasNcclSupport() { return true; }
 
 static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
               "size of nccl unique id must match the clique id size");

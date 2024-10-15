@@ -161,16 +161,6 @@ gpu_only_cc_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_collectives_header",
-    hdrs = ["gpu_collectives.h"],
-    deps = [
-        ":context",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_driver_header",
     hdrs = ["gpu_driver.h"],
     visibility = internal_visibility([
@@ -193,19 +183,6 @@ gpu_only_cc_library(
         if_false = ["@local_config_cuda//cuda:cuda_headers"],
         if_true = [],
     ),
-)
-
-gpu_only_cc_library(
-    name = "gpu_runtime_header",
-    hdrs = ["gpu_runtime.h"],
-    visibility = internal_visibility([
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-    ]),
-    deps = [
-        ":gpu_types_header",
-        "@com_google_absl//absl/status:statusor",
-    ],
 )
 
 gpu_only_cc_library(
@@ -579,6 +556,7 @@ gpu_only_cc_library(
         "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:scratch_allocator",
         "//xla/tsl/framework:allocator",
+        "//xla/tsl/lib/math:math_util",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -586,7 +564,6 @@ gpu_only_cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/lib/math:math_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ] + if_rocm_is_configured([
@@ -661,7 +638,7 @@ xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
     backends = ["gpu_any"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
         ":gpu_stream",

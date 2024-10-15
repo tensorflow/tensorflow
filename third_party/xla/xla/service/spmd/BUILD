@@ -93,6 +93,7 @@ cc_library(
 xla_cc_test(
     name = "spmd_partitioner_test",
     srcs = ["spmd_partitioner_test.cc"],
+    shard_count = 10,
     deps = [
         ":spmd_partitioner",
         ":spmd_prepare",

@@ -228,11 +228,11 @@ cc_library(
     hdrs = ["type_id_registry.h"],
     deps = [
         "//xla:util",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/lib/gtl:int_type",
     ],
 )
 

@@ -19,6 +19,7 @@ from typing import Any, Optional, Sequence
 from xla.python import xla_extension
 
 Client = xla_extension.Client
+Shape = xla_extension.Shape
 XlaBuilder = xla_extension.XlaBuilder
 XlaOp = xla_extension.XlaOp
 
@@ -43,4 +44,10 @@ class OutfeedReceiverForPython:
       arrays: Sequence[XlaOp],
       device_idx: int,
   ) -> XlaOp:
+    ...
+
+  def register_outfeed(
+      consumer_id: int,
+      shapes: Sequence[Shape],
+  ) -> None:
     ...

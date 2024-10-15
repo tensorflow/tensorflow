@@ -159,10 +159,13 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
 
 void BufferSequencingEvent::ExecuteFutureTasks() {
   absl::MutexLock lock(&mu_);
-  for (auto& [task_name, task_callback] : on_ready_tasks_callback_) {
-    thread_pool_->Schedule(std::move(task_callback));
-  }
-  on_ready_tasks_callback_.clear();
+  auto call_all_task_callbacks = [on_ready_tasks_callback =
+                                      std::move(on_ready_tasks_callback_)]() {
+    for (auto& [task_name, task_callback] : on_ready_tasks_callback) {
+      task_callback();
+    }
+  };
+  thread_pool_->Schedule(std::move(call_all_task_callbacks));
 }
 
 /* static */ std::shared_ptr<TrackedDeviceBuffer>

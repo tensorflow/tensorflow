@@ -84,7 +84,7 @@ class PluggableDevice : public LocalDevice {
     se::Stream* compute = nullptr;
     se::Stream* host_to_device = nullptr;
     se::Stream* device_to_host = nullptr;
-    gtl::InlinedVector<se::Stream*, 4> device_to_device;
+    absl::InlinedVector<se::Stream*, 4UL> device_to_device;
   };
 
   class StreamGroupFactory;

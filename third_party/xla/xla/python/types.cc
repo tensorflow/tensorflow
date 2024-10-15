@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"

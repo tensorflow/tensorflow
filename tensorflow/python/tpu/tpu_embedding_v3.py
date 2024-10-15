@@ -84,6 +84,7 @@ class SparseCoreEmbeddingConfig:
   max_unique_ids_per_table: Optional[Dict[str, int]] = None
   allow_id_dropping: bool = False
   initialize_tables_on_host: bool = True
+  enable_fast_table_initialization: bool = False
 
 
 class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
@@ -812,8 +813,17 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     )
 
     def table_initialize_fn(shape, dtype, shard_info=None):
+      # If enable fast table initialization, we will initialize the table
+      # directly on the device and use the initializer from the first table.
+      if self._sparse_core_embedding_config.enable_fast_table_initialization:
+        return stacked_tables[0].initializer(
+            shape=(shard_info.shape[0], stacked_tables[0].dim),
+            dtype=dtype,
+        )
+
       # Concat all the tables along the first axis.
       concat_tensors = []
+
       # Temporary patch, we need to initialize tables with the SC level
       # sharding. Note that we need to ensure that the vocab size is divisible
       # by the global number of SC.

@@ -34,7 +34,7 @@ class PluggableDeviceContext : public DeviceContext {
   PluggableDeviceContext(
       int stream_id, se::Stream* stream, se::Stream* host_to_device_stream,
       se::Stream* device_to_host_stream,
-      gtl::InlinedVector<se::Stream*, 4> device_to_device_stream)
+      absl::InlinedVector<se::Stream*, 4UL> device_to_device_stream)
       : stream_id_(stream_id),
         stream_(stream),
         host_to_device_stream_(host_to_device_stream),
@@ -81,7 +81,7 @@ class PluggableDeviceContext : public DeviceContext {
   // The stream to use for copying data from PluggableDevice to host.
   se::Stream* device_to_host_stream_;
   // Streams to use for copying data between PluggableDevices.
-  gtl::InlinedVector<se::Stream*, 4> device_to_device_stream_;
+  absl::InlinedVector<se::Stream*, 4UL> device_to_device_stream_;
 };
 
 }  // namespace tensorflow

@@ -1409,6 +1409,8 @@ cc_library(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/hlo/translate/mhlo_to_hlo:location_exporter",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/autotuning:custom_kernel_fusion_autotuner",
@@ -1418,7 +1420,6 @@ cc_library(
         "//xla/service/gpu/runtime:thunk",
         "//xla/service/gpu/transforms:algebraic_simplifier",
         "//xla/service/gpu/transforms:algorithm_checker",
-        "//xla/service/gpu/transforms:all_gather_dynamic_slice_simplifier",
         "//xla/service/gpu/transforms:all_gather_optimizer",
         "//xla/service/gpu/transforms:all_reduce_blueconnect",
         "//xla/service/gpu/transforms:all_reduce_splitter",
@@ -1569,8 +1570,6 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:semantic_version",
-        "//xla/translate/hlo_to_mhlo:hlo_utils",
-        "//xla/translate/mhlo_to_hlo:location_exporter",
         "//xla/tsl/lib/monitoring:counter",
         "//xla:autotune_results_proto_cc",
         "//xla:debug_options_flags",
@@ -1701,9 +1700,9 @@ cc_library(
         "nvptx_compiler_registration.cc",
     ],
     tags = [
+        "cuda-only",
         "gpu",
         "manual",
-        "no_rocm",
     ],
     deps = [
         ":nvptx_compiler_impl",
@@ -1723,9 +1722,9 @@ cc_library(
         "nvptx_compiler.h",
     ],
     tags = [
+        "cuda-only",
         "gpu",
         "manual",
-        "no_rocm",
     ],
     deps = [
         ":buffer_sharing",
@@ -1835,7 +1834,7 @@ xla_test(
         "gpu_a100",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
@@ -1873,7 +1872,7 @@ xla_test(
         "gpu",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
@@ -2267,7 +2266,7 @@ xla_cc_test(
 cuda_library(
     name = "stream_executor_util_kernel",
     srcs = ["stream_executor_util_kernel.cu.cc"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 

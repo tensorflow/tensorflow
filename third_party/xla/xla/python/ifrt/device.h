@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.pb.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {

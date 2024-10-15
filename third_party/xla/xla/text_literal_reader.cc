@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/io/buffered_inputstream.h"
+#include "xla/tsl/lib/io/random_inputstream.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/io/buffered_inputstream.h"
-#include "tsl/lib/io/random_inputstream.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/client/lib/matrix.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
 #include "xla/primitive_util.h"
 #include "xla/reference_util.h"
 #include "xla/service/hlo_parser.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -364,6 +366,27 @@ void ParametricDotTest::ComputeAndCompareR2WithError<uint8_t>(
   ComputeAndCompareR2(builder, expected, arguments);
 }
 
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e5m2>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e5m2>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError(
+    XlaBuilder* builder, const Array2D<tsl::float8_e4m3fn>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ErrorSpec error_spec(0.3, 3e-3);
+  error_spec.low_precision_fp_error_spec.type =
+      primitive_util::NativeToPrimitiveType<tsl::float8_e4m3fn>();
+  error_spec.low_precision_fp_error_spec.within_n_values = 1;
+  ComputeAndCompareR2(builder, expected, arguments, error_spec);
+}
 template <typename NativeT>
 void ParametricDotTest::TestImpl() {
   DotTestParam param = GetParam();
@@ -486,6 +509,8 @@ XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
+XLA_TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
 
 XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 

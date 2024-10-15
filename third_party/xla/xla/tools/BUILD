@@ -56,11 +56,11 @@ xla_cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
+        "//xla/tsl/lib/io:buffered_inputstream",
+        "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/io:buffered_inputstream",
-        "@local_tsl//tsl/lib/io:random_inputstream",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
@@ -622,13 +622,13 @@ xla_cc_binary(
     deps = [
         ":run_hlo_module_lib",
         "//xla:debug_options_flags",
+        "//xla/hlo/translate/mhlo_to_hlo:translate",
+        "//xla/hlo/translate/stablehlo_to_hlo:translate",
         "//xla/service:cpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner",
         "//xla/service:interpreter_plugin",
         "//xla/service:platform_util",
-        "//xla/translate/mhlo_to_hlo:translate",
-        "//xla/translate/stablehlo_to_hlo:translate",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
@@ -879,7 +879,7 @@ xla_test(
     ],
     tags = [
         "config-cuda-only",
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":xla_compile_lib",

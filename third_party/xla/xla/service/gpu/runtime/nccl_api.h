@@ -60,6 +60,10 @@ class NcclApi {
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
   static NcclApi* Default();
 
+  // Returns true if XLA is compiled with NCCL support, otherwise returns false.
+  // If false, Default() will return a stub implementation.
+  static bool HasNcclSupport();
+
   // Forward declarations of opaque structs corresponding to underlying platform
   // types (also defined as opaque structs).
   struct NcclComm;

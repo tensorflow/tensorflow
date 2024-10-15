@@ -81,12 +81,6 @@ inline constexpr llvm::StringRef kOutShardings = "xla.sdy.out_shardings";
 // Attribute name for the manual axes of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 
-// The target name of the custom call that will store the various attrs of a
-// `ManualComputationOp` and a reference to a `FuncOp` that is the body of the
-// original `ManualComputationOp`.
-inline constexpr llvm::StringRef kManualComputationCustomCallTargetName =
-    "xla.sdy.ManualComputation";
-
 // The function name of the of the body of a `ManualComputationOp` during Shardy
 // round tripping. Used
 inline constexpr llvm::StringRef kManualComputationBodyFuncName =

@@ -39,8 +39,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
@@ -51,12 +53,10 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
@@ -230,7 +230,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
             << " from symbol pointer: " << symbol;
     TF_ASSIGN_OR_RETURN(
         GpuFunctionHandle function,
-        GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
+        CudaRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
     cuda_kernel->set_gpu_function(function);
 
   } else {
@@ -441,11 +441,12 @@ absl::Status CudaExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == 1) {
-    auto result = GpuCollectives::CollectiveMemoryAllocate(gpu_context(), size);
+    auto result =
+        CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);
     if (!result.ok()) {
       LOG(ERROR) << result.status();
     }
-    return DeviceMemoryBase(*result, size);
+    return DeviceMemoryBase(nullptr, 0);
   } else if (memory_space ==
              static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
     return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);
@@ -678,7 +679,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(GpuDriver::GetDriverVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
   desc.set_runtime_version(
-      ParseCudaVersion(GpuRuntime::GetRuntimeVersion().value_or(0))
+      ParseCudaVersion(CudaRuntime::GetRuntimeVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));

@@ -56,7 +56,8 @@ struct GpuEventStats {
   // Stats derived by grouping.
   std::optional<int64_t> group_id;
   bool is_eager = false;
-  std::optional<int64_t> cuda_graph_exec_id;
+  std::optional<uint64_t> cuda_graph_exec_id;
+  std::optional<uint64_t> cuda_graph_id_for_inner_node;
 };
 
 // Stats for a host-side GPU launch XEvent.

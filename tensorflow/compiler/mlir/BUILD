@@ -240,8 +240,8 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_xla//xla/translate/hlo_to_mhlo:translate_registration",
-        "@local_xla//xla/translate/mhlo_to_hlo:translate_registration",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate_registration",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:translate_registration",
     ],
 )
 

@@ -86,11 +86,20 @@ class GpuCompilerTest : public HloTestBase {
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
+<<<<<<< HEAD
   const auto& device_desc() {
     return backend().default_stream_executor()->GetDeviceDescription();
   }
   const se::GpuComputeCapability& GpuComputeComp() {
     return device_desc().gpu_compute_capability();
+=======
+
+  const stream_executor::GpuComputeCapability& GpuComputeComp() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+>>>>>>> 783ae3c623428f8e7857160ab0a34f6d0a55cb91
   }
 };
 
@@ -982,6 +991,10 @@ using GpuCompilerPassTest = GpuCompilerTest;
 
 TEST_F(GpuCompilerPassTest,
        GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "TritonGemmRewriter disabled for ROCm until autotuner "
+                 << "is included.";
+  }
   auto cc = backend()
                 .default_stream_executor()
                 ->GetDeviceDescription()

@@ -170,4 +170,6 @@ NcclApi* NcclApi::Default() {
   return nccl_api;
 }
 
+bool NcclApi::HasNcclSupport() { return false; }
+
 }  // namespace xla::gpu

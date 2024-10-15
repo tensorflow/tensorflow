@@ -139,38 +139,42 @@ ComputeSliceShardingAndCommunicationCostFromOperand(
 // the original implementation), but it should be easy to generalize if needed.
 void GenerateScatterShardingFromOperands(
     const HloScatterInstruction* scatter, const HloSharding& data_sharding,
-    const HloSharding& indices_sharding, const HloSharding& update_sharding,
-    const CallGraph& call_graph,
+    const HloSharding& update_sharding, const CallGraph& call_graph,
     absl::FunctionRef<void(const HloSharding& data_sharding,
                            const HloSharding& indices_sharding,
                            const HloSharding& update_sharding,
                            const HloSharding& scatter_sharding)>
         yield_sharding) {
+  absl::flat_hash_set<HloSharding> scatter_shardings;
   CHECK_EQ(scatter->scatter_operand_count(), 1);
   const HloInstruction* scatter_data = scatter->scatter_operands()[0];
   const HloInstruction* scatter_indices = scatter->scatter_indices();
   const HloInstruction* scatter_update = scatter->scatter_updates()[0];
 
-  yield_sharding(data_sharding, indices_sharding, update_sharding,
-                 data_sharding);
+  const HloSharding& indices_sharding = hlo_sharding_util::
+      ScatterIndexShardingFromUpdateIndexPassthroughDimensions(update_sharding,
+                                                               scatter);
 
+  scatter_shardings.insert(data_sharding);
   if (std::optional<HloSharding> maybe_from_update =
           hlo_sharding_util::ScatterOutputShardingFromUpdate(update_sharding,
                                                              *scatter)) {
-    yield_sharding(data_sharding, indices_sharding, update_sharding,
-                   *maybe_from_update);
+    scatter_shardings.insert(*maybe_from_update);
   }
 
   std::optional<hlo_sharding_util::GatherScatterParallelDims>
       scatter_parallel_dims =
           hlo_sharding_util::GetScatterParallelBatchDims(*scatter, call_graph);
   if (!scatter_parallel_dims) {
+    for (const HloSharding& sharding : scatter_shardings) {
+      yield_sharding(data_sharding, indices_sharding, update_sharding,
+                     sharding);
+    }
     return;
   }
 
   absl::InlinedVector<int64_t, 1> aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(
-          *scatter_parallel_dims);
+      scatter_parallel_dims->operand_parallel_dims;
   absl::InlinedVector<int64_t, 1> update_parallel_dims =
       hlo_sharding_util::GetScatterParallelUpdateDims(*scatter,
                                                       *scatter_parallel_dims);
@@ -178,29 +182,30 @@ void GenerateScatterShardingFromOperands(
       aligned_operand_parallel_dims;
   // Infer output sharding from scatter operand sharding.
   const Shape& shape = scatter->shape();
-  yield_sharding(
-      data_sharding, indices_sharding, update_sharding,
+  scatter_shardings.insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           data_sharding, scatter_data->shape(), shape,
           absl::MakeConstSpan(aligned_operand_parallel_dims),
           absl::MakeConstSpan(output_parallel_dims)));
 
   // Infer output sharding from scatter indices sharding.
-  HloSharding parallel_sharding_from_indices =
+  scatter_shardings.insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           indices_sharding, scatter_indices->shape(), shape,
           absl::MakeConstSpan(scatter_parallel_dims->indices_parallel_dims),
-          absl::MakeConstSpan(output_parallel_dims));
-  yield_sharding(data_sharding, indices_sharding, update_sharding,
-                 parallel_sharding_from_indices);
+          absl::MakeConstSpan(output_parallel_dims)));
 
   // Infer output sharding from scatter update sharding.
-  yield_sharding(
-      data_sharding, indices_sharding, update_sharding,
+  scatter_shardings.insert(
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
           update_sharding, scatter_update->shape(), shape,
           absl::MakeConstSpan(update_parallel_dims),
           absl::MakeConstSpan(output_parallel_dims)));
+
+  for (const HloSharding& scatter_sharding : scatter_shardings) {
+    yield_sharding(data_sharding, indices_sharding, update_sharding,
+                   scatter_sharding);
+  }
 }
 
 // NOLINTBEGIN(readability/fn_size)
@@ -211,8 +216,7 @@ BuildStrategyAndCost(
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const absl::flat_hash_map<const HloInstruction*, int64_t>&
         instruction_execution_counts,
-    const InstructionDepthMap& depth_map,
-    const InstructionBatchDimMap& batch_dim_map, const AliasMap& alias_map,
+    const InstructionDepthMap& depth_map, const AliasMap& alias_map,
     const ClusterEnvironment& cluster_env, AutoShardingOption& option,
     const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
     bool trying_multiple_mesh_shapes) {
@@ -304,9 +308,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                option.allow_replicated_parameters,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible, option.allow_replicated_parameters,
                 /* create_partially_replicated_strategies */ true)
                 .value();
         break;
@@ -316,9 +319,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                option.allow_replicated_parameters,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible, option.allow_replicated_parameters,
                 /* create_partially_replicated_strategies */ true)
                 .value();
         break;
@@ -359,18 +361,15 @@ BuildStrategyAndCost(
 
         const HloScatterInstruction* scatter = Cast<HloScatterInstruction>(ins);
         const HloInstruction* scatter_data = scatter->scatter_operands()[0];
-        const HloInstruction* scatter_indices = scatter->scatter_indices();
         const HloInstruction* scatter_update = scatter->scatter_updates()[0];
 
         ForEachInCartesianProduct<ShardingStrategy>(
             {strategy_map.at(scatter_data)->GetStrategies(),
-             strategy_map.at(scatter_indices)->GetStrategies(),
              strategy_map.at(scatter_update)->GetStrategies()},
             [&](const std::vector<ShardingStrategy>& operand_shardings) {
               GenerateScatterShardingFromOperands(
                   scatter, operand_shardings[0].output_sharding,
-                  operand_shardings[1].output_sharding,
-                  operand_shardings[2].output_sharding, call_graph,
+                  operand_shardings[1].output_sharding, call_graph,
                   add_scatter_sharding);
             });
 
@@ -436,8 +435,7 @@ BuildStrategyAndCost(
             HloSharding output_spec = indices_to_combine_spec;
             if (gather_parallel_dims) {
               auto aligned_operand_parallel_dims =
-                  hlo_sharding_util::IndexAlignedOperandParallelDims(
-                      *gather_parallel_dims);
+                  gather_parallel_dims->operand_parallel_dims;
               auto output_parallel_dims =
                   hlo_sharding_util::GetGatherParallelOutputDims(
                       *ins, *gather_parallel_dims);
@@ -517,8 +515,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();
@@ -527,8 +525,8 @@ BuildStrategyAndCost(
       case HloOpcode::kReshape: {
         strategy_group = CreateReshapeStrategies(
             instruction_id, ins, strategy_map, cluster_env,
-            only_allow_divisible, replicated_penalty, batch_dim_map, option,
-            strategy_groups, call_graph);
+            only_allow_divisible, replicated_penalty, option, strategy_groups,
+            call_graph);
         break;
       }
       case HloOpcode::kTranspose:
@@ -734,8 +732,8 @@ BuildStrategyAndCost(
         } else {
           strategy_group = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
-              only_allow_divisible, replicated_penalty, batch_dim_map, option,
-              strategy_groups, call_graph);
+              only_allow_divisible, replicated_penalty, option, strategy_groups,
+              call_graph);
         }
         break;
       }
@@ -809,10 +807,9 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kDot: {
-        TF_RETURN_IF_ERROR(HandleDot(strategy_group, strategy_groups,
-                                     strategy_map, ins, instruction_id,
-                                     sequence, hlo_cost_analysis, cluster_env,
-                                     batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleDot(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            sequence, hlo_cost_analysis, cluster_env, option, call_graph));
 
         if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
@@ -824,10 +821,9 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(strategy_group, strategy_groups,
-                                      strategy_map, ins, instruction_id,
-                                      sequence, hlo_cost_analysis, cluster_env,
-                                      batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleConv(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            sequence, hlo_cost_analysis, cluster_env, option, call_graph));
         if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
               ins, ins->shape(), cluster_env, strategy_map,
@@ -848,8 +844,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();
@@ -920,7 +916,7 @@ BuildStrategyAndCost(
                   CreateAllStrategiesGroup(
                       ins, ins->shape(), instruction_id, strategy_groups,
                       cluster_env, strategy_map, option, replicated_penalty,
-                      batch_dim_map, call_graph, only_allow_divisible,
+                      call_graph, only_allow_divisible,
                       /* create_replicated_strategies */ true,
                       /* create_partially_replicated_strategies */ true)
                       .value();
@@ -984,8 +980,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();

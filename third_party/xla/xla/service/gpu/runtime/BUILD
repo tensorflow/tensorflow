@@ -293,6 +293,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/service:global_device_id",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/crc:crc32c",
         "@com_google_absl//absl/status",
@@ -301,7 +302,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/gtl:int_type",
     ],
 )
 
@@ -895,6 +895,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_placer",
@@ -908,7 +909,6 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1111,6 +1111,7 @@ cc_library(
         "//xla:executable_run_options",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:location_exporter",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:global_device_id",
@@ -1119,7 +1120,7 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor",
-        "//xla/translate/mhlo_to_hlo:location_exporter",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -1129,7 +1130,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

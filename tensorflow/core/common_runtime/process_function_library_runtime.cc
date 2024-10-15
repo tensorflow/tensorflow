@@ -637,7 +637,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       &data_lib_def,
       absl::StrCat(function_name, "_partitioned_", random::New64()));
   const int num_subgraphs = subgraphs->size();
-  gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
+  absl::InlinedVector<Status, 4UL> instantiate_status(num_subgraphs);
 
   // Before instantiating component functions, determine synchronous execution.
   data->enable_sync_execution = false;

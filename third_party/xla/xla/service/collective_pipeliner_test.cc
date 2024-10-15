@@ -3766,5 +3766,88 @@ ENTRY entry {
       while_instr->while_body()->root_instruction()->operand(8)));
 }
 
+TEST_F(CollectivePipelinerTest, NoRedundantBroadcastsInFormattingOps) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+add.1 {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.396 = bf16[3,8,128] get-tuple-element(param), index=2
+  get-tuple-element.35 = bf16[3,8,128] get-tuple-element(param), index=3
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  convert = bf16[] convert(add.232)
+  broadcast = bf16[1,8,128] broadcast(convert)
+  add.1 = bf16[1,8,128] add(ar.1, broadcast)
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, add.1, select.1348, constant.2561, constant.2561)
+  ar.2 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add.1, channel_id=2
+  add.2 = bf16[1,8,128] add(ar.2, broadcast)
+  dynamic-update-slice.36 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.396, add.2, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, dynamic-update-slice.36, get-tuple-element.35)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true,
+                           /*level_to_operate_on=*/0,
+                           /*pipeline_use_tree=*/true,
+                           /*process_different_sized_ops=*/true,
+                           CollectivePipeliner::kForwardSink)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  // There should be only one broadcast instruction using a get-tuple-element
+  // from the while instruction.
+  EXPECT_EQ(absl::c_count_if(module->entry_computation()->instructions(),
+                             [](const HloInstruction* instr) {
+                               return instr->opcode() ==
+                                          HloOpcode::kBroadcast &&
+                                      instr->operand(0)->opcode() ==
+                                          HloOpcode::kGetTupleElement &&
+                                      instr->operand(0)->operand(0)->opcode() ==
+                                          HloOpcode::kWhile;
+                             }),
+            1);
+}
+
 }  // namespace
 }  // namespace xla

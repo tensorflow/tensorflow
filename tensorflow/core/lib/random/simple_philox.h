@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_RANDOM_SIMPLE_PHILOX_H_
 #define TENSORFLOW_CORE_LIB_RANDOM_SIMPLE_PHILOX_H_
 
+#include "xla/tsl/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
-#include "tsl/lib/random/simple_philox.h"
 
 namespace tensorflow {
 namespace random {

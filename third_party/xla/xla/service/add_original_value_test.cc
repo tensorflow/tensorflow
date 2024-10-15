@@ -68,11 +68,11 @@ ENTRY test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]{0}), f32[2,3
 )";
 
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[V1:.*]] = f32[] parameter(0), original_value={{[{]}}{"[[V1]]"}
-CHECK:  %[[V2:.*]] = f32[3]{0} parameter(1), original_value={{[{]}}{"[[V2]]"}
-CHECK:  %[[TUPLE:.*]] = (f32[], f32[3]{0}) tuple(%[[V1]], %[[V2]]), original_value={({"[[V1]]"}, {"[[V2]]"})}
-CHECK:  %[[V3:.*]] = f32[2,3]{1,0} parameter(2), original_value={{[{]}}{"[[V3]]"}
-CHECK:  ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple(%[[TUPLE]], %[[V3]]), original_value={(({"v1"}, {"v2"}), {"v3"})}
+CHECK:  %[[V1:.*]] = f32[] parameter(0), origin={{[{]}}{"[[V1]]"}
+CHECK:  %[[V2:.*]] = f32[3]{0} parameter(1), origin={{[{]}}{"[[V2]]"}
+CHECK:  %[[TUPLE:.*]] = (f32[], f32[3]{0}) tuple(%[[V1]], %[[V2]]), origin={({"[[V1]]"}, {"[[V2]]"})}
+CHECK:  %[[V3:.*]] = f32[2,3]{1,0} parameter(2), origin={{[{]}}{"[[V3]]"}
+CHECK:  ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple(%[[TUPLE]], %[[V3]]), origin={(({"v1"}, {"v2"}), {"v3"})}
   )");
 }
 
@@ -90,10 +90,10 @@ ENTRY test {
 )";
 
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[CONSTANT1:.*]] = f32[3]{0} constant({1, 2, 3}), original_value={{[{]}}{"[[CONSTANT1]]"}
-CHECK:  %[[CONSTANT2:.*]] = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } }), original_value={{[{]}}{"[[CONSTANT2]]"}
-CHECK:  %[[TUPLE:.*]] = (f32[3]{0}, s32[2,3]{1,0}) tuple(%[[CONSTANT1]], %[[CONSTANT2]]), original_value={({"[[CONSTANT1]]"}, {"[[CONSTANT2]]"})}
-CHECK:  s32[2,3]{1,0} get-tuple-element(%[[TUPLE]]), index=1, original_value={{[{]}}{"[[CONSTANT2]]"}
+CHECK:  %[[CONSTANT1:.*]] = f32[3]{0} constant({1, 2, 3}), origin={{[{]}}{"[[CONSTANT1]]"}
+CHECK:  %[[CONSTANT2:.*]] = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 } }), origin={{[{]}}{"[[CONSTANT2]]"}
+CHECK:  %[[TUPLE:.*]] = (f32[3]{0}, s32[2,3]{1,0}) tuple(%[[CONSTANT1]], %[[CONSTANT2]]), origin={({"[[CONSTANT1]]"}, {"[[CONSTANT2]]"})}
+CHECK:  s32[2,3]{1,0} get-tuple-element(%[[TUPLE]]), index=1, origin={{[{]}}{"[[CONSTANT2]]"}
   )");
 }
 
@@ -109,8 +109,8 @@ ENTRY test {
 )";
 
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[PARAM:.*]] = (f32[], s32[]) parameter(0), original_value={({"p" {0}{{[}]}}, {"p" {1}})}
-CHECK:  s32[] get-tuple-element(%[[PARAM]]), index=1, original_value={{[{]}}{"[[PARAM]]" {1}
+CHECK:  %[[PARAM:.*]] = (f32[], s32[]) parameter(0), origin={({"p" {0}{{[}]}}, {"p" {1}})}
+CHECK:  s32[] get-tuple-element(%[[PARAM]]), index=1, origin={{[{]}}{"[[PARAM]]" {1}
   )");
 }
 

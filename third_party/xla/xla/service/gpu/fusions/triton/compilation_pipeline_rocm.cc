@@ -96,6 +96,8 @@ absl::Status CreateTritonPipeline(
   if (block_level_parameters.num_stages != kAmdDoubleBuffering) {
     pm.addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
+  pm.addPass(mlir::createTritonAMDGPUCanonicalizePointersPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
 
