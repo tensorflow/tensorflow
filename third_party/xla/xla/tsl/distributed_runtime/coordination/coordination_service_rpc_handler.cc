@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -213,9 +214,8 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
   }
   response->mutable_kv()->set_key(request->key());
   service_->GetKeyValueAsync(
-      request->key(),
-      [response, done = std::move(done)](
-          const absl::StatusOr<std::string_view>& status_or_value) {
+      request->key(), [response, done = std::move(done)](
+                          const absl::StatusOr<std::string>& status_or_value) {
         if (status_or_value.ok()) {
           auto value = status_or_value.value();
           response->mutable_kv()->set_value(value.data(), value.size());

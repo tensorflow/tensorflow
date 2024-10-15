@@ -75,7 +75,7 @@ class CoordinationServiceInterface {
           std::unique_ptr<CoordinationClientCache> cache)>;
 
   using StatusOrValueCallback =
-      std::function<void(const absl::StatusOr<std::string_view>&)>;
+      std::function<void(const absl::StatusOr<std::string>&)>;
 
   virtual ~CoordinationServiceInterface() = default;
 
@@ -168,31 +168,29 @@ class CoordinationServiceInterface {
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
   // The key-values are not persisted and will be lost if the leader fails.
-  virtual absl::Status InsertKeyValue(std::string_view key,
-                                      std::string_view value) = 0;
-  virtual absl::Status InsertKeyValue(std::string_view key,
-                                      std::string_view value,
+  virtual absl::Status InsertKeyValue(std::string key, std::string value) = 0;
+  virtual absl::Status InsertKeyValue(std::string key, std::string value,
                                       bool allow_overwrite) = 0;
 
   // Get a configuration key-value from the coordination service. The `done`
   // callback is invoked when the key-value becomes available.
-  virtual void GetKeyValueAsync(std::string_view key,
+  virtual void GetKeyValueAsync(std::string key,
                                 StatusOrValueCallback done) = 0;
 
   // Get a configuration key-value from the coordination service. If the key
   // does not exist, return NotFound error.
-  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
+  virtual absl::StatusOr<std::string> TryGetKeyValue(std::string key) = 0;
 
   // Gets all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory. This is not a blocking call. Agent does not need to be
   // connected to utilize the distributed key-value store.
   virtual std::vector<tensorflow::KeyValueEntry> GetKeyValueDir(
-      std::string_view directory_key) = 0;
+      std::string directory_key) = 0;
 
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.
-  virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
+  virtual absl::Status DeleteKeyValue(std::string key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -225,7 +223,9 @@ class CoordinationServiceInterface {
   //       list of participating tasks.
   //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
   virtual void BarrierAsync(
-      std::string_view barrier_id, absl::Duration timeout,
+      // TODO: b/369222279 - Investigate data race and revert to `string_view`
+      // for all APIs.
+      std::string barrier_id, absl::Duration timeout,
       const tensorflow::CoordinatedTask& task,
       const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
       StatusCallback done) = 0;
@@ -236,7 +236,7 @@ class CoordinationServiceInterface {
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
   virtual absl::Status CancelBarrier(
-      std::string_view barrier_id, const tensorflow::CoordinatedTask& task) = 0;
+      std::string barrier_id, const tensorflow::CoordinatedTask& task) = 0;
 
   // Gets error from the coordination service. Block until the service
   // returns an error or the task/service is shutdown. This should never be used

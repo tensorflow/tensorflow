@@ -132,21 +132,18 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                                absl::Status error) override;
   std::vector<CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
-  absl::Status InsertKeyValue(std::string_view key,
-                              std::string_view value) override;
-  absl::Status InsertKeyValue(std::string_view key, std::string_view value,
+  absl::Status InsertKeyValue(std::string key, std::string value) override;
+  absl::Status InsertKeyValue(std::string key, std::string value,
                               bool allow_overwrite) override;
-  void GetKeyValueAsync(std::string_view key,
-                        StatusOrValueCallback done) override;
-  absl::StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
-  std::vector<KeyValueEntry> GetKeyValueDir(
-      std::string_view directory_key) override;
-  absl::Status DeleteKeyValue(std::string_view key) override;
-  void BarrierAsync(std::string_view barrier_id, absl::Duration timeout,
+  void GetKeyValueAsync(std::string key, StatusOrValueCallback done) override;
+  absl::StatusOr<std::string> TryGetKeyValue(std::string key) override;
+  std::vector<KeyValueEntry> GetKeyValueDir(std::string directory_key) override;
+  absl::Status DeleteKeyValue(std::string key) override;
+  void BarrierAsync(std::string barrier_id, absl::Duration timeout,
                     const CoordinatedTask& task,
                     const std::vector<CoordinatedTask>& participating_tasks,
                     StatusCallback done) override;
-  absl::Status CancelBarrier(std::string_view barrier_id,
+  absl::Status CancelBarrier(std::string barrier_id,
                              const CoordinatedTask& task) override;
   void PollForErrorAsync(const CoordinatedTask& task,
                          StatusCallback done) override;
@@ -992,12 +989,12 @@ std::string NormalizeKey(std::string_view orig_key) {
 }
 
 absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
-    std::string_view key, std::string_view value) {
+    std::string key, std::string value) {
   return InsertKeyValue(key, value, /*allow_overwrite=*/false);
 }
 
 absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
-    std::string_view key, std::string_view value, bool allow_overwrite) {
+    std::string key, std::string value, bool allow_overwrite) {
   VLOG(3) << "InsertKeyValue(): " << key << ": " << value
           << " allow_overwrite: " << allow_overwrite;
   const std::string norm_key = NormalizeKey(key);
@@ -1018,7 +1015,7 @@ absl::Status CoordinationServiceStandaloneImpl::InsertKeyValue(
 }
 
 void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
-    std::string_view key, StatusOrValueCallback done) {
+    std::string key, StatusOrValueCallback done) {
   VLOG(3) << "GetKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -1036,7 +1033,7 @@ void CoordinationServiceStandaloneImpl::GetKeyValueAsync(
 }
 
 absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
-    std::string_view key) {
+    std::string key) {
   VLOG(3) << "TryGetKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -1048,7 +1045,7 @@ absl::StatusOr<std::string> CoordinationServiceStandaloneImpl::TryGetKeyValue(
 }
 
 std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
-    std::string_view directory_key) {
+    std::string directory_key) {
   VLOG(3) << "TryGetKeyValueDir(): " << directory_key;
   std::vector<KeyValueEntry> kvs_in_directory;
   const std::string norm_key = NormalizeKey(directory_key);
@@ -1076,7 +1073,7 @@ std::vector<KeyValueEntry> CoordinationServiceStandaloneImpl::GetKeyValueDir(
 }
 
 absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
-    std::string_view key) {
+    std::string key) {
   VLOG(3) << "DeleteKeyValue(): " << key;
   const std::string norm_key = NormalizeKey(key);
   absl::MutexLock l(&kv_mu_);
@@ -1286,8 +1283,7 @@ bool CoordinationServiceStandaloneImpl::InitializeBarrier(
 }
 
 void CoordinationServiceStandaloneImpl::BarrierAsync(
-    std::string_view barrier_id, absl::Duration timeout,
-    const CoordinatedTask& task,
+    std::string barrier_id, absl::Duration timeout, const CoordinatedTask& task,
     const std::vector<CoordinatedTask>& participating_tasks,
     StatusCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked BarrierAsync("
@@ -1364,7 +1360,7 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
 }
 
 absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
-    std::string_view barrier_id, const CoordinatedTask& task) {
+    std::string barrier_id, const CoordinatedTask& task) {
   absl::MutexLock l(&state_mu_);
   if (ServiceHasStopped()) {
     return MakeCoordinationError(absl::InternalError(
