@@ -5122,7 +5122,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
   if (options_.is_layout_sensitive()) {
     return absl::OkStatus();
   }
-  if (ShapeUtil::HasDegenerateDimensions(operand->shape())) {
+  if (options_.enable_broadcast_degenerate_dimension() &&
+      ShapeUtil::HasDegenerateDimensions(operand->shape())) {
     auto new_operand = operand->AddInstruction(HloInstruction::CreateReshape(
         ShapeUtil::DropDegenerateDimensions(operand->shape()), operand));
     std::vector<int64_t> new_dims;

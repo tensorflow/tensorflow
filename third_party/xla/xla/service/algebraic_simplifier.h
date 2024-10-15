@@ -313,6 +313,15 @@ class AlgebraicSimplifierOptions {
   }
   bool enable_fast_math() const { return enable_fast_math_; }
 
+  void set_enable_broadcast_degenerate_dimension(
+      bool enable_broadcast_degenerate_dimension) {
+    enable_broadcast_degenerate_dimension_ =
+        enable_broadcast_degenerate_dimension;
+  }
+  bool enable_broadcast_degenerate_dimension() const {
+    return enable_broadcast_degenerate_dimension_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -354,6 +363,7 @@ class AlgebraicSimplifierOptions {
   bool use_convert_constant_folding_{false};
   bool disable_dynamic_slice_to_slice_conversion_{false};
   bool enable_fast_math_{false};
+  bool enable_broadcast_degenerate_dimension_{true};
   Metadata metadata_;
 };
 
