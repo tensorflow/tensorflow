@@ -68,6 +68,15 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "thread_pool_task_runner",
+    hdrs = ["thread_pool_task_runner.h"],
+    deps = [
+        ":thunk",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
@@ -159,6 +168,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":resource_use",
+        ":thread_pool_task_runner",
         ":thunk",
         ":thunk_executor",
         "//xla/runtime:buffer_use",

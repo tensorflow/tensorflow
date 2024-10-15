@@ -572,6 +572,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime:buffer_allocations",
+        "//xla/backends/cpu/runtime:thread_pool_task_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_executor",
         "//xla/hlo/ir:hlo",

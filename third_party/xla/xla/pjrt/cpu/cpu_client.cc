@@ -49,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/array.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
+#include "xla/backends/cpu/runtime/thread_pool_task_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/client/executable_build_options.h"
@@ -1615,11 +1616,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
           cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
           cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
-      cpu::Thunk::TaskRunner task_runner =
-          [&run_options](cpu::Thunk::Task task) {
-            run_options.intra_op_thread_pool()->getPool()->Schedule(
-                std::move(task));
-          };
+      cpu::ThreadPoolTaskRunner task_runner(
+          run_options.intra_op_thread_pool()->getPool());
 
       cpu::Thunk::ExecuteParams execute_params = {
           &cpu_executable->function_registry(),
@@ -1754,11 +1752,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
                 custom_call_params =
                     cpu::Thunk::CustomCallExecuteParams::Create(&run_options);
 
-            cpu::Thunk::TaskRunner task_runner =
-                [&run_options](cpu::Thunk::Task task) {
-                  run_options.intra_op_thread_pool()->getPool()->Schedule(
-                      std::move(task));
-                };
+            cpu::ThreadPoolTaskRunner task_runner(
+                run_options.intra_op_thread_pool()->getPool());
 
             if (collective_params.ok()) {
               cpu::Thunk::ExecuteParams execute_params = {
