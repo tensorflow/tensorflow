@@ -1,7 +1,7 @@
 """Build macros for TF Lite."""
 
 load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
@@ -10,6 +10,17 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 # buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
+
+def clean_dep(target):
+    """Returns string to 'target' in @litert repository.
+
+    Use this function when referring to targets in the @litert
+    repository from macros that may be called from external repositories.
+    """
+
+    # A repo-relative label is resolved relative to the file in which the
+    # Label() call appears, i.e. @tsl.
+    return str(Label(target))
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
