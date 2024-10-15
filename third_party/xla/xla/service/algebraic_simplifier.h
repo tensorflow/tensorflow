@@ -482,6 +482,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleReduce(HloInstruction* hlo) override;
 
+  absl::Status HandleReducePrecision(HloInstruction* hlo) override;
+
   absl::Status HandleReduceWindow(HloInstruction* hlo) override;
 
   absl::Status HandleReverse(HloInstruction* reverse) override;

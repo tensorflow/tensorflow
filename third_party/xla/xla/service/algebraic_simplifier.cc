@@ -8040,6 +8040,60 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
+namespace {
+bool HasDefaultMantissaBits(PrimitiveType type, int64_t mantissa_bits) {
+  switch (type) {
+    // Currently we are not handling fp8 yet, but for those we also don't have
+    // test coverage in reduce_precision_test.
+    case BF16:
+      return mantissa_bits == 7;
+    case F16:
+      return mantissa_bits == 10;
+    case F32:
+      return mantissa_bits == 23;
+    case F64:
+      return mantissa_bits == 52;
+    default:
+      // For primitive types we don't handle above, assume we don't have the
+      // default mantissa bits.
+      return false;
+  }
+  return false;
+}
+
+bool HasDefaultExponentBits(PrimitiveType type, int64_t exponent_bits) {
+  switch (type) {
+    // Currently we are not handling fp8 yet, but for those we also don't have
+    // test coverage in reduce_precision_test.
+    case BF16:
+      return exponent_bits == 8;
+    case F16:
+      return exponent_bits == 5;
+    case F32:
+      return exponent_bits == 8;
+    case F64:
+      return exponent_bits == 11;
+    default:
+      // For primitive types we don't handle above, assume we don't have the
+      // default exponent bits.
+      return false;
+  }
+  return false;
+}
+}  // namespace
+
+absl::Status AlgebraicSimplifierVisitor::HandleReducePrecision(
+    HloInstruction* hlo) {
+  auto* reduce_precision = Cast<HloReducePrecisionInstruction>(hlo);
+  PrimitiveType element_type = hlo->shape().element_type();
+  if (HasDefaultMantissaBits(element_type, reduce_precision->mantissa_bits()) &&
+      HasDefaultExponentBits(element_type, reduce_precision->exponent_bits())) {
+    TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(hlo->mutable_operand(0)));
+    MarkAsChanged();
+  }
+  return absl::OkStatus();
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* hlo) {
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);

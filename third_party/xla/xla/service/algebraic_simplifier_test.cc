@@ -12318,5 +12318,64 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Slice(m::Parameter(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReplacesReducePrecisionNoOps) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      p0 = bf16[] parameter(0)
+      p1 = f16[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f64[] parameter(3)
+      rp0 = bf16[] reduce-precision(p0), exponent_bits=8, mantissa_bits=7
+      rp1 = f16[] reduce-precision(p1), exponent_bits=5, mantissa_bits=10
+      rp2 = f32[] reduce-precision(p2), exponent_bits=8, mantissa_bits=23
+      rp3 = f64[] reduce-precision(p3), exponent_bits=11, mantissa_bits=52
+      ROOT res = (bf16[], f16[], f32[], f64[]) tuple(rp0, rp1, rp2, rp3)
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+
+  // Expect the no-op reduce-precision ops to be removed.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1),
+                                  m::Parameter(2), m::Parameter(3))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoesNotIncorrectlyReplaceReducePrecisionOps) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY main {
+      p0 = bf16[] parameter(0)
+      p1 = f16[] parameter(1)
+      p2 = f32[] parameter(2)
+      p3 = f64[] parameter(3)
+      p4 = f8e5m2[] parameter(4)
+      rp0 = bf16[] reduce-precision(p0), exponent_bits=7, mantissa_bits=7
+      rp1 = bf16[] reduce-precision(p0), exponent_bits=8, mantissa_bits=6
+      rp2 = f16[] reduce-precision(p1), exponent_bits=4, mantissa_bits=10
+      rp3 = f16[] reduce-precision(p1), exponent_bits=5, mantissa_bits=9
+      rp4 = f32[] reduce-precision(p2), exponent_bits=7, mantissa_bits=23
+      rp5 = f32[] reduce-precision(p2), exponent_bits=8, mantissa_bits=22
+      rp6 = f64[] reduce-precision(p3), exponent_bits=10, mantissa_bits=52
+      rp7 = f64[] reduce-precision(p3), exponent_bits=11, mantissa_bits=51
+      rp8 = f8e5m2[] reduce-precision(p4), exponent_bits=4, mantissa_bits=2
+      ROOT res = (bf16[], bf16[], f16[], f16[], f32[], f32[], f64[], f64[], f8e5m2[]) tuple(rp0, rp1, rp2, rp3, rp4, rp5, rp6, rp7, rp8)
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace xla
