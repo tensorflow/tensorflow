@@ -124,6 +124,22 @@ TEST_F(FusionWrapperTest, ControlDependency) {
 // CHECK-SAME: control-predecessors={%fusion})");
 }
 
+TEST_F(FusionWrapperTest, Copy) {
+  // Avoid rewriting copies, so that the rematerialization pass
+  // can avoid rematerializing copies inserted by copy-insertion
+  // (the rematerialization could read overwritten data).
+  RunAndFilecheckHloRewrite(R"(
+      HloModule Copy
+
+      ENTRY %main (parameter.1: f32[5]) -> f32[5] {
+        %parameter.1 = f32[5]{0} parameter(0)
+        ROOT %copy.3 = f32[5]{0} copy(f32[5]{0} %parameter.1)
+      })",
+                            FusionWrapper(),
+                            // No change
+                            std::nullopt);
+}
+
 TEST_F(FusionWrapperTest, While) {
   RunAndFilecheckHloRewrite(R"(
       HloModule While
@@ -148,8 +164,8 @@ TEST_F(FusionWrapperTest, While) {
       })",
                             FusionWrapper(), R"(
 // CHECK: %wrapped_broadcast_computation {{.*}} {
-// CHECK:  %param_0.1 = f32[] parameter(0)
-// CHECK:  ROOT %broadcast.0 = f32[5]{0} broadcast(%param_0.1), dimensions={}
+// CHECK:  %param_0 = f32[] parameter(0)
+// CHECK:  ROOT %broadcast.0 = f32[5]{0} broadcast(%param_0), dimensions={}
 // CHECK: }
 // CHECK: %body {{.*}} {
 // CHECK:   %parameter.5 = (f32[5]{0}) parameter(0)
@@ -161,14 +177,10 @@ TEST_F(FusionWrapperTest, While) {
 // CHECK:   %parameter.12 = (f32[5]{0}) parameter(0)
 // CHECK:   ROOT %constant_1 = pred[] constant(false)
 // CHECK: }
-// CHECK: %wrapped_copy_computation {{.*}} {
-// CHECK:   %param_0 = f32[5]{0} parameter(0)
-// CHECK:   ROOT %copy.0 = f32[5]{0} copy(%param_0)
-// CHECK: }
 // CHECK: ENTRY %main {{.*}} {
 // CHECK:   %parameter.1 = f32[5]{0} parameter(0)
-// CHECK:   %wrapped_copy = f32[5]{0} fusion(%parameter.1), kind=kLoop, calls=%wrapped_copy_computation
-// CHECK:   %tuple = (f32[5]{0}) tuple(%wrapped_copy)
+// CHECK:   %copy.3 = f32[5]{0} copy(%parameter.1)
+// CHECK:   %tuple = (f32[5]{0}) tuple(%copy.3)
 // CHECK:   ROOT %while.19 = (f32[5]{0}) while(%tuple), condition=%cond, body=%body
 // CHECK: })");
 }

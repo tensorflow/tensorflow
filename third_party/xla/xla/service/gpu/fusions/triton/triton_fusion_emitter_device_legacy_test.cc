@@ -4469,12 +4469,15 @@ triton_dot {
   cvt1 = f32[3,3,2,16]{1,3,2,0} convert(p1)
   p0 = f16[9,32]{0,1} parameter(0)
   b0 = f16[3,3,2,16]{1,0,3,2} bitcast(p0)
-  cp0 = f16[3,3,2,16]{1,3,2,0} copy(b0)
-  cvt0 = f32[3,3,2,16]{1,3,2,0} convert(cp0)
+  cp0b0 = f16[2,16,3,3]{3,2,1,0} bitcast(b0)
+  cp0t0 = f16[3,2,16,3]{3,2,1,0} transpose(cp0b0), dimensions={2,0,1,3}
+  cp0b1 = f16[3,3,2,16]{1,3,2,0} bitcast(cp0t0)
+  cvt0 = f32[3,3,2,16]{1,3,2,0} convert(cp0b1)
   m = f32[3,3,2,16]{1,3,2,0} multiply(cvt1, cvt0)
   cvt2 = f16[3,3,2,16]{1,3,2,0} convert(m)
-  cp1 = f16[3,3,2,16]{3,2,1,0} copy(cvt2)
-  b1 = f16[9,32]{1,0} bitcast(cp1)
+  cp1b0 = f16[3,2,16,3]{3,2,1,0} bitcast(cvt2)
+  cp1t0 = f16[3,3,2,16]{3,2,1,0} transpose(cp1b0), dimensions={0,3,1,2}
+  b1 = f16[9,32]{1,0} bitcast(cp1t0)
   p2 = f16[32,32]{1,0} parameter(2)
   ROOT r = f16[9,32]{1,0} dot(b1, p2),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -4498,12 +4501,15 @@ ENTRY e {
   cvt1 = f32[3,3,2,16]{1,3,2,0} convert(p1)
   p0 = f16[9,32]{0,1} parameter(0)
   b0 = f16[3,3,2,16]{1,0,3,2} bitcast(p0)
-  cp0 = f16[3,3,2,16]{1,3,2,0} copy(b0)
-  cvt0 = f32[3,3,2,16]{1,3,2,0} convert(cp0)
+  cp0b0 = f16[2,16,3,3]{3,2,1,0} bitcast(b0)
+  cp0t0 = f16[3,2,16,3]{3,2,1,0} transpose(cp0b0), dimensions={2,0,1,3}
+  cp0b1 = f16[3,3,2,16]{1,3,2,0} bitcast(cp0t0)
+  cvt0 = f32[3,3,2,16]{1,3,2,0} convert(cp0b1)
   m = f32[3,3,2,16]{1,3,2,0} multiply(cvt1, cvt0)
   cvt2 = f16[3,3,2,16]{1,3,2,0} convert(m)
-  cp1 = f16[3,3,2,16]{3,2,1,0} copy(cvt2)
-  b1 = f16[9,32]{1,0} bitcast(cp1)
+  cp1b0 = f16[3,2,16,3]{3,2,1,0} bitcast(cvt2)
+  cp1t0 = f16[3,3,2,16]{3,2,1,0} transpose(cp1b0), dimensions={0,3,1,2}
+  b1 = f16[9,32]{1,0} bitcast(cp1t0)
   p2 = f16[32,32]{1,0} parameter(2)
   ROOT r = f16[9,32]{1,0} dot(b1, p2),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}

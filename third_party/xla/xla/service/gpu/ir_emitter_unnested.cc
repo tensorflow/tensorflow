@@ -1515,6 +1515,22 @@ absl::Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitCopy(const HloInstruction* instr) {
+  TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+      instr->operand(0)->shape(), instr->shape(),
+      Layout::Equal().MinorToMajorOnly()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
+                      GetAllocationSliceForHlo(instr));
+  AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr),
+      /*source_buffer=*/src_buffer,
+      /*destination_buffer=*/dst_buffer,
+      /*mem_size=*/src_buffer.size()));
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitterUnnested::EmitAsyncCustomCallStart(
     const HloInstruction* instr) {
   const HloInstruction* wrapped = instr->async_wrapped_instruction();
@@ -2773,9 +2789,10 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       }
       return EmitCustomCallThunk(custom_call);
     }
-    case HloOpcode::kFusion: {
+    case HloOpcode::kFusion:
       return EmitFusion(Cast<HloFusionInstruction>(instr));
-    }
+    case HloOpcode::kCopy:
+      return EmitCopy(instr);
     case HloOpcode::kInfeed:
       return EmitInfeed(Cast<HloInfeedInstruction>(instr));
     case HloOpcode::kOutfeed:
