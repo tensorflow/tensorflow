@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <variant>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
+
 namespace tflite {
 namespace gpu {
 namespace {

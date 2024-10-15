@@ -3993,6 +3993,16 @@ void RecordPassEndAndDumpModule(absl::Time start_time,
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
 }
 
+std::vector<int> FindAllIndices(std::vector<int64_t> vec, int64_t element) {
+  std::vector<int> result;
+  for (int i = 0; i < vec.size(); ++i) {
+    if (vec[i] == element) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
 absl::StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -4123,6 +4133,7 @@ absl::StatusOr<bool> AutoSharding::Run(
   std::vector<std::string> mesh_shape_error_messages(mesh_shapes.size());
   for (size_t i = 0; i < mesh_shapes.size(); ++i) {
     VLOG(1) << "Trying mesh shape " << spmd::ToString(mesh_shapes[i]);
+
     AutoShardingOption this_option = option_;
     this_option.device_mesh_shape = mesh_shapes[i];
     if (this_option.device_mesh_shape.size() !=
@@ -4135,6 +4146,27 @@ absl::StatusOr<bool> AutoSharding::Run(
     this_option.solver_timeout_in_seconds /= mesh_shapes.size();
     LOG(INFO) << "Setting solver timeout per mesh shape to "
               << this_option.solver_timeout_in_seconds << " seconds.";
+
+    // Try to infer DCN axis if the HLO is multi-slice.
+    // TODO(b/372720563) Improve this DCN axis inference. Currently, we assume
+    // there is only one DCN axis, and that there is no ICI axis with the same
+    // size as the DCN axis.
+    if (option_.num_dcn_slices.has_value() && *option_.num_dcn_slices > 1) {
+      std::vector<int> dcn_indices =
+          FindAllIndices(mesh_shapes[i], *option_.num_dcn_slices);
+      if (dcn_indices.empty()) {
+        VLOG(1) << " Mesh shape does not contain DCN axis.";
+        continue;
+      }
+
+      if (dcn_indices.size() > 1) {
+        LOG(WARNING)
+            << "Could not infer a unique DCN axis. Choosing one randomly.";
+      }
+      this_option.device_mesh_alpha[dcn_indices[0]] = kDcnDeviceMeshAlpha;
+      this_option.device_mesh_beta[dcn_indices[0]] = kDcnDeviceMeshBeta;
+    }
+
     auto pass = std::make_unique<AutoShardingImplementation>(this_option);
     std::unique_ptr<HloModule> module_clone = CloneModule(module);
     absl::StatusOr<bool> pass_result =
