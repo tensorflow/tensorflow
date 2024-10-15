@@ -215,6 +215,14 @@ struct Options {
   // ones. If it fails to replace the copy, it keeps the sync version.
   bool enable_sync_copy_replacement = false;
 
+  // If true, tries to replace synchronous slice instructions with asynchronous
+  // ones. If it fails to replace the slice, it keeps the sync version.
+  bool enable_sync_slice_replacement = false;
+
+  // If non-zero, this is the number of extra outstanding async copies that we
+  // allow for each sync mem op that is converted to an async mem op.
+  int extend_async_copies_limit_for_sync_mem_op_conversion = 0;
+
   // The ratio of use bytes to copy bytes for a given allocation site below
   // which we consider the site to be inefficient. A value of 0 would treat all
   // sites as efficient and a value of 1 would require the amount of bytes used
