@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cufft.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -74,7 +74,7 @@ cufftType CUDAFftType(fft::Type type) {
 
 // Associates the given stream with the given cuFFT plan.
 bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
-  ScopedActivateContext sac(parent);
+  std::unique_ptr<ActivateContext> activation = parent->Activate();
   auto ret = cufftSetStream(plan, AsGpuStreamValue(stream));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to run cuFFT routine cufftSetStream: " << ret;
@@ -110,7 +110,7 @@ absl::Status CUDAFftPlan::Initialize(
   }
   is_initialized_ = true;
   scratch_allocator_ = scratch_allocator;
-  ScopedActivateContext sac(parent);
+  std::unique_ptr<ActivateContext> activation = parent->Activate();
   // NOLINTBEGIN
   std::array<long long, 3> elem_count_ = {0};
   std::array<long long, 3> input_embed_ = {0};
@@ -272,7 +272,7 @@ absl::Status CUDAFftPlan::UpdateScratchAllocator(
     }
   }
   // Connect work area with allocated space.
-  ScopedActivateContext sac(parent_);
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   cufftResult_t ret = cufftSetWorkArea(plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to set work area for cuFFT plan: " << ret;
@@ -282,7 +282,7 @@ absl::Status CUDAFftPlan::UpdateScratchAllocator(
 }
 
 CUDAFftPlan::~CUDAFftPlan() {
-  ScopedActivateContext sac(parent_);
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   cufftDestroy(plan_);
 }
 
@@ -388,7 +388,7 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
   }
 #endif
 
-  ScopedActivateContext sac(parent_);
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   auto ret =
       cufftExec(cuda_fft_plan->GetPlan(),
                 CUDAComplex(const_cast<InputT *>(GpuMemory(input_maybe_copy))),
@@ -417,7 +417,7 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
     return false;
   }
 
-  ScopedActivateContext sac(parent_);
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   auto ret = cufftExec(cuda_fft_plan->GetPlan(),
                        CUDAComplex(const_cast<InputT *>(GpuMemory(input))),
                        CUDAComplex(GpuMemoryMutable(output)),

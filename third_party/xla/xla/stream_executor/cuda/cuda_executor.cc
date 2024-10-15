@@ -729,7 +729,7 @@ CudaExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
           : CudaTimer::TimerType::kEventBased;
 
   TF_ASSIGN_OR_RETURN(CudaTimer timer,
-                      CudaTimer::Create(gpu_context(), stream, timer_type));
+                      CudaTimer::Create(this, stream, timer_type));
   return std::make_unique<CudaTimer>(std::move(timer));
 }
 
@@ -896,8 +896,7 @@ absl::Status CudaExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == 1) {
-    auto result =
-        CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);
+    auto result = CudaCollectives::CollectiveMemoryAllocate(this, size);
     if (!result.ok()) {
       LOG(ERROR) << result.status();
     }
@@ -1154,7 +1153,7 @@ absl::Status FillBlockDimLimit(CUdevice device, BlockDim* block_dim_limit) {
 }
 
 absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
-  TF_ASSIGN_OR_RETURN(auto event, CudaEvent::Create(gpu_context(), false));
+  TF_ASSIGN_OR_RETURN(auto event, CudaEvent::Create(this, false));
   return std::make_unique<CudaEvent>(std::move(event));
 }
 

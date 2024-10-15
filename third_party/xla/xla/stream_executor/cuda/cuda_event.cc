@@ -16,33 +16,33 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_event.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
 namespace {
-absl::Status WaitStreamOnEvent(Context* context, CUstream stream,
+absl::Status WaitStreamOnEvent(StreamExecutor *executor, CUstream stream,
                                CUevent event) {
-  ScopedActivateContext activation(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
 }
 
-void DestroyEvent(Context* context, CUevent event) {
+void DestroyEvent(StreamExecutor *executor, CUevent event) {
   if (event == nullptr) {
     return;
   }
 
-  ScopedActivateContext activated{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   auto result =
       cuda::ToStatus(cuEventDestroy(event), "Error destroying CUDA event");
   if (!result.ok()) {
@@ -51,7 +51,7 @@ void DestroyEvent(Context* context, CUevent event) {
 }
 
 enum class EventFlags { kDefault, kDisableTiming };
-absl::StatusOr<CUevent> InitEvent(Context* context, EventFlags flags) {
+absl::StatusOr<CUevent> InitEvent(StreamExecutor *executor, EventFlags flags) {
   int cuflags;
   switch (flags) {
     case EventFlags::kDefault:
@@ -64,7 +64,7 @@ absl::StatusOr<CUevent> InitEvent(Context* context, EventFlags flags) {
       LOG(FATAL) << "impossible event flags: " << int(flags);
   }
 
-  ScopedActivateContext activated{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   CUevent event_handle;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuEventCreate(&event_handle, cuflags)));
   return event_handle;
@@ -73,7 +73,7 @@ absl::StatusOr<CUevent> InitEvent(Context* context, EventFlags flags) {
 }  // namespace
 
 Event::Status CudaEvent::PollForStatus() {
-  ScopedActivateContext activated(context_);
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
   CUresult res = cuEventQuery(handle_);
   if (res == CUDA_SUCCESS) {
     return Event::Status::kComplete;
@@ -84,39 +84,40 @@ Event::Status CudaEvent::PollForStatus() {
 }
 
 absl::Status CudaEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
-  return WaitStreamOnEvent(context_, absl::bit_cast<CUstream>(stream), handle_);
+  return WaitStreamOnEvent(executor_, absl::bit_cast<CUstream>(stream),
+                           handle_);
 }
 
-absl::StatusOr<CudaEvent> CudaEvent::Create(Context* context,
+absl::StatusOr<CudaEvent> CudaEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
   TF_ASSIGN_OR_RETURN(
       CUevent event_handle,
-      InitEvent(context, allow_timing ? EventFlags::kDefault
-                                      : EventFlags::kDisableTiming));
+      InitEvent(executor, allow_timing ? EventFlags::kDefault
+                                       : EventFlags::kDisableTiming));
 
-  return CudaEvent(context, event_handle);
+  return CudaEvent(executor, event_handle);
 }
 
-CudaEvent::~CudaEvent() { DestroyEvent(context_, handle_); }
+CudaEvent::~CudaEvent() { DestroyEvent(executor_, handle_); }
 
 CudaEvent& CudaEvent::operator=(CudaEvent&& other) {
   if (this == &other) {
     return *this;
   }
 
-  DestroyEvent(context_, handle_);
+  DestroyEvent(executor_, handle_);
 
-  context_ = other.context_;
+  executor_ = other.executor_;
   handle_ = other.handle_;
-  other.context_ = nullptr;
+  other.executor_ = nullptr;
   other.handle_ = nullptr;
 
   return *this;
 }
 
-CudaEvent::CudaEvent(CudaEvent&& other)
-    : context_(other.context_), handle_(other.handle_) {
-  other.context_ = nullptr;
+CudaEvent::CudaEvent(CudaEvent &&other)
+    : executor_(other.executor_), handle_(other.handle_) {
+  other.executor_ = nullptr;
   other.handle_ = nullptr;
 }
 

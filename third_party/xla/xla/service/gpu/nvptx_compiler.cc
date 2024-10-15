@@ -1004,8 +1004,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context(),
-                    cubin_images);
+  return LinkGpuAsm(cc, stream_exec, cubin_images);
 }
 
 }  // namespace gpu

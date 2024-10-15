@@ -65,11 +65,11 @@ class CudaExecutor : public GpuExecutor {
       const DeviceMemoryBase& location) override;
 
   absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) override {
-    return CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);
+    return CudaCollectives::CollectiveMemoryAllocate(this, size);
   }
 
   absl::Status CollectiveMemoryDeallocate(void* location) override {
-    return CudaCollectives::CollectiveMemoryDeallocate(gpu_context(), location);
+    return CudaCollectives::CollectiveMemoryDeallocate(this, location);
   }
 
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(

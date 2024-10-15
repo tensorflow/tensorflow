@@ -88,10 +88,7 @@ class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
 
 TEST_P(CudaTimerTest, Create) {
   TF_ASSERT_OK_AND_ASSIGN(
-      CudaTimer timer,
-      CudaTimer::Create(
-          reinterpret_cast<CudaExecutor*>(executor_)->gpu_context(),
-          gpu_stream_, GetParam()));
+      CudaTimer timer, CudaTimer::Create(executor_, gpu_stream_, GetParam()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.

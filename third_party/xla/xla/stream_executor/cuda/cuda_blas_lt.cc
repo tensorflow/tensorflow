@@ -38,6 +38,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -256,7 +256,8 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         cu_preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
-    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
+    std::unique_ptr<ActivateContext> activation =
+        blas_lt_ref_.parent_->Activate();
 
     int found_algorithm_count = 0;
     SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmulAlgoGetHeuristic(
@@ -502,7 +503,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 #endif
     }
 
-    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
+    std::unique_ptr<ActivateContext> activation =
+        blas_lt_ref_.parent_->Activate();
 
     if (palgo != nullptr) {
       SE_CUBLAS_RETURN_IF_ERROR(cublasLtMatmul(
