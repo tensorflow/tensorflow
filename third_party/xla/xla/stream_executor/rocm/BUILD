@@ -1092,7 +1092,6 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_test_kernels_rocm",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",

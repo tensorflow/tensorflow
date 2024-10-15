@@ -61,7 +61,7 @@ RocmTimer::RocmTimer(Context* context, RocmEvent start_event,
 
 absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
   if (is_stopped_) {
-    return absl::InternalError("Measuring inactive timer");
+    return absl::FailedPreconditionError("Measuring inactive timer");
   }
   TF_RETURN_IF_ERROR(stream_->RecordEvent(&stop_event_));
   TF_ASSIGN_OR_RETURN(float elapsed_milliseconds,
