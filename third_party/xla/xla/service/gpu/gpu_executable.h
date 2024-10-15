@@ -239,6 +239,17 @@ class GpuExecutable : public Executable {
 
   xla::Shape output_shape_;
 
+  // This indicates the status of all async operations
+  // associated with this executable instance.
+  // The status will be set to failure status the first time
+  // an async error or timeout has occurred.
+  AsyncStatus async_status_ = {absl::OkStatus(), false};
+
+  // This queue captures all async events created by this executable.
+  // Any thunk that records an async event will push the se::Event to
+  // this queue. The statuses of events are monitored in a separate thread.
+  std::vector<std::unique_ptr<se::Event>> async_events_queue_;
+
   // The allocations_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.
   // See the comment on GetAllocations().

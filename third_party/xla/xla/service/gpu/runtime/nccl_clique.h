@@ -37,6 +37,13 @@ limitations under the License.
 
 namespace xla::gpu {
 
+inline constexpr absl::string_view kNcclAsyncErrorPrefix = "Nccl async error";
+
+inline constexpr absl::string_view kNcclAsyncTimeout = "Async event timeout";
+
+inline constexpr absl::string_view kAsyncEventInvalidStatus =
+    "Unexpected async event status";
+
 // NCCL clique (collective clique) is a set of devices that execute collective
 // operations (e.g. all-reduce). It is notoriously easy to misuse NCCL
 // communicators (see link below) and get a dead lock at run time, so in XLA we
@@ -69,6 +76,19 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
     bool is_local);
 
 //===----------------------------------------------------------------------===//
+// AsyncStatus
+//===----------------------------------------------------------------------===//
+
+// A convenient wrapper of status of async events.
+struct AsyncStatus {
+  // The status of async operations
+  absl::Status async_op_status;
+
+  // The flag to indicate that all communicators have been aborted.
+  bool is_all_comms_aborted;
+};
+
+//===----------------------------------------------------------------------===//
 // NcclClique
 //===----------------------------------------------------------------------===//
 
@@ -80,7 +100,7 @@ class NcclCliqueCommunicators {
  public:
   class AsyncErrorChecker {
    public:
-    absl::Status Check();
+    absl::Status Check(AsyncStatus& current_executable_status);
 
    private:
     friend class NcclCliqueCommunicators;
@@ -151,7 +171,7 @@ class NcclClique : public Lockable<NcclCliqueCommunicators, NcclCliqueName> {
   // Checks for async errors for all the communicators in the clique without
   // taking the lock. If at least one of the communicators has an async error,
   // it returns one of the errors.
-  absl::Status CheckAsyncErrors();
+  absl::Status CheckAsyncErrors(AsyncStatus& current_status);
 
  private:
   NcclCliqueCommunicators::AsyncErrorChecker async_error_checker_;
@@ -169,7 +189,8 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants,
     const NcclClique::AcquiredCliquesMap& acquired_cliques,
-    int64_t max_nchannels = 0);
+    const std::vector<std::unique_ptr<se::Event>>& async_events_queue,
+    AsyncStatus& async_status, int64_t max_nchannels = 0);
 
 }  // namespace xla::gpu
 

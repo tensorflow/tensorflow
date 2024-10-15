@@ -52,6 +52,36 @@ class GpuStream : public StreamCommon {
     return stream_priority_;
   }
 
+  // Returns true if no work is pending or executing on the stream.
+  bool IsIdle() const;
+
+  // Returns the GpuStreamHandle value for passing to the CUDA API.
+  //
+  // Precond: this GpuStream has been allocated (otherwise passing a nullptr
+  // into the NVIDIA library causes difficult-to-understand faults).
+  GpuStreamHandle gpu_stream() const {
+    DCHECK(gpu_stream_ != nullptr);
+    return gpu_stream_;
+  }
+
+  absl::Status WaitFor(Stream* other) override;
+  absl::Status WaitFor(Event* event) override;
+  absl::Status RecordEvent(Event* event) override;
+  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
+  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                        uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                      uint64_t size) override;
+  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                      uint64_t size) override;
+  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
+                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
+
+  void set_name(absl::string_view name) override;
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      bool use_delay_kernel) override;
   absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
                       const Kernel& k, const KernelArgs& args) override;
   absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
