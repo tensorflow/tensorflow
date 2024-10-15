@@ -1319,7 +1319,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
-    PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    PyObject* result = PyObject_Call(num_elements_, arglist, nullptr);
     Py_DECREF(arglist);
     if (result == nullptr) {
       // The caller detects whether a python exception has been raised.
@@ -1342,7 +1342,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist = Py_BuildValue("(O)", list);
     CHECK(arglist != nullptr);
-    PyObject* result = PyEval_CallObject(aggregate_fn_, arglist);
+    PyObject* result = PyObject_Call(aggregate_fn_, arglist, nullptr);
     Py_DECREF(arglist);
     Py_DECREF(list);
     return result;
@@ -1359,7 +1359,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(ones_fn_, arg_list);
+    PyObject* result = PyObject_Call(ones_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1383,7 +1383,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
+    PyObject* result = PyObject_Call(zeros_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1397,7 +1397,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   PyObject* GraphShape(PyObject* tensor) const {
     PyObject* arg_list = Py_BuildValue("(O)", tensor);
-    PyObject* result = PyEval_CallObject(graph_shape_fn_, arg_list);
+    PyObject* result = PyObject_Call(graph_shape_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
