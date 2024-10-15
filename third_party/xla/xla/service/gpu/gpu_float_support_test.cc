@@ -198,7 +198,7 @@ TEST_F(FloatSupportTest, ShouldAlwaysConvertFp8Dot) {
                     /*should_convert_rhs=*/false, F8E5M2);
 }
 
-TEST_F(FloatSupportTest, ShouldConverTritonUnsupportedFp8Dot) {
+TEST_F(FloatSupportTest, ShouldConvertTritonUnsupportedFp8Dot) {
   TestTritonFusedDot(F8E4M3FN, F8E4M3FN, F16,
                      se::CudaComputeCapability::Hopper(),
                      /*should_convert_lhs=*/true,
@@ -254,6 +254,21 @@ TEST_F(FloatSupportTest, ShouldKeepBf16OnHopper) {
   TestDotConversion(BF16, BF16, F32, se::CudaComputeCapability::Hopper(),
                     /*should_convert_lhs=*/false,
                     /*should_convert_rhs=*/false, BF16);
+}
+
+TEST_F(FloatSupportTest, Bf16ReducePrecisionIsNotNormalized) {
+  auto cc = se::CudaComputeCapability::Ampere();
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  ROOT r = bf16[] reduce-precision(p0), exponent_bits=8, mantissa_bits=7
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
 }
 
 TEST_F(FloatSupportTest,
