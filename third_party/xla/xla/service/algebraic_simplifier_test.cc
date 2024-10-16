@@ -12318,5 +12318,28 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Slice(m::Parameter(0))));
 }
 
+// Bitcast of broadcast is not simplified if the layouts are different.
+// TransposeBitcastOfBroadcast is a simplified example.
+TEST_F(AlgebraicSimplifierTest, BitcastBroadcastDifferentLayout) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY f {
+      %operand = f32[200001]{0:T(1024)} parameter(0)
+      %broadcast.91 = f32[200001,128]{1,0:T(8,128)} broadcast(f32[200001]{0:T(1024)} %operand), dimensions={0}
+      %bitcast.8 = f32[200001,128]{1,0:T(8)L(1024)} bitcast(f32[200001,128]{1,0:T(8,128)} %broadcast.91)
+      ROOT %add = f32[200001,128]{1,0:T(8)L(1024)} add(f32[200001,128]{1,0:T(8)L(1024)} %bitcast.8, f32[200001,128]{1,0:T(8)L(1024)} %bitcast.8)
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace xla
