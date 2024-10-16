@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -254,6 +255,15 @@ bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
          (instruction->operand(0)->shape().has_layout() &&
           instruction->operand(0)->shape().layout().memory_space() ==
               Layout::kHostMemorySpace);
+}
+
+bool ComputeTypeIsHost(const HloInstruction* hlo_instruction) {
+  const auto& frontend_attributes_map =
+      hlo_instruction->frontend_attributes().map();
+  return (frontend_attributes_map.find(kXlaComputeTypeAttr) !=
+              frontend_attributes_map.end() &&
+          frontend_attributes_map.find(kXlaComputeTypeAttr)->second ==
+              kXlaComputeTypeHost);
 }
 
 }  // namespace host_offload_utils
