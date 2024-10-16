@@ -750,6 +750,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       LOG(ERROR) << write_status.message();
     }
   }
+  // Invokes the solver request callback for any additional debugging.
+  bool solver_request_callback = false;
+  if (solver_request_callback) {
+    SolverRequestCallback(unscaled_request);
+  }
 #endif
   if (request.enable_output()) {
     solver->EnableOutput();
