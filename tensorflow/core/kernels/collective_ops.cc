@@ -58,7 +58,7 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
   if (name.empty() || name == "Id") return k;
   sub_node->set_name(name);
   sub_node->set_op(name);
-  Status status;
+  absl::Status status;
   k = CreateOpKernel(c->device_type(), c->device(),
                      c->device()->GetAllocator(AllocatorAttributes()),
                      *sub_node, c->graph_def_version(), &status);
@@ -128,7 +128,7 @@ class CollectiveOpV1Kernel : public AsyncOpKernel {
                 << col_params_->instance.instance_key;
         col_exec->CompleteParamsAsync(
             c->device()->attributes(), col_params_, c->cancellation_manager(),
-            [this, c, done](const Status& s) {
+            [this, c, done](const absl::Status& s) {
               if (s.ok()) {
                 col_params_->instance.impl_details.dependencies = dependencies_;
                 ComputeAsync(c, done);
@@ -202,7 +202,8 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_,
+                        done](const absl::Status& s) {
       VLOG(1) << "CollectiveGatherOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
@@ -311,7 +312,8 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_,
+                        done](const absl::Status& s) {
       VLOG(1) << "CollectiveReduceOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
@@ -391,7 +393,8 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
                          " does not match shape of input"),
         done);
 
-    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_,
+                        done](const absl::Status& s) {
       VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance "
@@ -462,7 +465,8 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
-    auto actual_done = [c, col_params = col_params_, done](const Status& s) {
+    auto actual_done = [c, col_params = col_params_,
+                        done](const absl::Status& s) {
       VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync done for collective "
               << c->op_kernel().name() << " device " << c->device()->name()
               << " group " << col_params->group.group_key << " instance_key "
@@ -532,10 +536,10 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
   }
 
  private:
-  static Status ComputeGroupKey(const Tensor& group_assignment,
-                                const int32_t device_index,
-                                const int32_t base_key, Tensor* group_size,
-                                Tensor* group_key) {
+  static absl::Status ComputeGroupKey(const Tensor& group_assignment,
+                                      const int32_t device_index,
+                                      const int32_t base_key,
+                                      Tensor* group_size, Tensor* group_key) {
     group_size->flat<int32_t>()(0) = group_assignment.dim_size(1);
 
     for (int group_id = 0; group_id < group_assignment.dim_size(0);
@@ -595,10 +599,12 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   // Fills common parts of CollectiveParams according to the Op, *excluding
   // output_shape*. Kernels should further work on the CollectiveParams if they
   // need to set additional fields.
-  Status FillCollectiveParams(CollectiveParams* col_params, OpKernelContext* c,
-                              CollectiveType collective_type,
-                              const Tensor& group_size, const Tensor& group_key,
-                              const Tensor& instance_key) {
+  absl::Status FillCollectiveParams(CollectiveParams* col_params,
+                                    OpKernelContext* c,
+                                    CollectiveType collective_type,
+                                    const Tensor& group_size,
+                                    const Tensor& group_key,
+                                    const Tensor& instance_key) {
     if (group_size.dims() > 0) {
       return errors::InvalidArgument(
           "Unexpected dimensions on input group_size, got ",
@@ -704,7 +710,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
           [c, activity_id, xprof_ctx_id, done = std::move(done), col_params,
-           col_exec](const Status& s) mutable {
+           col_exec](const absl::Status& s) mutable {
             tsl::profiler::TraceMeConsumer consumer(
                 [&] {
                   return tsl::profiler::TraceMeEncode(
@@ -715,7 +721,8 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
 
             if (s.ok()) {
               auto actual_done = [c, activity_id, col_params, xprof_ctx_id,
-                                  done = std::move(done)](const Status& s) {
+                                  done =
+                                      std::move(done)](const absl::Status& s) {
                 tsl::profiler::TraceMeConsumer consumer(
                     [&] {
                       return tsl::profiler::TraceMeEncode(
@@ -1038,7 +1045,8 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     device_type_ = c->device_type();
   }
 
-  Status CheckInputs(Tensor group_size_t, Tensor group_key_t, Tensor rank_t) {
+  absl::Status CheckInputs(Tensor group_size_t, Tensor group_key_t,
+                           Tensor rank_t) {
     if (group_size_t.dims() > 0) {
       return errors::InvalidArgument(
           "Unexpected dimensions on input group_size. "
@@ -1120,7 +1128,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
               << group_params->group_key;
       col_exec->CompleteGroupAsync(
           c->device()->attributes(), group_params, c->cancellation_manager(),
-          [c, done = std::move(done), group_params](const Status& s) {
+          [c, done = std::move(done), group_params](const absl::Status& s) {
             if (s.ok()) {
               VLOG(1) << "Collective Group initialization done for device "
                       << c->device()->name() << " group "
@@ -1167,10 +1175,10 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
   // Fills common parts of CollectiveParams according to the Op, *excluding
   // output_shape*. Kernels should further work on the CollectiveParams if they
   // need to set additional fields.
-  Status FillCollectiveParams(CollectiveParams* col_params,
-                              const Tensor& group_assignment,
-                              CollectiveType collective_type,
-                              CollectiveGroupResource* resource) {
+  absl::Status FillCollectiveParams(CollectiveParams* col_params,
+                                    const Tensor& group_assignment,
+                                    CollectiveType collective_type,
+                                    CollectiveGroupResource* resource) {
     int64 group_id;
     int64 group_size;
     if (group_assignment.NumElements() == 0) {
@@ -1223,10 +1231,10 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
           [c, done = std::move(done), col_params,
-           col_exec](const Status& s) mutable {
+           col_exec](const absl::Status& s) mutable {
             if (s.ok()) {
-              auto actual_done = [c, col_params,
-                                  done = std::move(done)](const Status& s) {
+              auto actual_done = [c, col_params, done = std::move(done)](
+                                     const absl::Status& s) {
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()
                         << " group " << col_params->group.group_key
