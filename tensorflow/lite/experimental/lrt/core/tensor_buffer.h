@@ -48,12 +48,12 @@ class LrtTensorBufferT {
   static absl::StatusOr<Ptr> CreateFromIonBuffer(
       const LrtRankedTensorType& tensor_type, void* ion_buffer_addr,
       int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
-      LrtFastRpcDeallocator deallocator = nullptr);
+      LrtIonDeallocator deallocator = nullptr);
 
   static absl::StatusOr<Ptr> CreateFromDmaBufBuffer(
       const LrtRankedTensorType& tensor_type, void* dmabuf_buffer_addr,
       int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
-      size_t dmabuf_buffer_offset, LrtFastRpcDeallocator deallocator = nullptr);
+      size_t dmabuf_buffer_offset, LrtDmaBufDeallocator deallocator = nullptr);
 
   static absl::StatusOr<Ptr> CreateFromFastRpcBuffer(
       const LrtRankedTensorType& tensor_type, void* fastrpc_buffer_addr,

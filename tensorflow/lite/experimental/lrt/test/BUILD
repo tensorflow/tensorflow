@@ -75,3 +75,20 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
     ],
 )
+
+cc_library(
+    name = "simple_model_npu",
+    testonly = 1,
+    srcs = [],
+    hdrs = [
+        "testdata/simple_model_test_vectors.h",
+    ],
+    data = [
+        "testdata/simple_model_npu.tflite",
+        "testdata/simple_model_pixel.bin",
+        "testdata/simple_model_qualcomm.bin",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+    ],
+)

@@ -44,4 +44,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lite_rt_dispatch_delegate",
+    hdrs = [
+        "lite_rt_dispatch_delegate.h",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+    ],
+)
+
 exports_files(srcs = glob(["lite_rt_*.h"]))

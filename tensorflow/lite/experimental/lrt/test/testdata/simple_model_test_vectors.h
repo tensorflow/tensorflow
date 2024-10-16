@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_TESTDATA_SIMPLE_MODEL_TEST_VECTORS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_TESTDATA_SIMPLE_MODEL_TEST_VECTORS_H_
 
+#include <cstddef>
 #include <cstdint>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
@@ -36,6 +37,13 @@ constexpr const int32_t kNumTestOutputDimensions =
 constexpr const float kTestInput0Tensor[] = {1, 2};
 constexpr const float kTestInput1Tensor[] = {10, 20};
 constexpr const float kTestOutputTensor[] = {11, 22};
+
+constexpr const size_t kTestInput0Size =
+    sizeof(kTestInput0Tensor) / sizeof(kTestInput0Tensor[0]);
+constexpr const size_t kTestInput1Size =
+    sizeof(kTestInput1Tensor) / sizeof(kTestInput1Tensor[0]);
+constexpr const size_t kTestOutputSize =
+    sizeof(kTestOutputTensor) / sizeof(kTestOutputTensor[0]);
 
 constexpr const LrtRankedTensorType kInput0TensorType = {
     /*.element_type=*/kLrtElementTypeFloat32,

@@ -49,6 +49,9 @@ class Handle {
   Handle(const Handle&) = delete;
   Handle& operator=(const Handle& other) = delete;
 
+  // Return true if the underlying handle is valid.
+  bool IsValid() const { return h_ != nullptr; }
+
   H Get() {
     assert(h_);
     return h_;

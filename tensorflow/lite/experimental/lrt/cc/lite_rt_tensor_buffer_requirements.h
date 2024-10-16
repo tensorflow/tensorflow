@@ -54,9 +54,13 @@ class TensorBufferRequirements {
     return TensorBufferRequirements(tensor_buffer_requirements);
   }
 
+  // Return true if the underlying LrtTensorBufferRequirements handle is valid.
+  bool IsValid() const { return handle_.IsValid(); }
+
+  // Return the underlying LrtTensorBufferRequirements handle.
   explicit operator LrtTensorBufferRequirements() { return handle_.Get(); }
 
-  absl::StatusOr<std::vector<LrtTensorBufferType>> SupportedTypes() {
+  absl::StatusOr<std::vector<LrtTensorBufferType>> SupportedTypes() const {
     int num_types;
     if (auto status =
             LrtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(

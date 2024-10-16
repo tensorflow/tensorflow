@@ -17,7 +17,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
@@ -32,7 +34,7 @@ enum class ElementType {
   Int8 = kLrtElementTypeInt8,
   Int16 = kLrtElementTypeInt16,
   Int32 = kLrtElementTypeInt32,
-  Ing64 = kLrtElementTypeInt64,
+  Int64 = kLrtElementTypeInt64,
   UInt8 = kLrtElementTypeUInt8,
   UInt16 = kLrtElementTypeUInt16,
   UInt32 = kLrtElementTypeUInt32,
@@ -40,9 +42,9 @@ enum class ElementType {
   Float16 = kLrtElementTypeFloat16,
   BFloat16 = kLrtElementTypeBFloat16,
   Float32 = kLrtElementTypeFloat32,
-  BFloat64 = kLrtElementTypeFloat64,
+  Float64 = kLrtElementTypeFloat64,
   Complex64 = kLrtElementTypeComplex64,
-  Complex1128 = kLrtElementTypeComplex128,
+  Complex128 = kLrtElementTypeComplex128,
   TfResource = kLrtElementTypeTfResource,
   TfString = kLrtElementTypeTfString,
   TfVariant = kLrtElementTypeTfVariant,
@@ -51,59 +53,78 @@ enum class ElementType {
 // Tensor layout. C++ equivalent to LrtLayout.
 class Layout {
  public:
-  explicit Layout(const LrtLayout& layout) : layout_(layout) {}
-  explicit Layout(LrtLayout&& layout) : layout_(std::move(layout)) {}
+  explicit Layout(std::vector<int32_t>&& dimensions,
+                  std::vector<uint32_t>&& strides = std::vector<uint32_t>())
+      : dimensions_(std::move(dimensions)), strides_(std::move(strides)) {}
 
-  explicit operator const LrtLayout&() const { return layout_; }
+  explicit Layout(const LrtLayout& layout)
+      : dimensions_(layout.dimensions, layout.dimensions + layout.rank) {
+    if (layout.strides) {
+      strides_.reserve(layout.rank);
+      std::copy(layout.strides, layout.strides + layout.rank,
+                std::back_inserter(strides_));
+    }
+  }
+
+  explicit operator LrtLayout() const {
+    return LrtLayout{
+        /*.rank=*/Rank(),
+        /*.dimensions=*/dimensions_.data(),
+        /*.strides=*/(HasStrides() ? strides_.data() : nullptr),
+    };
+  }
 
   bool operator==(const Layout& other) const {
-    return Rank() == other.Rank() &&
-           std::equal(Dimensions().begin(), Dimensions().end(),
-                      other.Dimensions().begin()) &&
-           (HasStrides() == other.HasStrides()) &&
-           std::equal(Strides().begin(), Strides().end(),
-                      other.Strides().begin());
+    return dimensions_ == other.dimensions_ && strides_ == other.strides_;
   }
 
-  uint32_t Rank() const { return layout_.rank; }
+  uint32_t Rank() const { return dimensions_.size(); }
 
   absl::Span<const int32_t> Dimensions() const {
-    return absl::MakeSpan(layout_.dimensions, layout_.rank);
+    return absl::MakeSpan(dimensions_.data(), dimensions_.size());
   }
 
-  bool HasStrides() const { return layout_.strides != nullptr; }
+  bool HasStrides() const { return !strides_.empty(); }
 
   absl::Span<const uint32_t> Strides() const {
-    auto num_strides = HasStrides() ? Rank() : 0;
-    return absl::MakeSpan(layout_.strides, num_strides);
+    const uint32_t* data = HasStrides() ? strides_.data() : nullptr;
+    auto size = HasStrides() ? Rank() : 0;
+    return absl::MakeSpan(data, size);
   }
 
  private:
-  LrtLayout layout_;
+  std::vector<int32_t> dimensions_;
+  std::vector<uint32_t> strides_;
 };
 
 // Type for tensors with known dimensions. C++ equivalent to
 // LrtRankedTensorType.
 class RankedTensorType {
  public:
-  explicit RankedTensorType(const LrtRankedTensorType& type) : type_(type) {}
-  explicit RankedTensorType(LrtRankedTensorType&& type)
-      : type_(std::move(type)) {}
+  RankedTensorType(ElementType element_type, Layout&& layout)
+      : element_type_(element_type), layout_(std::move(layout)) {}
+  explicit RankedTensorType(const LrtRankedTensorType& type)
+      : element_type_(static_cast<enum ElementType>(type.element_type)),
+        layout_(type.layout) {}
 
-  explicit operator const LrtRankedTensorType&() const { return type_; }
+  explicit operator LrtRankedTensorType() const {
+    return LrtRankedTensorType{
+        /*.element_type=*/static_cast<LrtElementType>(element_type_),
+        /*layout=*/static_cast<LrtLayout>(layout_),
+    };
+  }
 
   bool operator==(const RankedTensorType& other) const {
     return ElementType() == other.ElementType() && Layout() == other.Layout();
   }
 
-  ElementType ElementType() const {
-    return static_cast<enum ElementType>(type_.element_type);
-  }
+  ElementType ElementType() const { return element_type_; }
 
-  Layout Layout() const { return lrt::Layout(type_.layout); }
+  const Layout& Layout() const { return layout_; }
 
  private:
-  LrtRankedTensorType type_;
+  enum ElementType element_type_;
+  class Layout layout_;
 };
 
 }  // namespace lrt

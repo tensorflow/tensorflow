@@ -168,7 +168,7 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateManagedAhwbBuffer(
 absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromIonBuffer(
     const LrtRankedTensorType& tensor_type, void* ion_buffer_addr,
     int ion_buffer_fd, size_t ion_buffer_size, size_t ion_buffer_offset,
-    LrtFastRpcDeallocator deallocator) {
+    LrtIonDeallocator deallocator) {
   if (!ion_buffer_addr) {
     return absl::InvalidArgumentError("Invalid ION buffer address");
   }
@@ -206,7 +206,7 @@ absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateManagedIonBuffer(
 absl::StatusOr<LrtTensorBufferT::Ptr> LrtTensorBufferT::CreateFromDmaBufBuffer(
     const LrtRankedTensorType& tensor_type, void* dmabuf_buffer_addr,
     int dmabuf_buffer_fd, size_t dmabuf_buffer_size,
-    size_t dmabuf_buffer_offset, LrtFastRpcDeallocator deallocator) {
+    size_t dmabuf_buffer_offset, LrtDmaBufDeallocator deallocator) {
   if (!dmabuf_buffer_addr) {
     return absl::InvalidArgumentError("Invalid DMA-BUF buffer address");
   }

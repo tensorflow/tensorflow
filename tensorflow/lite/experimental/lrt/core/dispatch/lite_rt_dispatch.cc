@@ -64,12 +64,15 @@ namespace {
 
 constexpr const char* kSharedLibPath = "libLrtDispatch.so";
 
+bool IsTheApiInitialized = false;
 LrtDispatchApi TheApi = {
     /*.version=*/{/*.major=*/0, /*.minor=*/0, /*.patch=*/0},
     /*.interface=*/nullptr,
     /*.async_interface=*/nullptr,
     /*.graph_interface=*/nullptr,
 };
+
+LrtStatus Initialize() { INVOKE_FUNC(initialize); }
 
 }  // namespace
 
@@ -78,6 +81,10 @@ LrtDispatchApi TheApi = {
 // /////////////////////////////////////////////////////////////////////////////
 
 LrtStatus LrtDispatchInitialize(const char* shared_lib_path) {
+  if (IsTheApiInitialized) {
+    return kLrtStatusOk;
+  }
+
   if (!shared_lib_path) {
     shared_lib_path = kSharedLibPath;
   }
@@ -92,16 +99,19 @@ LrtStatus LrtDispatchInitialize(const char* shared_lib_path) {
   auto LrtDispatchGetApi = reinterpret_cast<LrtDispatchGetApi_t>(
       ::dlsym(lib_handle, "LrtDispatchGetApi"));
   if (!LrtDispatchGetApi) {
+    ::dlclose(lib_handle);
     LITE_RT_LOG(LRT_ERROR, "LrtDispatchGetApi not found");
     return kLrtStatusErrorRuntimeFailure;
   }
 
   if (auto status = LrtDispatchGetApi(&TheApi); status != kLrtStatusOk) {
+    ::dlclose(lib_handle);
     return status;
   }
 
   if (!(TheApi.version.major == LRT_DISPATCH_API_VERSION_MAJOR &&
         TheApi.version.minor <= LRT_DISPATCH_API_VERSION_MINOR)) {
+    ::dlclose(lib_handle);
     LITE_RT_LOG(LRT_ERROR,
                 "Dispatch API runtime is too old, found version %d.%d.%d and "
                 "expected at least version %d.%d.%d",
@@ -111,7 +121,11 @@ LrtStatus LrtDispatchInitialize(const char* shared_lib_path) {
     return kLrtStatusErrorRuntimeFailure;
   }
 
-  INVOKE_FUNC(initialize);
+  auto status = Initialize();
+  if (status == kLrtStatusOk) {
+    IsTheApiInitialized = true;
+  }
+  return status;
 }
 
 LrtStatus LrtDispatchGetApiVersion(LrtDispatchApiVersion* api_version) {

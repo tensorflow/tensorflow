@@ -53,6 +53,10 @@ class TensorBuffer {
     return TensorBuffer(tensor_buffer);
   }
 
+  // Return true if the underlying LrtTensorBuffer handle is valid.
+  bool IsValid() const { return handle_.IsValid(); }
+
+  // Return the underlying LrtTensorBuffer handle.
   explicit operator LrtTensorBuffer() { return handle_.Get(); }
 
   absl::StatusOr<LrtTensorBufferType> BufferType() const {

@@ -295,30 +295,6 @@ cc_test(
 )
 
 cc_library(
-    name = "dispatch",
-    srcs = [
-        "lite_rt_dispatch.cc",
-    ],
-    hdrs = [
-    ],
-    deps = [
-        ":logging",
-        ":tensor_buffer",
-        ":utils",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_dispatch_c_api",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "utils",
     srcs = [
         "utils.cc",
@@ -328,6 +304,28 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tfl_utils",
+    srcs = [
+        "tfl_utils.cc",
+    ],
+    hdrs = [
+        "tfl_utils.h",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
