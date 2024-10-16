@@ -384,6 +384,12 @@ TfLiteStatus RsqrtEvalQuantizedInt16(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+  const int64_t num_elements = NumElements(input);
+  const int16_t* in_data = GetTensorData<int16_t>(input);
+  for (int64_t i = 0; i < num_elements; ++i) {
+    TF_LITE_ENSURE_MSG(context, in_data[i] >= op_data->input_offset,
+                       "Rsqrt is only defined for positive values");
+  }
   reference_integer_ops::LookupTable(
       GetTensorData<int16_t>(input),
       MatchingFlatSize(GetTensorShape(input), GetTensorShape(output)),

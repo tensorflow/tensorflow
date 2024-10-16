@@ -889,7 +889,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   // fetch values to and from the executors.
   FunctionCallFrame call_frame(executors_and_keys->input_types,
                                executors_and_keys->output_types);
-  gtl::InlinedVector<Tensor, 4> feed_args(inputs.size());
+  absl::InlinedVector<Tensor, 4UL> feed_args(inputs.size());
   for (const auto& it : inputs) {
     if (it.second.dtype() == DT_RESOURCE) {
       Tensor tensor_from_handle;
