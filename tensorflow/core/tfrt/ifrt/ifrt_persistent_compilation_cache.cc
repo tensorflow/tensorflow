@@ -61,13 +61,9 @@ IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
 
 absl::StatusOr<Tf2HloResult>
 IfrtPersistentCompilationCache::LookupTf2HloResultOrCreate(
-    mlir::ModuleOp mlir_module, absl::string_view main_func,
-    absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    tsl::RCReference<xla::ifrt::DeviceList> device_list,
-    xla::ifrt::Client* client,
-    absl::AnyInvocable<absl::StatusOr<Tf2HloResult>()> value_fn) {
-  return absl::UnimplementedError(
-      "LookupTf2HloResultOrCreate is not implemented");
+    Tf2HloArg tf2hlo_arg, tsl::RCReference<xla::ifrt::DeviceList> device_list) {
+  // No tf2xla persistent cache is implemented, compile directly.
+  return CompileTfToHlo(tf2hlo_arg);
 }
 
 }  // namespace ifrt_serving
