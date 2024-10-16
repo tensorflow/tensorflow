@@ -25,7 +25,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
     ],
 )
