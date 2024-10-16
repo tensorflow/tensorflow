@@ -24,8 +24,15 @@ RUN /setup.python.sh python3.9 builder.requirements.txt
 RUN /setup.python.sh python3.10 builder.requirements.txt
 RUN /setup.python.sh python3.11 builder.requirements.txt
 RUN /setup.python.sh python3.12 builder.requirements.txt
-# TODO(quoct): Fix python3.13 build.
-# RUN /setup.python.sh python3.13 builder.requirements.txt
+RUN /setup.python.sh python3.13 builder.requirements.txt
+
+# Setup links for TensorFlow to compile.
+# Referenced in devel.usertools/*.bazelrc.
+# Set python3.12 as the default python version.
+# TF does not support python3.13.
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python
+RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
 
 # Make sure clang is on the path
 RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
