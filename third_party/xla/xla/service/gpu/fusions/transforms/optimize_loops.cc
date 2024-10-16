@@ -221,6 +221,7 @@ struct PipelineLoad : mlir::OpRewritePattern<Op> {
   }
 };
 
+// LINT.IfChange
 int GetUnrollingFactor(mlir::scf::ForOp op) {
   // We only unroll loops with a step of 1 and a lower bound of 0. That's the
   // only type we generate.
@@ -279,6 +280,7 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
   }
   return factor;
 }
+// LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/transforms/horizontal_loop_fusion.cc)
 
 struct UnrollLoops : mlir::OpRewritePattern<mlir::scf::ForOp> {
   using mlir::OpRewritePattern<mlir::scf::ForOp>::OpRewritePattern;
