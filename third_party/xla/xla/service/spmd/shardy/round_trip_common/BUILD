@@ -14,13 +14,14 @@ package_group(
 )
 
 cc_library(
-    name = "convert_sharding_custom_calls",
-    srcs = ["convert_sharding_custom_calls.cc"],
-    hdrs = ["convert_sharding_custom_calls.h"],
+    name = "convert_custom_calls",
+    srcs = ["convert_custom_calls.cc"],
+    hdrs = ["convert_custom_calls.h"],
     deps = [
         "//xla:sharding_op_util",
         "//xla/mlir_hlo",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -101,7 +102,7 @@ cc_library(
     srcs = ["pipeline_passes.cc"],
     hdrs = ["pipeline_passes.h"],
     deps = [
-        ":convert_sharding_custom_calls",
+        ":convert_custom_calls",
         ":import_backend_func_calls",
         ":import_constants",
         ":open_while_free_vars_sharding",

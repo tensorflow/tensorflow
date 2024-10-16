@@ -95,6 +95,14 @@ func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   return %0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: func @export_sharding_group
+// CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+func.func @export_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK: mhlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "12 : i64"}}
+  sdy.sharding_group %arg0 group_id = 12:  tensor<8x8xf32>
+  return %arg0 : tensor<8x8xf32>
+}
+
 // CHECK-LABEL: func @constant
 func.func @constant() -> tensor<i32> {
   // CHECK-NEXT: %[[CONST:.*]] = mhlo.constant dense<0>

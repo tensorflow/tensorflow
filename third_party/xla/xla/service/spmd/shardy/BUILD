@@ -123,7 +123,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_import",
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_import",
-        "//xla/service/spmd/shardy/round_trip_common:convert_sharding_custom_calls",
+        "//xla/service/spmd/shardy/round_trip_common:convert_custom_calls",
         "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "//xla/service/spmd/shardy/round_trip_common:import_backend_func_calls",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
