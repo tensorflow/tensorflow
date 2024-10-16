@@ -52,9 +52,6 @@ class GpuExecutor : public StreamExecutorCommon {
         device_ordinal_(device_ordinal) {}
 
   int device_ordinal() const override { return device_ordinal_; };
-  // Creates an EventBasedTimer for the given stream.
-  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-  CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) = 0;
 
   // Frees unused memory cached on the device for use with graphs back to the
   // OS.

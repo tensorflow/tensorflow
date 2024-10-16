@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -212,7 +211,7 @@ bool CUDABlas::Init() {
   return true;
 }
 
-CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
+CUDABlas::CUDABlas(StreamExecutor *parent)
     : parent_(CHECK_NOTNULL(parent)),
       blas_(nullptr)
 #if CUDA_VERSION >= 11000
@@ -1398,16 +1397,7 @@ void initialize_cublas() {
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
           kCudaPlatformId, "cuBLAS",
           [](::stream_executor::StreamExecutor *parent) -> blas::BlasSupport * {
-            gpu::GpuExecutor *cuda_executor =
-                dynamic_cast<gpu::GpuExecutor *>(parent);
-            if (cuda_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the cuBLAS "
-                  << "support library with a non-CUDA StreamExecutor";
-              return nullptr;
-            }
-
-            CUDABlas *blas = new CUDABlas(cuda_executor);
+            CUDABlas *blas = new CUDABlas(parent);
             if (!blas->Init()) {
               // Note: Init() will log a more specific error.
               delete blas;

@@ -85,7 +85,7 @@ class RocmExecutor : public GpuExecutor {
   void Deallocate(DeviceMemoryBase* mem) override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
-      GpuStream* stream, bool use_delay_kernel) override;
+      Stream* stream, bool use_delay_kernel) override;
   absl::StatusOr<DeviceMemoryBase> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,

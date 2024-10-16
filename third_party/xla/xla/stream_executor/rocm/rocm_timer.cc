@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -54,7 +54,7 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
 }  // namespace
 
 RocmTimer::RocmTimer(StreamExecutor* executor, RocmEvent start_event,
-                     RocmEvent stop_event, GpuStream* stream)
+                     RocmEvent stop_event, Stream* stream)
     : executor_(executor),
       stream_(stream),
       start_event_(std::move(start_event)),
@@ -73,7 +73,7 @@ absl::StatusOr<absl::Duration> RocmTimer::GetElapsedDuration() {
 }
 
 absl::StatusOr<RocmTimer> RocmTimer::Create(StreamExecutor* executor,
-                                            GpuStream* stream) {
+                                            Stream* stream) {
   TF_ASSIGN_OR_RETURN(RocmEvent start_event,
                       RocmEvent::Create(executor, /*allow_timing=*/true));
   TF_ASSIGN_OR_RETURN(RocmEvent stop_event,

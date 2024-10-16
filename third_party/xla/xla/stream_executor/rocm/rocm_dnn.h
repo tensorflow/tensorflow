@@ -29,7 +29,6 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-class GpuExecutor;
 class MIOpenRnnDescriptor;
 class MIOpenRnnSequenceTensorDescriptor;
 class MIOpenRnnStateTensorDescriptor;
@@ -72,7 +71,7 @@ struct PoolingWorkspaceCache {
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
  public:
-  explicit MIOpenSupport(GpuExecutor* parent);
+  explicit MIOpenSupport(StreamExecutor* parent);
 
   absl::Status Init() override;
   absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
@@ -490,7 +489,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
-  GpuExecutor* GetParentExecutor() { return parent_; }
+  StreamExecutor* GetParentExecutor() { return parent_; }
 
   absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
                          const dnn::RnnStateTensorDescriptor& probs_desc,
@@ -505,7 +504,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                          int ctc_loss_algo_id) override;
 
  private:
-  GpuExecutor* parent_;  // Parent executor object. Not owned.
+  StreamExecutor* parent_;  // Parent executor object. Not owned.
 
   // Flag to indicate whether Get*Algorithm routines should only return
   // the best algorithm (as opposed to a list of all applicable ones)

@@ -23,13 +23,13 @@ limitations under the License.
 #include <variant>
 
 #include "absl/log/check.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -40,7 +40,7 @@ namespace gpu {
 // Thread-safe post-initialization.
 class GpuStream : public StreamCommon {
  public:
-  GpuStream(GpuExecutor* parent,
+  GpuStream(StreamExecutor* parent,
             std::optional<std::variant<StreamPriority, int>> priority)
       : StreamCommon(parent) {
     if (priority.has_value()) {

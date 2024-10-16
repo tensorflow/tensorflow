@@ -733,7 +733,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-CudaExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+CudaExecutor::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
   const CudaTimer::TimerType timer_type =
       (use_delay_kernel && ShouldLaunchDelayKernel() &&
        delay_kernels_supported_)

@@ -1,4 +1,3 @@
-#include "xla/stream_executor/activate_context.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -90,6 +90,11 @@ class StreamExecutor {
       std::optional<std::variant<StreamPriority, int>> priority) = 0;
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream() {
     return CreateStream(std::nullopt);
+  }
+  // Creates an EventBasedTimer for the given stream.
+  virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
+  CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
+    return absl::UnimplementedError("Not Implemented");
   }
 
   // Creates and initializes an Event.

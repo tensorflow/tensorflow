@@ -116,8 +116,7 @@ class MockGpuExecutor : public GpuExecutor {
 
   MOCK_METHOD(void, UnloadKernel, (const Kernel* kernel));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<EventBasedTimer>>,
-              CreateEventBasedTimer,
-              (GpuStream * stream, bool use_delay_kernel));
+              CreateEventBasedTimer, (Stream * stream, bool use_delay_kernel));
   MOCK_METHOD(absl::Status, TrimGraphMemory, ());
 };
 

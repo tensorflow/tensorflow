@@ -53,7 +53,7 @@ absl::StatusOr<float> GetEventElapsedTime(StreamExecutor *executor,
 }  // namespace
 
 CudaTimer::CudaTimer(StreamExecutor *executor, CudaEvent start_event,
-                     CudaEvent stop_event, GpuStream *stream,
+                     CudaEvent stop_event, Stream *stream,
                      GpuSemaphore semaphore)
     : semaphore_(std::move(semaphore)),
       executor_(executor),
@@ -99,7 +99,7 @@ absl::StatusOr<absl::Duration> CudaTimer::GetElapsedDuration() {
 }
 
 absl::StatusOr<CudaTimer> CudaTimer::Create(StreamExecutor *executor,
-                                            GpuStream *stream,
+                                            Stream *stream,
                                             TimerType timer_type) {
   GpuSemaphore semaphore{};
 

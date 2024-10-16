@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_TIMER_H_
 
-#include <memory>
-
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
@@ -35,15 +33,15 @@ class RocmTimer : public EventBasedTimer {
   absl::StatusOr<absl::Duration> GetElapsedDuration() override;
 
   static absl::StatusOr<RocmTimer> Create(StreamExecutor* executor,
-                                          GpuStream* stream);
+                                          Stream* stream);
 
  private:
   RocmTimer(StreamExecutor* executor, RocmEvent start_event,
-            RocmEvent stop_event, GpuStream* stream);
+            RocmEvent stop_event, Stream* stream);
 
   bool is_stopped_ = false;
   StreamExecutor* executor_;
-  GpuStream* stream_;
+  Stream* stream_;
   RocmEvent start_event_;
   RocmEvent stop_event_;
 };

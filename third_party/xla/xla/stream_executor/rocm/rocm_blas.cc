@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -136,7 +135,7 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
+ROCMBlas::ROCMBlas(StreamExecutor *parent)
     : parent_(CHECK_NOTNULL(parent)),
       blas_(nullptr)
 #if TF_HIPBLASLT
@@ -1271,17 +1270,7 @@ void initialize_rocblas() {
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
                 [](StreamExecutor *parent) -> blas::BlasSupport * {
-                  gpu::GpuExecutor *rocm_executor =
-                      dynamic_cast<gpu::GpuExecutor *>(parent);
-                  if (rocm_executor == nullptr) {
-                    LOG(ERROR)
-                        << "Attempting to initialize an instance of the "
-                           "rocBLAS "
-                        << "support library with a non-ROCM StreamExecutor";
-                    return nullptr;
-                  }
-
-                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(rocm_executor);
+                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(parent);
                   if (!blas->Init()) {
                     // Note: Init() will log a more specific error.
                     delete blas;

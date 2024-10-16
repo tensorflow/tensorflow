@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -73,7 +72,7 @@ cufftType CUDAFftType(fft::Type type) {
 }
 
 // Associates the given stream with the given cuFFT plan.
-bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
+bool SetStream(StreamExecutor *parent, cufftHandle plan, Stream *stream) {
   std::unique_ptr<ActivateContext> activation = parent->Activate();
   auto ret = cufftSetStream(plan, AsGpuStreamValue(stream));
   if (ret != CUFFT_SUCCESS) {
@@ -101,7 +100,7 @@ absl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
 }  // namespace
 
 absl::Status CUDAFftPlan::Initialize(
-    GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
+    StreamExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
     uint64_t *input_embed, uint64_t input_stride, uint64_t input_distance,
     uint64_t *output_embed, uint64_t output_stride, uint64_t output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
@@ -462,15 +461,7 @@ void initialize_cufft() {
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",
           [](StreamExecutor *parent) -> fft::FftSupport * {
-            gpu::GpuExecutor *cuda_executor =
-                dynamic_cast<gpu::GpuExecutor *>(parent);
-            if (cuda_executor == nullptr) {
-              LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
-                         << "support library with a non-CUDA StreamExecutor";
-              return nullptr;
-            }
-
-            return new gpu::CUDAFft(cuda_executor);
+            return new gpu::CUDAFft(parent);
           });
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();

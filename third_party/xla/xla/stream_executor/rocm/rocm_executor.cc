@@ -566,7 +566,7 @@ RocmExecutor::CreateOrShareConstant(Stream* stream,
 }
 
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
-RocmExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
+RocmExecutor::CreateEventBasedTimer(Stream* stream, bool use_delay_kernel) {
   TF_ASSIGN_OR_RETURN(auto timer, RocmTimer::Create(this, stream));
   return std::make_unique<RocmTimer>(std::move(timer));
 }

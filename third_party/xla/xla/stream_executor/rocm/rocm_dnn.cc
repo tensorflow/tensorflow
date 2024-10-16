@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -216,7 +215,7 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+  MIOpenHandle(StreamExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
                miopenHandle_t handle)
       : context_(executor->Activate()),
         lock_(std::move(lock)),
@@ -737,7 +736,7 @@ class MIOpenAccess {
   // The null stream synchronizes with all other streams and it is
   // therefore a bad idea (performance wise) to call any MIOpen APIs that
   // enqueue work in the stream.
-  MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
+  MIOpenHandle GetHandle(StreamExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
@@ -754,7 +753,7 @@ class MIOpenAccess {
   miopenHandle_t handle_ ABSL_GUARDED_BY(mutex_);  // Owned.
 };
 
-MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
+MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
   // by default, the Get*Algorithm API will return the list of all applicable
   // algorithms
   return_best_algo_only_ = false;
@@ -3278,7 +3277,7 @@ absl::Status MIOpenSupport::DoPrepareForConvolution(
 
 class RocmConvRunner : public dnn::ConvRunner {
  public:
-  RocmConvRunner(GpuExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
+  RocmConvRunner(StreamExecutor* parent, MIOpenAccess* miopen, int64_t algo_id,
                  size_t workspace_size, dnn::ConvolutionKind kind,
                  dnn::DataType input_type, dnn::DataType output_type,
                  bool use_immediate_mode,
@@ -3423,7 +3422,7 @@ class RocmConvRunner : public dnn::ConvRunner {
   }
 
  private:
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   MIOpenAccess* miopen_;
   int64_t algo_id_;
   size_t workspace_size_;
@@ -4892,7 +4891,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
  public:
   // Queries the workspace size and constructs a 'RocmFusedConvRunner'.
   static absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>> Create(
-      GpuExecutor* parent, Stream* stream, MIOpenAccess* miopen,
+      StreamExecutor* parent, Stream* stream, MIOpenAccess* miopen,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       dnn::DataType bias_type, double conv_scale, double side_input_scale,
       double leakyrelu_alpha, BatchDescriptor input_nd,
@@ -4964,7 +4963,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
  private:
   // Private to prevent passing in the wrong workspace_size.
   RocmFusedConvRunner(
-      GpuExecutor* parent, Stream* stream, MIOpenAccess* miopen,
+      StreamExecutor* parent, Stream* stream, MIOpenAccess* miopen,
       int64_t algo_id, size_t workspace_size, dnn::DataType input_type,
       dnn::DataType bias_type, double conv_scale, double side_input_scale,
       double leakyrelu_alpha, BatchDescriptor dnn_input_nd,
@@ -5080,7 +5079,7 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
   std::string desc_;
 
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   MIOpenAccess* miopen_;
   int64_t algo_id_;
   size_t workspace_size_;
@@ -5195,16 +5194,7 @@ void initialize_miopen() {
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
             rocm::kROCmPlatformId, "MIOpen",
             [](StreamExecutor* parent) -> dnn::DnnSupport* {
-              gpu::GpuExecutor* rocm_executor =
-                  dynamic_cast<gpu::GpuExecutor*>(parent);
-              if (rocm_executor == nullptr) {
-                LOG(ERROR)
-                    << "Attempting to initialize an instance of the MIOpen "
-                    << "support library with a non-ROCM StreamExecutor";
-                return nullptr;
-              }
-
-              gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(rocm_executor);
+              gpu::MIOpenSupport* dnn = new gpu::MIOpenSupport(parent);
               if (!dnn->Init().ok()) {
                 // Note: Init() will log a more specific error.
                 delete dnn;

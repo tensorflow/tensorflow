@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -68,7 +67,7 @@ class RocmStream : public GpuStream {
   }
 
   static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
-      GpuExecutor* executor,
+      StreamExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~RocmStream() override;
@@ -76,7 +75,7 @@ class RocmStream : public GpuStream {
   hipStream_t stream_handle() const { return stream_handle_; }
 
  private:
-  RocmStream(GpuExecutor* executor, RocmEvent completed_event,
+  RocmStream(StreamExecutor* executor, RocmEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              hipStream_t stream_handle)
       : GpuStream(executor, priority),
@@ -90,7 +89,7 @@ class RocmStream : public GpuStream {
                       const std::optional<ClusterDim>& cluster_dims,
                       const Kernel& kernel, const KernelArgs& args) override;
 
-  GpuExecutor* executor_;
+  StreamExecutor* executor_;
   RocmEvent completed_event_;
   hipStream_t stream_handle_;
 };
