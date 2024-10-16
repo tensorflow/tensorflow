@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,12 +25,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/host_memory_allocation.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"

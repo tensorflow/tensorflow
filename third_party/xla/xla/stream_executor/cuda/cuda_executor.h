@@ -1,4 +1,5 @@
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -207,6 +208,9 @@ class CudaExecutor : public GpuExecutor {
   // Lookup map for alive streams, from raw stream pointers.
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
+
+  // CudaContext for this device.
+  CudaContext* cuda_context_;
 };
 
 }  // namespace stream_executor::gpu
