@@ -919,6 +919,7 @@ cc_library(
     deps = [
         ":shape_inference",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
     ],
 )

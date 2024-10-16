@@ -442,6 +442,7 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
+        "//xla:util",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",

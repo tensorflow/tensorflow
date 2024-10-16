@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -34,19 +33,12 @@ namespace gpu {
 absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> contracting_dims) {
-  std::vector<int64_t> non_contracting_dims;
-  // This is O(rank**2), but we expect rank to be small.
-  for (int64_t dim = 0; dim < shape.rank(); ++dim) {
-    bool is_batch = absl::c_count(batch_dims, dim) != 0;
-    bool is_contracting = absl::c_count(contracting_dims, dim) != 0;
-    TF_RET_CHECK(!(is_batch && is_contracting));
-    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
-  }
+  auto nc =
+      ::xla::GetNonContractingDims(shape.rank(), contracting_dims, batch_dims);
 
-  TF_RET_CHECK(batch_dims.size() + contracting_dims.size() +
-                   non_contracting_dims.size() ==
+  TF_RET_CHECK(batch_dims.size() + contracting_dims.size() + nc.size() ==
                shape.rank());
-  return non_contracting_dims;
+  return std::vector<int64_t>(nc.begin(), nc.end());
 }
 
 const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
