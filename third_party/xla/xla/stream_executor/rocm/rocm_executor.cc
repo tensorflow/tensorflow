@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
@@ -144,14 +146,15 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 
 // Loads HSACO with the ROCM runtime and stores the resulting handle in
 // "module". Any error logs that are produced are logged internally.
-absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
-                       hipModule_t* module) {
+absl::StatusOr<hipModule_t> LoadHsaco(Context* context,
+                                      const char* hsaco_contents) {
   absl::Notification notification;
   absl::Status returned_status = absl::OkStatus();
+  hipModule_t module;
   GetDriverExecutor()->Schedule(
-      [context, hsaco_contents, module, &returned_status, &notification]() {
+      [context, hsaco_contents, &module, &returned_status, &notification]() {
         ScopedActivateContext activation{context};
-        hipError_t res = wrap::hipModuleLoadData(module, hsaco_contents);
+        hipError_t res = wrap::hipModuleLoadData(&module, hsaco_contents);
 
         if (res != hipSuccess) {
           returned_status = absl::InternalError(
@@ -164,19 +167,23 @@ absl::Status LoadHsaco(Context* context, const char* hsaco_contents,
       });
   notification.WaitForNotification();
 
-  return returned_status;
+  TF_RETURN_IF_ERROR(returned_status);
+  return module;
 }
 
 // Retrieves a named kernel from a loaded module, and places the resulting
 // handle into function (outparam) on success. Neither kernel_name nor
 // function may be null. No ownership is taken of kernel_name.
-absl::Status GetModuleFunction(Context* context, hipModule_t module,
-                               const char* kernel_name,
-                               hipFunction_t* function) {
+absl::StatusOr<hipFunction_t> GetModuleFunction(Context* context,
+                                                hipModule_t module,
+                                                const char* kernel_name) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  return ToStatus(wrap::hipModuleGetFunction(function, module, kernel_name),
-                  "Failed to get kernel");
+  hipFunction_t function;
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipModuleGetFunction(&function, module, kernel_name),
+               "Failed to get kernel"));
+  return function;
 }
 
 // Retrieves a named global/constant symbol from a loaded module, and returns
@@ -478,9 +485,8 @@ std::unique_ptr<ActivateContext> RocmExecutor::Activate() {
 }
 
 bool RocmExecutor::UnloadModule(ModuleHandle module_handle) {
-  const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
   absl::MutexLock lock{&in_memory_modules_mu_};
-  return UnloadGpuBinary(gpu_binary);
+  return UnloadGpuBinary(module_handle);
 }
 
 absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
@@ -565,10 +571,10 @@ RocmExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   return std::make_unique<RocmTimer>(std::move(timer));
 }
 
-bool RocmExecutor::UnloadGpuBinary(const void* gpu_binary) {
-  auto module_it = gpu_binary_to_module_.find(gpu_binary);
+bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
+  auto module_it = gpu_binary_to_module_.find(module_handle);
   if (gpu_binary_to_module_.end() == module_it) {
-    VLOG(3) << "No loaded  HSACO module for " << gpu_binary;
+    VLOG(3) << "No loaded  HSACO module for " << module_handle;
     return false;
   }
   auto& module = module_it->second.first;
@@ -578,11 +584,11 @@ bool RocmExecutor::UnloadGpuBinary(const void* gpu_binary) {
     VLOG(3) << "Unloading  HSACO module " << module;
     UnloadRocmModule(gpu_context(), module);
     gpu_binary_to_module_.erase(module_it);
-    const char* mem_it = nullptr;
+    ModuleHandle mem_it{};
     for (auto x : in_memory_modules_) {
       if (x.second == module) mem_it = x.first;
     }
-    if (mem_it != nullptr) in_memory_modules_.erase(mem_it);
+    if (mem_it != ModuleHandle{}) in_memory_modules_.erase(mem_it);
   }
   return true;
 }
@@ -616,7 +622,6 @@ absl::Status RocmExecutor::Init() {
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
   auto rocm_kernel = std::make_unique<RocmKernel>(this);
-  hipModule_t module = nullptr;
   const std::string* kernel_name;
 
   if (spec.has_cuda_cubin_in_memory()) {
@@ -625,12 +630,19 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     const char* hsaco = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory().cubin_bytes().data());
     absl::MutexLock lock{&in_memory_modules_mu_};
-    module = in_memory_modules_[hsaco];
+    ModuleHandle module_handle{hsaco};
+    hipModule_t& module = in_memory_modules_[module_handle];
 
     if (module == nullptr) {
-      TF_RETURN_IF_ERROR(LoadHsaco(gpu_context(), hsaco, &module));
+      TF_ASSIGN_OR_RETURN(module, LoadHsaco(gpu_context(), hsaco));
     }
-    kernel_to_gpu_binary_[rocm_kernel.get()] = hsaco;
+    kernel_to_gpu_binary_[rocm_kernel.get()] = module_handle;
+
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_ASSIGN_OR_RETURN(
+        hipFunction_t function,
+        GetModuleFunction(gpu_context(), module, kernel_name->c_str()));
+    rocm_kernel->set_gpu_function(function);
   } else if (spec.has_in_process_symbol()) {
     kernel_name = &spec.in_process_symbol().kernel_name();
     void* symbol = spec.in_process_symbol().symbol();
@@ -650,16 +662,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 
   } else {
     return absl::InternalError("No method of loading ROCM kernel provided");
-  }
-
-  // If we resolved kernel from a symbol pointer, there is no need to load it
-  // from a module, as ROCm runtime did that automatically for us.
-  if (!spec.has_in_process_symbol()) {
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    hipFunction_t function;
-    TF_RETURN_IF_ERROR(GetModuleFunction(gpu_context(), module,
-                                         kernel_name->c_str(), &function));
-    rocm_kernel->set_gpu_function(function);
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -690,43 +692,41 @@ absl::Status RocmExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
   return absl::OkStatus();
 }
 
-absl::Status RocmExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
-                                      ModuleHandle* module_handle) {
-  // In GpuExecutor we store the pointer to the  HSACO binary  as
+absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
+    const MultiModuleLoaderSpec& spec) {
+  // In GpuExecutor we store the pointer to the HSACO binary as
   // ModuleHandle::id().
-  hipModule_t hip_module = nullptr;
+
   // TODO(ROCm): Need  generic term instead of cubin/cuda/ptx
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    TF_RETURN_IF_ERROR(LoadModuleFromHsaco(
-        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
-        &hip_module));
-    *module_handle = ModuleHandle(const_cast<void*>(
-        static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
-    return absl::OkStatus();
+    return LoadModuleFromHsaco(
+        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else {
     return absl::InternalError("No HASCO binary found");
   }
 }
 
-absl::Status RocmExecutor::LoadModuleFromHsaco(const char* hsaco,
-                                               hipModule_t* module) {
+absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
+    const char* hsaco) {
+  ModuleHandle module_handle{hsaco};
   uint64_t module_refcount;
-  std::tie(*module, module_refcount) = gpu_binary_to_module_[hsaco];
+  hipModule_t module;
+  std::tie(module, module_refcount) = gpu_binary_to_module_[module_handle];
 
-  if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(LoadHsaco(gpu_context(), hsaco, module));
+  if (module == nullptr) {
+    TF_ASSIGN_OR_RETURN(module, LoadHsaco(gpu_context(), hsaco));
     module_refcount = 1;
-    in_memory_modules_[hsaco] = *module;
+    in_memory_modules_[module_handle] = module;
     VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
-            << " as module " << *module;
+            << " as module " << module;
   } else {
     ++module_refcount;
     VLOG(3) << "HSACO " << static_cast<const void*>(hsaco)
-            << " is already loaded as module " << *module;
+            << " is already loaded as module " << module;
   }
-  gpu_binary_to_module_[hsaco] = {*module, module_refcount};
-  return absl::OkStatus();
+  gpu_binary_to_module_[module_handle] = {module, module_refcount};
+  return module_handle;
 }
 
 DeviceMemoryBase RocmExecutor::Allocate(uint64_t size, int64_t memory_space) {
@@ -934,7 +934,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
 
   absl::MutexLock lock{&in_memory_modules_mu_};
   if (static_cast<bool>(module_handle)) {
-    auto it = gpu_binary_to_module_.find(module_handle.id());
+    auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
     TF_RETURN_IF_ERROR(
         GetModuleSymbol(gpu_context(), it->second.first, symbol_name.c_str(),

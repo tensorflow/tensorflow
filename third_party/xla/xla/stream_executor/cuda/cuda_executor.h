@@ -91,8 +91,8 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const MultiKernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
-  absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                          ModuleHandle* module_handle) override;
+  absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
   absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
@@ -142,16 +142,15 @@ class CudaExecutor : public GpuExecutor {
   absl::Status GetKernelMetadata(GpuKernel* cuda_kernel,
                                  KernelMetadata* kernel_metadata);
 
-  // (supported on CUDA only)
-  absl::Status LoadModuleFromCuBin(const char* cubin, CUmodule* module)
+  // Loads a module in cubin format.
+  absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
-  // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
-  // (supported on CUDA only)
-  absl::Status LoadModuleFromPtx(const char* ptx, CUmodule* module)
+  // Loads the PTX text `ptx` as a CUDA module. `ptx` must be null terminated.
+  absl::StatusOr<ModuleHandle> LoadModuleFromPtx(const char* ptx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
-  bool UnloadGpuBinary(const void* gpu_binary)
+  bool UnloadGpuBinary(ModuleHandle gpu_binary)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Returns true if a delay kernel is supported.
@@ -167,12 +166,12 @@ class CudaExecutor : public GpuExecutor {
   std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
-  // Kernel -> loaded GPU binary. Many kernels may load the same binary.
-  absl::flat_hash_map<const Kernel*, const void*> kernel_to_gpu_binary_
+  // Kernel -> loaded GPU module. Many kernels may load the same binary.
+  absl::flat_hash_map<const Kernel*, ModuleHandle> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
-  // GPU binary (PTX or CUBIN) -> {CUDA module, reference count}.
-  absl::flat_hash_map<const void*, std::pair<CUmodule, uint64_t>>
+  // Loaded GPU module handle -> {CUDA module, reference count}.
+  absl::flat_hash_map<ModuleHandle, std::pair<CUmodule, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the CUDA device being operated on. Immutable

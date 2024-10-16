@@ -127,11 +127,10 @@ class StreamExecutor {
 
   // Loads a module for the platform this StreamExecutor is acting upon.
   //
-  // `spec` describes the module to be loaded.  On success writes the handle for
-  // the loaded module to `module_handle` and returns absl::OkStatus().
-  // Otherwise, returns the error which has occurred.
-  virtual absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                                  ModuleHandle* module_handle) {
+  // `spec` describes the module to be loaded.  On success returns the handle
+  // for the loaded module. Otherwise, returns the error which has occurred.
+  virtual absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 

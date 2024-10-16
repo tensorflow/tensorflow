@@ -621,7 +621,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   if (!(executor->GetPlatform()->id() ==
             stream_executor::cuda::kCudaPlatformId &&
         binary().empty() && text().empty())) {
-    TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
+    TF_ASSIGN_OR_RETURN(module_handle, executor->LoadModule(module_spec));
   }
 
   // A flag signalling if constant initialization submitted memcpy operations

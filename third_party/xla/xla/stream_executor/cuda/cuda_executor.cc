@@ -123,14 +123,14 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
   return thread_pool;
 }
 
-// Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
-// handle in "module". Any error logs that are produced are logged internally.
-absl::Status LoadPtx(Context* context, const char* ptx_contents,
-                     CUmodule* module) {
+// Loads ptx_contents with the CUDA driver's PTX JIT and return the resulting
+// handle. Any error logs that are produced are logged internally.
+absl::StatusOr<CUmodule> LoadPtx(Context* context, const char* ptx_contents) {
   absl::Notification notification;
   absl::Status returned_status = absl::OkStatus();
+  CUmodule module;
   GetDriverExecutor()->Schedule(
-      [context, ptx_contents, module, &returned_status, &notification]() {
+      [context, ptx_contents, &module, &returned_status, &notification]() {
         ScopedActivateContext activation(context);
         void* ptx_data = const_cast<char*>(ptx_contents);
         static const unsigned int kLogBufferBytesLimit = 1024;
@@ -155,7 +155,7 @@ absl::Status LoadPtx(Context* context, const char* ptx_contents,
 
         absl::Status status;
         status = cuda::ToStatus(cuModuleLoadDataEx(
-            module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
+            &module, ptx_data, TF_ARRAYSIZE(options), options, option_values));
 
         // The PTX JIT mutates the values in the option values array to reflect
         // the size of the logs it output; now that we've made the call, read
@@ -195,24 +195,26 @@ absl::Status LoadPtx(Context* context, const char* ptx_contents,
       });
   notification.WaitForNotification();
 
-  return returned_status;
+  TF_RETURN_IF_ERROR(returned_status);
+  return module;
 }
 
 // Loads cubin_bytes with the CUDA driver's blob loading interface and stores
 // the resulting handle in "module".
-absl::Status LoadCubin(Context* context, const char* cubin_bytes,
-                       CUmodule* module) {
+absl::StatusOr<CUmodule> LoadCubin(Context* context, const char* cubin_bytes) {
   ScopedActivateContext activation(context);
-  return cuda::ToStatus(
-      cuModuleLoadFatBinary(module, cubin_bytes),
-      "Failed to load in-memory CUBIN (compiled for a different GPU?).");
+  CUmodule module;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuModuleLoadFatBinary(&module, cubin_bytes),
+      "Failed to load in-memory CUBIN (compiled for a different GPU?)."));
+  return module;
 }
 
-// Retrieves a named kernel from a loaded module, and places the resulting
-// handle into function (outparam) on success. Neither kernel_name nor
-// function may be null. No ownership is taken of kernel_name.
-absl::Status GetModuleFunction(Context* context, CUmodule module,
-                               const char* kernel_name, CUfunction* function) {
+// Retrieves a named kernel from a loaded module, and return the CUfunction
+// handle on success. Neither kernel_name nor function may be null. No ownership
+// is taken of kernel_name.
+absl::StatusOr<CUfunction> GetModuleFunction(Context* context, CUmodule module,
+                                             const char* kernel_name) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
   cudaError_t cuda_error = cudaPeekAtLastError();
@@ -222,8 +224,11 @@ absl::Status GetModuleFunction(Context* context, CUmodule module,
                      cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
                      cudaGetErrorString(cuda_error)));
   }
-  return cuda::ToStatus(cuModuleGetFunction(function, module, kernel_name),
-                        "Failed to get module function");
+  CUfunction function;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuModuleGetFunction(&function, module, kernel_name),
+                     "Failed to get module function"));
+  return function;
 }
 
 // Retrieves a named global/constant symbol from a loaded module, and returns
@@ -609,48 +614,50 @@ absl::StatusOr<bool> CudaExecutor::DelayKernelIsSupported() {
   return static_cast<bool>(status);
 }
 
-absl::Status CudaExecutor::LoadModuleFromCuBin(const char* cubin,
-                                               CUmodule* module) {
+absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromCuBin(
+    const char* cubin) {
+  ModuleHandle module_handle{cubin};
   uint64_t module_refcount;
-  std::tie(*module, module_refcount) = gpu_binary_to_module_[cubin];
+  CUmodule module;
+  std::tie(module, module_refcount) = gpu_binary_to_module_[module_handle];
 
-  if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(LoadCubin(gpu_context(), cubin, module));
+  if (module == nullptr) {
+    TF_ASSIGN_OR_RETURN(module, LoadCubin(gpu_context(), cubin));
     module_refcount = 1;
     VLOG(3) << "Loaded CUBIN " << static_cast<const void*>(cubin)
-            << " as module " << *module;
+            << " as module " << module;
   } else {
     ++module_refcount;
     VLOG(3) << "CUBIN " << static_cast<const void*>(cubin)
-            << " is already loaded as module " << *module;
+            << " is already loaded as module " << module;
   }
-  gpu_binary_to_module_[cubin] = {*module, module_refcount};
-  return absl::OkStatus();
+  gpu_binary_to_module_[module_handle] = {module, module_refcount};
+  return module_handle;
 }
 
-absl::Status CudaExecutor::LoadModuleFromPtx(const char* ptx,
-                                             CUmodule* module) {
+absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
+  ModuleHandle module_handle{ptx};
   uint64_t module_refcount;
-  std::tie(*module, module_refcount) = gpu_binary_to_module_[ptx];
+  CUmodule module;
+  std::tie(module, module_refcount) = gpu_binary_to_module_[module_handle];
 
-  if (*module == nullptr) {
-    TF_RETURN_IF_ERROR(LoadPtx(gpu_context(), ptx, module));
+  if (module == nullptr) {
+    TF_ASSIGN_OR_RETURN(module, LoadPtx(gpu_context(), ptx));
     VLOG(3) << "Loaded PTX " << static_cast<const void*>(ptx) << " as module "
-            << *module;
+            << module;
     module_refcount = 1;
   } else {
     ++module_refcount;
     VLOG(3) << "PTX " << static_cast<const void*>(ptx)
             << " is already loaded as module " << module;
   }
-  gpu_binary_to_module_[ptx] = {*module, module_refcount};
-  return absl::OkStatus();
+  gpu_binary_to_module_[module_handle] = {module, module_refcount};
+  return module_handle;
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
   auto cuda_kernel = std::make_unique<CudaKernel>(this);
-  CUmodule module;
   const std::string* kernel_name;
 
   if (spec.has_cuda_cubin_in_memory()) {
@@ -658,8 +665,15 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
     const char* cubin = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory().cubin_bytes().data());
-    TF_RETURN_IF_ERROR(LoadModuleFromCuBin(cubin, &module));
-    kernel_to_gpu_binary_[cuda_kernel.get()] = cubin;
+    TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromCuBin(cubin));
+    kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
+
+    CUmodule module = gpu_binary_to_module_.at(module_handle).first;
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_ASSIGN_OR_RETURN(
+        CUfunction function,
+        GetModuleFunction(gpu_context(), module, kernel_name->c_str()));
+    cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_cuda_ptx_in_memory()) {
     kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
@@ -677,8 +691,15 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
-    TF_RETURN_IF_ERROR(LoadModuleFromPtx(ptx, &module));
-    kernel_to_gpu_binary_[cuda_kernel.get()] = ptx;
+    TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromPtx(ptx));
+    kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
+
+    CUmodule module = gpu_binary_to_module_.at(module_handle).first;
+    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    TF_ASSIGN_OR_RETURN(
+        CUfunction function,
+        GetModuleFunction(gpu_context(), module, kernel_name->c_str()));
+    cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_in_process_symbol()) {
     kernel_name = &spec.in_process_symbol().kernel_name();
@@ -695,15 +716,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     return absl::InternalError("No method of loading CUDA kernel provided");
   }
   VLOG(3) << "LoadKernel on kernel : " << *kernel_name;
-  // If we resolved kernel from a symbol pointer, there is no need to load it
-  // from a module, as CUDA runtime did that automatically for us.
-  if (!spec.has_in_process_symbol()) {
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
-    CUfunction function;
-    TF_RETURN_IF_ERROR(GetModuleFunction(gpu_context(), module,
-                                         kernel_name->c_str(), &function));
-    cuda_kernel->set_gpu_function(function);
-  }
 
   // Update CUDA kernel properties after it was loaded in the CUDA context.
   cuda_kernel->set_name(*kernel_name);
@@ -733,7 +745,7 @@ CudaExecutor::CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) {
   return std::make_unique<CudaTimer>(std::move(timer));
 }
 
-bool CudaExecutor::UnloadGpuBinary(const void* gpu_binary) {
+bool CudaExecutor::UnloadGpuBinary(ModuleHandle gpu_binary) {
   auto module_it = gpu_binary_to_module_.find(gpu_binary);
   if (gpu_binary_to_module_.end() == module_it) {
     VLOG(3) << "No loaded CUDA module for " << gpu_binary;
@@ -768,19 +780,14 @@ void CudaExecutor::UnloadKernel(const Kernel* kernel) {
   kernel_to_gpu_binary_.erase(gpu_binary_it);
 }
 
-absl::Status CudaExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
-                                      ModuleHandle* module_handle) {
+absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
+    const MultiModuleLoaderSpec& spec) {
   // In GpuExecutor we store the pointer to the GPU binary (PTX or CUBIN) as
   // ModuleHandle::id().
-  CUmodule cu_module;
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    TF_RETURN_IF_ERROR(LoadModuleFromCuBin(
-        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
-        &cu_module));
-    *module_handle = ModuleHandle(const_cast<void*>(
-        static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
-    return absl::OkStatus();
+    return LoadModuleFromCuBin(
+        reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return absl::InternalError("Compute capability not set");
@@ -791,19 +798,14 @@ absl::Status CudaExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
-    TF_RETURN_IF_ERROR(
-        LoadModuleFromPtx(spec.cuda_ptx_in_memory(), &cu_module));
-    *module_handle = ModuleHandle(
-        const_cast<void*>(static_cast<const void*>(spec.cuda_ptx_in_memory())));
-    return absl::OkStatus();
+    return LoadModuleFromPtx(spec.cuda_ptx_in_memory());
   }
   return absl::InternalError("No method of loading CUDA module provided");
 }
 
 bool CudaExecutor::UnloadModule(ModuleHandle module_handle) {
-  const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
   absl::MutexLock lock{&in_memory_modules_mu_};
-  return UnloadGpuBinary(gpu_binary);
+  return UnloadGpuBinary(module_handle);
 }
 
 namespace {
@@ -1122,7 +1124,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
 
   {  // give limited scope to mutex_lock
     absl::MutexLock lock{&in_memory_modules_mu_};
-    auto it = gpu_binary_to_module_.find(module_handle.id());
+    auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
 
     CUmodule gpu_module_handle = it->second.first;

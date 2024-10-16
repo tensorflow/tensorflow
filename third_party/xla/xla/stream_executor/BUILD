@@ -193,6 +193,7 @@ cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
     ],

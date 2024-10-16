@@ -55,9 +55,8 @@ class MockStreamExecutor : public StreamExecutor {
               (const MultiKernelLoaderSpec& spec), (override));
   MOCK_METHOD(std::unique_ptr<ActivateContext>, Activate, (), (override));
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
-  MOCK_METHOD(absl::Status, LoadModule,
-              (const MultiModuleLoaderSpec& spec, ModuleHandle* module_handle),
-              (override));
+  MOCK_METHOD(absl::StatusOr<ModuleHandle>, LoadModule,
+              (const MultiModuleLoaderSpec& spec), (override));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>,
               CreateOrShareConstant,
               (Stream * stream, absl::Span<const uint8_t> content), (override));
