@@ -175,12 +175,22 @@ Array::AssembleArrayFromSingleDeviceArrays(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics) {
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  if (single_device_shard_semantics ==
+          SingleDeviceShardSemantics::kAddressableShards &&
+      rpc_helper->version().protocol_version() < 8) {
+    return absl::UnimplementedError(
+        "SingleDeviceShardSemantics::kAdressableShards is not supported in "
+        "ifrt-proxy version < 8");
+  }
   auto req = std::make_unique<AssembleArrayFromSingleDeviceArraysRequest>();
   TF_RET_CHECK(!arrays.empty());
   *req->mutable_shape() = shape.ToProto();
   TF_ASSIGN_OR_RETURN(*req->mutable_sharding(), sharding->ToProto());
-  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+  req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
+  req->set_single_device_shard_semantics(
+      ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
   for (const tsl::RCReference<xla::ifrt::Array>& rcref : arrays) {
     Array* array = llvm::dyn_cast<Array>(rcref.get());
     if (array == nullptr) {
@@ -244,9 +254,26 @@ Array::RemapArrays(xla::ifrt::Client* client,
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 Array::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
+  return DisassembleIntoSingleDeviceArrays(
+      semantics, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+Array::DisassembleIntoSingleDeviceArrays(
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  if (single_device_shard_semantics ==
+          SingleDeviceShardSemantics::kAddressableShards &&
+      rpc_helper_->version().protocol_version() < 8) {
+    return absl::UnimplementedError(
+        "SingleDeviceShardSemantics::kAdressableShards is not supported in "
+        "version < 8");
+  }
   auto req = std::make_unique<DisassembleIntoSingleDeviceArraysRequest>();
   req->set_array_handle(handle_.handle);
-  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+  req->set_copy_semantics(ToArrayCopySemanticsProto(array_copy_semantics));
+  req->set_single_device_shard_semantics(
+      ToSingleDeviceShardSemanticsProto(single_device_shard_semantics));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<DisassembleIntoSingleDeviceArraysResponse> response,

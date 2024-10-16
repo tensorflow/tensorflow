@@ -245,6 +245,7 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     for (int i = 0; i < 2; ++i) {
       auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
       ON_CALL(*mock_device, Id()).WillByDefault(Return(DeviceId(i)));
+      ON_CALL(*mock_device, IsAddressable()).WillByDefault(Return(true));
       raw_device_ptrs.push_back(mock_device.get());
       mock_devices_.push_back(std::move(mock_device));
     }
@@ -580,7 +581,7 @@ TEST_P(IfrtBackendHandlerTest, DisassembleIntoSingleDeviceArraysSucceeds) {
   single_device_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
   tsl::RCReference<xla::ifrt::MockArray> source_mock_array =
       tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*source_mock_array, DisassembleIntoSingleDeviceArrays(_))
+  EXPECT_CALL(*source_mock_array, DisassembleIntoSingleDeviceArrays(_, _))
       .WillOnce(Return(std::move(single_device_arrays)));
 
   // Inject the mock_array.
@@ -589,8 +590,15 @@ TEST_P(IfrtBackendHandlerTest, DisassembleIntoSingleDeviceArraysSucceeds) {
 
   // Disassemble.
   auto disassemble_request = NewIfrtRequest(NewOpId());
-  disassemble_request->mutable_disassemble_into_single_device_arrays_request()
-      ->set_array_handle(array_handle);
+  auto* disassemble_into_single_device_arrays =
+      disassemble_request
+          ->mutable_disassemble_into_single_device_arrays_request();
+  disassemble_into_single_device_arrays->set_array_handle(array_handle);
+  if (Version().protocol_version() >= 8) {
+    disassemble_into_single_device_arrays->set_single_device_shard_semantics(
+        proto::SingleDeviceShardSemantics::
+            SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto disassemble_response,
                           CallBackend(std::move(disassemble_request)));
 
@@ -649,13 +657,25 @@ TEST_P(IfrtBackendHandlerTest, MakeArrayFromHostBufferSuccess) {
 TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
   auto ifrt_request = NewIfrtRequest(NewOpId());
   {
-    ASSERT_TRUE(TextFormat::ParseFromString(
-        R"pb(
-          shape { dims: [ 2, 2 ] }
-          copy_semantics: ARRAY_COPY_SEMANTICS_ALWAYS_COPY
-        )pb",
-        ifrt_request
-            ->mutable_assemble_array_from_single_device_arrays_request()));
+    if (Version().protocol_version() < 8) {
+      ASSERT_TRUE(TextFormat::ParseFromString(
+          R"pb(
+            shape { dims: [ 2, 2 ] }
+            copy_semantics: ARRAY_COPY_SEMANTICS_ALWAYS_COPY
+          )pb",
+          ifrt_request
+              ->mutable_assemble_array_from_single_device_arrays_request()));
+    } else {
+      ASSERT_TRUE(TextFormat::ParseFromString(
+          R"pb(
+            shape { dims: [ 2, 2 ] }
+            copy_semantics: ARRAY_COPY_SEMANTICS_ALWAYS_COPY
+            single_device_shard_semantics:
+                SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS
+          )pb",
+          ifrt_request
+              ->mutable_assemble_array_from_single_device_arrays_request()));
+    }
     TF_ASSERT_OK_AND_ASSIGN(auto* device,
                             mock_client_->LookupDevice(DeviceId(1)));
     TF_ASSERT_OK_AND_ASSIGN(
@@ -671,17 +691,26 @@ TEST_P(IfrtBackendHandlerTest, AssembleArrayFromSingleDeviceArrays) {
     single_device_arrays.push_back(array);
 
     TF_ASSERT_OK_AND_ASSIGN(uint64_t array_handle, MakeTestArray(array));
-    ifrt_request->mutable_assemble_array_from_single_device_arrays_request()
-        ->add_single_device_array_handles(array_handle);
+    auto* assemble_array_from_single_device_arrays =
+        ifrt_request
+            ->mutable_assemble_array_from_single_device_arrays_request();
+    assemble_array_from_single_device_arrays->add_single_device_array_handles(
+        array_handle);
+    if (Version().protocol_version() >= 8) {
+      assemble_array_from_single_device_arrays
+          ->set_single_device_shard_semantics(
+              proto::SingleDeviceShardSemantics::
+                  SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
+    }
   }
 
   tsl::RCReference<xla::ifrt::MockArray> result =
       tsl::MakeRef<xla::ifrt::MockArray>();
   const Shape expected_shape({2, 2});
 
-  EXPECT_CALL(*mock_client_,
-              AssembleArrayFromSingleDeviceArrays(
-                  expected_shape, _, ElementsAreArray(single_device_arrays), _))
+  EXPECT_CALL(*mock_client_, AssembleArrayFromSingleDeviceArrays(
+                                 expected_shape, _,
+                                 ElementsAreArray(single_device_arrays), _, _))
       .WillOnce(Return(std::move(result)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
@@ -744,7 +773,7 @@ TEST_P(IfrtBackendHandlerTest,
       "messages - 1234";
   tsl::RCReference<xla::ifrt::MockArray> source_mock_array =
       tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*source_mock_array, DisassembleIntoSingleDeviceArrays(_))
+  EXPECT_CALL(*source_mock_array, DisassembleIntoSingleDeviceArrays(_, _))
       .WillOnce(Return(absl::UnknownError(kDisassembleErrorMessage)));
 
   // Set up the mock client to return the source_mock_array when the test tries
@@ -754,8 +783,15 @@ TEST_P(IfrtBackendHandlerTest,
 
   // Disassembly must fail with the error we injected.
   auto disassemble_request = NewIfrtRequest(NewOpId());
-  disassemble_request->mutable_disassemble_into_single_device_arrays_request()
-      ->set_array_handle(array_handle);
+  auto* disassemble_into_single_device_arrays =
+      disassemble_request
+          ->mutable_disassemble_into_single_device_arrays_request();
+  disassemble_into_single_device_arrays->set_array_handle(array_handle);
+  if (Version().protocol_version() >= 8) {
+    disassemble_into_single_device_arrays->set_single_device_shard_semantics(
+        proto::SingleDeviceShardSemantics::
+            SINGLE_DEVICE_SHARD_SEMANTICS_ALL_SHARDS);
+  }
   ASSERT_THAT(
       CallBackend(std::move(disassemble_request)),
       StatusIs(absl::StatusCode::kUnknown, StrEq(kDisassembleErrorMessage)));

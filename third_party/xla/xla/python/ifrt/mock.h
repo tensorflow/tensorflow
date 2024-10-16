@@ -80,6 +80,11 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
               DisassembleIntoSingleDeviceArrays, (ArrayCopySemantics semantics),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>,
+              DisassembleIntoSingleDeviceArrays,
+              (ArrayCopySemantics array_copy_semantics,
+               SingleDeviceShardSemantics single_device_shard_semantics),
+              (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>, FullyReplicatedShard,
               (ArrayCopySemantics semantics), (final));
   MOCK_METHOD(Future<>, CopyToHostBuffer,
@@ -119,6 +124,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (Shape shape, std::shared_ptr<const Sharding> sharding,
                absl::Span<tsl::RCReference<Array>> arrays,
                ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<tsl::RCReference<Array>>,
+              AssembleArrayFromSingleDeviceArrays,
+              (Shape shape, std::shared_ptr<const Sharding> sharding,
+               absl::Span<tsl::RCReference<Array>> arrays,
+               ArrayCopySemantics array_copy_semantics,
+               SingleDeviceShardSemantics single_device_shard_semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<tsl::RCReference<Array>>>, CopyArrays,
               (absl::Span<tsl::RCReference<Array>> arrays,

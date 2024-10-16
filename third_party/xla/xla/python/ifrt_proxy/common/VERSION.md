@@ -41,3 +41,9 @@
 *   Added date: 2024-10-01.
 *   Changes:
     *   Added support for `Client::GetAllDevices()`.
+
+## Version 8
+
+*   Added date: 2024-10-11.
+*   Changes:
+    *   Added support for `SingleDeviceShardSemantics` in Array assembly and disassembly operations.

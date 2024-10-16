@@ -210,7 +210,16 @@ absl::StatusOr<tsl::RCReference<Array>> MakeStringArrayFromHostBuffer(
 absl::StatusOr<tsl::RCReference<Array>>
 AssembleStringArrayFromSingleDeviceStringArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
+    absl::Span<tsl::RCReference<Array>> arrays,
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      !sharding->devices()->IsFullyAddressable()) {
+    return InvalidArgument(
+        "All shards are requested but the sharding has non-addressable "
+        "devices: %v",
+        *sharding->devices());
+  }
   // BufferBackingState contains the per-shard vectors of the strings and
   // string_views underlying a BasicString::Buffer.  Not thread safe.
   struct BufferBackingStore {
@@ -632,6 +641,18 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
     Shape shape, std::shared_ptr<const Sharding> sharding,
     absl::Span<tsl::RCReference<Array>> arrays, ArrayCopySemantics semantics) {
   DCHECK(this);
+  return AssembleArrayFromSingleDeviceArrays(
+      std::move(shape), std::move(sharding), arrays, semantics,
+      SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<tsl::RCReference<Array>>
+PjRtClient::AssembleArrayFromSingleDeviceArrays(
+    Shape shape, std::shared_ptr<const Sharding> sharding,
+    absl::Span<tsl::RCReference<Array>> arrays,
+    ArrayCopySemantics array_copy_semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  DCHECK(this);
   if (llvm::isa<const SingleDeviceSharding>(sharding.get())) {
     // Assemble with SingleDeviceSharding is No-op.
     if (arrays.size() != 1) {
@@ -650,15 +671,23 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
         "supported: sharding=%s",
         sharding->DebugString());
   }
-  if (sharding->devices()->size() != arrays.size()) {
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      !sharding->devices()->IsFullyAddressable()) {
     return InvalidArgument(
-        "Number of output shards must match the number of single-shard "
-        "arrays: %d vs. %d",
-        sharding->devices()->size(), arrays.size());
+        "All shards are requested but the sharding has non-addressable "
+        "devices: %v",
+        *sharding->devices());
+  }
+  if (sharding->devices()->AddressableDeviceList()->size() != arrays.size()) {
+    return InvalidArgument(
+        "Number of addressable output shards must match the number of "
+        "single-shard arrays: %d vs. %d",
+        sharding->devices()->AddressableDeviceList()->size(), arrays.size());
   }
   if (arrays[0]->dtype().kind() == DType::kString) {
-    return AssembleStringArrayFromSingleDeviceStringArrays(shape, sharding,
-                                                           arrays, semantics);
+    return AssembleStringArrayFromSingleDeviceStringArrays(
+        shape, sharding, arrays, array_copy_semantics,
+        single_device_shard_semantics);
   }
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(arrays.size());
@@ -682,7 +711,7 @@ PjRtClient::AssembleArrayFromSingleDeviceArrays(
           "sharding=%s",
           i, array->sharding().DebugString());
     }
-    switch (semantics) {
+    switch (array_copy_semantics) {
       case ArrayCopySemantics::kAlwaysCopy:
         // TODO(hyeontaek): kAlwaysCopy should clone the buffer, but the PjRt
         // API does not have efficient buffer cloning on the same device.

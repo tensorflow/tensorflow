@@ -269,13 +269,31 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
 absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) {
   DCHECK(this);
+  return DisassembleIntoSingleDeviceArrays(
+      semantics, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+PjRtArray::DisassembleIntoSingleDeviceArrays(
+    ArrayCopySemantics semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  DCHECK(this);
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      !sharding_->devices()->IsFullyAddressable()) {
+    return InvalidArgument(
+        "All shards are requested but the sharding has non-addressable "
+        "devices: %v",
+        *sharding_->devices());
+  }
   std::vector<tsl::RCReference<Array>> result;
-  result.reserve(sharding_->devices()->size());
+  result.reserve(sharding_->devices()->AddressableDeviceList()->size());
   TF_RETURN_IF_ERROR(std::visit(
       [&](const auto& this_shape) {
-        TF_ASSIGN_OR_RETURN(auto shape_and_shardings,
-                            sharding_->Disassemble(this_shape));
-        for (int i = 0; i < sharding_->devices()->size(); ++i) {
+        TF_ASSIGN_OR_RETURN(
+            auto shape_and_shardings,
+            sharding_->Disassemble(
+                this_shape, SingleDeviceShardSemantics::kAddressableShards));
+        for (int i = 0; i < shape_and_shardings.size(); ++i) {
           PjRtBuffers buffers;
           buffers.reserve(1);
           buffers.push_back(GetPjRtBuffer(semantics, i));

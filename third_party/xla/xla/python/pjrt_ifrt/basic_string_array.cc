@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -188,6 +189,23 @@ absl::StatusOr<std::vector<tsl::RCReference<Array>>>
 BasicStringArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics) {
   DCHECK(this);
+  return DisassembleIntoSingleDeviceArrays(
+      semantics, SingleDeviceShardSemantics::kAllShards);
+}
+
+absl::StatusOr<std::vector<tsl::RCReference<Array>>>
+BasicStringArray::DisassembleIntoSingleDeviceArrays(
+    ArrayCopySemantics semantics,
+    SingleDeviceShardSemantics single_device_shard_semantics) {
+  DCHECK(this);
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      !sharding_->devices()->IsFullyAddressable()) {
+    return InvalidArgument(
+        "All shards are requested but the sharding has non-addressable "
+        "devices: %v",
+        *sharding_->devices());
+  }
+
   absl::MutexLock lock(&mu_);
   if (is_deleted_) {
     return absl::FailedPreconditionError("Array has already been deleted");
