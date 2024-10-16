@@ -272,7 +272,7 @@ LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
   }
 
   if (auto status = qnn.Api()->logCreate(GetDefaultStdOutLogger(),
-                                         QNN_LOG_LEVEL_DEBUG, &qnn.LogHandle());
+                                         QNN_LOG_LEVEL_INFO, &qnn.LogHandle());
       status != QNN_SUCCESS) {
     LITE_RT_LOG(LRT_ERROR, "Failed to create QNN logger: %d", status);
     return kLrtStatusErrorRuntimeFailure;
