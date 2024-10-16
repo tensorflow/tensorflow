@@ -1313,12 +1313,17 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
   // operand.
   if (bitcast->opcode() == HloOpcode::kBitcast &&
       bitcast->operand(0)->opcode() == HloOpcode::kBroadcast) {
-    // DeduceTransposeDimensionsForBitcast() checks whether the bitcast is a
-    // transpose and returns the dimensions attribute if it is.
-    auto dimensions = ShapeUtil::DeduceTransposeDimensionsForBitcast(
-        bitcast->operand(0)->shape(), bitcast->shape());
-    if (dimensions.has_value()) {
-      return SimplifyTransposeOfBroadcast(bitcast, dimensions.value());
+    // Make sure the bitcast and the broadcast have the same tiling.
+    bool enable_broadcast = bitcast->operand(0)->shape().layout().tiles() ==
+                            bitcast->shape().layout().tiles();
+    if (enable_broadcast) {
+      // DeduceTransposeDimensionsForBitcast() checks whether the bitcast is a
+      // transpose and returns the dimensions attribute if it is.
+      auto dimensions = ShapeUtil::DeduceTransposeDimensionsForBitcast(
+          bitcast->operand(0)->shape(), bitcast->shape());
+      if (dimensions.has_value()) {
+        return SimplifyTransposeOfBroadcast(bitcast, dimensions.value());
+      }
     }
   }
 
