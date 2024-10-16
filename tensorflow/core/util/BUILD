@@ -477,7 +477,11 @@ cc_library(
     deps = [
         ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -488,7 +492,9 @@ tf_cc_test(
     ],
     deps = [
         ":ragged_to_dense_util",
+        ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",

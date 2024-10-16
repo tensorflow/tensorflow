@@ -19,11 +19,18 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_SAVED_TENSOR_SLICE_UTIL_H_
 
 #include <string>  // for string
+
+#include "Eigen/Core"  // from @eigen_archive
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"  // for Status
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
