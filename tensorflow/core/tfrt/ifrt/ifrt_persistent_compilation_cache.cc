@@ -20,6 +20,11 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device_list.h"
@@ -46,6 +51,17 @@ IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
             std::unique_ptr<xla::ifrt::CompileOptions> options)>
         value_fn) {
   return absl::UnimplementedError("LookupLoadedExecutable is not implemented");
+}
+
+absl::StatusOr<Tf2HloResult>
+IfrtPersistentCompilationCache::LookupTf2HloResultOrCreate(
+    mlir::ModuleOp mlir_module, absl::string_view main_func,
+    absl::Span<const DtypeAndShape> dtypes_and_shapes,
+    tsl::RCReference<xla::ifrt::DeviceList> device_list,
+    xla::ifrt::Client* client,
+    absl::AnyInvocable<absl::StatusOr<Tf2HloResult>()> value_fn) {
+  return absl::UnimplementedError(
+      "LookupTf2HloResultOrCreate is not implemented");
 }
 
 }  // namespace ifrt_serving
