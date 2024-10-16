@@ -68,6 +68,9 @@ typedef enum {
   kLrtStatusParamIndexOOB = 1000,
   kLrtStatusBadTensorType = 1001,
   kLrtStatusGraphInvariantError = 1002,
+
+  // Tool related errors.
+  kLrtStatusToolBadConfig = 1500,
 } LrtStatus;
 
 #ifdef __cplusplus

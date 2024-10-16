@@ -18,6 +18,33 @@ package(
 )
 
 cc_library(
+    name = "apply_plugin",
+    srcs = ["apply_plugin.cc"],
+    hdrs = ["apply_plugin.h"],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "apply_plugin_test",
+    srcs = ["apply_plugin_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so"],
+    deps = [
+        ":apply_plugin",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],

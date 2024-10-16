@@ -26,7 +26,7 @@ _QNN_LIBCC_X86_64 = [
 # TODO: Make rpaths dynamic with "$(location {})".
 _QNN_LIB_RPATHS_X86_64 = [
     # copybara:uncomment_begin(google-only)
-    # "third_party/qairt/lib/x86_64-linux-clang",
+    # "third_party/qairt/latest/lib/x86_64-linux-clang",
     # copybara:uncomment_end
 ]
 
