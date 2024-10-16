@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -578,7 +579,7 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
 
   // Task runner must be used only when ThunkExecutor detects that it runs on a
   // wrong thread and has to jump into the task runner.
-  int32_t num_tasks = 0;
+  std::atomic<int32_t> num_tasks = 0;
   auto task_runner = MakeTaskRunnerFrom([&](Thunk::Task task) {
     ++num_tasks;
     task();
