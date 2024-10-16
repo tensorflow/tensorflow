@@ -552,18 +552,30 @@ config_setting(
 
 config_setting(
     name = "linux_aarch64",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "aarch64"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_armhf",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "armhf"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_x86_64",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
 )
@@ -577,6 +589,10 @@ config_setting(
 # This condition takes precedence over :linux_x86_64
 config_setting(
     name = "linux_x86_64_no_sse",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {
         "cpu": "k8",
         "copt": "-mno-sse4.2",
@@ -588,6 +604,10 @@ config_setting(
 # TODO(b/290533709): Remove this with PJRT build rule cleanup.
 config_setting(
     name = "linux_x86_64_with_weightwatcher",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     define_values = {"tensorflow_weightwatcher": "true"},
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -595,24 +615,40 @@ config_setting(
 
 config_setting(
     name = "linux_ppc64le",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "ppc"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_s390x",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "s390x"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_mips64",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "mips64"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "linux_riscv64",
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:linux"],
+        [],
+    ),
     values = {"cpu": "riscv64"},
     visibility = ["//visibility:public"],
 )
