@@ -164,7 +164,7 @@ class GpuLaunchConfigTest : public ::testing::Test {
     cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);
     outbuf_host = outbuf;
 #else
-    hipError_t err = hipMalloc(&outbuf, sizeof(int) * bufsize);
+    hipError_t err = hipMalloc(reinterpret_cast<void**>(&outbuf), sizeof(int) * bufsize);
     outbuf_host = hostbuf;
 #endif
     ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
@@ -331,7 +331,7 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
 #if GOOGLE_CUDA
   ASSERT_EQ(cudaMallocManaged(&failure_count, sizeof(unsigned)), cudaSuccess);
 #else
-  ASSERT_EQ(hipHostMalloc(&failure_count, sizeof(unsigned), 0), cudaSuccess);
+  ASSERT_EQ(hipHostMalloc(reinterpret_cast<void**>(&failure_count), sizeof(unsigned), 0), cudaSuccess);
 #endif
   *failure_count = 0;
 #if TENSORFLOW_USE_ROCM
