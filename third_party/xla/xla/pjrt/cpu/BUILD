@@ -244,7 +244,6 @@ xla_cc_test(
         "//xla/pjrt:pjrt_executable",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
-        "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
