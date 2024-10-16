@@ -1059,7 +1059,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
-// Next id: 25.
+// Next id: 27.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -1114,6 +1114,24 @@ message ExecutionOptions {
   // Device mesh ids compatible with the above mesh_shape used when
   // use_auto_spmd_partitioning=true.
   repeated int64 auto_spmd_partitioning_mesh_ids = 17;
+
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
+  // strongly prioritizes execution time at the cost of longer compile times,
+  // suitable for production workloads. A value of -0.5 would be appropriate for
+  // research use cases that prefer faster compilations to iterate more quickly.
+  // Positive values, on the other hand, might enable costly optimizations that
+  // are off by default.
+  float exec_time_optimization_effort = 25;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning), as a value in
+  // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
+  // attempting to make the program fit. A value of -1.0 would be appropriate
+  // for use cases that wish to spend minimal effort here and fail as quickly as
+  // possible instead. Positive values, on the other hand, might enable costly
+  // algorithms to reduce memory usage that are off by default.
+  float memory_fitting_effort = 26;
 
   // If set, deduplicate hlo into function calls to reduce binary size. Only
   // works on TPU.
@@ -1176,7 +1194,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 36.
+// Next id: 38.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1204,6 +1222,8 @@ message HloModuleConfigProto {
   bool use_auto_spmd_partitioning = 8;
   repeated int64 auto_spmd_partitioning_mesh_shape = 9;
   repeated int64 auto_spmd_partitioning_mesh_ids = 10;
+  float exec_time_optimization_effort = 36;
+  float memory_fitting_effort = 37;
   bool deduplicate_hlo = 11;
   int64 intra_op_parallelism_threads = 12;
   string device_type = 13;

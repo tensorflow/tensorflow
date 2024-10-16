@@ -718,6 +718,10 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     module_config.set_auto_spmd_partitioning_mesh_ids(std::vector<int64_t>(
         execution_options->auto_spmd_partitioning_mesh_ids().begin(),
         execution_options->auto_spmd_partitioning_mesh_ids().end()));
+    module_config.set_exec_time_optimization_effort(
+        execution_options->exec_time_optimization_effort());
+    module_config.set_memory_fitting_effort(
+        execution_options->memory_fitting_effort());
     module_config.set_deduplicate_hlo(execution_options->deduplicate_hlo());
     if (!execution_options->allow_spmd_sharding_propagation_to_parameters()
              .empty()) {

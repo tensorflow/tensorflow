@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 20.
+// Next id: 22.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -44,6 +44,24 @@ message ExecutableBuildOptionsProto {
 
   // Whether to automatically generate XLA shardings for SPMD partitioner.
   bool use_auto_spmd_partitioning = 7;
+
+  // The amount of effort to spend on optimizing for minimizing program
+  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
+  // strongly prioritizes execution time at the cost of longer compile times,
+  // suitable for production workloads. A value of -0.5 would be appropriate for
+  // research use cases that prefer faster compilations to iterate more quickly.
+  // Positive values, on the other hand, might enable costly optimizations that
+  // are off by default.
+  float exec_time_optimization_effort = 20;
+
+  // The amount of effort to spend on making the program fit in memory (where
+  // "fit in memory" here has a backend-dependent meaning), as a value in
+  // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
+  // attempting to make the program fit. A value of -1.0 would be appropriate
+  // for use cases that wish to spend minimal effort here and fail as quickly as
+  // possible instead. Positive values, on the other hand, might enable costly
+  // algorithms to reduce memory usage that are off by default.
+  float memory_fitting_effort = 21;
 
   // Whether HLOs should be deduplicated.
   bool deduplicate_hlo = 8;
