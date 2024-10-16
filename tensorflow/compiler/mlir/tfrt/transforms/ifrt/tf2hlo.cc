@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -180,11 +181,19 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
   std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
 
+  // Device_type is a string of
+  // tensorflow/compiler/mlir/tf2xla/api/v2/device_type.proto:DeviceType
+  std::string device_type = "XLA_TPU_JIT";
+  if (ifrt_client.platform_name() == xla::CudaName()) {
+    device_type = "XLA_GPU_JIT";
+  }
+  VLOG(1) << "device_type: " << device_type;
+
   TF_ASSIGN_OR_RETURN(
       tensorflow::XlaCompiler::CompilationResult compilation_result,
       tensorflow::tf2xla::v2::LegalizeMlirToHlo(
-          mlir_to_hlo_args, compile_metadata, use_tuple_args,
-          /*device_type=*/"XLA_TPU_JIT", custom_legalization_passes,
+          mlir_to_hlo_args, compile_metadata, use_tuple_args, device_type,
+          custom_legalization_passes,
           /*shape_determination_fns=*/
           tensorflow::XlaShapeLayoutHelpers::ShapeDeterminationFns(
               tensorflow::UseNoPreferenceLayoutFn(), shape_representation_fn),

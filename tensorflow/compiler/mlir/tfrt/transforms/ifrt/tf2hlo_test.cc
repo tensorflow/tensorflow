@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
@@ -35,17 +36,23 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+using ::testing::HasSubstr;
+using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS
 class ProtoStringMatcher {
@@ -365,6 +372,53 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
       (*result).host_compute_metadata.device_to_host().begin()->metadata_size(),
       2);
   ASSERT_EQ((*result).host_compute_metadata.host_to_device().size(), 0);
+}
+
+// Without passing the right device type, the compilation would fail with an
+// incorrect message. This test is to make sure the message is correct.
+// TODO(b/369199092): figure out a way to directly testing the compilatin pass.
+// This requires setup separate tap filter/project.
+TEST(Tf2HloTest, GpuShouldFailWithWrongDeviceType) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/tf2hlo_gpu.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  xla::ifrt::MockClient mock_client;
+  ON_CALL(mock_client, GetDefaultDeviceAssignment)
+      .WillByDefault([]() -> absl::StatusOr<xla::DeviceAssignment> {
+        return xla::DeviceAssignment(1, 1);
+      });
+  ON_CALL(mock_client, platform_name).WillByDefault([]() -> absl::string_view {
+    return xla::CudaName();
+  });
+
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), mock_client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
+                               mock_client, compile_metadata,
+                               tensorflow::IdentityShapeRepresentationFn());
+  EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
+                               HasSubstr("CUDA or ROCM build required")));
 }
 
 }  // namespace
