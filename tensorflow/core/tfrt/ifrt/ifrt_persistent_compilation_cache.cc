@@ -15,10 +15,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -50,7 +51,12 @@ IfrtPersistentCompilationCache::LookupLoadedExecutableOrCreate(
             std::unique_ptr<xla::ifrt::Program> program,
             std::unique_ptr<xla::ifrt::CompileOptions> options)>
         value_fn) {
-  return absl::UnimplementedError("LookupLoadedExecutable is not implemented");
+  // No persistent cache implemented, compile directly.
+  auto ifrt_xla_compile_options =
+      std::make_unique<xla::ifrt::XlaCompileOptions>(xla_compile_options,
+                                                     loaded_host_callbacks);
+  return value_fn(std::move(hlo_program), std::move(ifrt_xla_compile_options));
+  ;
 }
 
 absl::StatusOr<Tf2HloResult>

@@ -227,6 +227,7 @@ cc_library(
         "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt/hlo:hlo_program",
+        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/tsl/concurrency:ref_count",
     ],
 )
@@ -408,6 +409,7 @@ cc_library(
     ],
     deps = [
         ":ifrt_loaded_variable_registry",
+        ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         ":ifrt_serving_executable",
