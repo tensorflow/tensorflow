@@ -52,9 +52,6 @@ class GpuExecutor : public StreamExecutorCommon {
         device_ordinal_(device_ordinal) {}
 
   int device_ordinal() const override { return device_ordinal_; };
-
-  // Releases any state associated with the previously loaded kernel.
-  virtual void UnloadKernel(const Kernel* kernel) = 0;
   // Creates an EventBasedTimer for the given stream.
   virtual absl::StatusOr<std::unique_ptr<EventBasedTimer>>
   CreateEventBasedTimer(GpuStream* stream, bool use_delay_kernel) = 0;

@@ -18,7 +18,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_runtime.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -37,9 +36,8 @@ TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  GpuExecutor* gpu_executor = ExtractGpuExecutor(executor);
 
-  CudaKernel cuda_kernel(gpu_executor);
+  CudaKernel cuda_kernel(executor);
   cuda_kernel.set_arity(3);
 
   TF_ASSERT_OK_AND_ASSIGN(

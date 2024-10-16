@@ -122,6 +122,9 @@ class StreamExecutor {
     return absl::UnimplementedError("Not Implemented");
   }
 
+  // Releases any state associated with the previously loaded kernel.
+  virtual void UnloadKernel(const Kernel* kernel) {}
+
   // Unloads the module with handle `module_handle`.
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
 

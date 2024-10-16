@@ -319,16 +319,6 @@ class GpuDriver {
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VERSION.html#group__CUDA__VERSION_1g8b7a10395392e049006e61bcdc8ebe71
   static absl::StatusOr<int32_t> GetDriverVersion();
-
-  // -- Other calls
-
-  // Returns the maximum number of blocks (per multiprocessor) occupied by the
-  // specified kernel/GpuFunctionHandle when launched with the specified
-  // parameters.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__OCCUPANCY.html#group__CUDA__OCCUPANCY_1gcc6e1094d05cba2cee17fe33ddd04a98
-  static absl::StatusOr<int> GetMaxOccupiedBlocksPerCore(
-      Context* context, GpuFunctionHandle kernel, int threads_per_block,
-      size_t dynamic_shared_memory_bytes);
 };
 
 }  // namespace gpu

@@ -646,20 +646,6 @@ absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   return version;
 }
 
-absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
-    Context* context, CUfunction kernel, int threads_per_block,
-    size_t dynamic_shared_memory_bytes) {
-  ScopedActivateContext activation(context);
-
-  int max_blocks;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
-          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes,
-          CU_OCCUPANCY_DISABLE_CACHING_OVERRIDE),
-      absl::StrFormat("Failed to calculate occupancy of kernel %p", kernel)));
-  return max_blocks;
-}
-
 absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(GpuGraphHandle graph) {
   size_t num_nodes;
   TF_RETURN_IF_ERROR(
