@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_TPU_VALIDATE_INPUTS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_PASSES_TPU_VALIDATE_INPUTS_UTILS_H_
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
