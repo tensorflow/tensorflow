@@ -66,6 +66,15 @@ extern const char kXlaTableId[];
 // XLA frontend attribute for buffer placement.
 extern const char kXlaBufferPlacementAttr[];
 extern const char kXlaBufferPlacementParam[];
+
+// XLA frontend attribute for collective matmul control.
+extern const char kXlaCollectiveMatmulAttr[];
+
+// XLA frontend attribute values for kXlaCollectiveMatmulAttr
+extern const char kXlaCollectiveMatmulLhsAg[];
+extern const char kXlaCollectiveMatmulRhsAg[];
+extern const char kXlaCollectiveMatmulRs[];
+
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_
