@@ -18,7 +18,7 @@
 
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"

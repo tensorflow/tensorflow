@@ -34,7 +34,7 @@ lite_rt_dynamic_lib(
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
         ":qnn_compose_graph",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
@@ -62,7 +62,7 @@ lite_rt_test(
     deps = [
         ":qnn_compiler_plugin",  # buildcleaner: keep
         "@com_google_absl//absl/log:absl_check",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",
@@ -82,7 +82,7 @@ lite_rt_lib(
     deps = [
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",

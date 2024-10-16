@@ -24,7 +24,7 @@ cc_library(
     name = "common",
     hdrs = ["common.h"],
     deps = [
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
     ],
 )
@@ -38,7 +38,7 @@ lite_rt_lib(
         "nobuilder",
     ],
     deps = [
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
     ],
 )
 
@@ -59,7 +59,7 @@ lite_rt_lib_with_qnn(
         ":qnn_log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
         "//tensorflow/lite/experimental/lrt/core:logging",
@@ -101,7 +101,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
     ],
 )
 
@@ -116,6 +116,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        # copybara:uncomment "//third_party/qairt:qnn_lib_headers",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
     ],
 )

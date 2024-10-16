@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#include "third_party/qairt/include/QNN/HTP/QnnHtpDevice.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
