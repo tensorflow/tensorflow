@@ -40,6 +40,7 @@ cc_library(
 cc_test(
     name = "qnn_tensor_test",
     srcs = ["qnn_tensor_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -77,6 +78,7 @@ cc_library(
 cc_test(
     name = "qnn_op_test",
     srcs = ["qnn_op_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -98,6 +100,7 @@ cc_test(
 cc_test(
     name = "op_compatibility_test",
     srcs = ["op_compatibility_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",

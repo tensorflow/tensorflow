@@ -50,6 +50,7 @@ std::string GetTestFilePath(absl::string_view filename) {
 
 absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
   std::string model_path = GetTestFilePath(filename);
+  ABSL_CHECK(std::filesystem::exists(model_path));
   auto size = std::filesystem::file_size(model_path);
   std::vector<char> buffer(size);
   std::ifstream f(model_path, std::ifstream::binary);
@@ -67,7 +68,7 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
 UniqueLrtModel LoadTestFileModel(absl::string_view filename) {
   LrtModel model = nullptr;
   LRT_CHECK_STATUS_OK(
-      LoadModelFromFile(GetTestFilePath(filename).c_str(), &model));
+      LoadModelFromFile(GetTestFilePath(filename).data(), &model));
   ABSL_CHECK_NE(model, nullptr);
   return UniqueLrtModel(model);
 }

@@ -48,7 +48,6 @@ cc_library(
     hdrs = [
         "common.h",
     ],
-    data = [":tflite_test_data"],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
@@ -69,6 +68,7 @@ cc_library(
     ],
     data = [
         "testdata/simple_model.tflite",
+        "testdata/simple_model_pixel.bin",
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [

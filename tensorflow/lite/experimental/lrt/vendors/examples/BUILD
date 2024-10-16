@@ -40,6 +40,7 @@ cc_test(
     srcs = [
         "example_plugin_test.cc",
     ],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     deps = [
         ":example_plugin",  # buildcleaner: keep
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",

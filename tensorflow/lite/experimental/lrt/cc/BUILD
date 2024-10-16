@@ -66,6 +66,9 @@ cc_library(
 cc_test(
     name = "lite_rt_tensor_test",
     srcs = ["lite_rt_tensor_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     deps = [
         ":lite_rt_tensor",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
@@ -87,6 +90,9 @@ cc_library(
 cc_test(
     name = "lite_rt_op_test",
     srcs = ["lite_rt_op_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     deps = [
         ":lite_rt_op",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",

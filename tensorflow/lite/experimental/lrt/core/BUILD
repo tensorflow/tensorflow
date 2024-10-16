@@ -89,6 +89,9 @@ cc_library(
 cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     tags = ["no_oss"],
     deps = [
         ":api_internal",
@@ -105,6 +108,9 @@ cc_test(
 cc_test(
     name = "option_test",
     srcs = ["option_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     tags = ["no_oss"],
     deps = [
         ":api_internal",

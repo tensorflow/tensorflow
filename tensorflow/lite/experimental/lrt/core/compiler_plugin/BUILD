@@ -39,7 +39,10 @@ cc_library(
 # cc_test(
 #     name = "compiler_plugin_test",
 #     srcs = ["compiler_plugin_test.cc"],
-#     data = ["//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so"],
+#     data = [
+#         "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+#         "//tensorflow/lite/experimental/lrt/vendors/examples:example_plugin_so",
+#     ],
 #     tags = [
 #         # Sanitizer runtimes are incompatible with RTLD_DEEPBIND.
 #         "noasan",
@@ -75,6 +78,9 @@ cc_library(
 cc_test(
     name = "algo_test",
     srcs = ["algo_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     deps = [
         ":algo",
         "//tensorflow/lite/experimental/lrt/core:api_internal",

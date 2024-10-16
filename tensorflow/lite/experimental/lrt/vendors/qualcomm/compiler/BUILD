@@ -46,6 +46,7 @@ lite_rt_test(
     srcs = [
         "qnn_compiler_plugin_test.cc",
     ],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     linkstatic = True,
     tags = [
         # Tests with ungrte deps do not currently work on forge.

@@ -33,6 +33,7 @@ cc_library(
 cc_test(
     name = "dump_test",
     srcs = ["dump_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     deps = [
         ":dump",
         "//tensorflow/lite/experimental/lrt/core:model",
