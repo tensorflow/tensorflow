@@ -37,8 +37,8 @@ bool IsCompatibleType(FieldDescriptor::Type field_type, DataType dtype);
 // Parses a text-formatted protobuf from a string into the given Message* output
 // and returns status OK if valid, or INVALID_ARGUMENT with an accompanying
 // parser error message if the text format is invalid.
-Status ParseTextFormatFromString(absl::string_view input,
-                                 protobuf::Message* output);
+absl::Status ParseTextFormatFromString(absl::string_view input,
+                                       protobuf::Message* output);
 
 class StringErrorCollector : public protobuf::io::ErrorCollector {
  public:
