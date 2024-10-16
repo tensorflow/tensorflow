@@ -1135,7 +1135,7 @@ in the batch dimensions and broadcasting.
       `inputs[0]`: required: input LHS
       `inputs[1]`: required: input RHS
       `adjoint_lhs`: optional: Transpose LHS (default false)
-      `adjoint_lhs`: optional: Transpose LHS (default false)
+      `adjoint_rhs`: optional: Transpose RHS (default false)
   }];
 
   let arguments = (ins
