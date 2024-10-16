@@ -59,4 +59,6 @@ const char kXlaBufferPlacementAttr[] = "_xla_buffer_placement";
 
 const char kXlaBufferPlacementParam[] = "arg";
 
+const char kXlaMultiRecvCountAttr[] = "_xla_multi_recv_count";
+
 }  // namespace xla

@@ -66,6 +66,10 @@ extern const char kXlaTableId[];
 // XLA frontend attribute for buffer placement.
 extern const char kXlaBufferPlacementAttr[];
 extern const char kXlaBufferPlacementParam[];
+
+// XLA frontend attribute for specifying the number of sends this recv should
+// match.
+extern const char kXlaMultiRecvCountAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_
