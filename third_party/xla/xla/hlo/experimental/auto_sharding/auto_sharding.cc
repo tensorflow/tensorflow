@@ -4156,15 +4156,14 @@ absl::StatusOr<bool> AutoSharding::Run(
           FindAllIndices(mesh_shapes[i], *option_.num_dcn_slices);
       if (dcn_indices.empty()) {
         VLOG(1) << " Mesh shape does not contain DCN axis.";
-        continue;
+      } else {
+        if (dcn_indices.size() > 1) {
+          LOG(WARNING)
+              << "Could not infer a unique DCN axis. Choosing one randomly.";
+        }
+        this_option.device_mesh_alpha[dcn_indices[0]] = kDcnDeviceMeshAlpha;
+        this_option.device_mesh_beta[dcn_indices[0]] = kDcnDeviceMeshBeta;
       }
-
-      if (dcn_indices.size() > 1) {
-        LOG(WARNING)
-            << "Could not infer a unique DCN axis. Choosing one randomly.";
-      }
-      this_option.device_mesh_alpha[dcn_indices[0]] = kDcnDeviceMeshAlpha;
-      this_option.device_mesh_beta[dcn_indices[0]] = kDcnDeviceMeshBeta;
     }
 
     auto pass = std::make_unique<AutoShardingImplementation>(this_option);
