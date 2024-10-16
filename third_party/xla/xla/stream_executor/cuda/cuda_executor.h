@@ -139,10 +139,6 @@ class CudaExecutor : public GpuExecutor {
   CreateDeviceDescription(int device_ordinal);
 
  private:
-  // Collects metadata for the specified kernel.
-  absl::Status GetKernelMetadata(GpuKernel* cuda_kernel,
-                                 KernelMetadata* kernel_metadata);
-
   // Loads a module in cubin format.
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);

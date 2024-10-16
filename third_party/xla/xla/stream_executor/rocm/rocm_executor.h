@@ -129,10 +129,6 @@ class RocmExecutor : public GpuExecutor {
   CreateDeviceDescription(int device_ordinal);
 
  private:
-  // Collects metadata for the specified kernel.
-  absl::Status GetKernelMetadata(GpuKernel* rocm_kernel,
-                                 KernelMetadata* kernel_metadata);
-
   // Loads a module in HSACO format.
   absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);

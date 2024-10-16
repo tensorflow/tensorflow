@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
@@ -55,6 +56,9 @@ class RocmKernel : public GpuKernel {
   void set_gpu_function(hipFunction_t rocm_function) {
     rocm_function_ = rocm_function;
   }
+
+  // Collects metadata for the specified kernel.
+  absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
   StreamExecutor* executor_ = nullptr;

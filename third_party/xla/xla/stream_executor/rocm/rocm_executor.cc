@@ -55,8 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
@@ -124,13 +122,6 @@ int fpus_per_core(std::string gcn_arch_name) {
     n = 64;
   }
   return n;
-}
-
-absl::Status FuncGetAttribute(hipFunction_attribute attribute,
-                              hipFunction_t func, int* attribute_value) {
-  return ToStatus(
-      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
-      absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
 // ROCM driver routines may require a large amount of stack (particularly
@@ -670,26 +661,13 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 
   // unable to get kernel metadata for in-process kernel
   if (!spec.has_in_process_symbol()) {
-    KernelMetadata kernel_metadata;
-    TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel.get(), &kernel_metadata));
+    TF_ASSIGN_OR_RETURN(KernelMetadata kernel_metadata,
+                        rocm_kernel->GetKernelMetadata());
     rocm_kernel->set_metadata(kernel_metadata);
   }
   rocm_kernel->set_name(*kernel_name);
   rocm_kernel->set_args_packing(spec.kernel_args_packing());
   return std::move(rocm_kernel);
-}
-
-absl::Status RocmExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
-                                             KernelMetadata* kernel_metadata) {
-  int value = 0;
-  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_NUM_REGS,
-                                      rocm_kernel->gpu_function(), &value));
-  kernel_metadata->set_registers_per_thread(value);
-
-  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                      rocm_kernel->gpu_function(), &value));
-  kernel_metadata->set_shared_memory_bytes(value);
-  return absl::OkStatus();
 }
 
 absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(

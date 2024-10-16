@@ -105,13 +105,6 @@ bool ShouldLaunchDelayKernel() {
   return value;
 }
 
-absl::Status FuncGetAttribute(CUfunction_attribute attribute, CUfunction func,
-                              int* attribute_value) {
-  return cuda::ToStatus(
-      cuFuncGetAttribute(attribute_value, attribute, func),
-      absl::StrCat("Failed to query kernel attribute: ", attribute));
-}
-
 // CUDA driver routines may require a large amount of stack (particularly
 // cuModuleLoadDataEx, in our experience). To avoid stack overflow when using
 // stack-limited threads (such as those spawned by a default-argument
@@ -725,8 +718,8 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
   cuda_kernel->set_arity(spec.arity());
 
-  KernelMetadata kernel_metadata;
-  TF_RETURN_IF_ERROR(GetKernelMetadata(cuda_kernel.get(), &kernel_metadata));
+  TF_ASSIGN_OR_RETURN(KernelMetadata kernel_metadata,
+                      cuda_kernel->GetKernelMetadata());
   cuda_kernel->set_metadata(kernel_metadata);
   cuda_kernel->set_name(*kernel_name);
   cuda_kernel->set_args_packing(spec.kernel_args_packing());
@@ -882,19 +875,6 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
   }
 
   return shared_constant;
-}
-
-absl::Status CudaExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
-                                             KernelMetadata* kernel_metadata) {
-  int value;
-  TF_RETURN_IF_ERROR(FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
-                                      cuda_kernel->gpu_function(), &value));
-  kernel_metadata->set_registers_per_thread(value);
-
-  TF_RETURN_IF_ERROR(FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                      cuda_kernel->gpu_function(), &value));
-  kernel_metadata->set_shared_memory_bytes(value);
-  return absl::OkStatus();
 }
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {

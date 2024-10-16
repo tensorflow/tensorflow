@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -30,6 +32,16 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
+namespace {
+
+absl::Status FuncGetAttribute(hipFunction_attribute attribute,
+                              hipFunction_t func, int* attribute_value) {
+  return ToStatus(
+      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      absl::StrCat("Failed to query kernel attribute: ", attribute));
+}
+
+}  // namespace
 absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
     ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
   int32_t threads_per_block = threads.x * threads.y * threads.z;
@@ -46,6 +58,19 @@ absl::StatusOr<int32_t> RocmKernel::GetMaxOccupiedBlocksPerCore(
                    dynamic_shared_memory_bytes),
                "Failed to calculate maximal active blocks per SM"));
   return max_blocks;
+}
+
+absl::StatusOr<KernelMetadata> RocmKernel::GetKernelMetadata() {
+  KernelMetadata kernel_metadata;
+  int value = 0;
+  TF_RETURN_IF_ERROR(
+      FuncGetAttribute(HIP_FUNC_ATTRIBUTE_NUM_REGS, rocm_function_, &value));
+  kernel_metadata.set_registers_per_thread(value);
+
+  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                      rocm_function_, &value));
+  kernel_metadata.set_shared_memory_bytes(value);
+  return kernel_metadata;
 }
 
 }  // namespace gpu

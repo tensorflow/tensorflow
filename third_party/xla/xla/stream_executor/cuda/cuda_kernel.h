@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
@@ -54,6 +55,9 @@ class CudaKernel : public GpuKernel {
   void set_gpu_function(CUfunction gpu_function) {
     gpu_function_ = gpu_function;
   }
+
+  // Collects metadata for the specified kernel.
+  absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
   StreamExecutor* executor_ = nullptr;
