@@ -68,7 +68,7 @@ HloModule module
 dot {
   lhs = bf16[8192,512] parameter(0)
   rhs = bf16[512,512] parameter(1)
-  ROOT  %dot = bf16[8192,512] dot(lhs, rhs),
+  ROOT  dot = bf16[8192,512] dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -102,6 +102,53 @@ ENTRY entry {
               GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
   EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(64, 32)));
   EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(32, 256)));
+}
+
+// Tests bitcasts which are supported by the symbolic tile analysis.
+// Not all of them are.
+TEST_F(NestGemmFusionTest, BitcastTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+dot {
+  lhs = f32[21] parameter(0)
+  reshape = f32[1,21] reshape(lhs)
+  bitcast = f32[3,7] bitcast(reshape)
+  rhs = f32[7,11] parameter(1)
+  ROOT  dot = f32[3,11] dot(bitcast, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = f32[21] parameter(0)
+  p1 = f32[7,11] parameter(1)
+  ROOT fusion = f32[3,11] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"32", "block_n":"64", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)"));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, NestGemmFusion().Run(module.get()))
+  EXPECT_TRUE(changed);
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(match::Fusion(&fusion)));
+  EXPECT_THAT(*fusion, OutputTileSizesIs(ElementsAre(32, 64)));
+
+  const HloInstruction* lhs = nullptr;
+  const HloInstruction* rhs = nullptr;
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(match::Dot(match::Fusion(&lhs), match::Fusion(&rhs))));
+  EXPECT_THAT(*lhs, OutputTileSizesIs(ElementsAre(32, 16)));
+  EXPECT_THAT(*rhs, OutputTileSizesIs(ElementsAre(16, 64)));
 }
 
 }  // namespace

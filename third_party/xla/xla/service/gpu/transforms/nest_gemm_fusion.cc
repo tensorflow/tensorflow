@@ -59,8 +59,7 @@ namespace {
 // instruction, which is the last instructions in the input span.  We only
 // replace the uses of the root in 'consumer', and leave other users alone.
 absl::Status FuseInstructionsForConsumer(
-    const std::vector<HloInstruction*>& instructions,
-    HloInstruction& consumer) {
+    absl::Span<HloInstruction* const> instructions, HloInstruction& consumer) {
   HloComputation::Builder builder(instructions.back()->name());
 
   absl::flat_hash_map<const HloInstruction*, HloInstruction*>
@@ -235,7 +234,7 @@ absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
 }
 
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
-// Returns true if the transformation was successful.
+// Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(
     HloFusionInstruction* fusion, const TritonGemmConfig& config,
     const SymbolicTileAnalysis& analysis,
@@ -326,10 +325,10 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     }
 
     auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
-    auto tiled_dot_it = absl::c_find_if(
-        analysis.GetSymbolicTiledHloComputation(),
-        [&](const auto& tiled_hlo) { return tiled_hlo->hlo() == dot; });
-    if (tiled_dot_it == analysis.GetSymbolicTiledHloComputation().end()) {
+    const auto& tiled_instructions = analysis.GetSymbolicTiledHloComputation();
+    auto is_dot = [&](const auto& instr) { return instr->hlo() == dot; };
+    auto tiled_dot_it = absl::c_find_if(tiled_instructions, is_dot);
+    if (tiled_dot_it == tiled_instructions.end()) {
       return absl::InternalError(absl::StrCat(
           "Couldn't find a symbolic tiled instruction for ", dot->ToString()));
     }
