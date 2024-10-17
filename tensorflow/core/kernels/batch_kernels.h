@@ -78,16 +78,16 @@ class BatchFunctionKernel : public AsyncOpKernel {
   // If large batch split is not enabled, the last one must equal
   // `max_batch_size_`. otherwise the last element must be smaller than or equal
   // to `max_batch_size_`.
-  Status ValidateAllowedBatchSizes() const;
+  absl::Status ValidateAllowedBatchSizes() const;
 
   // Creates the function handle if it isn't initialized yet; and re-use it
   // afterwards.
-  Status GetOrCreateFunctionHandle(OpKernelContext* c,
-                                   FunctionLibraryRuntime::Handle* handle);
+  absl::Status GetOrCreateFunctionHandle(
+      OpKernelContext* c, FunctionLibraryRuntime::Handle* handle);
 
   // Instantiate the user-defined function and emits `handle`.
-  Status InstantiateFunction(OpKernelContext* c,
-                             FunctionLibraryRuntime::Handle* handle) const;
+  absl::Status InstantiateFunction(
+      OpKernelContext* c, FunctionLibraryRuntime::Handle* handle) const;
 
   // Initialize vars by reading from op-kernel-construction.
   // Vars

@@ -39,7 +39,7 @@ class BatchFunctionKernelTestBase : public OpsTestBase,
                                     public ::testing::WithParamInterface<bool> {
  public:
   // Init test fixture with a batch kernel instance.
-  Status Init(bool enable_adaptive_scheduler);
+  absl::Status Init(bool enable_adaptive_scheduler);
 };
 
 }  // namespace test_util
