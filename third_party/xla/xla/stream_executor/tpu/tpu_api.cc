@@ -21,11 +21,6 @@ limitations under the License.
 namespace stream_executor {
 namespace tpu {
 
-TfTpu_BaseFn* InitializeApiFn() {
-  static TfTpu_BaseFn base_fn;
-  return &base_fn;
-}
-
 const TfTpu_OpsApiFn* OpsApiFn() {
   static TfTpu_OpsApiFn ops_api_fn;
   return &ops_api_fn;
