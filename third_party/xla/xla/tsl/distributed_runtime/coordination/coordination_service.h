@@ -159,7 +159,7 @@ class CoordinationServiceInterface {
 
   // Set a task in error state permanently.
   virtual absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
-                                       absl::Status error) = 0;
+                                       const absl::Status& error) = 0;
 
   // Get the state and the error status of the tasks.
   virtual std::vector<tensorflow::CoordinatedTaskStateInfo> GetTaskState(

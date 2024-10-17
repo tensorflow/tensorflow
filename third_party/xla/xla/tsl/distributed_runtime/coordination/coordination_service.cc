@@ -129,7 +129,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   absl::Status RecordHeartbeat(const CoordinatedTask& task,
                                uint64_t incarnation) override;
   absl::Status ReportTaskError(const CoordinatedTask& task,
-                               absl::Status error) override;
+                               const absl::Status& error) override;
   std::vector<CoordinatedTaskStateInfo> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
   absl::Status InsertKeyValue(std::string_view key,
@@ -169,11 +169,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // Report error from a task to all other connected tasks if the task is not
   // recoverable.
   // Note: SetTaskError() must be called before propagating its error.
-  void PropagateError(absl::Status error,
+  void PropagateError(const absl::Status& error,
                       std::optional<CoordinatedTask> source_task = std::nullopt,
                       bool is_reported_by_task = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void SetTaskError(std::string_view task_name, absl::Status error)
+  void SetTaskError(std::string_view task_name, const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   absl::Status DisconnectTask(const CoordinatedTask& task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -207,14 +207,15 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       absl::Duration timeout, const CoordinatedTask& task,
       const std::vector<CoordinatedTask>& participating_tasks,
       StatusCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void PassBarrier(std::string_view barrier_id, absl::Status result,
+  void PassBarrier(std::string_view barrier_id, const absl::Status& result,
                    BarrierState* barrier)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Post-barrier hook to aggregate device info.
   void AggregateClusterDevices() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Post-shutdown barrier hook to disconnect tasks that acked and propagate
   // errors to those that have not.
-  void CompleteShutdownAfterBarrier(absl::Status result, BarrierState* barrier)
+  void CompleteShutdownAfterBarrier(const absl::Status& result,
+                                    BarrierState* barrier)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Check if participating tasks are specified correctly across barrier calls.
   bool ValidateTaskArgs(
@@ -278,7 +279,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     void Disconnect(uint64_t grace_period_duration_us);
     absl::Status RecordHeartbeat(uint64_t task_incarnation);
     int64_t TimeSinceLastHeartbeatMs();
-    void SetError(absl::Status status);
+    void SetError(const absl::Status& status);
     DeviceInfo GetDeviceInfo() { return devices_; }
     void CollectDeviceInfo(const DeviceInfo& devices) { devices_ = devices; }
     // Checks if task has called WaitForAllTasks() previously, which gathers the
@@ -404,7 +405,7 @@ void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
-    const absl::Status status) {
+    const absl::Status& status) {
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = status;
@@ -825,7 +826,7 @@ uint64_t CoordinationServiceStandaloneImpl::GetServiceIncarnation() {
 }
 
 absl::Status CoordinationServiceStandaloneImpl::ReportTaskError(
-    const CoordinatedTask& task, absl::Status error) {
+    const CoordinatedTask& task, const absl::Status& error) {
   const std::string task_name = GetTaskName(task);
   absl::MutexLock l(&state_mu_);
   if (ServiceHasStopped()) {
@@ -910,7 +911,7 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
 }
 
 void CoordinationServiceStandaloneImpl::PropagateError(
-    absl::Status error, std::optional<CoordinatedTask> source_task,
+    const absl::Status& error, std::optional<CoordinatedTask> source_task,
     bool is_reported_by_task) {
   VLOG(3) << "PropagateError(): " << error;
   assert(!error.ok());
@@ -949,7 +950,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
     auto n = std::make_shared<absl::Notification>();
     client->ReportErrorToTaskAsync(
         &call_opts, &request, response.get(),
-        [response, n, task](absl::Status s) {
+        [response, n, task](const absl::Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Encountered another error while reporting to "
                        << task << ": " << s;
@@ -1097,8 +1098,8 @@ absl::Status CoordinationServiceStandaloneImpl::DeleteKeyValue(
   return absl::OkStatus();
 }
 
-void CoordinationServiceStandaloneImpl::SetTaskError(std::string_view task_name,
-                                                     absl::Status error) {
+void CoordinationServiceStandaloneImpl::SetTaskError(
+    std::string_view task_name, const absl::Status& error) {
   cluster_state_[task_name]->SetError(error);
   LOG(ERROR) << task_name
              << " has been set to ERROR in coordination service: " << error;
@@ -1401,7 +1402,7 @@ absl::Status CoordinationServiceStandaloneImpl::CancelBarrier(
 
 // Mark barrier as passed.
 void CoordinationServiceStandaloneImpl::PassBarrier(std::string_view barrier_id,
-                                                    absl::Status result,
+                                                    const absl::Status& result,
                                                     BarrierState* barrier) {
   barrier->passed = true;
   barrier->result = result;
@@ -1507,7 +1508,7 @@ void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
 }
 
 void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
-    absl::Status result, BarrierState* barrier) {
+    const absl::Status& result, BarrierState* barrier) {
   if (result.ok()) {
     LOG(INFO) << "Shutdown barrier in coordination service has passed.";
   } else {
