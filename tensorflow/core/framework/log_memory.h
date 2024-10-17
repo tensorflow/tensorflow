@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOG_MEMORY_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOG_MEMORY_H_
 
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf.h"
 
