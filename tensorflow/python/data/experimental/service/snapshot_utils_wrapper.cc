@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "Python.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
