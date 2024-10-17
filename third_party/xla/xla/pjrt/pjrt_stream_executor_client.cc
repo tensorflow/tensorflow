@@ -1735,7 +1735,12 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   // to ToLiteral.
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  auto async_to_literal = [usage_event, tracked_device_buffer, stream,
+  absl::StatusOr<uint64_t> on_device_size = GetOnDeviceSizeInBytes();
+  if (!on_device_size.ok()) {
+    return PjRtFuture<>(on_device_size.status());
+  }
+  auto async_to_literal = [usage_event, tracked_device_buffer,
+                           on_device_size = *on_device_size, stream,
                            transfer_manager = std::move(transfer_manager),
                            on_device_shape{on_device_shape_}, literal, promise,
                            local_device]() mutable {
@@ -1754,6 +1759,8 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
     }
 
     WaitForBufferDefinitionEventsOnStream(*tracked_device_buffer, stream);
+
+#if 0
     ShapedBuffer shaped_buffer =
         tracked_device_buffer->AsShapedBuffer(on_device_shape);
 
@@ -1772,6 +1779,34 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
           promise.Set(std::move(status));
         },
         transfer_metadata_ptr);
+#else
+    se::DeviceMemoryBase device_memory =
+        tracked_device_buffer->device_memory()[0];
+
+    PrimitiveType type = on_device_shape.element_type();
+    void* destination = literal->untyped_data();
+
+    if (primitive_util::Is4BitType(type)) {
+      const int64_t num_elements = ShapeUtil::ElementsIn(literal->shape());
+
+      CHECK(on_device_size == (num_elements + 1) / 2)
+          << "[clin] data size does not match for 4Bit type";
+
+      auto packed_dst_data =
+          std::make_unique<std::vector<char>>(on_device_size);
+      TF_CHECK_OK(stream->Memcpy(packed_dst_data->data(), device_memory,
+                                 on_device_size));
+      TF_CHECK_OK(stream->DoHostCallback(
+          [destination, num_elements,
+           packed_dst_data = std::move(packed_dst_data)]() {
+            UnpackInt4(
+                *packed_dst_data,
+                absl::MakeSpan(static_cast<char*>(destination), num_elements));
+          }));
+    } else {
+      TF_CHECK_OK(stream->Memcpy(destination, device_memory, on_device_size));
+    }
+#endif
 
     local_device->event_pool().ThenRecordEvent(stream, event_or.value());
     usage_event->SetSequencingEvent(std::move(event_or).value(), stream);
