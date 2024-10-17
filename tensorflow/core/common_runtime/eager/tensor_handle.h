@@ -94,14 +94,15 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // The new tensor handle shares ownership of the given handle: their reference
   // count will be increased by one after a call to `CreatePackedHandle`.
   // TODO(b/170414377): Use `TensorHandlePtr` instead.
-  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
-                                   tensorflow::DataType dtype,
-                                   const tensorflow::TensorShape& shape,
-                                   const string& device_name, EagerContext* ctx,
-                                   TensorHandle** packed_handle);
-  static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
-                                   EagerContext* ctx,
-                                   TensorHandle** packed_handle);
+  static absl::Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                         tensorflow::DataType dtype,
+                                         const tensorflow::TensorShape& shape,
+                                         const string& device_name,
+                                         EagerContext* ctx,
+                                         TensorHandle** packed_handle);
+  static absl::Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
+                                         EagerContext* ctx,
+                                         TensorHandle** packed_handle);
 
 #if !defined(IS_MOBILE_PLATFORM)
   // An unshaped remote handle refers to a tensor on a remote worker. It's not
@@ -129,16 +130,16 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Release();
 
   tensorflow::DataType DataType() const override;
-  Status Shape(tensorflow::PartialTensorShape* shape) const override;
-  Status NumDims(int* num_dims) const override;
-  Status NumElements(int64_t* num_elements) const override;
-  Status Dim(int dim_index, int64_t* dim) const override;
+  absl::Status Shape(tensorflow::PartialTensorShape* shape) const override;
+  absl::Status NumDims(int* num_dims) const override;
+  absl::Status NumElements(int64_t* num_elements) const override;
+  absl::Status Dim(int dim_index, int64_t* dim) const override;
 
-  const char* DeviceName(Status* status) const override;
-  const char* BackingDeviceName(Status* status) const override;
-  const char* DeviceType(Status* status) const override;
-  int DeviceId(Status* status) const override;
-  AbstractTensorInterface* Resolve(Status* status) override;
+  const char* DeviceName(absl::Status* status) const override;
+  const char* BackingDeviceName(absl::Status* status) const override;
+  const char* DeviceType(absl::Status* status) const override;
+  int DeviceId(absl::Status* status) const override;
+  AbstractTensorInterface* Resolve(absl::Status* status) override;
 
   // Subclasses may return True to instruct the string formatter
   // to use SummarizeValue instead of the NumPy formatter.
@@ -147,16 +148,17 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   }
 
   // Return the Tensor from the default device.
-  Status Tensor(const tensorflow::Tensor** t) const;
+  absl::Status Tensor(const tensorflow::Tensor** t) const;
   // Return the Tensor from the specified device which could be either the
   // default device or a local mirror. The device pointer should be nullptr if
   // requesting the HostCPU.
-  Status TensorFromDevice(const Device* d, const tensorflow::Tensor** t) const;
+  absl::Status TensorFromDevice(const Device* d,
+                                const tensorflow::Tensor** t) const;
 
   // Return the TensorValue from the specified device which could be either the
   // default device or a local mirror. The device pointer should be nullptr if
   // requesting the HostCPU.
-  Status TensorValue(const Device* d, tensorflow::TensorValue* t);
+  absl::Status TensorValue(const Device* d, tensorflow::TensorValue* t);
 
   Device* device() const { return device_; }
   Device* op_device() const { return op_device_; }
@@ -167,13 +169,13 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   // If the devices are unknown at creation time, block until the actual devices
   // are set (data is ready).
-  Status WaitUnknownDevice() const;
+  absl::Status WaitUnknownDevice() const;
 
   Device* DeviceOrHostCPU(const EagerContext& ctx) const;
 
-  Status Shape(tensorflow::TensorShape* shape);
+  absl::Status Shape(tensorflow::TensorShape* shape);
 
-  Status Unprotect(const Device* d);
+  absl::Status Unprotect(const Device* d);
 
   // Checks if a mirror tensor exists for the specified device. Mirrors are only
   // maintained for local devices, like CPUs & GPUs. Note a mirror may be empty,
@@ -181,25 +183,27 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   bool HasLocalMirror(const Device* d) const;
   // Add an empty mirror placeholder for the specified device. The expectation
   // is this will be populated by a call to SetTensor.
-  Status AddEmptyLocalMirror(const Device* d);
+  absl::Status AddEmptyLocalMirror(const Device* d);
   // Add a local mirror. This will fail if an empty local mirror was previously
   // added. For that case, SetTensor should be used instead.
-  Status AddLocalMirror(tensorflow::Tensor&& tensor, const Device* d);
+  absl::Status AddLocalMirror(tensorflow::Tensor&& tensor, const Device* d);
 
 #if !defined(IS_MOBILE_PLATFORM)
   bool HasRemoteMirror(const Device* d, uint64 context_view_id) const;
   bool HasResourceShapeMirror(const Device* d, uint64 context_view_id) const;
 
-  Status AddUnshapedRemoteMirror(const Device* d, int64_t op_id, int output_num,
-                                 const string& remote_task, EagerContext* ctx);
-  Status AddResourceShapeMirror(const Device* d, int64_t op_id, int output_num,
-                                EagerContext* ctx);
+  absl::Status AddUnshapedRemoteMirror(const Device* d, int64_t op_id,
+                                       int output_num,
+                                       const string& remote_task,
+                                       EagerContext* ctx);
+  absl::Status AddResourceShapeMirror(const Device* d, int64_t op_id,
+                                      int output_num, EagerContext* ctx);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
   // If wait_until_ready is true, block until the remote tensor is ready on the
   // given remote worker.
-  Status RemoteAddress(const Device* d, bool wait_until_ready, int64_t* op_id,
-                       int32* output_num) const;
+  absl::Status RemoteAddress(const Device* d, bool wait_until_ready,
+                             int64_t* op_id, int32* output_num) const;
 
   // Called on an async remote tensor once it's shape has been determined. This
   // transitions the tensor handle from a non-ready to a ready state by
@@ -208,43 +212,46 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // creating a TensorHandle (e.g. a remote output of a remote function).
   // This method or Poison must be called exactly once for remote tensors that
   // were created without a known shape.
-  Status SetRemoteShape(const TensorShape& shape, const Device* d,
-                        uint64 context_view_id);
+  absl::Status SetRemoteShape(const TensorShape& shape, const Device* d,
+                              uint64 context_view_id);
   // If op_device is not empty, reset the devices of a remote tensor which is
   // created without known devices (e.g. function outputs).
-  Status SetRemoteShapeAndDevice(const TensorShape& shape, const Device* d,
-                                 uint64 context_view_id, string op_device);
+  absl::Status SetRemoteShapeAndDevice(const TensorShape& shape,
+                                       const Device* d, uint64 context_view_id,
+                                       string op_device);
 
   // Poisons either this handle or a remote mirror with error `status`.
   // Poisoning means that the handle will become ready and methods trying
   // to access the remote shape will return this error `status`.
   // Exactly one of SetRemoteShape or PoisonRemote methods must be called on a
   // unshaped handle on a remote device.
-  void PoisonRemote(Status status, const Device* d, uint64 context_view_id);
+  void PoisonRemote(absl::Status status, const Device* d,
+                    uint64 context_view_id);
 #endif
 
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  Status SetTensor(tensorflow::Tensor&& tensor, const Device* d);
+  absl::Status SetTensor(tensorflow::Tensor&& tensor, const Device* d);
 
   // Poisons either this handle or a local mirror with error `status`.
   // Poisoning means that the handle will become ready and methods trying
   // to access the actual tensor or shape will return this error `status`.
   // Exactly one of SetTensor or Poison methods must be called on a non-ready
   // tensor for a specific device.
-  void Poison(Status status, const Device* d);
+  void Poison(absl::Status status, const Device* d);
 
   // TODO(b/154282629): Consider moving it to EagerContext.
   // Copies to the tensor on the given device `d`, or to host iff `d` is null.
-  Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
-                      tensorflow::Tensor* output) const;
+  absl::Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
+                            tensorflow::Tensor* output) const;
 
-  Status InferenceShape(shape_inference::InferenceContext* inference_context,
-                        shape_inference::ShapeHandle* shape_handle);
+  absl::Status InferenceShape(
+      shape_inference::InferenceContext* inference_context,
+      shape_inference::ShapeHandle* shape_handle);
   void SetInferenceShape(shape_inference::InferenceContext* inference_context,
                          const shape_inference::ShapeHandle& shape_handle);
-  Status CopyInferenceShape(TensorHandle* other);
+  absl::Status CopyInferenceShape(TensorHandle* other);
 
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
@@ -260,14 +267,14 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
   // return data types and shapes of the underlying resource.
-  Status GetResourceHandleDtypesAndShapes(
+  absl::Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
 
   // Returns the number of packed handles. 0 if the handle type is not PACKED.
   int NumPackedHandles() const;
   // It's called on a packed TensorHandle. Extract a handle with the given
   // index.
-  Status ExtractPackedHandle(int index, TensorHandle** handle) const;
+  absl::Status ExtractPackedHandle(int index, TensorHandle** handle) const;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
@@ -292,7 +299,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
   bool IsReady() const;
-  Status WaitReady(const char* caller) const;
+  absl::Status WaitReady(const char* caller) const;
 
   tensorflow::Device* device_;
 
@@ -356,20 +363,20 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
     ~PackedTensorHandleData();
 
-    Status Shape(TensorShape* shape) const;
-    Status NumDims(int* num_dims) const;
-    Status Dim(int dim_index, int64_t* dim) const;
-    Status NumElements(int64_t* num_elements) const;
-    Status Unprotect();
+    absl::Status Shape(TensorShape* shape) const;
+    absl::Status NumDims(int* num_dims) const;
+    absl::Status Dim(int dim_index, int64_t* dim) const;
+    absl::Status NumElements(int64_t* num_elements) const;
+    absl::Status Unprotect();
     bool IsReady() const;
-    Status WaitReady(const char* caller) const;
-    void Poison(Status status);
+    absl::Status WaitReady(const char* caller) const;
+    void Poison(absl::Status status);
     string DebugString() const;
 
     // Number of packed handles.
     int NumPackedHandles() const;
     // Extract a handle on the given index.
-    Status ExtractPackedHandle(int index, TensorHandle** handle) const;
+    absl::Status ExtractPackedHandle(int index, TensorHandle** handle) const;
 
    private:
     // TODO(b/170414377): Use `TensorHandlePtr` instead.
@@ -377,7 +384,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     const TensorShape shape_;
 
     mutable mutex mu_;
-    Status is_poisoned_ TF_GUARDED_BY(mu_);
+    absl::Status is_poisoned_ TF_GUARDED_BY(mu_);
   };
 
   // Does not need synchronization because it can be accessed only after
