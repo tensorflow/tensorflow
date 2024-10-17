@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_GRAPPLER_COST_ANALYZER_H_
 
 #include <iostream>
+
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/measuring_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 class GraphDef;
