@@ -86,7 +86,6 @@ class HloFusionAnalysis {
   HloInstructionAdaptor fusion_hero(int64_t i) const {
     return fusion_heroes_[i];
   }
-  int64_t fusion_hero_count() const { return fusion_heroes_.size(); }
 
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;

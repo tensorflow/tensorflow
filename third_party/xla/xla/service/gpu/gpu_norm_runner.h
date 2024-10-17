@@ -64,7 +64,6 @@ struct GpuNormDescriptor {
   std::optional<Shape> dy_shape;
   std::optional<Shape> dscale_shape;
   std::optional<Shape> dbias_shape;
-  size_t scratch_size;
 };
 
 // Structure to describe static properties of a fused norm op.
@@ -159,10 +158,6 @@ class NormRunner {
   explicit NormRunner(const GpuNormConfig& config)
       : NormRunner(std::make_unique<se::dnn::LazyOpRunner<se::dnn::NormOp>>(
             config.algorithm)) {}
-
-  se::dnn::AlgorithmDesc ToAlgorithmDesc() const {
-    return repr_->ToAlgorithmDesc();
-  }
 
   se::dnn::LazyOpRunner<se::dnn::NormOp>* AsNormRunner() { return repr_.get(); }
 
