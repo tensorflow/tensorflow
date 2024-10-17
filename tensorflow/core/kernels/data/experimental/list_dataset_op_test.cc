@@ -47,7 +47,7 @@ class ListDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return tensors_; }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->reserve(tensors_.size());
     for (int i = 0; i < tensors_.size(); ++i) {
       input_names->emplace_back(absl::StrCat("tensors_", i));
@@ -55,7 +55,7 @@ class ListDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"Tinput_types", input_types_},
                     {"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
