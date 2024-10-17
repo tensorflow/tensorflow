@@ -19,13 +19,24 @@ limitations under the License.
 
 #include <variant>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/variant.h"
+#include "third_party/cloud_cpp/google/cloud/status.h"
+#include "third_party/cloud_cpp/google/cloud/status_or.h"
 #include "google/cloud/storage/client.h"
+#include "third_party/cloud_cpp/google/cloud/storage/download_options.h"
+#include "third_party/cloud_cpp/google/cloud/storage/object_metadata.h"
+#include "third_party/cloud_cpp/google/cloud/storage/well_known_parameters.h"
 #include "tensorflow/c/env.h"
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/expiring_lru_cache.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 #include "tensorflow/c/logging.h"
+#include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
