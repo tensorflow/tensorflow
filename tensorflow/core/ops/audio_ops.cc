@@ -27,7 +27,7 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-Status DecodeWavShapeFn(InferenceContext* c) {
+absl::Status DecodeWavShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
 
@@ -60,7 +60,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status EncodeWavShapeFn(InferenceContext* c) {
+absl::Status EncodeWavShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
@@ -68,7 +68,7 @@ Status EncodeWavShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SpectrogramShapeFn(InferenceContext* c) {
+absl::Status SpectrogramShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
   int32_t window_size;
@@ -110,7 +110,7 @@ Status SpectrogramShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status MfccShapeFn(InferenceContext* c) {
+absl::Status MfccShapeFn(InferenceContext* c) {
   ShapeHandle spectrogram;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &spectrogram));
   ShapeHandle unused;
