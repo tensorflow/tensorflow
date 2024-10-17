@@ -2021,6 +2021,11 @@ absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
     // nature they support dynamic lowering.
     return absl::OkStatus();
   }
+  if (hlo->IsCustomCall(
+          {"Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"})) {
+    // Sharding ops are purely symbolic.
+    return absl::OkStatus();
+  }
 
   return DefaultAction(hlo);
 }
@@ -2235,7 +2240,6 @@ absl::StatusOr<bool> DynamicPadder::Run(
     // the output tensor to be in dynamic form.
     bool require_dynamic_output = options_.slice_dynamic_output &&
                                   computation == module->entry_computation();
-    changed |= require_dynamic_output;
     TF_ASSIGN_OR_RETURN(bool c,
                         DynamicShapeRemovingVisitor::Run(
                             computation, options_.op_supports_dynamism_handler,

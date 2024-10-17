@@ -2461,7 +2461,9 @@ absl::StatusOr<bool> DynamicDimensionInferenceVisitor::RequiresPadToStatic(
       return true;
     }
     if (use.instruction->opcode() != HloOpcode::kCustomCall ||
-        use.instruction->custom_call_target() != "PadToStatic") {
+        !use.instruction->IsCustomCall({"PadToStatic", "Sharding",
+                                        "SPMDShardToFullShape",
+                                        "SPMDFullToShardShape"})) {
       if (parent_->op_supports_dynamism_handler_ == nullptr) {
         return true;
       }
