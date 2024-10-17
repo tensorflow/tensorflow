@@ -178,6 +178,7 @@ absl::Status RunClusteringPipelineOnSubmodule(
     clustering_pipeline_status = RunTFXLABridge(
         submodule,
         [](OpPassManager &pm) {
+          pm.addPass(mlir::TFTPU::CreateTPUValidateInputsPass());
           internal::AddReplicatedBridgeClusteringPipelinePasses(pm);
         },
         /*module_name=*/"", /*dump_prefix=*/"tf_xla_clustering_bridge_v1");
