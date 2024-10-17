@@ -53,7 +53,7 @@ class PaddingFIFOQueueOp : public TypedQueueOp {
   }
 
  private:
-  Status CreateResource(QueueInterface** ret) override
+  absl::Status CreateResource(QueueInterface** ret) override
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     PaddingFIFOQueue* queue = new PaddingFIFOQueue(
         capacity_, component_types_, component_shapes_, cinfo_.name());
