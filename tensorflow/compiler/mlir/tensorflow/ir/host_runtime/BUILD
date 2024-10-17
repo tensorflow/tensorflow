@@ -59,6 +59,12 @@ cc_library(
     textual_hdrs = [
         "tfrt_ops.h.inc",
     ],
+    visibility = [
+        "//learning/brain/mlir:tensorflow_mlir_friends",
+        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
+        "//tensorflow/core/tfrt/runtime:__pkg__",
+    ],
     deps = [
         ":tensorflow_tfrt_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:side_effect_analysis_util",
