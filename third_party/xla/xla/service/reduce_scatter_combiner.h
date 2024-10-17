@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/all_reduce_key.h"
 
 namespace xla {
 
@@ -37,6 +38,26 @@ class ReduceScatterCombiner : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  using GroupKey = std::tuple<AllReduceKey, /*scatter_dimension*/ int64_t,
+                              /*extra_args*/ std::string>;
+
+  static std::string& GetGroupKeyExtraArgs(
+      ReduceScatterCombiner::GroupKey& key);
+
+  // Returns a key that will be equal for instructions that might be combined,
+  // or different if not.
+  static std::optional<ReduceScatterCombiner::GroupKey> CombineKey(
+      const HloInstruction* instruction, const HloDomainMap& domain_map,
+      bool combine_by_dim);
+
+ protected:
+  absl::StatusOr<bool> RunWithKeyCombiner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+          const HloInstruction*, const HloDomainMap&, bool)>
+          combine_key);
 
  private:
   // Combine reduce-scatter ops up to this threshold.
