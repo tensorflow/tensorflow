@@ -108,6 +108,7 @@ cc_library(
         ":op_signature",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
