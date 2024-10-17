@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
@@ -36,9 +35,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/init.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -55,10 +53,7 @@ IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
   mlir::registerMLIRContextCLOptions();
 
   mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<xla::ifrt::IfrtDialect>();
-  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
+  InitializeMlirDialectRegistry(&registry);
   mlir_context_.appendDialectRegistry(registry);
 }
 

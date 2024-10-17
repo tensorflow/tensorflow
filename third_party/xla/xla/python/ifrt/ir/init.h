@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_PYTHON_IFRT_IR_INIT_H_
+#define XLA_PYTHON_IFRT_IR_INIT_H_
+
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/InitAllPasses.h"
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "xla/python/ifrt/ir/init.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
 
-int main(int argc, char** argv) {
-  mlir::DialectRegistry registry;
-  xla::ifrt::InitializeMlirDialectRegistry(&registry);
-  mlir::registerAllPasses();
-  xla::ifrt::RegisterIfrtPassesAndPipelines();
+namespace xla {
+namespace ifrt {
 
-  return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "IFRT IR dialect driver\n", registry));
-}
+// Initializes the given MLIR dialect registry with dialects that are required
+// by the IFRT IR passes.
+void InitializeMlirDialectRegistry(mlir::DialectRegistry* registry);
+
+}  // namespace ifrt
+}  // namespace xla
+
+#endif  // XLA_PYTHON_IFRT_IR_INIT_H_
