@@ -619,6 +619,7 @@ class TFLiteConverterBase:
     self.experimental_new_converter = True
     self.experimental_new_quantizer = True
     self.experimental_enable_resource_variables = True
+    self.experimental_allowed_op_list = []
     self._experimental_calibrate_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
@@ -765,6 +766,17 @@ class TFLiteConverterBase:
           enable_variable_quantization=enable_variable_quantization,
           disable_per_channel_for_dense_layers=self._experimental_disable_per_channel_quantization_for_dense_layers,
           debug_options_str=debug_options.SerializeToString(),
+      )
+    elif self.experimental_allowed_op_list:
+      return calibrate_quantize.calibrate_and_quantize(
+          self.representative_dataset.input_gen,
+          input_type,
+          output_type,
+          allow_float,
+          activations_type,
+          bias_type,
+          disable_per_channel=self._experimental_disable_per_channel,
+          selected_op_names=self.experimental_allowed_op_list,
       )
     else:
       return calibrate_quantize.calibrate_and_quantize(

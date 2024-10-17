@@ -117,6 +117,13 @@ TfLiteStatus QuantizeModelAllOperators(
     const TensorType& bias_type, bool disable_per_channel,
     ErrorReporter* error_reporter);
 
+TfLiteStatus QuantizeModelSelectedOperators(
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
+    const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    const TensorType& bias_type, bool disable_per_channel,
+    ErrorReporter* error_reporter, std::unordered_set<string>& operator_names);
+
 // Quantizes input_model and populates the provided builder with the new model
 // with all possible input parameters including disabling per_channel
 // quantization.
