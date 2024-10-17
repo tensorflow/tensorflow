@@ -15,11 +15,17 @@ limitations under the License.
 
 // TODO(b/282059652): Merge google internal and open-source code path once TF
 // dependency issue is resolved.
+#include "absl/memory/memory.h"
+#include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
 #define TF_GPU_USE_PJRT
 #endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
-
-#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -27,28 +33,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/bfc_allocator.h"
 #include "xla/tsl/framework/device_id.h"
-#include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/types.h"
 
 #if GOOGLE_CUDA
