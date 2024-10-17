@@ -50,10 +50,11 @@ class RemoteMgr {
   void AddOperationOutput(tensorflow::TensorHandle* handles,
                           int64_t operation_id, int32_t output_num);
 
-  Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
-                         tensorflow::TensorHandle** handle);
+  absl::Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
+                               tensorflow::TensorHandle** handle);
 
-  Status DeleteTensorHandle(const RemoteTensorHandleInternal& remote_handle);
+  absl::Status DeleteTensorHandle(
+      const RemoteTensorHandleInternal& remote_handle);
 
   // Helper function to create monotonically increasing ids unique to this
   // context.
@@ -66,15 +67,15 @@ class RemoteMgr {
   // Serialize a remote TensorHandle to a RemoteTensorHandle.
   // If wait_until_ready is true, block until the remote handle is ready on a
   // remote worker.
-  Status SerializeRemoteTensorHandle(
+  absl::Status SerializeRemoteTensorHandle(
       TensorHandle* in, const bool wait_until_ready, RemoteTensorHandle* out,
       Device* device, absl::string_view device_name = "",
       const bool serialize_resource_dtype_and_shape = false);
 
   // Deserialize a RemoteTensorHandle to a TensorHandle(local/remote).
   // The output holds a reference to the TensorHandle.
-  Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
-                                       TensorHandle** out);
+  absl::Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
+                                             TensorHandle** out);
 
   EagerExecutor& GetOrCreateExecutorForStream(uint64 stream_id);
 
@@ -87,16 +88,17 @@ class RemoteMgr {
  private:
   // Returns the op_id and output_num if the given local TensorHandle exists in
   // remote_tensor_handle_map_.
-  Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
-                               const bool wait_until_ready, int64_t* op_id,
-                               int32* output_num)
+  absl::Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
+                                     const bool wait_until_ready,
+                                     int64_t* op_id, int32* output_num)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 
-  Status GetTensorHandleImpl(const RemoteTensorHandleInternal& remote_handle,
-                             tensorflow::TensorHandle** handle)
+  absl::Status GetTensorHandleImpl(
+      const RemoteTensorHandleInternal& remote_handle,
+      tensorflow::TensorHandle** handle)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 
-  Status GetMirroredResourceShape(
+  absl::Status GetMirroredResourceShape(
       const RemoteTensorHandleInternal& remote_handle,
       std::vector<DtypeAndPartialTensorShape>* handle);
 
