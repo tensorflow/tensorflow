@@ -49,11 +49,11 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
   std::string file_name;
   std::string output_directory;
   if (tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
-    std::string filename = tsl::io::JoinPath(
+    file_name = tsl::io::JoinPath(
         output_directory,
         absl::StrFormat("profiles-%d-%s", tsl::Env::Default()->NowMicros(),
                         name));
-    file_name = absl::StrCat(filename, ".textproto");
+    absl::StrAppend(&file_name, ".textproto");
   } else {
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
@@ -123,11 +123,11 @@ int RunProfiler(int argc, char** argv) {
     }
   }
 
-  VLOG(1) << "\n" << instr_profiles;
+  VLOG(1) << "\n" << instr_profiles.DebugString();
 
-  auto profile_name = HloOpProfiles::GetProfileName(&dev_info);
   DeviceHloInstructionProfiles device_profiles;
-  device_profiles.mutable_entries()->insert({profile_name, instr_profiles});
+  device_profiles.mutable_entries()->insert(
+      {HloOpProfiles::GetProfileName(dev_info), instr_profiles});
   if (!output_file.empty()) {
     WriteOutput(device_profiles, output_file);
   }
