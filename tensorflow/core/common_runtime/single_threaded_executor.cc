@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateOpIsSafeForSyncExecution(
+absl::Status ValidateOpIsSafeForSyncExecution(
     const Node& n, bool allow_control_flow_sync_execution) {
   for (DataType dt : n.output_types()) {
     if (IsRefType(dt)) {
@@ -82,7 +82,7 @@ class SingleThreadedExecutorImpl : public Executor {
     }
   }
 
-  Status Initialize(const Graph& graph) {
+  absl::Status Initialize(const Graph& graph) {
     // Topologicially sort `graph` to get a sequence of OpKernels.
     std::vector<Node*> ordered_nodes;
     ordered_nodes.reserve(graph.num_nodes());
@@ -254,7 +254,7 @@ class SingleThreadedExecutorImpl : public Executor {
     return absl::OkStatus();
   }
 
-  Status Run(const Args& args) override {
+  absl::Status Run(const Args& args) override {
     // The inputs to each kernel are stored contiguously in `inputs`.
     //
     // We use `kernels_[i].input_start_index` and `kernels_[i].num_inputs` to
@@ -578,8 +578,9 @@ class SingleThreadedExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
-                       std::unique_ptr<Executor>* out_executor) override {
+    absl::Status NewExecutor(const LocalExecutorParams& params,
+                             const Graph& graph,
+                             std::unique_ptr<Executor>* out_executor) override {
       Executor* ret;
       TF_RETURN_IF_ERROR(NewSingleThreadedExecutor(params, graph, &ret));
       out_executor->reset(ret);
@@ -591,8 +592,9 @@ static SingleThreadedExecutorRegistrar registrar;
 
 }  // namespace
 
-Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
-                                 const Graph& graph, Executor** executor) {
+absl::Status NewSingleThreadedExecutor(const LocalExecutorParams& params,
+                                       const Graph& graph,
+                                       Executor** executor) {
   auto impl = std::make_unique<SingleThreadedExecutorImpl>(params);
   TF_RETURN_IF_ERROR(impl->Initialize(graph));
   *executor = impl.release();

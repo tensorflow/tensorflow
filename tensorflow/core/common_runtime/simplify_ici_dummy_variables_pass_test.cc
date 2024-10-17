@@ -92,7 +92,7 @@ TEST(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
   std::string graph_path =
       TestDataPath() + "simplify_ici_dummy_variables_pass_before.pbtxt";
   tensorflow::GraphDef graph_def;
-  tensorflow::Status load_graph_status =
+  absl::Status load_graph_status =
       ReadTextProto(tensorflow::Env::Default(), graph_path, &graph_def);
   EXPECT_EQ(load_graph_status.ok(), true);
   TF_EXPECT_OK(ConvertGraphDefToGraph(GraphConstructorOptions(), graph_def,

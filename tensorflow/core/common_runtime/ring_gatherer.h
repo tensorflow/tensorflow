@@ -33,7 +33,8 @@ class RingGatherer : public RingAlg {
   RingGatherer() : RingAlg(GATHER_COLLECTIVE, "Gather") {}
   ~RingGatherer() override {}
 
-  Status InitializeCollectiveParams(CollectiveParams* col_params) override;
+  absl::Status InitializeCollectiveParams(
+      CollectiveParams* col_params) override;
 
   // Begins async execution of the ring gather algorithm.
   // Must be called in a blockable thread.

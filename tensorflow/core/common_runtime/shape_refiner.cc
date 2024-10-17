@@ -69,7 +69,7 @@ constexpr char kRetvalOp[] = "_Retval";
 // Runs shape inference for the given node using the given ShapeRefiner.
 // The node must be a sub-node of a function node and the outer_context is
 // the inference context of that function node in the outer graph.
-Status ShapeRefiner::InferShapesForFunctionSubNode(
+absl::Status ShapeRefiner::InferShapesForFunctionSubNode(
     const Node* node, InferenceContext* outer_context) {
   TF_RETURN_IF_ERROR(AddNodeInternal(node, outer_context));
   InferenceContext* node_context = CHECK_NOTNULL(GetContext(node));
@@ -158,9 +158,9 @@ Status ShapeRefiner::InferShapesForFunctionSubNode(
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
 // other maintainability issues.
-Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
-                                            AttrSlice attributes,
-                                            InferenceContext* outer_context) {
+absl::Status ShapeRefiner::InferShapesForFunction(
+    const FunctionDef* function_def, AttrSlice attributes,
+    InferenceContext* outer_context) {
   const Graph* graph;
   const string& fname = function_def->signature().name();
   auto it = functions_.find(fname);
@@ -185,7 +185,7 @@ Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
   }
 
   absl::flat_hash_set<const Node*> function_nodes;
-  Status inference_status = absl::OkStatus();
+  absl::Status inference_status = absl::OkStatus();
   {
     auto node_shape_inference_lambda = [this, &outer_context, &function_nodes,
                                         &inference_status](const Node* node) {
@@ -208,11 +208,11 @@ Status ShapeRefiner::InferShapesForFunction(const FunctionDef* function_def,
   return inference_status;
 }
 
-Status ShapeRefiner::AddNode(const Node* node) {
+absl::Status ShapeRefiner::AddNode(const Node* node) {
   return AddNodeInternal(node, /*outer_context=*/nullptr);
 }
 
-Status ShapeRefiner::AddNodeInternal(
+absl::Status ShapeRefiner::AddNodeInternal(
     const Node* node, shape_inference::InferenceContext* outer_context) {
   // Create the inference context for this node with the existing input shapes.
   std::unique_ptr<InferenceContext> ic(new InferenceContext(
@@ -272,8 +272,8 @@ Status ShapeRefiner::AddNodeInternal(
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::SetShape(const Node* node, int output_port,
-                              ShapeHandle shape) {
+absl::Status ShapeRefiner::SetShape(const Node* node, int output_port,
+                                    ShapeHandle shape) {
   auto c = GetContext(node);
   if (c == nullptr) {
     return errors::Internal("Could not find context for ", node->name());
@@ -305,7 +305,8 @@ Status ShapeRefiner::SetShape(const Node* node, int output_port,
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
+absl::Status ShapeRefiner::UpdateNode(const Node* node, bool relax,
+                                      bool* refined) {
   auto it = node_to_context_.find(node);
   if (it == node_to_context_.end()) {
     *refined = true;
@@ -408,7 +409,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
   return RunShapeFn(node, op_reg_data, node_context);
 }
 
-Status ShapeRefiner::EvaluateConstantTensorForEdge(
+absl::Status ShapeRefiner::EvaluateConstantTensorForEdge(
     const Node* node, int dst_idx, bool* evaluated, Tensor* result,
     InferenceContext* outer_context) {
   const Edge* input_edge;
@@ -462,7 +463,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::EvaluateConstantIntScalarEdge(
+absl::Status ShapeRefiner::EvaluateConstantIntScalarEdge(
     const Node* node, int dst_idx, bool* evaluated, int64_t* result,
     shape_inference::InferenceContext* outer_context) {
   Tensor scalar;
@@ -488,7 +489,7 @@ Status ShapeRefiner::EvaluateConstantIntScalarEdge(
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::ConstantPartialShape(
+absl::Status ShapeRefiner::ConstantPartialShape(
     InferenceContext* target_context, const Node* node, int dst_idx,
     ShapeHandle* result, shape_inference::InferenceContext* outer_context) {
   const Edge* input_edge;
@@ -634,7 +635,7 @@ Status ShapeRefiner::ConstantPartialShape(
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::PartialStridedSliceShape(
+absl::Status ShapeRefiner::PartialStridedSliceShape(
     Node* slice_node, InferenceContext* ctx, ShapeHandle* result,
     shape_inference::InferenceContext* outer_context) {
   // Only attempt to evaluate if begin/end/strides all are scalars.
@@ -707,10 +708,10 @@ Status ShapeRefiner::PartialStridedSliceShape(
   return absl::OkStatus();
 }
 
-Status ShapeRefiner::RunShapeFn(const Node* node,
-                                const OpRegistrationData* op_reg_data,
-                                InferenceContext* c,
-                                InferenceContext* outer_context) {
+absl::Status ShapeRefiner::RunShapeFn(const Node* node,
+                                      const OpRegistrationData* op_reg_data,
+                                      InferenceContext* c,
+                                      InferenceContext* outer_context) {
   // This will be filled in with real data in a second pass.
   std::vector<const Tensor*> input_tensors(node->num_inputs(), nullptr);
   std::vector<Tensor> real_tensors(node->num_inputs());
@@ -744,7 +745,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
           const_tensor_map_.clear();
           VLOG(4) << "Running shape inference for function \""
                   << function.name() << "\".";
-          Status function_inference_status = InferShapesForFunction(
+          absl::Status function_inference_status = InferShapesForFunction(
               function_def, AttrSlice(&function.attr()), c);
           const_tensor_map_ = const_tensor_map_copy;
           VLOG(4) << "Shape inference for function \"" << function.name()
