@@ -113,7 +113,7 @@ REQUIRED_PACKAGES = [
     'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.4.0, < 0.5.0',
+    'ml_dtypes >= 0.4.0, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
