@@ -23,7 +23,6 @@
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
-#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
@@ -37,11 +36,7 @@
 
 namespace {
 
-inline bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
-  flatbuffers::Verifier::Options options;
-  flatbuffers::Verifier verifier(buf, buf_size, options);
-  return tflite::VerifyModelBuffer(verifier);
-}
+using ::lrt::testing::VerifyFlatbuffer;
 
 inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
   auto model = lrt::testing::LoadTestFileModel(path);
@@ -83,7 +78,7 @@ class TopologyTest : public ::testing::TestWithParam<LrtModel> {
 TEST(LrtModelTest, TestLoadTestDataBadFilepath) {
   LrtModel model = nullptr;
   ASSERT_STATUS_HAS_CODE(LoadModelFromFile("bad_path", &model),
-                         kLrtStatusBadFileOp);
+                         kLrtStatusErrorFileIO);
 }
 
 TEST(LrtModelTest, TestLoadTestDataBadFileData) {
@@ -103,7 +98,7 @@ TEST(LrtModelTest, TestLoadTestDataBadFileData) {
 
   LrtModel model = nullptr;
   ASSERT_STATUS_HAS_CODE(LoadModelFromFile(test_file_path.c_str(), &model),
-                         kLrtStatusFlatbufferFailedVerify);
+                         kLrtStatusErrorInvalidFlatbuffer);
   // NOLINTEND
 }
 

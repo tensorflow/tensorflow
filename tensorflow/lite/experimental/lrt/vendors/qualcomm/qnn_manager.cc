@@ -107,7 +107,7 @@ LrtStatus QnnManager::ResolveApi() {
   if (lib_so_ == nullptr) {
     LITE_RT_LOG(LRT_ERROR, "%s",
                 "Cannot resolve functions: libQnn*.so has not been loaded.\n");
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
 
   auto providers = LoadProvidersFromLib(lib_so_);
@@ -129,7 +129,7 @@ LrtStatus QnnManager::ResolveApi() {
 
   if (interface_ == nullptr) {
     LITE_RT_LOG(LRT_ERROR, "%s", "No valid interface was provided\n");
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
 
   return kLrtStatusOk;
@@ -139,7 +139,7 @@ LrtStatus QnnManager::ResolveSystemApi() {
   if (lib_so_ == nullptr) {
     LITE_RT_LOG(LRT_ERROR, "%s",
                 "Cannot resolve functions: libQnn*.so has not been loaded.\n");
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
 
   auto system_providers = LoadSystemProvidersFromLib(lib_system_so_);
@@ -161,7 +161,7 @@ LrtStatus QnnManager::ResolveSystemApi() {
 
   if (system_interface_ == nullptr) {
     LITE_RT_LOG(LRT_ERROR, "%s", "No valid system interface was provided\n");
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
 
   return kLrtStatusOk;

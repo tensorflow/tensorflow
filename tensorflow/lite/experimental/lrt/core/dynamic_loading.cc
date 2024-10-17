@@ -46,7 +46,7 @@ LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
                 "Failed to load .so at path: %s, with error:\n\t %s\n", so_path,
                 ::dlerror());
 
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
   *lib_handle = res;
   return kLrtStatusOk;
@@ -55,7 +55,7 @@ LrtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
 LrtStatus CloseLib(void* lib_handle) {
   if (0 != ::dlclose(lib_handle)) {
     LITE_RT_LOG(LRT_ERROR, "Failed to close .so with error: %s", ::dlerror());
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
   return kLrtStatusOk;
 }

@@ -53,13 +53,14 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
   auto plugin = GetDummyPlugin();
   auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
 
-  LrtOpListT selected_ops;
+  LrtOpListT selected_op_list;
   ASSERT_STATUS_OK(
-      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_ops));
+      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_op_list));
+  const auto selected_ops = selected_op_list.Vec();
 
-  ASSERT_EQ(selected_ops.ops.size(), 2);
-  ASSERT_EQ(selected_ops.ops[0]->op_code, kLrtOpCodeTflMul);
-  ASSERT_EQ(selected_ops.ops[1]->op_code, kLrtOpCodeTflMul);
+  ASSERT_EQ(selected_ops.size(), 2);
+  ASSERT_EQ(selected_ops[0]->op_code, kLrtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[1]->op_code, kLrtOpCodeTflMul);
 }
 
 TEST(TestCallDummyPlugin, CompileMulSubgraph) {

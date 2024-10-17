@@ -245,6 +245,11 @@ void Dump(void* lib_handle, std::ostream& out) {
 #endif
 }
 
+void Dump(const LrtModelT& model, std::ostream& out) {
+  out << absl::StreamFormat("LrtModel : [ #subgraphs=%d ]\n",
+                            model.subgraphs.size());
+}
+
 void DumpOptions(const LrtOpT& op, std::ostream& out) {
   switch (op.op_code) {
     case kLrtOpCodeTflAdd:

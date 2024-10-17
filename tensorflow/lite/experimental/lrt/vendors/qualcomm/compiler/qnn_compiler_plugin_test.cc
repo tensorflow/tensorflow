@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
@@ -50,11 +51,13 @@ TEST(TestQnnPlugin, PartitionMulOps) {
   auto plugin = GetQnnPlugin();
   auto model = lrt::testing::LoadTestFileModel("one_mul.tflite");
 
-  LrtOpListT selected_ops;
+  LrtOpListT selected_op_list;
   ASSERT_STATUS_OK(
-      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_ops));
+      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_op_list));
+  const auto selected_ops = selected_op_list.Vec();
 
-  EXPECT_EQ(selected_ops.ops.size(), 1);
+  ASSERT_EQ(selected_ops.size(), 1);
+  EXPECT_EQ(selected_ops[0]->op_code, kLrtOpCodeTflMul);
 }
 
 TEST(TestQnnPlugin, CompileMulSubgraph) {

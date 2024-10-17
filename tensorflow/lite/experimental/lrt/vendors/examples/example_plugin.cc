@@ -76,7 +76,7 @@ LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
                                        const void** call_info,
                                        size_t* call_info_size) {
   if (call_idx >= compiled_result->per_op_data.size()) {
-    return kLrtStatusParamIndexOOB;
+    return kLrtStatusErrorIndexOOB;
   }
 
   *call_info = compiled_result->per_op_data.at(call_idx).data();

@@ -41,7 +41,7 @@ inline static LrtStatus ResolveLibSymbol(void* lib_handle,
   if (ptr == nullptr) {
     LITE_RT_LOG(LRT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
                 sym_name, ::dlerror());
-    return kLrtStatusDynamicLoadErr;
+    return kLrtStatusErrorDynamicLoading;
   }
   *sym_handle = ptr;
   return kLrtStatusOk;

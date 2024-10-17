@@ -39,15 +39,14 @@ struct ApplyPluginRun {
   // A specific command implemented by the tool to run.
   enum class Cmd {
     // Displays info about all plugins found in given search paths.
-    // Writes all output to the "dump_out" stream.
     //
     // FLAG SEMANTICS:
     // "lib_search_paths": Required, at least one.
     // "model": Ignored.
     // "soc_manufacturer": Optional, filters plugins to display.
     // "soc_models": Ignored.
-    // "outs": Ignored.
-    // "dump_out": Required.
+    // "outs": Required, must be size one.
+    // "dump_out": Optional.
     // "serialization": Ignored.
     INFO,
 

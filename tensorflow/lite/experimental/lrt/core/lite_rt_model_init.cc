@@ -54,7 +54,7 @@ LrtStatus VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
   flatbuffers::Verifier verifier(buf, buf_size, options);
   if (!tflite::VerifyModelBuffer(verifier)) {
     _LRT_D_MSG("Failed to verify fb");
-    return kLrtStatusFlatbufferFailedVerify;
+    return kLrtStatusErrorInvalidFlatbuffer;
   }
   return kLrtStatusOk;
 }
@@ -332,7 +332,7 @@ LrtStatus LoadModelFromFile(const char* path, LrtModel* model) {
   std::unique_ptr<tflite::Allocation> alloc =
       tflite::GetAllocationFromFile(path, tflite::DefaultErrorReporter());
   if (!alloc->valid()) {
-    return kLrtStatusBadFileOp;
+    return kLrtStatusErrorFileIO;
   }
 
   return LoadModel(reinterpret_cast<const uint8_t*>(alloc->base()),

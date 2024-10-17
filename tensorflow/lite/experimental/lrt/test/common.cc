@@ -14,6 +14,8 @@
 
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
+#include <cstddef>
+#include <cstdint>
 // NOLINTNEXTLINE
 #include <filesystem>
 #include <fstream>
@@ -24,9 +26,11 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tsl/platform/platform.h"
 
 namespace lrt {
@@ -77,6 +81,12 @@ void TouchTestFile(absl::string_view filename, absl::string_view dir) {
   std::filesystem::path path(dir.data());
   path.append(filename.data());
   std::ofstream f(path);
+}
+
+bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
+  flatbuffers::Verifier::Options options;
+  flatbuffers::Verifier verifier(buf, buf_size, options);
+  return tflite::VerifyModelBuffer(verifier);
 }
 
 }  // namespace testing

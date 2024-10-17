@@ -136,8 +136,23 @@ struct LrtModelT {
 //
 
 // Used for communicating selections of ops.
-struct LrtOpListT {
-  std::vector<LrtOp> ops;
+class LrtOpListT {
+ public:
+  void Push(LrtOp op) { ops_.push_back(op); }
+
+  std::vector<LrtOp> Vec() const {
+    std::vector<LrtOp> res;
+    res.reserve(ops_.size());
+    res.assign(ops_.begin(), ops_.end());
+    return res;
+  }
+
+ private:
+  // NOTE: This was originally a vector. Was encountering really odd
+  // segfaults when freeing after code on another side of a compilation boundary
+  // was doing pushes that resized. A list+copy to vector is not optimimal,
+  // revisit if bottleneck.
+  std::list<LrtOp> ops_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_

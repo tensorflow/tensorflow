@@ -33,7 +33,7 @@ LrtStatus GetModelNumSubgraphs(LrtModel model,
 LrtStatus GetModelSubgraph(LrtModel model, lrt_param_index_t subgraph_index,
                            LrtSubgraph* subgraph) {
   if (subgraph_index >= model->subgraphs.size()) {
-    return kLrtStatusParamIndexOOB;
+    return kLrtStatusErrorIndexOOB;
   }
   *subgraph = model->subgraphs.data() + subgraph_index;
   return kLrtStatusOk;
@@ -46,10 +46,14 @@ LrtStatus GetModelMainSubgraph(LrtModel model,
   return kLrtStatusOk;
 }
 
-void ModelDestroy(LrtModel model) { delete model; }
+void ModelDestroy(LrtModel model) {
+  if (model != nullptr) {
+    delete model;
+  }
+}
 
 LrtStatus PushOp(LrtOpList op_list, LrtOp op) {
-  op_list->ops.push_back(op);
+  op_list->Push(op);
   return kLrtStatusOk;
 }
 
@@ -149,7 +153,7 @@ LrtStatus GetTensorTypeId(LrtTensor tensor, LrtTensorTypeId* type_id) {
 LrtStatus GetUrankedTensorType(LrtTensor tensor,
                                LrtUnrankedTensorType* unranked_tensor_type) {
   if (tensor->type_id != kLrtUnrankedTensorType) {
-    return kLrtStatusBadTensorType;
+    return kLrtStatusErrorInvalidIrType;
   }
   *unranked_tensor_type = tensor->type_detail.unranked_tensor_type;
   return kLrtStatusOk;
@@ -158,7 +162,7 @@ LrtStatus GetUrankedTensorType(LrtTensor tensor,
 LrtStatus GetRankedTensorType(LrtTensor tensor,
                               LrtRankedTensorType* ranked_tensor_type) {
   if (tensor->type_id != kLrtRankedTensorType) {
-    return kLrtStatusBadTensorType;
+    return kLrtStatusErrorInvalidIrType;
   }
   *ranked_tensor_type = tensor->type_detail.ranked_tensor_type;
   return kLrtStatusOk;

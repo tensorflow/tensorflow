@@ -60,17 +60,20 @@ typedef enum {
   kLrtStatusErrorTimeoutExpired = 7,
 
   // File and loading related errors.
-  kLrtStatusBadFileOp = 500,
-  kLrtStatusFlatbufferFailedVerify = 501,
-  kLrtStatusDynamicLoadErr = 502,
+  kLrtStatusErrorFileIO = 500,
+  kLrtStatusErrorInvalidFlatbuffer = 501,
+  kLrtStatusErrorDynamicLoading = 502,
+  kLrtStatusSerializationErr = 503,
+  kLrtStatusCompilationError = 504,
 
   // IR related errors.
-  kLrtStatusParamIndexOOB = 1000,
-  kLrtStatusBadTensorType = 1001,
-  kLrtStatusGraphInvariantError = 1002,
+  kLrtStatusErrorIndexOOB = 1000,
+  kLrtStatusErrorInvalidIrType = 1001,
+  kLrtStatusErrorInvalidGraphInvariant = 1002,
+  kLrtStatusErrorGraphModification = 1003,
 
   // Tool related errors.
-  kLrtStatusToolBadConfig = 1500,
+  kLrtStatusErrorInvalidToolConfig = 1500,
 } LrtStatus;
 
 #ifdef __cplusplus

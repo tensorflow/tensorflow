@@ -31,6 +31,12 @@ TEST(DumpTest, TestDump) {
   auto model = LoadTestFileModel("one_mul.tflite");
 
   {
+    std::ostringstream model_dump;
+    Dump(*model, model_dump);
+    EXPECT_EQ(model_dump.view(), "LrtModel : [ #subgraphs=1 ]\n");
+  }
+
+  {
     const LrtTensorT& in_tensor = *model->subgraphs.front().inputs.front();
     std::ostringstream in_tensor_dump;
     Dump(in_tensor, in_tensor_dump);

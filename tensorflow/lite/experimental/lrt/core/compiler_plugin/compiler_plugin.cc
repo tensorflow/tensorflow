@@ -138,14 +138,14 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
 
   if (OpenLib(lib_path, &plugin.lib_handle_) != kLrtStatusOk) {
     LITE_RT_LOG(LRT_WARNING, "Failed to load plugin at: %s", lib_path.data());
-    return ResultT::FromStatus(kLrtStatusDynamicLoadErr);
+    return ResultT::FromStatus(kLrtStatusErrorDynamicLoading);
   }
 
   if (ResolvePluginApi(plugin.lib_handle_, plugin.plugin_api_) !=
       kLrtStatusOk) {
     LITE_RT_LOG(LRT_WARNING, "Failed to resolve plugin api at: %s",
                 lib_path.data());
-    return ResultT::FromStatus(kLrtStatusDynamicLoadErr);
+    return ResultT::FromStatus(kLrtStatusErrorDynamicLoading);
   }
 
   if (plugin.plugin_api_.init(&plugin.plugin_handle_) != kLrtStatusOk) {
@@ -155,7 +155,7 @@ CompilerPlugin::ResultT CompilerPlugin::LoadPlugin(
       LITE_RT_LOG(LRT_WARNING, "Failed to close loaded library at: %s",
                   lib_path.data());
     }
-    return ResultT::FromStatus(kLrtStatusDynamicLoadErr);
+    return ResultT::FromStatus(kLrtStatusErrorDynamicLoading);
   }
 
   // This should never change throughout the lifetime of the compiler
@@ -235,8 +235,7 @@ LrtResult<std::vector<LrtOp>> CompilerPlugin::PartitionModel(
   LRT_RETURN_RESULT_IF_NOT_OK(
       plugin_api_.partition_model(plugin_handle_, c_model, &ops),
       std::vector<LrtOp>);
-
-  return LrtResult<std::vector<LrtOp>>::TakeValue(std::move(ops.ops));
+  return LrtResult<std::vector<LrtOp>>::TakeValue(ops.Vec());
 }
 
 LrtStatus CompilerPlugin::Compile(const absl::string_view soc_model,

@@ -132,6 +132,16 @@ class LrtResult {
   }                                                 \
   decl = result.Value();
 
+#define _MOVE_OR_BLOCK(decl, expr, block, result) \
+  auto result = (expr);                           \
+  if (!result.HasValue()) {                       \
+    block;                                        \
+  }                                               \
+  decl = std::move(result.Value());
+
+#define _MOVE_OR_RETURN_VAL(decl, expr, val, result) \
+  _MOVE_OR_BLOCK(decl, expr, _RETURN_VAL(val), result)
+
 #define _ASSIGN_OR_RETURN_VAL(decl, expr, val, result) \
   _ASSIGN_OR_BLOCK(decl, expr, _RETURN_VAL(val), result)
 
@@ -144,9 +154,16 @@ class LrtResult {
 #define _ASSIGN_OR_RETURN_STATUS(decl, expr, result) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, _STATUS_FROM_RESULT(result), result)
 
+#define _MOVE_OR_RETURN_STATUS(decl, expr, result) \
+  _MOVE_OR_RETURN_VAL(decl, expr, _STATUS_FROM_RESULT(result), result)
+
 // Assign value behind result returned from expr. If not ok, return status.
 #define LRT_ASSIGN_OR_RETURN_STATUS(decl, expr) \
   _ASSIGN_OR_RETURN_STATUS(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
+
+// Assign value behind result returned from expr. If not ok, return status.
+#define LRT_MOVE_OR_RETURN_STATUS(decl, expr) \
+  _MOVE_OR_RETURN_STATUS(decl, expr, _CONCAT_NAME(_result, __COUNTER__))
 
 #define _FORWARD_RESULT(result, ty) LrtResult<ty>::FromStatus(result.Status());
 
@@ -156,6 +173,13 @@ class LrtResult {
 // Assign value behind result returned from expr. If not ok, return result.
 #define LRT_ASSIGN_OR_RETURN_RESULT(decl, expr, ty) \
   _ASSIGN_OR_RETURN_RESULT(decl, expr, ty, _CONCAT_NAME(_result, __COUNTER__))
+
+#define _MOVE_OR_RETURN_RESULT(decl, expr, ty, result) \
+  _MOVE_OR_RETURN_VAL(decl, expr, _FORWARD_RESULT(result, ty), result)
+
+// Move value behind result returned from expr. If not ok, return result.
+#define LRT_MOVE_OR_RETURN_RESULT(decl, expr, ty) \
+  _MOVE_OR_RETURN_RESULT(decl, expr, ty, _CONCAT_NAME(_result, __COUNTER__))
 
 #define LRT_ENSURE_SUPPORTED(cond, msg)                             \
   if (!(cond)) {                                                    \

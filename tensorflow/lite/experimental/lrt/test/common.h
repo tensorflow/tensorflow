@@ -58,6 +58,8 @@ UniqueLrtModel LoadTestFileModel(absl::string_view filename);
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir);
 
+bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size);
+
 }  // namespace testing
 }  // namespace lrt
 
