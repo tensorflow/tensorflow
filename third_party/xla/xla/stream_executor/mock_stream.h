@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
@@ -77,11 +77,7 @@ class MockStream : public Stream {
               (const, override));
   MOCK_METHOD(absl::Status, Launch,
               (const ThreadDim &thread_dims, const BlockDim &block_dims,
-               const Kernel &k, const KernelArgs &args),
-              (override));
-  MOCK_METHOD(absl::Status, Launch,
-              (const ThreadDim &thread_dims, const BlockDim &block_dims,
-               const ClusterDim &cluster_dims, const Kernel &k,
+               const std::optional<ClusterDim> &cluster_dims, const Kernel &k,
                const KernelArgs &args),
               (override));
   MOCK_METHOD(const std::string &, GetName, (), (const, override));

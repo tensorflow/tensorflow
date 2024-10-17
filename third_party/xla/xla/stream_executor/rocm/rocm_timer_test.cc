@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -73,7 +72,6 @@ class RocmTimerTest : public ::testing::Test {
 
   RocmExecutor* executor_;
   std::unique_ptr<Stream> stream_;
-  GpuStream* gpu_stream_;
 
  private:
   void SetUp() override {
@@ -84,13 +82,12 @@ class RocmTimerTest : public ::testing::Test {
                             platform->ExecutorForDevice(0));
     executor_ = reinterpret_cast<RocmExecutor*>(executor);
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
-    gpu_stream_ = AsGpuStream(stream_.get());
   }
 };
 
 TEST_F(RocmTimerTest, Create) {
   TF_ASSERT_OK_AND_ASSIGN(RocmTimer timer,
-                          RocmTimer::Create(executor_, gpu_stream_));
+                          RocmTimer::Create(executor_, stream_.get()));
 
   // We don't really care what kernel we launch here as long as it takes a
   // non-zero amount of time.
