@@ -56,11 +56,11 @@ class CTCDecodeHelper {
   inline int GetTopPaths() const { return top_paths_; }
   void SetTopPaths(int tp) { top_paths_ = tp; }
 
-  Status ValidateInputsGenerateOutputs(
+  absl::Status ValidateInputsGenerateOutputs(
       OpKernelContext* ctx, const Tensor** inputs, const Tensor** seq_len,
       Tensor** log_prob, OpOutputList* decoded_indices,
       OpOutputList* decoded_values, OpOutputList* decoded_shape) const {
-    Status status = ctx->input("inputs", inputs);
+    absl::Status status = ctx->input("inputs", inputs);
     if (!status.ok()) return status;
     status = ctx->input("sequence_length", seq_len);
     if (!status.ok()) return status;
@@ -100,7 +100,7 @@ class CTCDecodeHelper {
       }
     }
 
-    Status s = ctx->allocate_output(
+    absl::Status s = ctx->allocate_output(
         "log_probability", TensorShape({batch_size, top_paths_}), log_prob);
     if (!s.ok()) return s;
 
@@ -115,8 +115,8 @@ class CTCDecodeHelper {
   }
 
   // sequences[b][p][ix] stores decoded value "ix" of path "p" for batch "b".
-  Status StoreAllDecodedSequences(
-      const std::vector<std::vector<std::vector<int> > >& sequences,
+  absl::Status StoreAllDecodedSequences(
+      const std::vector<std::vector<std::vector<int>>>& sequences,
       OpOutputList* decoded_indices, OpOutputList* decoded_values,
       OpOutputList* decoded_shape) const {
     // Calculate the total number of entries for each path
@@ -138,7 +138,7 @@ class CTCDecodeHelper {
 
       const int64_t p_num = num_entries[p];
 
-      Status s =
+      absl::Status s =
           decoded_indices->allocate(p, TensorShape({p_num, 2}), &p_indices);
       if (!s.ok()) return s;
       s = decoded_values->allocate(p, TensorShape({p_num}), &p_values);

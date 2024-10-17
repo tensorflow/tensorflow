@@ -41,7 +41,7 @@ using SaveCallback =
 // Status restore_callback(absl::string_view checkpoint_id,
 //                         absl::string_view content_from_checkpoint);
 using RestoreCallback =
-    std::function<Status(absl::string_view, absl::string_view)>;
+    std::function<absl::Status(absl::string_view, absl::string_view)>;
 
 // A class to save and restore additional information for checkpointing.
 class CheckpointCallbackManager : public ResourceBase {
@@ -67,8 +67,8 @@ class CheckpointCallbackManager : public ResourceBase {
   // The callback should return a string content needs to be stored
   // as a part of a checkpoint, and then the content is stored as a file
   // with the registered the file_extension.
-  Status RegisterSaveCallback(absl::string_view file_extension,
-                              SaveCallback callback);
+  absl::Status RegisterSaveCallback(absl::string_view file_extension,
+                                    SaveCallback callback);
 
   // Checks if a registered save callback exists for an extension.
   bool DoesSaveCallbackExist(absl::string_view file_extension);
@@ -77,8 +77,8 @@ class CheckpointCallbackManager : public ResourceBase {
   // The passed file_extension is used to generate a file name together with
   // an identified checkpoint_id. If the file exists, the registered callback
   // is triggered with the content of the file.
-  Status RegisterRestoreCallback(absl::string_view file_extension,
-                                 RestoreCallback callback);
+  absl::Status RegisterRestoreCallback(absl::string_view file_extension,
+                                       RestoreCallback callback);
 
   // Checks if a registered restore callback exists for an extension.
   bool DoesRestoreCallbackExist(absl::string_view file_extension);
