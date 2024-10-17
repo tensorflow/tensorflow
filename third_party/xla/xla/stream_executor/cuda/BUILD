@@ -1017,6 +1017,7 @@ cc_library(
     deps = [
         ":cuda_collectives",
         ":cuda_context",
+        ":cuda_driver",
         ":cuda_event",  # buildcleaner: keep
         ":cuda_kernel",  # buildcleaner: keep
         ":cuda_platform_id",
