@@ -277,6 +277,10 @@ class OpDefBuilderWrapper {
     builder_.SetIsDistributedCommunication();
     return *this;
   }
+  OpDefBuilderWrapper& SetAllowsSharedKernel() {
+    builder_.SetAllowsSharedKernel();
+    return *this;
+  }
 
   OpDefBuilderWrapper& SetTypeConstructor(OpTypeConstructor fn) {
     builder_.SetTypeConstructor(std::move(fn));
