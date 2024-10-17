@@ -67,7 +67,6 @@ This release contains contributions from many people at Google, as well as:
 * `tf.lite`
     * C API:
       * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
-    * SignatureRunner is now supported for models with no signatures.
 
 * TensorRT support is disabled in CUDA builds for code health improvement.
 
@@ -90,6 +89,7 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.lite`:
     *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience for TFLite. The TF Lite Runtime source will be moved later this year, and sometime after that we will start accepting contributions through that repo.
+    *   SignatureRunner is now supported for models with no signatures.
 
 ### Bug Fixes and Other Changes
 
