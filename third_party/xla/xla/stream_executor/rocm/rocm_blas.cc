@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
@@ -166,7 +165,7 @@ bool ROCMBlas::SetStream(Stream *stream) {
 absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
   absl::MutexLock lock{&mu_};
   CHECK(blas_ != nullptr);
-  GpuStreamHandle handle{};
+  hipStream_t handle{};
   if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
       ret != rocblas_status_success) {
     return absl::InternalError("failed to get the current stream value");
