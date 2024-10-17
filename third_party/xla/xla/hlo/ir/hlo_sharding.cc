@@ -890,7 +890,21 @@ absl::Status HloSharding::ValidateNonTuple(
             .SetShardGroupFromProto(proto));
   }
   if (proto.replicate_on_last_tile_dim()) {
-    return std::move(PartialTile(create_tile_assignment(), metadata)
+    // PartialTile unnecessarily sorts the subgroups, so it is avoided here.
+    const int64_t last_tile_dim = *proto.tile_assignment_dimensions().rbegin();
+    if (proto.last_tile_dims_size() == 1 ||
+        last_tile_dim == product_of_dimensions) {
+      return Replicate(metadata);
+    }
+    if (last_tile_dim == 1) {
+      auto new_tile_dims =
+          absl::MakeConstSpan(proto.tile_assignment_dimensions().data(),
+                              proto.tile_assignment_dimensions_size() - 1);
+      return HloSharding(create_tile_assignment().Reshape(new_tile_dims),
+                         /*replicate_on_last_tile_dim=*/false, metadata);
+    }
+    return std::move(HloSharding(create_tile_assignment(),
+                                 /*replicate_on_last_tile_dim=*/true, metadata)
                          .SetShardGroupFromProto(proto));
   }
   return std::move(HloSharding(create_tile_assignment(),
