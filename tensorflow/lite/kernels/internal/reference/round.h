@@ -34,15 +34,16 @@ inline float RoundToNearest(float value) {
   }
 }
 
-inline void Round(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename Scalar>
+inline void Round(const RuntimeShape& input_shape, const Scalar* input_data,
+                  const RuntimeShape& output_shape, Scalar* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     // Note that this implementation matches that of tensorFlow tf.round
     // and corresponds to the bankers rounding method.
     // cfenv (for fesetround) is not yet supported universally on Android, so
     // using a work around.
-    output_data[i] = RoundToNearest(input_data[i]);
+    output_data[i] = static_cast<Scalar>(RoundToNearest(input_data[i]));
   }
 }
 
