@@ -44,6 +44,9 @@ class PyDevice {
   PyDevice& operator=(const PyDevice&) = delete;
   PyDevice& operator=(PyDevice&&) = delete;
 
+  bool operator==(const PyDevice&) const;
+  bool operator<(const PyDevice&) const;
+
   const nb_class_ptr<PyClient>& client() const { return client_; }
   ifrt::Device* device() const { return device_; }
 
