@@ -30,7 +30,7 @@ namespace {
 void FuzzTest(std::string_view input) {
   std::string encoded_string;
   std::string decoded_string;
-  tensorflow::Status s;
+  absl::Status s;
   s = tensorflow::Base64Encode(input, &encoded_string);
   assert(s.ok());
   s = tensorflow::Base64Decode(encoded_string, &decoded_string);
