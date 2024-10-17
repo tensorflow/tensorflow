@@ -87,8 +87,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
-  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
-                                split_providers) const override {
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
     return absl::OkStatus();
   }
@@ -120,22 +120,23 @@ class ZipDatasetOp::Dataset : public DatasetBase {
     return result;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     for (const auto& input : inputs_) {
       inputs->push_back(input);
     }
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     for (const auto& input : inputs_) {
       TF_RETURN_IF_ERROR(input->CheckExternalState());
     }
     return absl::OkStatus();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     out_tensors->reserve(output_dtypes().size());
     for (int i = 0; i < inputs_.size(); ++i) {
@@ -152,9 +153,9 @@ class ZipDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     std::vector<Node*> input_graph_nodes;
     input_graph_nodes.reserve(inputs_.size());
     for (const auto& input : inputs_) {
@@ -175,7 +176,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
@@ -189,9 +190,9 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
@@ -199,7 +200,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       }
       out_tensors->clear();
       out_tensors->reserve(dataset()->output_dtypes().size());
-      Status status = absl::OkStatus();
+      absl::Status status = absl::OkStatus();
       *end_of_sequence = false;
 
       if (TF_PREDICT_FALSE(ctx->index_mapper() && !input_contexts_.empty() &&
@@ -227,7 +228,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
           // same number of times for each input. This will finalize caches
           // when cached datasets of the same size are zipped together.
           for (int j = i + 1; j < input_impls_.size(); ++j) {
-            Status s =
+            absl::Status s =
                 input_impls_[j]->GetNext(&input_contexts_[j], &input_tensors,
                                          &component_end_of_sequence);
             ctx->MergeCheckpoint(input_contexts_[j].checkpoint());
@@ -255,8 +256,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kInputImplsEmpty,
@@ -267,8 +268,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       // Note: When restoring, `SaveInternal` would not be called
       // if there is a global_shuffle_dataset_op.cc above this op.
