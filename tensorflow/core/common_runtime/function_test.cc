@@ -168,10 +168,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
-    lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+    lib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                           proto);
     OptimizerOptions opts;
     device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
+    pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), &options.config,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*session_metadata=*/nullptr,
@@ -180,7 +181,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               new IntraProcessRendezvous(device_mgr));
           return absl::OkStatus();
-        }}));
+        }});
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");

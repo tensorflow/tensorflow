@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -453,8 +454,8 @@ Status DirectSession::ExtendLocked(GraphDef&& graph) {
     // all subsequent extensions of the graph. Also, note how using the copy
     // constructor of FunctionLibraryDefinition avoids duplicating the memory
     // that is occupied by its shared_ptr members.
-    flib_def_.reset(
-        new FunctionLibraryDefinition(execution_state_->flib_def()));
+    flib_def_ = std::make_unique<FunctionLibraryDefinition>(
+        execution_state_->flib_def());
     graph_created_ = true;
   } else {
     std::unique_ptr<GraphExecutionState> state;
@@ -573,8 +574,10 @@ Status DirectSession::RunInternal(
           options_.config, device_mgr_.get(),
           MaybeCreateNcclCommunicator(options_.config));
     }
-    run_state.collective_executor.reset(new CollectiveExecutor::Handle(
-        collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
+    run_state.collective_executor =
+        std::make_unique<CollectiveExecutor::Handle>(
+            collective_executor_mgr_->FindOrCreate(step_id),
+            true /*inherit_ref*/);
   }
 #endif
 
@@ -691,8 +694,8 @@ Status DirectSession::RunInternal(
   if (run_metadata != nullptr &&
       (do_trace || update_cost_model ||
        run_options.report_tensor_allocations_upon_oom())) {
-    run_state.collector.reset(
-        new StepStatsCollector(run_metadata->mutable_step_stats()));
+    run_state.collector = std::make_unique<StepStatsCollector>(
+        run_metadata->mutable_step_stats());
     args.stats_collector = run_state.collector.get();
   }
 
@@ -1029,7 +1032,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   args.sync_on_finish = sync_on_finish_;
 
   if (options_.config.graph_options().build_cost_model()) {
-    run_state->collector.reset(new StepStatsCollector(nullptr));
+    run_state->collector = std::make_unique<StepStatsCollector>(nullptr);
     args.stats_collector = run_state->collector.get();
   }
 
@@ -1367,7 +1370,7 @@ Status DirectSession::CreateExecutors(
       options_.config.experimental().has_session_metadata()
           ? &options_.config.experimental().session_metadata()
           : nullptr;
-  func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+  func_info->proc_flr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       /*parent=*/nullptr, session_metadata,
@@ -1376,7 +1379,7 @@ Status DirectSession::CreateExecutors(
         *r = tsl::core::RefCountPtr<Rendezvous>(
             new IntraProcessRendezvous(device_mgr));
         return absl::OkStatus();
-      }}));
+      }});
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1675,7 +1678,7 @@ Status DirectSession::CreateGraphs(
 
   // Remember the graph in run state if this is a partial run.
   if (run_state_args->is_partial_run) {
-    run_state_args->graph.reset(new Graph(flib_def_.get()));
+    run_state_args->graph = std::make_unique<Graph>(flib_def_.get());
     CopyGraph(*execution_state->full_graph(), run_state_args->graph.get());
   }
 
