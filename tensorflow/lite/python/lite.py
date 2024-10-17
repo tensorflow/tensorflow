@@ -620,6 +620,7 @@ class TFLiteConverterBase:
     self.experimental_new_quantizer = True
     self.experimental_enable_resource_variables = True
     self._experimental_calibrate_only = False
+    self._experimental_get_opps_only = False
     self._experimental_sparsify_model = False
     self._experimental_disable_per_channel = False
     self._debug_info = None  # contains the stack traces of all the original
@@ -747,6 +748,9 @@ class TFLiteConverterBase:
     calibrate_quantize = _calibrator.Calibrator(
         result, custom_op_registerers_by_name, custom_op_registerers_by_func
     )
+    if self._experimental_get_opp_names:
+      self._op_names = calibrate_quantize.get_op_names()
+
     if self._experimental_calibrate_only or self.experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
           self.representative_dataset.input_gen
@@ -1569,6 +1573,10 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     del trackable_obj
     gc.collect()
     return self._convert_from_saved_model(graph_def)
+
+  def get_op_names(self):
+    self._experimental_get_opps_only = True
+    self.convert()
 
 
 class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
