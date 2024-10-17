@@ -219,6 +219,7 @@ limitations under the License.
 #include "xla/service/result_caster.h"
 #include "xla/service/rng_bit_generator_expander.h"
 #include "xla/service/rng_expander.h"
+#include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/sharding_remover.h"
@@ -700,6 +701,7 @@ absl::Status RunOptimizationPasses(
   if (RequireDeterminism(hlo_module->config())) {
     // Scatter can be indeterministic if indices are not unique or a non
     // associative combiner function is used. Eliminate these Scatter ops.
+    pipeline.AddPass<ScatterDeterminismExpander>();
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateIndeterministicScatters);
   }

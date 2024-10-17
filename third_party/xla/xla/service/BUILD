@@ -2558,6 +2558,25 @@ cc_library(
 )
 
 cc_library(
+    name = "scatter_utils",
+    srcs = ["scatter_utils.cc"],
+    hdrs = ["scatter_utils.h"],
+    deps = [
+        ":call_inliner",
+        ":hlo_creation_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "scatter_expander",
     srcs = ["scatter_expander.cc"],
     hdrs = ["scatter_expander.h"],
@@ -2565,11 +2584,35 @@ cc_library(
         ":call_inliner",
         ":hlo_creation_utils",
         ":op_expander_pass",
+        ":scatter_utils",
         ":while_util",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "scatter_determinism_expander",
+    srcs = ["scatter_determinism_expander.cc"],
+    hdrs = ["scatter_determinism_expander.h"],
+    deps = [
+        ":hlo_creation_utils",
+        ":op_expander_pass",
+        ":scatter_utils",
+        "//xla:array",
+        "//xla:array2d",
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -2587,6 +2630,24 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "scatter_determinism_expander_test",
+    srcs = ["scatter_determinism_expander_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":scatter_determinism_expander",
+        "//xla:literal",
+        "//xla:test",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
