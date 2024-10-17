@@ -1,0 +1,80 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/BuiltinFuncToLLVM.cpp	2024-10-01 05:53:49.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/BuiltinFuncToLLVM.cpp	2024-10-17 07:36:44.000000000 -0700
+@@ -190,8 +190,7 @@
+       auto name = StringAttr::get(callOp.getContext(), "llvm.amdgcn.rcp.f32");
+       LLVM::FastmathFlagsAttr defaultFlags{};
+       auto rcpOp = rewriter.create<LLVM::CallIntrinsicOp>(
+-          loc, returnType, name, operands[1], defaultFlags,
+-          ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
++          loc, returnType, name, operands[1], defaultFlags);
+ 
+       replacementOp = rewriter.create<LLVM::FMulOp>(
+           loc, returnType, operands[0], rcpOp->getResult(0), defaultFlags);
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/WMMA.cpp	2024-10-01 05:53:49.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/WMMA.cpp	2024-10-17 07:49:54.000000000 -0700
+@@ -219,8 +219,7 @@
+   }
+   auto wmmaIntrinsic = rewriter.create<mlir::LLVM::CallIntrinsicOp>(
+       loc, TypeRange{valC.getType()}, StringAttr::get(loc.getContext(), name),
+-      operands, defaultFlags,
+-      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
++      operands, defaultFlags);
+ 
+   return wmmaIntrinsic.getResult(0);
+ }
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/SchedInstructions.cpp	2024-10-02 02:26:53.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/SchedInstructions.cpp	2024-10-17 07:39:38.000000000 -0700
+@@ -48,10 +48,9 @@
+                                           static_cast<int32_t>(groupIdValue));
+ 
+   LLVM::FastmathFlagsAttr defaultFlags{};
+-  rewriter.create<LLVM::CallIntrinsicOp>(
+-      loc, TypeRange{}, intrinsicName, ValueRange{mask, size, groupId},
+-      defaultFlags,
+-      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
++  rewriter.create<LLVM::CallIntrinsicOp>(loc, TypeRange{}, intrinsicName,
++                                         ValueRange{mask, size, groupId},
++                                         defaultFlags);
+ }
+ 
+ // Insert intrinsic that controls the types of instructions that may be
+@@ -64,9 +63,8 @@
+ 
+   Value mask =
+       LLVM::createConstantI32(loc, rewriter, static_cast<int32_t>(maskValue));
+-  return rewriter.create<LLVM::CallIntrinsicOp>(
+-      loc, TypeRange{}, intrinsicName, ValueRange{mask}, defaultFlags,
+-      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
++  return rewriter.create<LLVM::CallIntrinsicOp>(loc, TypeRange{}, intrinsicName,
++                                                ValueRange{mask}, defaultFlags);
+ }
+ 
+ // Insert an experimental intrinsic for instruction group level parallelism.
+@@ -78,8 +76,7 @@
+   Value iglpValue =
+       LLVM::createConstantI32(loc, rewriter, static_cast<int32_t>(value));
+   return rewriter.create<LLVM::CallIntrinsicOp>(
+-      loc, TypeRange{}, intrinsicName, ValueRange{iglpValue}, defaultFlags,
+-      ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
++      loc, TypeRange{}, intrinsicName, ValueRange{iglpValue}, defaultFlags);
+ }
+ 
+ struct InstructionSchedHintsRewriter
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp	2024-10-01 05:53:49.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TargetInfo.cpp	2024-10-17 07:37:23.000000000 -0700
+@@ -72,10 +72,7 @@
+   auto stringAttr = rewriter.getStringAttr("llvm.amdgcn.ballot");
+   SmallVector<Value> operands = {cmp};
+   Value asmResult =
+-      rewriter
+-          .create<LLVM::CallIntrinsicOp>(
+-              loc, type, stringAttr, operands, ::mlir::LLVM::FastmathFlags{},
+-              ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/)
++      rewriter.create<LLVM::CallIntrinsicOp>(loc, type, stringAttr, operands)
+           ->getResult(0);
+   return asmResult;
+ }
