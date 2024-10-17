@@ -128,6 +128,7 @@ filegroup(
         ":tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/core/api:tflite_internal_cc_3p_api_deps_src",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/compiler/mlir/lite/schema:tflite_internal_cc_3p_api_deps_src",
         "//tensorflow/lite/core:macros.h",
         "//tensorflow/lite/core/acceleration/configuration/c:tflite_internal_cc_3p_api_deps_src",

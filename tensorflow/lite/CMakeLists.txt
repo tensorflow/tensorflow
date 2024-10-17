@@ -644,61 +644,64 @@ endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  # go/keep-sorted start
   ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_ASYNC_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
+  ${TFLITE_CORE_ASYNC_SRCS}
   ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
   ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
-  ${TFLITE_CORE_ASYNC_SRCS}
-  ${TFLITE_CORE_ASYNC_C_SRCS}
-  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
-  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
+  ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
   ${TFLITE_DELEGATES_GPU_SRCS}
   ${TFLITE_DELEGATES_NNAPI_SRCS}
   ${TFLITE_DELEGATES_SRCS}
-  ${TFLITE_DELEGATES_EXTERNAL_SRCS}
   ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_SRCS}
+  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SRCS}
-  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SRCS}
   ${TFLITE_KERNEL_INTERNAL_SRCS}
   ${TFLITE_KERNEL_SRCS}
   ${TFLITE_NNAPI_SRCS}
-  ${TFLITE_SRCS}
   ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TFLITE_SRCS}
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/c/tflite_types.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
-  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
+  # go/keep-sorted end
 )
 
 if(_TFLITE_ENABLE_MMAP)
