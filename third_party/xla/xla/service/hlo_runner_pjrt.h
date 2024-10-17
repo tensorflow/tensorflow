@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_RUNNER_PJRT_H_
 #define XLA_SERVICE_HLO_RUNNER_PJRT_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "xla/pjrt/pjrt_client.h"
@@ -34,7 +34,8 @@ class HloRunnerPjRt : public HloRunnerInterface {
  public:
   explicit HloRunnerPjRt(
       std::unique_ptr<PjRtClient> pjrt_client,
-      DeviceShapeRepresentationFn device_shape_representation_fn);
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn);
 
   ~HloRunnerPjRt() override;
 
@@ -97,9 +98,18 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   absl::string_view Name() const override;
 
+  DeviceShapeRepresentationFn device_shape_representation_fn() const override {
+    return device_shape_representation_fn_;
+  }
+
+  DeviceShapeSizeFn device_shape_size_fn() const override {
+    return device_shape_size_fn_;
+  }
+
  private:
   std::unique_ptr<PjRtClient> pjrt_client_;
   DeviceShapeRepresentationFn device_shape_representation_fn_;
+  DeviceShapeSizeFn device_shape_size_fn_;
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);

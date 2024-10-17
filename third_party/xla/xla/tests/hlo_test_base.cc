@@ -934,9 +934,12 @@ HloTestBase::GetHloRunnerForTest(se::Platform* test_platform) {
 
     auto device_shape_representation_fn =
         pjrt_registry.GetDeviceShapeRepresentationFn(client.get());
+    auto device_shape_size_fn =
+        pjrt_registry.GetDeviceShapeSizeFn(client.get());
 
     return std::unique_ptr<HloRunnerInterface>(
-        new HloRunnerPjRt(std::move(client), device_shape_representation_fn));
+        new HloRunnerPjRt(std::move(client), device_shape_representation_fn,
+                          device_shape_size_fn));
   } else {
     return std::unique_ptr<HloRunnerInterface>(new HloRunner(test_platform));
   }
