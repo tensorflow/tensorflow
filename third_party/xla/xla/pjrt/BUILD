@@ -817,6 +817,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -838,6 +839,7 @@ xla_cc_test(
         "nomsan",
     ],
     deps = [
+        ":mlir_to_hlo",
         ":pjrt_api",
         ":pjrt_c_api_client",
         ":pjrt_client",
@@ -848,12 +850,16 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@stablehlo//:version",
     ],
 )
 
