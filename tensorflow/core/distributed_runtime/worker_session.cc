@@ -76,13 +76,14 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     }
   }
 
-  Status GetEagerClientCache(
+  absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     return wrapped_->GetEagerClientCache(eager_client_cache);
   }
 
-  Status GetCoordinationClientCache(std::unique_ptr<CoordinationClientCache>*
-                                        coordination_client_cache) override {
+  absl::Status GetCoordinationClientCache(
+      std::unique_ptr<CoordinationClientCache>* coordination_client_cache)
+      override {
     return wrapped_->GetCoordinationClientCache(coordination_client_cache);
   }
 
@@ -146,7 +147,7 @@ WorkerSession::WorkerSession(
   worker_session_created->GetCell()->Set(true);
 }
 
-Status WorkerSession::UpdateWorkerCacheAndDevices(
+absl::Status WorkerSession::UpdateWorkerCacheAndDevices(
     std::unique_ptr<WorkerCacheInterface> new_worker_cache,
     std::vector<std::unique_ptr<Device>> added_remote_devices,
     const std::vector<Device*>& removed_remote_devices) {
@@ -197,7 +198,7 @@ WorkerSession::WorkerSession(
 
 WorkerSession::~WorkerSession() {
   if (graph_mgr_) {
-    Status s = graph_mgr_->DeregisterAll();
+    absl::Status s = graph_mgr_->DeregisterAll();
     if (!s.ok()) {
       LOG(WARNING) << "Error during worker session deletion: " << s;
     }
