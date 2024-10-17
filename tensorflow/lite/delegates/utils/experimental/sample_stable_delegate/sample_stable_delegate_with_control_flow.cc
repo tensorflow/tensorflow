@@ -166,7 +166,7 @@ class SampleStableDelegateKernel : public SimpleOpaqueDelegateKernelInterface {
     const int kTheInputTensorSize =
         helpers::CalculateNumElements((*external_tensors_.begin()));
     // For each subgraph
-    for (auto [_, node_input_tensors] : node_input_tensors_) {
+    for (const auto& [_, node_input_tensors] : node_input_tensors_) {
       // For each node in the subgraph
       for (std::vector<const TfLiteOpaqueTensor*>& vecs : node_input_tensors) {
         // For each tensor in the node
