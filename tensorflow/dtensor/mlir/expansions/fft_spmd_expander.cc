@@ -70,8 +70,8 @@ bool IsComplexFFT(mlir::Value input) {
   return mlir::isa<mlir::ComplexType>(data_type);
 }
 
-Status IsProperFFTLength(mlir::Operation* op,
-                         const llvm::SmallVector<int64_t, 4>& fft_length_vec) {
+absl::Status IsProperFFTLength(
+    mlir::Operation* op, const llvm::SmallVector<int64_t, 4>& fft_length_vec) {
   TF_ASSIGN_OR_RETURN(auto input_layout,
                       ExtractRequiredLayoutFromOperand(op->getOperand(0)));
   const Mesh& mesh = input_layout.mesh();
@@ -160,7 +160,7 @@ StatusOr<mlir::Value> EmitTransposeRelayout(mlir::OpBuilder& builder,
   return transposed_input;
 }
 
-Status NormalizeAxes(std::vector<int>& transform_axes, int input_rank) {
+absl::Status NormalizeAxes(std::vector<int>& transform_axes, int input_rank) {
   std::sort(transform_axes.begin(), transform_axes.end());
   for (int i = 0; i < transform_axes.size(); ++i) {
     if (transform_axes[i] >= input_rank) {
