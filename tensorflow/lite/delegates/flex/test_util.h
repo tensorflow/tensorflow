@@ -16,8 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_TEST_UTIL_H_
 
+#include <gtest/gtest.h>
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace flex {
