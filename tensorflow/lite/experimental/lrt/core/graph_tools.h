@@ -211,6 +211,7 @@ inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
   return LrtResult<LrtSubgraph>::FromValue(subgraph);
 }
 
+// Get raw metadata buffer from model if it exists.
 inline LrtResult<FbConstBufferT> GetMetadata(LrtModel model,
                                              const absl::string_view key) {
   const void* buf;

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITE_RT_MODEL_SERIALIZE_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITE_RT_MODEL_SERIALIZE_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_
 
 #include <stddef.h>
 
@@ -90,11 +90,11 @@ static const char kLiteRtMetadataByteCodeKey[] = "LiteRtNpuByteCode";
 
 // [EXPERIMENTAL] (see above) Adds NPU bytecode and build tag to metadata.
 // Registers the "custom_code".
-LrtStatus LiteRttModelAddByteCodeMetadata(LrtModel model,
-                                          const char* soc_manufacturer,
-                                          const char* soc_model,
-                                          const void* byte_code,
-                                          size_t byte_code_size);
+LrtStatus LiteRtModelAddByteCodeMetadata(LrtModel model,
+                                         const char* soc_manufacturer,
+                                         const char* soc_model,
+                                         const void* byte_code,
+                                         size_t byte_code_size);
 
 // [EXPERIMENTAL] (see above) Preps the model for future post processing step. A
 // string with parts parseable as size_t (offset, size) is set in the metadata.
@@ -105,12 +105,10 @@ LrtStatus LiteRttModelAddByteCodeMetadata(LrtModel model,
 // characters. Also populates build tag and registers "custom_code".
 LrtStatus LiteRtModelPrepareForByteCodeAppend(LrtModel model,
                                               const char* soc_manufacturer,
-                                              const char* soc_model,
-                                              const void* byte_code,
-                                              size_t byte_code_size);
+                                              const char* soc_model);
 
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITE_RT_MODEL_SERIALIZE_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_

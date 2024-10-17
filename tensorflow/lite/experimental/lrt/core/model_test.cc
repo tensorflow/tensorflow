@@ -125,9 +125,7 @@ TEST(TestSerializeModel, TestMetadata) {
                                   kMetadataData.size(), kMetadataName.data()));
   ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
                           GetMetadata(model.get(), kMetadataName));
-  EXPECT_EQ(absl::string_view(reinterpret_cast<const char*>(m_buffer.data()),
-                              m_buffer.size()),
-            kMetadataData);
+  EXPECT_EQ(FbBufToStr(m_buffer), kMetadataData);
 
   uint8_t* buf = nullptr;
   size_t buf_size;

@@ -33,6 +33,7 @@
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
+#include "tensorflow/lite/experimental/lrt/core/experimental/litert_model_serialize.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/tools/dump.h"
@@ -425,7 +426,6 @@ LrtStatus ValidateApplyRun(const ApplyPluginRun& run) {
 LrtStatus Apply(Context* ctx) {
   LRT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
   LRT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
-  ctx->Dump().Labeled() << "Loaded assets\n";
   static constexpr size_t kNumInputSubgraphs = 1;
   LRT_ENSURE_SUPPORTED(model->subgraphs.size() == kNumInputSubgraphs,
                        "Only single subgraph models currently supported.");
@@ -457,12 +457,21 @@ LrtStatus Apply(Context* ctx) {
 
   model->subgraphs.resize(kNumInputSubgraphs);
 
-  LRT_RETURN_STATUS_IF_NOT_OK(AppendMetadata(
-      model.get(), compilation_out.str().data(), compilation_out.str().size(),
-      plugin.SocManufacturer().data()));
+  LRT_RETURN_STATUS_IF_NOT_OK(LiteRtModelAddByteCodeMetadata(
+      model.get(), plugin.SocManufacturer().data(),
+      plugin.SocModels().front().data(), compilation_out.str().data(),
+      compilation_out.str().size()));
 
   ctx->SwapOut(out);
   LRT_RETURN_STATUS_IF_NOT_OK(SerializeModel(ctx, std::move(model)));
+  // TODO setup a test case
+  // TODO renmoe the metadata check
+  // TODO if append, write model to intermediate str stream
+  // TODO find replace fbsize/byte code size
+  // TODO test here
+  // TODO append on out stream
+  // TODO test here
+  // done for now
 
   return kLrtStatusOk;
 }
