@@ -123,7 +123,6 @@ cc_library(
     hdrs = ["cluster_tf.h"],
     visibility = [
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
@@ -190,7 +189,6 @@ cc_library(
     hdrs = ["tf_dialect_to_executor.h"],
     visibility = [
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
     ],
