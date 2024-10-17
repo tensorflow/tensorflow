@@ -825,10 +825,6 @@ void RocmExecutor::DeallocateStream(Stream* stream) {
   alive_gpu_streams_.erase(rocm_stream->stream_handle());
 }
 
-absl::Status RocmExecutor::BlockHostUntilDone(Stream* stream) {
-  return GpuDriver::SynchronizeStream(rocm_context_, AsGpuStreamValue(stream));
-}
-
 blas::BlasSupport* RocmExecutor::AsBlas() {
   absl::MutexLock lock(&mu_);
   if (blas_ != nullptr) {

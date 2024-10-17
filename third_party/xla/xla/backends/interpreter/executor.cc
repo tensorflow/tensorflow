@@ -56,10 +56,6 @@ absl::Status XlaInterpreterExecutor::SynchronousMemcpy(
   return absl::OkStatus();
 }
 
-absl::Status XlaInterpreterExecutor::BlockHostUntilDone(Stream *stream) {
-  return AsExecutorStream(stream)->BlockUntilDone();
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 XlaInterpreterExecutor::CreateDeviceDescription(int device_ordinal) {
   DeviceDescription desc;

@@ -135,22 +135,6 @@ void StreamCommon::CheckError(bool operation_retcode) {
   status_ = absl::InternalError("Unknown error");
 }
 
-absl::Status StreamCommon::BlockHostUntilDone() {
-  if (!ok()) {
-    absl::MutexLock lock(&mu_);
-    LOG(INFO) << status_.ToString();
-    absl::Status status = absl::InternalError(
-        "stream did not block host until done; was already in an error state");
-    LOG(INFO) << "stream = " << this << " " << status;
-    return status;
-  }
-
-  absl::Status error = parent_->BlockHostUntilDone(this);
-  CheckError(error.ok());
-
-  return error;
-}
-
 void StreamCommon::CheckStatus(absl::Status status) {
   if (status.ok()) {
     return;

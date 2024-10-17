@@ -621,13 +621,6 @@ absl::Status GpuDriver::GraphAddChildNode(CUgraphNode* node, CUgraph graph,
                         "Failed to set CUDA graph child node params");
 }
 
-absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
-  ScopedActivateContext activated{context};
-  CHECK(stream != nullptr);
-  return cuda::ToStatus(cuStreamSynchronize(stream),
-                        "Could not synchronize CUDA stream");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));

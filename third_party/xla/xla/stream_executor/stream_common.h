@@ -65,7 +65,6 @@ class StreamCommon : public Stream {
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
       TF_LOCKS_EXCLUDED(mu_);
   void ReturnSubStream(Stream *sub_stream) override TF_LOCKS_EXCLUDED(mu_);
-  absl::Status BlockHostUntilDone() override TF_LOCKS_EXCLUDED(mu_);
   StreamExecutor *parent() const override {
     CHECK(parent_ != nullptr);
     return parent_;

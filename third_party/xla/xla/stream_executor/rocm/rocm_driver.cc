@@ -483,17 +483,6 @@ absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
                   "Failed to set memset node params");
 }
 
-absl::Status GpuDriver::SynchronizeStream(Context* context,
-                                          GpuStreamHandle stream) {
-  ScopedActivateContext activated{context};
-  CHECK(stream != nullptr);
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipStreamSynchronize(stream),
-                              "Could not synchronize on ROCM stream"));
-  VLOG(2) << "successfully synchronized stream " << stream << " on device "
-          << context->device_ordinal();
-  return absl::OkStatus();
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

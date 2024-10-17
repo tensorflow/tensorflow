@@ -143,10 +143,6 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event);
 }
 
-absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
-  return AsHostStream(stream)->BlockUntilDone();
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
   DeviceDescription desc;

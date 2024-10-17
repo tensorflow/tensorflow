@@ -1006,10 +1006,6 @@ void CudaExecutor::DeallocateStream(Stream* stream) {
   alive_gpu_streams_.erase(stream->platform_specific_handle().stream);
 }
 
-absl::Status CudaExecutor::BlockHostUntilDone(Stream* stream) {
-  return GpuDriver::SynchronizeStream(cuda_context_, AsGpuStreamValue(stream));
-}
-
 blas::BlasSupport* CudaExecutor::AsBlas() {
   absl::MutexLock lock(&mu_);
   if (blas_ != nullptr) {

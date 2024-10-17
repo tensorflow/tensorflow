@@ -57,6 +57,7 @@ class CudaStream : public GpuStream {
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
+  absl::Status BlockHostUntilDone() override;
 
   void SetName(std::string name) override;
 

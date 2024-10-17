@@ -56,6 +56,8 @@ class HostStream : public StreamCommon {
   // (if any) and clears the error status.
   absl::Status BlockUntilDone();
 
+  absl::Status BlockHostUntilDone() override { return BlockUntilDone(); }
+
   absl::Status WaitFor(Stream* other) override;
   absl::Status WaitFor(Event* event) override;
   absl::Status RecordEvent(Event* event) override;

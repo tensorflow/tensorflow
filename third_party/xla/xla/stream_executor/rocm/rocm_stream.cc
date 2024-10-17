@@ -170,6 +170,15 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
   return absl::OkStatus();
 }
 
+absl::Status SynchronizeStream(StreamExecutor* executor, hipStream_t stream) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  TF_RETURN_IF_ERROR(ToStatus(wrap::hipStreamSynchronize(stream),
+                              "Could not synchronize on ROCM stream"));
+  VLOG(2) << "successfully synchronized stream " << stream << " on device "
+          << executor->device_ordinal();
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
@@ -375,6 +384,10 @@ absl::Status LaunchKernel(StreamExecutor* executor,
 }
 
 }  // namespace
+
+absl::Status RocmStream::BlockHostUntilDone() {
+  return SynchronizeStream(executor_, stream_handle_);
+}
 
 absl::Status RocmStream::Launch(const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,

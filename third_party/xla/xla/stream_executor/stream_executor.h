@@ -241,11 +241,6 @@ class StreamExecutor {
   // Deallocates stream resources on the underlying platform.
   virtual void DeallocateStream(Stream* stream) = 0;
 
-  // Causes the host code to synchronously wait for operations enqueued
-  // onto stream to complete. Effectively a join on the asynchronous device
-  // operations enqueued on the stream before this program point.
-  virtual absl::Status BlockHostUntilDone(Stream* stream) = 0;
-
   // Enables peer access from this StreamExecutor to memory
   // allocated by other, such that launched device code, memcpies, etc may
   // access it directly.
