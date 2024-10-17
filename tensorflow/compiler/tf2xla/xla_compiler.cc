@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -75,6 +77,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
@@ -1609,11 +1612,21 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   return absl::OkStatus();
 }
 
+xla::ChannelHandle XlaCompiler::NewChannel(
+    xla::ChannelHandle::ChannelType type) {
+  xla::ChannelHandle new_handle;
+  absl::MutexLock lock(&channel_mutex_);
+  // Create a new channel handle with a unique value.
+  new_handle.set_handle(next_channel_++);
+  new_handle.set_type(type);
+  return new_handle;
+}
+
 Status XlaCompiler::GetChannelHandle(const string& key,
                                      xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
-    TF_ASSIGN_OR_RETURN(result.first->second, client()->CreateChannelHandle());
+    result.first->second = NewChannel(xla::ChannelHandle::DEVICE_TO_DEVICE);
   }
   *channel = result.first->second;
   VLOG(1) << "Channel: " << key << " " << channel->DebugString();
@@ -1624,8 +1637,7 @@ Status XlaCompiler::GetHostToDeviceChannelHandle(const string& key,
                                                  xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
-    TF_ASSIGN_OR_RETURN(result.first->second,
-                        client()->CreateHostToDeviceChannelHandle());
+    result.first->second = NewChannel(xla::ChannelHandle::HOST_TO_DEVICE);
   }
   *channel = result.first->second;
   VLOG(1) << "Host to device channel: " << key << " " << channel->DebugString();
@@ -1636,8 +1648,7 @@ Status XlaCompiler::GetDeviceToHostChannelHandle(const string& key,
                                                  xla::ChannelHandle* channel) {
   auto result = channels_.emplace(key, xla::ChannelHandle());
   if (result.second) {
-    TF_ASSIGN_OR_RETURN(result.first->second,
-                        client()->CreateDeviceToHostChannelHandle());
+    result.first->second = NewChannel(xla::ChannelHandle::DEVICE_TO_HOST);
   }
   *channel = result.first->second;
   VLOG(1) << "Device to host channel: " << key << " " << channel->DebugString();

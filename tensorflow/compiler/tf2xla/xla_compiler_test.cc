@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <gmock/gmock.h>
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -2029,6 +2032,27 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
   Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
+TEST_F(XlaCompilerTest, GetChannelHandleIndependently) {
+  XlaCompiler compiler1(DefaultOptions());
+  XlaCompiler compiler2(DefaultOptions());
+  int num_channels = 3;
+  std::vector<int> channel_ids1, channel_ids2;
+  for (int j = 0; j < num_channels; ++j) {
+    xla::ChannelHandle channel_handle;
+    TF_ASSERT_OK(
+        compiler1.GetChannelHandle(/*key=*/absl::StrCat(j), &channel_handle));
+    channel_ids1.push_back(channel_handle.handle());
+  }
+  for (int j = 0; j < num_channels; ++j) {
+    xla::ChannelHandle channel_handle;
+    TF_ASSERT_OK(
+        compiler2.GetChannelHandle(/*key=*/absl::StrCat(j), &channel_handle));
+    channel_ids2.push_back(channel_handle.handle());
+  }
+  EXPECT_THAT(channel_ids1, ::testing::UnorderedElementsAreArray({1, 2, 3}));
+  EXPECT_THAT(channel_ids2, ::testing::UnorderedElementsAreArray({1, 2, 3}));
 }
 
 TEST_F(OpsTestBase, BuildSingleOpCompileArgument) {

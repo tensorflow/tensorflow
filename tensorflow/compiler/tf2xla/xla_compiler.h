@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stack>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
@@ -318,6 +319,7 @@ class XlaCompiler {
                           const ConfigProto** config_proto = nullptr);
 
  private:
+  absl::Mutex channel_mutex_;
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
 
@@ -332,6 +334,8 @@ class XlaCompiler {
                         std::vector<int>* input_to_args,
                         std::vector<xla::Shape>* input_shapes,
                         bool is_entry_computation);
+
+  xla::ChannelHandle NewChannel(xla::ChannelHandle::ChannelType type);
 
   // Graph compiler needs to know how to get an optimized graph from a function
   // body.
@@ -351,6 +355,9 @@ class XlaCompiler {
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   StaticDeviceMgr device_mgr_;
+
+  // The next sequence number to assign to a channel.
+  int64_t next_channel_ ABSL_GUARDED_BY(channel_mutex_) = 1;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize
