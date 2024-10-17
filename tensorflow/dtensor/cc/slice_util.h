@@ -82,7 +82,7 @@ class TokenProcessor {
   explicit TokenProcessor(int64_t input_rank) : input_rank_(input_rank) {}
   virtual ~TokenProcessor() = default;
 
-  Status Run(const std::vector<Token>& tokens);
+  absl::Status Run(const std::vector<Token>& tokens);
 
  protected:
   // Loop for an ellipsis or the unconsumed axes in the end.
@@ -105,7 +105,8 @@ class TokenProcessor {
   virtual void PrepareResults(int64_t spec_rank, int64_t input_rank,
                               int64_t output_rank) = 0;
 
-  virtual Status FinalizeResults(int64_t input_rank, int64_t output_rank) = 0;
+  virtual absl::Status FinalizeResults(int64_t input_rank,
+                                       int64_t output_rank) = 0;
 
  private:
   const int64_t input_rank_;
@@ -182,7 +183,8 @@ class ForwardLayoutInference : public TokenProcessor {
     expander_value_sharding_.reserve(output_rank);
   }
 
-  Status FinalizeResults(int64_t input_rank, int64_t output_rank) override {
+  absl::Status FinalizeResults(int64_t input_rank,
+                               int64_t output_rank) override {
     DCHECK_EQ(expander_input_sharding_.size(), input_rank);
     DCHECK_EQ(expander_value_sharding_.size(), output_rank);
     TF_ASSIGN_OR_RETURN(
@@ -282,7 +284,8 @@ class BackwardLayoutInference : public TokenProcessor {
     expander_value_sharding_.reserve(output_rank);
   }
 
-  Status FinalizeResults(int64_t input_rank, int64_t output_rank) override {
+  absl::Status FinalizeResults(int64_t input_rank,
+                               int64_t output_rank) override {
     DCHECK_EQ(expander_input_sharding_.size(), input_rank);
     DCHECK_EQ(expander_value_sharding_.size(), output_rank);
     TF_ASSIGN_OR_RETURN(
