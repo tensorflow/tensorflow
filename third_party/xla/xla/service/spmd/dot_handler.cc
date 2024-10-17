@@ -454,6 +454,19 @@ bool RequiresTransposeSharding(
          has_different_lhs_rhs_dim_sharding;
 }
 
+bool should_enable_windowed_einsum_with_threshold(
+    const SpmdPartitionerOptions& options, int64_t total_operand_bytes,
+    int64_t operand_or_output_shape_size) {
+  if (options.total_bytes_windowed_einsum_threshold != std::nullopt) {
+    int64_t operand_bytes_threshold =
+        options.total_bytes_windowed_einsum_threshold.value();
+    return total_operand_bytes >= operand_bytes_threshold;
+  } else {
+    return operand_or_output_shape_size >=
+           options.threshold_for_windowed_einsum_mib * 1024 * 1024;
+  }
+}
+
 std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     int64_t num_partitions, int64_t output_lhs_non_contracting_partitions,
     int64_t output_rhs_non_contracting_partitions,
@@ -663,8 +676,11 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
 
   if (output_lhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_lhs == lhs_sharding &&
-      rhs_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(
+          options,
+          (ShapeUtil::ByteSizeOf(rhs->shape()) +
+           ShapeUtil::ByteSizeOf(lhs->shape())),
+          rhs_shape_size) &&
       (!rhs || check_users_sharding(rhs)) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/false, /*rhs_needs_ag=*/true) &&
       options.enable_windowed_einsum_for_all_gather) {
@@ -695,8 +711,11 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   }
   if (output_rhs_non_contracting_partitions == num_partitions &&
       output_sharding_transposed_to_match_rhs == rhs_sharding &&
-      lhs_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(
+          options,
+          (ShapeUtil::ByteSizeOf(rhs->shape()) +
+           ShapeUtil::ByteSizeOf(lhs->shape())),
+          lhs_shape_size) &&
       (!lhs || check_users_sharding(lhs)) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/true, /*rhs_needs_ag=*/false) &&
       options.enable_windowed_einsum_for_all_gather) {
@@ -729,8 +748,11 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       lhs_contracting_partitions == num_partitions &&
       (output_lhs_non_contracting_partitions == num_partitions ||
        output_rhs_non_contracting_partitions == num_partitions) &&
-      output_shape_size >=
-          options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
+      should_enable_windowed_einsum_with_threshold(
+          options,
+          (ShapeUtil::ByteSizeOf(rhs->shape()) +
+           ShapeUtil::ByteSizeOf(lhs->shape())),
+          output_shape_size) &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/false,
                                /*rhs_needs_ag=*/false) &&
       options.enable_windowed_einsum_for_reduce_scatter) {
