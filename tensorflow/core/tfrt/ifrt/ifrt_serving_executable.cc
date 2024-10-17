@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
@@ -378,11 +379,20 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes) {
-  TF_ASSIGN_OR_RETURN(
-      Tf2HloResult tf2hlo_result,
-      CompileTfToHlo(*module_copy, dtypes_and_shapes, signature_name(),
-                     *ifrt_client_, compile_metadata,
-                     shape_representation_fn_));
+  TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
+                      persistent_compilation_cache_->LookupTf2HloResultOrCreate(
+                          *module_copy, signature_name(), dtypes_and_shapes,
+                          assigned_device_list_, ifrt_client_.get(),
+                          [&]() -> absl::StatusOr<Tf2HloResult> {
+                            return CompileTfToHlo(
+                                *module_copy, dtypes_and_shapes,
+                                signature_name(), *ifrt_client_,
+                                compile_metadata, shape_representation_fn_);
+                          }));
+  if (VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("hlo_program",
+                                 tf2hlo_result.mlir_hlo_module.get());
+  }
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
