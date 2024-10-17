@@ -290,6 +290,7 @@ PyObject* InterpreterWrapper::AllocateTensors(int subgraph_index) {
   if (subgraph_index == kUndeterminedSubgraphIndex) {
     TFLITE_PY_CHECK(interpreter_->AllocateTensors());
   } else {
+    TFLITE_PY_CHECK(interpreter_->ApplyLazyDelegateProviders());
     TFLITE_PY_SUBGRAPH_BOUNDS_CHECK(subgraph_index);
     TFLITE_PY_CHECK(interpreter_->subgraph(subgraph_index)->AllocateTensors());
   }
@@ -302,6 +303,7 @@ PyObject* InterpreterWrapper::Invoke(int subgraph_index) {
 
   // Release the GIL so that we can run multiple interpreters in parallel
   TfLiteStatus status_code = kTfLiteOk;
+
   Py_BEGIN_ALLOW_THREADS;  // To return can happen between this and end!
   tflite::Subgraph* subgraph = interpreter_->subgraph(subgraph_index);
   status_code = subgraph->Invoke();
