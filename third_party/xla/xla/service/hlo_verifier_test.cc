@@ -1415,6 +1415,60 @@ TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
           "expected to contain only the root and parameter instructions"));
 }
 
+TEST_F(HloVerifierTest, AsyncMultiOpComputationSendRecvOnly) {
+  const char* const hlo_string = R"(
+  wrapped_send_recv_1 {
+    param0 = f32[] parameter(0)
+    param1 = token[] parameter(1)
+    send = (f32[], u32[], token[]) send(param0, param1), channel_id=1
+    param2 = f32[] parameter(2)
+    param3 = token[] parameter(3)
+    send.1 = (f32[], u32[], token[]) send(param2, param3), channel_id=2
+    param4 = token[] parameter(4)
+    recv = (f32[], u32[], token[]) recv(param4), channel_id=1
+    param5 = token[] parameter(5)
+    recv.1 = (f32[], u32[], token[]) recv(param5), channel_id=2
+    ROOT tuple = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[]))
+      tuple(send, send.1, recv, recv.1)
+  }
+
+  ENTRY main {
+    data-1 = f32[] constant(1)
+    after-all-1 = token[] after-all()
+    data-2 = f32[] constant(2)
+    after-all-2 = token[] after-all()
+    tuple-start = ((f32[], token[], f32[], token[], token[], token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])), s32[])
+      async-start(data-1, after-all-1, data-2, after-all-2, after-all-1, after-all-2),
+        calls=wrapped_send_recv_1
+    tuple-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(tuple-start)
+    gte.4 = (f32[], u32[], token[]) get-tuple-element(tuple-done), index=2
+    gte.5 = f32[] get-tuple-element(gte.4), index=0
+    gte.6 = token[] get-tuple-element(gte.4), index=2
+    tuple.1 = (f32[], token[]) tuple(gte.5, gte.6)
+    data-out-1 = f32[] get-tuple-element(tuple.1), index=0
+    gte.7 = (f32[], u32[], token[]) get-tuple-element(tuple-done), index=3
+    gte.8 = f32[] get-tuple-element(gte.7), index=0
+    gte.9 = token[] get-tuple-element(gte.7), index=2
+    tuple.2 = (f32[], token[]) tuple(gte.8, gte.9)
+    data-out-2 = f32[] get-tuple-element(tuple.2), index=0
+    ROOT out = (f32[], f32[]) tuple(data-out-1, data-out-2)
+    get-tuple-element = (f32[], u32[], token[]) get-tuple-element(tuple-done), index=0
+    gte.1 = token[] get-tuple-element(get-tuple-element), index=2
+    gte.2 = (f32[], u32[], token[]) get-tuple-element(tuple-done), index=1
+    gte.3 = token[] get-tuple-element(gte.2), index=2
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
   const char* const hlo_string = R"(
   HloModule IotaTupleResult
