@@ -95,7 +95,11 @@ TRTDeviceAllocator::TRTDeviceAllocator(Allocator* allocator)
   VLOG(1) << "Using " << allocator->Name() << " allocator from TensorFlow";
 }
 
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
 void TRTDeviceAllocator::free(void* memory) noexcept {
+#else
+bool TRTDeviceAllocator::deallocate(void* memory) noexcept {
+#endif
   mutex_lock lock(mu_);
   VLOG(2) << "Deallocating @ " << memory;
   // allocated memory adjusted for alignment, restore the original pointer
@@ -107,6 +111,9 @@ void TRTDeviceAllocator::free(void* memory) noexcept {
     }
     allocator_->DeallocateRaw(memory);
   }
+#if IS_TRT_VERSION_GE(10, 0, 0, 0)
+  return true;
+#endif
 }
 
 }  // namespace tensorrt
