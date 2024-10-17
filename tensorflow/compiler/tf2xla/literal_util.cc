@@ -36,17 +36,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
-                                    xla::BorrowingLiteral* literal) {
+absl::Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
+                                          xla::BorrowingLiteral* literal) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
                                            host_tensor.shape(), &xla_shape));
   return HostTensorToBorrowingLiteral(xla_shape, host_tensor, literal);
 }
 
-Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
-                                    const Tensor& host_tensor,
-                                    xla::BorrowingLiteral* literal) {
+absl::Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
+                                          const Tensor& host_tensor,
+                                          xla::BorrowingLiteral* literal) {
   const auto& tshape = host_tensor.shape();
   TF_RET_CHECK(tshape.IsFullyDefined() &&
                tshape.dims() == xla_shape.dimensions_size() &&
@@ -63,7 +63,7 @@ absl::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
   return literal.Clone();
 }
 
-Status HostTensorToMutableBorrowingLiteral(
+absl::Status HostTensorToMutableBorrowingLiteral(
     Tensor* host_tensor, xla::MutableBorrowingLiteral* literal) {
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor->dtype(),
@@ -71,7 +71,7 @@ Status HostTensorToMutableBorrowingLiteral(
   return HostTensorToMutableBorrowingLiteral(xla_shape, host_tensor, literal);
 }
 
-Status HostTensorToMutableBorrowingLiteral(
+absl::Status HostTensorToMutableBorrowingLiteral(
     const xla::Shape& xla_shape, Tensor* host_tensor,
     xla::MutableBorrowingLiteral* literal) {
   *literal = xla::MutableBorrowingLiteral(
@@ -80,8 +80,8 @@ Status HostTensorToMutableBorrowingLiteral(
   return absl::OkStatus();
 }
 
-Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
-                                          xla::BorrowingLiteral* literal) {
+absl::Status HostTensorsToBorrowingLiteralTuple(
+    absl::Span<const Tensor> host_tensors, xla::BorrowingLiteral* literal) {
   std::vector<const char*> buf_ptrs;
   buf_ptrs.reserve(host_tensors.size());
   std::vector<xla::Shape> tensor_shapes(host_tensors.size());
@@ -100,8 +100,8 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
   return absl::OkStatus();
 }
 
-Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
-                               Tensor* host_tensor) {
+absl::Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
+                                     Tensor* host_tensor) {
   TF_RET_CHECK(literal.shape().IsArray() &&
                xla::ShapeUtil::ElementsIn(literal.shape()) ==
                    host_tensor->NumElements());
@@ -123,8 +123,8 @@ Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
   return absl::OkStatus();
 }
 
-Status LiteralToHostTensor(const xla::LiteralSlice& literal,
-                           DataType target_type, Tensor* host_tensor) {
+absl::Status LiteralToHostTensor(const xla::LiteralSlice& literal,
+                                 DataType target_type, Tensor* host_tensor) {
   TensorShape shape;
   TF_RETURN_IF_ERROR(XLAShapeToTensorShape(literal.shape(), &shape));
   *host_tensor = Tensor(target_type, shape);
