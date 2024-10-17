@@ -42,8 +42,9 @@ cc_library(
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -94,6 +95,7 @@ pybind_extension(
     deps = [
         ":interpreter_wrapper_lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
