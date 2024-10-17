@@ -3759,7 +3759,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
   });
   PrintExtraAttributes(attr_printer, options);
 
-  if (original_value_) {
+  if (options.print_original_value() && original_value_) {
     printer->Append(", origin={");
     printer->Append(OriginalValueToString(*original_value()));
     printer->Append("}");

@@ -4637,11 +4637,14 @@ xla_cc_test(
         ":tuple_util",
         "//xla:shape_util",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

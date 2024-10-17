@@ -29,11 +29,14 @@
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_serialize.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
 using ::graph_tools::GetMetadata;
+using ::litert::BufferRef;
+using ::litert::internal::ParseByteCodeOffsetFromMetadata;
 using ::litert::tools::ApplyPlugin;
 using ::litert::tools::ApplyPluginRun;
 using ::testing::HasSubstr;
@@ -152,23 +155,49 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LiteRtModel model;
-  ASSERT_STATUS_OK(
-      LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
-                out.view().size(), &model));
-  UniqueLiteRtModel u_model(model);
+  ASSERT_RESULT_OK_MOVE(auto model, LoadModel(BufferRef<uint8_t>(
+                                        out.str().data(), out.str().size())));
   EXPECT_EQ(model->subgraphs.size(), 1);
 
   ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
-                          GetMetadata(model, kLiteRtMetadataByteCodeKey));
+                          GetMetadata(model.get(), kLiteRtMetadataByteCodeKey));
   EXPECT_THAT(byte_code_buffer.StrView(), HasSubstr("Partition_0_with_1_muls"));
 
   ASSERT_RESULT_OK_ASSIGN(auto tag_buffer,
-                          GetMetadata(model, kLiteRtBuildTagKey));
+                          GetMetadata(model.get(), kLiteRtBuildTagKey));
   EXPECT_EQ(tag_buffer.StrView(),
             "soc_man:ExampleSocManufacturer,soc_model:ExampleSocModel,"
             "serialization_strategy:"
             "METADATA");
+}
+
+TEST(TestApplyPluginTool, TestApplyWithAppendSerialization) {
+  auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
+  run->serialization = ApplyPluginRun::Serialization::APPEND;
+  std::stringstream out;
+  run->outs.push_back(out);
+  ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
+
+  BufferRef<uint8_t> serialized(out.str().data(), out.str().size());
+
+  ASSERT_RESULT_OK_MOVE(auto model, LoadModel(serialized));
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  ASSERT_RESULT_OK_ASSIGN(auto tag_buffer,
+                          GetMetadata(model.get(), kLiteRtBuildTagKey));
+  EXPECT_EQ(tag_buffer.StrView(),
+            "soc_man:ExampleSocManufacturer,soc_model:ExampleSocModel,"
+            "serialization_strategy:"
+            "APPEND");
+
+  ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
+                          GetMetadata(model.get(), kLiteRtMetadataByteCodeKey));
+
+  ASSERT_RESULT_OK_ASSIGN(auto offset_size,
+                          ParseByteCodeOffsetFromMetadata(byte_code_buffer));
+  auto [offset, size] = offset_size;
+
+  EXPECT_EQ(serialized.StrView().substr(offset, size),
+            "Partition_0_with_1_muls:");
 }
 
 }  // namespace

@@ -45,6 +45,7 @@ namespace litert::tools {
 
 using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
+using ::litert::internal::FinishByteCodeAppend;
 using ::litert::internal::GroupPartitions;
 using ::litert::internal::OutlinePartition;
 using ::litert::internal::VerifyFlatbuffer;
@@ -96,6 +97,10 @@ class Context {
     auto res = run_->outs.front();
     run_->outs.at(0) = out;
     return res;
+  }
+
+  ApplyPluginRun::Serialization Serialization() const {
+    return run_->serialization;
   }
 
   const ApplyPluginRun& Run() const { return *run_; }
@@ -195,18 +200,15 @@ LiteRtResult<UniqueLiteRtModel> LoadModel(Context* ctx) {
 LiteRtStatus SerializeModel(Context* ctx, UniqueLiteRtModel model) {
   ctx->Dump().Start("Serialize Model");
 
-  OwningBufferRef<uint8_t> buf;
-  auto [data, size, offset] = buf.GetWeak();
-
-  LITERT_RETURN_STATUS_IF_NOT_OK(
-      SerializeModel(model.release(), &data, &size, &offset));
-  LITERT_ENSURE(VerifyFlatbuffer(buf.Span()),
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto serialized,
+                                 SerializeModel(std::move(model)));
+  LITERT_ENSURE(VerifyFlatbuffer(serialized.Span()),
                 kLiteRtStatusErrorInvalidFlatbuffer,
                 "Failed to verify flatbuffer.");
 
-  buf.WriteStr(ctx->Out());
+  serialized.WriteStr(ctx->Out());
   ctx->Dump().Labeled() << "Serialized a model... ";
-  buf.Dump(ctx->Dump().Display());
+  serialized.Dump(ctx->Dump().Display());
 
   ctx->Dump().Done();
   return kLiteRtStatusOk;
@@ -410,10 +412,6 @@ LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
   // TODO: implement multi target compilation.
   LITERT_ENSURE_SUPPORTED(run.soc_models.size() == 1,
                           "Multi target compilation not implemented.");
-  // TODO: implement append serialization.
-  LITERT_ENSURE_SUPPORTED(
-      run.serialization == ApplyPluginRun::Serialization::METADATA,
-      "Only metadata serialization currently supported.");
   return kLiteRtStatusOk;
 }
 
@@ -457,13 +455,30 @@ LiteRtStatus Apply(Context* ctx) {
 
   model->subgraphs.resize(kNumInputSubgraphs);
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtModelAddByteCodeMetadata(
-      model.get(), plugin.SocManufacturer().data(),
-      plugin.SocModels().front().data(), compilation_out.str().data(),
-      compilation_out.str().size()));
+  if (ctx->Serialization() == ApplyPluginRun::Serialization::METADATA) {
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtModelAddByteCodeMetadata(
+        model.get(), plugin.SocManufacturer().data(),
+        plugin.SocModels().front().data(), compilation_out.str().data(),
+        compilation_out.str().size()));
 
-  ctx->SwapOut(out);
-  LITERT_RETURN_STATUS_IF_NOT_OK(SerializeModel(ctx, std::move(model)));
+    ctx->SwapOut(out);
+    LITERT_RETURN_STATUS_IF_NOT_OK(SerializeModel(ctx, std::move(model)));
+
+  } else {
+    LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtModelPrepareForByteCodeAppend(
+        model.get(), plugin.SocManufacturer().data(),
+        plugin.SocModels().front().data()));
+    LITERT_MOVE_OR_RETURN_STATUS(auto serialized,
+                                 SerializeModel(std::move(model)));
+    LITERT_RETURN_STATUS_IF_NOT_OK(
+        FinishByteCodeAppend(serialized, compilation_out.str().size()));
+    serialized.WriteStr(out);
+    out.get() << compilation_out.str();
+
+    ctx->Dump().Labeled() << absl::StreamFormat(
+        "Appended %lu bytes of code to a %lu byte model\n", serialized.Size(),
+        compilation_out.str().size());
+  }
 
   return kLiteRtStatusOk;
 }

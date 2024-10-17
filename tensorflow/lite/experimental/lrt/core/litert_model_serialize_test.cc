@@ -14,7 +14,7 @@
 
 #include "tensorflow/lite/experimental/lrt/core/litert_model_serialize.h"
 
-#include <cstdint>
+#include <cstddef>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -34,10 +34,13 @@
 namespace {
 
 using ::graph_tools::GetMetadata;
-using ::litert::OwningBufferRef;
+using ::litert::internal::FinishByteCodeAppend;
+using ::litert::internal::ParseByteCodeOffsetFromMetadata;
 using ::litert::internal::VerifyFlatbuffer;
 using ::litert::testing::LoadTestFileModel;
+using ::testing::EndsWith;
 using ::testing::HasSubstr;
+using ::testing::StartsWith;
 
 static constexpr absl::string_view kSocModel = "TestSocModel";
 static constexpr absl::string_view kSocMan = "TestSocMan";
@@ -49,14 +52,14 @@ UniqueLiteRtModel GetTestModel() {
 }
 
 UniqueLiteRtModel RoundTrip(UniqueLiteRtModel model) {
-  OwningBufferRef<uint8_t> fb;
-  auto [buf, size, offset] = fb.GetWeak();
-  LITERT_RETURN_VAL_IF_NOT_OK(
-      SerializeModel(model.release(), &buf, &size, &offset), {});
-  LITERT_ENSURE(VerifyFlatbuffer(fb.Span()), {}, "Failed to verify flatbuffer");
+  LITERT_ASSIGN_OR_RETURN_VAL(auto serialized, SerializeModel(std::move(model)),
+                              {});
+  LITERT_ENSURE(VerifyFlatbuffer(serialized.Span()), {},
+                "Failed to verify flatbuffer");
 
   LiteRtModel new_model;
-  LITERT_RETURN_VAL_IF_NOT_OK(LoadModel(fb.Data(), fb.Size(), &new_model), {});
+  LITERT_RETURN_VAL_IF_NOT_OK(
+      LoadModel(serialized.Data(), serialized.Size(), &new_model), {});
 
   return UniqueLiteRtModel(new_model);
 }
@@ -97,7 +100,7 @@ TEST(TestByteCodePacking, MetadataStrategy) {
   EXPECT_EQ(byte_code.StrView(), kByteCode);
 }
 
-TEST(TestByteCodePacking, AppendStrategy) {
+TEST(TestByteCodePacking, AppendStrategyPrepare) {
   auto model = GetTestModel();
   ASSERT_STATUS_OK(LiteRtModelPrepareForByteCodeAppend(
       model.get(), kSocMan.data(), kSocModel.data()));
@@ -117,6 +120,32 @@ TEST(TestByteCodePacking, AppendStrategy) {
                           GetMetadata(model.get(), kLiteRtMetadataByteCodeKey));
   EXPECT_THAT(byte_code_placeholder.StrView(),
               HasSubstr(kLiteRtAppendedByteCodePlaceholder));
+}
+
+TEST(TestByteCodePacking, AppendStrategyFinish) {
+  auto model = GetTestModel();
+  ASSERT_STATUS_OK(LiteRtModelPrepareForByteCodeAppend(
+      model.get(), kSocMan.data(), kSocModel.data()));
+
+  ASSERT_RESULT_OK_MOVE(auto serialized, SerializeModel(std::move(model)));
+  const size_t fixed_model_size = serialized.Size();
+
+  ASSERT_STATUS_OK(FinishByteCodeAppend(serialized, 512));
+  ASSERT_EQ(serialized.Size(), fixed_model_size);
+
+  ASSERT_RESULT_OK_MOVE(auto new_model, LoadModel(serialized));
+  ASSERT_RESULT_OK_ASSIGN(
+      auto new_metadata,
+      GetMetadata(new_model.get(), kLiteRtMetadataByteCodeKey));
+  EXPECT_THAT(new_metadata.StrView(), StartsWith("<npu_byte_code>[*"));
+  EXPECT_THAT(new_metadata.StrView(), EndsWith("**512]"));
+
+  ASSERT_RESULT_OK_ASSIGN(auto offset_size,
+                          ParseByteCodeOffsetFromMetadata(new_metadata));
+  auto [offset, size] = offset_size;
+
+  EXPECT_EQ(offset, fixed_model_size);
+  EXPECT_EQ(size, 512);
 }
 
 }  // namespace

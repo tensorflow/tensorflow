@@ -41,10 +41,13 @@ static const char kLiteRtMetadataSerializationStrategy[] = "METADATA";
 // Serialization strategy ID for appending byte code to the end of the file.
 static const char kLiteRtAppendSerializationStrategy[] = "APPEND";
 
+// Tag that prefixes the placeholder string below.
+static const char kLiteRtAppendedByteCodePrefix[] = "<npu_byte_code>";
+
 // NPU bytecode information for the append strategy. Placeholder
 // for post-processing step, [<offset_str>,<size_str>] padded to fixed length.
 static const char kLiteRtAppendedByteCodePlaceholder[] =
-    "<npu_byte_code>[**********,**********]";
+    "[**********,**********]";
 
 // Metadata key for any NPU bytecode information.
 static const char kLiteRtMetadataByteCodeKey[] = "LiteRtNpuByteCode";
@@ -109,6 +112,28 @@ LiteRtStatus LiteRtModelPrepareForByteCodeAppend(LiteRtModel model,
 
 #ifdef __cplusplus
 }
+
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
+
+namespace litert::internal {
+
+// Completes the post-processing step for the "APPEND" strategy.
+// Updates the byte code offset/size placeholders in "serialized" model without
+// changing the size of the model. If the string representation of size/offset
+// is less than length of the placeholder string, result will contain
+// string will be left-padded with filler characters. Fails if it is greater
+// than the placeholder string length or it cannot find the placeholder.
+LiteRtStatus FinishByteCodeAppend(MutableBufferRef<uint8_t> serialized_model,
+                                  size_t byte_code_size);
+
+// See the "append" byte code packing strategy. Small utility to parse the
+// offset from original file and size encoded in the "metadata_buffer".
+LiteRtResult<std::pair<size_t, size_t>> ParseByteCodeOffsetFromMetadata(
+    BufferRef<uint8_t> metadata_buffer);
+
+}  // namespace litert::internal
+
 #endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_LITERT_MODEL_SERIALIZE_H_

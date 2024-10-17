@@ -56,11 +56,11 @@ cc_test(
     deps = [
         ":apply_plugin",
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:litert_model_init",
         "//tensorflow/lite/experimental/lrt/core:litert_model_serialize",
         "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
         "//tensorflow/lite/experimental/lrt/core/util:flatbuffer_tools",
         "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_absl//absl/log:absl_check",

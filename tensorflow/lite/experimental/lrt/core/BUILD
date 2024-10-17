@@ -102,7 +102,10 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

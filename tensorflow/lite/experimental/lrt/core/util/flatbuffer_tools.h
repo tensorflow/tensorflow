@@ -19,6 +19,7 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 
 namespace litert::internal {
 

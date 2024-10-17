@@ -41,6 +41,7 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
+using ::litert::BufferRef;
 using ::litert::OwningBufferRef;
 using ::litert::internal::VerifyFlatbuffer;
 
@@ -325,6 +326,14 @@ LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model) {
                    alloc->bytes(), model);
 }
 
+LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized) {
+  LiteRtModel model;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      LoadModel(serialized.Data(), serialized.Size(), &model),
+      UniqueLiteRtModel);
+  return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
+}
+
 void ModelDestroy(LiteRtModel model) { delete model; }
 
 //===----------------------------------------------------------------------===//
@@ -511,13 +520,9 @@ LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
-                            size_t* offset) {
-  // Destroy model before return.
-  UniqueLiteRtModel u_model(model);
-
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(ModelRepacker::Repack(model),
-                                     "Failed to repack model.");
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model) {
+  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.get()),
+                                 OwningBufferRef<uint8_t>);
 
   flatbuffers::FlatBufferBuilder b;
   auto model_offset = tflite::Model::Pack(b, model->flatbuffer_model.get());
@@ -527,12 +532,19 @@ LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
   auto [new_buf, new_size, new_offset] = buffer.GetWeak();
   new_buf = b.ReleaseRaw(new_size, new_offset);
 
-  LITERT_ENSURE(VerifyFlatbuffer(buffer.Span()),
-                kLiteRtStatusErrorInvalidFlatbuffer,
-                "Failed to verify flatbuffer");
+  if (!VerifyFlatbuffer(buffer.Span())) {
+    return LiteRtResult<OwningBufferRef<uint8_t>>::FromStatus(
+        kLiteRtStatusErrorInvalidFlatbuffer);
+  }
 
-  std::tie(*buf, *size, *offset) = buffer.Release();
+  return LiteRtResult<OwningBufferRef<uint8_t>>::TakeValue(std::move(buffer));
+}
 
+LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
+                            size_t* offset) {
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto serialized,
+                                 SerializeModel(UniqueLiteRtModel(model)));
+  std::tie(*buf, *size, *offset) = serialized.Release();
   return kLiteRtStatusOk;
 }
 

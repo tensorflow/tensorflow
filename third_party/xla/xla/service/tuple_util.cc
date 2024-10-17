@@ -246,4 +246,28 @@ HloInstruction* TupleUtil::AssembleTupleInstruction(
   return elements.element({});
 }
 
+HloInstruction* TupleUtil::GetTupleInstructionAtIndex(
+    HloInstruction& tuple, const ShapeIndex& target_index) {
+  HloInstruction* target_index_instr = &tuple;
+
+  for (int32_t tuple_index : target_index) {
+    bool found = false;
+    for (HloInstruction* user : target_index_instr->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == tuple_index) {
+        target_index_instr = user;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      // No GTE found at the target index.
+      return nullptr;
+    }
+  }
+
+  return target_index_instr;
+}
+
 }  // namespace xla
