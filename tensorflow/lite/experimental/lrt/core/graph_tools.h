@@ -19,6 +19,9 @@
 #include <cstdint>
 #include <tuple>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+
 #ifndef NDEBUG
 #include <iostream>
 #endif
@@ -206,6 +209,16 @@ inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
                               LrtSubgraph);
 
   return LrtResult<LrtSubgraph>::FromValue(subgraph);
+}
+
+inline LrtResult<FbConstBufferT> GetMetadata(LrtModel model,
+                                             const absl::string_view key) {
+  const void* buf;
+  size_t size;
+  LRT_RETURN_RESULT_IF_NOT_OK(
+      LiteRtModelGetMetadata(model, key.data(), &buf, &size), FbConstBufferT);
+  auto res = absl::MakeConstSpan(reinterpret_cast<const FbCharT*>(buf), size);
+  return LrtResult<FbConstBufferT>::FromValue(res);
 }
 
 //===----------------------------------------------------------------------===//

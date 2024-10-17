@@ -36,6 +36,7 @@
 
 namespace {
 
+using ::graph_tools::GetMetadata;
 using ::lrt::testing::VerifyFlatbuffer;
 
 inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
@@ -122,6 +123,11 @@ TEST(TestSerializeModel, TestMetadata) {
 
   ASSERT_STATUS_OK(AppendMetadata(model.get(), kMetadataData.data(),
                                   kMetadataData.size(), kMetadataName.data()));
+  ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
+                          GetMetadata(model.get(), kMetadataName));
+  EXPECT_EQ(absl::string_view(reinterpret_cast<const char*>(m_buffer.data()),
+                              m_buffer.size()),
+            kMetadataData);
 
   uint8_t* buf = nullptr;
   size_t buf_size;
@@ -149,7 +155,7 @@ TEST(TestSerializeModel, TestMetadata) {
   tflite::BufferT* metadata_buffer =
       new_model->buffers.at(fb_metadata->buffer).get();
 
-  std::string_view fb_metadata_data(
+  absl::string_view fb_metadata_data(
       reinterpret_cast<const char*>(metadata_buffer->data.data()),
       metadata_buffer->data.size());
 

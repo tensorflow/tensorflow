@@ -32,6 +32,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -49,6 +50,8 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -64,6 +67,8 @@ cc_library(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -100,7 +105,6 @@ cc_test(
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:runtime_cc",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -133,6 +137,8 @@ cc_library(
         ":api_internal",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )

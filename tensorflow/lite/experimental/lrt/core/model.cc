@@ -15,10 +15,15 @@
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
 #include <cstddef>
+#include <cstdint>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 //
 // Model
@@ -46,6 +51,16 @@ LrtStatus GetModelMainSubgraph(LrtModel model,
   return kLrtStatusOk;
 }
 
+LrtStatus LiteRtModelGetMetadata(LrtModel model, const char* metadata_key,
+                                 const void** metadata_buffer,
+                                 size_t* metadata_buffer_size) {
+  LRT_ASSIGN_OR_RETURN_STATUS(auto m_buffer_view,
+                              model->FindMetadata(metadata_key));
+  *metadata_buffer = m_buffer_view.data();
+  *metadata_buffer_size = m_buffer_view.size();
+  return kLrtStatusOk;
+}
+
 void ModelDestroy(LrtModel model) {
   if (model != nullptr) {
     delete model;
@@ -55,6 +70,31 @@ void ModelDestroy(LrtModel model) {
 LrtStatus PushOp(LrtOpList op_list, LrtOp op) {
   op_list->Push(op);
   return kLrtStatusOk;
+}
+
+LrtResult<FbBufferT> LrtModelT::FindMetadata(
+    const absl::string_view key) const {
+  using ResT = LrtResult<FbBufferT>;
+
+  tflite::MetadataT* fb_metadata = nullptr;
+  for (auto& m : flatbuffer_model->metadata) {
+    if (m->name == key) {
+      fb_metadata = m.get();
+      break;
+    }
+  }
+  if (fb_metadata == nullptr) {
+    return ResT::FromStatus(kLrtStatusErrorNotFound);
+  }
+
+  const uint32_t m_buffer_idx = fb_metadata->buffer;
+  if (m_buffer_idx >= flatbuffer_model->buffers.size()) {
+    return ResT::FromStatus(kLrtStatusErrorIndexOOB);
+  }
+  tflite::BufferT* m_buffer = flatbuffer_model->buffers.at(m_buffer_idx).get();
+
+  return ResT::FromValue(
+      absl::MakeSpan(m_buffer->data.data(), m_buffer->data.size()));
 }
 
 //

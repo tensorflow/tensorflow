@@ -161,6 +161,11 @@ LrtStatus GetSubgraphOps(LrtSubgraph subgraph, lrt_param_index_t* num_ops,
 // Model
 //
 
+// Get the metadata buffer associated with given key if it exists.
+LrtStatus LiteRtModelGetMetadata(LrtModel model, const char* metadata_key,
+                                 const void** metadata_buffer,
+                                 size_t* metadata_buffer_size);
+
 // Get number of subgraphs in model.
 LrtStatus GetModelNumSubgraphs(LrtModel model,
                                lrt_param_index_t* num_subgraphs);
@@ -173,6 +178,10 @@ LrtStatus GetModelSubgraph(LrtModel model, lrt_param_index_t subgraph_index,
 // TODO: b/365299994 - Figure out signatures.
 LrtStatus GetModelMainSubgraph(LrtModel model,
                                lrt_param_index_t* main_subgraph_index);
+
+//
+// Utility Types
+//
 
 LrtStatus PushOp(LrtOpList op_list, LrtOp op);
 
