@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/graph_analyzer/map_tools.h"
 #include "tensorflow/core/grappler/graph_analyzer/sig_node.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
