@@ -189,11 +189,11 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
             int32_t row_sum = woff_ptr2[i];
             total -= row_sum * batch_offset;
             int idx = lhs_rows * j + i;
-            float ss = batch_scaling_factor;
+            float scale = batch_scaling_factor;
             if (per_channel_scales) {
-              ss *= per_channel_scales[j];
+              scale *= per_channel_scales[i];
             }
-            out_ptr[idx] += ss * total;
+            out_ptr[idx] += scale * total;
           }
         }
       }
