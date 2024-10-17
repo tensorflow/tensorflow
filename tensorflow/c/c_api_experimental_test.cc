@@ -15,16 +15,19 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
