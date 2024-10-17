@@ -128,6 +128,7 @@ message RewriterConfig {
   bool disable_meta_optimizer = 19;
   // Disable the TFG optimizer (off by default).
   bool disable_tfg_optimizer = 32;
+  bool enable_real_time_optimizer = 33;  // Add a unique field number here
   // Optimizers registered by plugin (default is ON)
   Toggle use_plugin_optimizers = 28;
   // Conditional code motion (default is ON).

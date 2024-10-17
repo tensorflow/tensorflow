@@ -162,6 +162,35 @@ exports_files(
     ],
 )
 
+proto_library(
+    name = "rewriter_config_proto",
+    srcs = ["rewriter_config.proto"],
+    deps = [
+        "//tensorflow/core/framework:attr_value_proto",
+        "//tensorflow/core/protobuf:verifier_config_proto",  # Use verifier_config_proto instead of verifier_config_proto_cc
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "rewriter_config_proto_cc",
+    deps = [":rewriter_config_proto"],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
+    name = "verifier_config_proto",
+    srcs = ["verifier_config.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "verifier_config_proto_cc",
+    deps = [":verifier_config_proto"],
+    visibility = ["//visibility:public"],
+)
+
+
 tf_proto_library(
     name = "for_core_protos",
     srcs = COMMON_PROTO_SRCS + [
