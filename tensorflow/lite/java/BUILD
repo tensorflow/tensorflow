@@ -142,6 +142,7 @@ TFLITE_HEADERS = [
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data.h",
     "//tensorflow/lite/core/c:builtin_op_data.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
@@ -888,7 +889,9 @@ tflite_cc_library_with_c_headers_test(
     srcs = [],
     hdrs = TFLITE_HEADERS,
     visibility = ["//visibility:private"],
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
+    ],
 )
 
 #-----------------------------------------------------------------------------
