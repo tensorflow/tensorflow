@@ -43,8 +43,8 @@ using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
 struct FoldableSelect {
-  int64_t constant;
-  Comparison::Direction direction;
+  Comparison::Direction cmp_direction;
+  int64_t constant_id;
   CollectiveOpGroupMode collective_mode;
   HloInstruction* true_operand;
   HloInstruction* false_operand;
@@ -71,6 +71,10 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
 
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(compare_candidate);
+  if (compare->direction() != Comparison::Direction::kEq &&
+      compare->direction() != Comparison::Direction::kNe) {
+    return std::nullopt;
+  }
 
   const HloInstruction* id_op = compare->operand(0);
   CollectiveOpGroupMode mode;
@@ -89,69 +93,74 @@ std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   int64_t id_value =
       compare->operand(1)->literal().GetFirstInteger().value_or(-1);
 
-  return FoldableSelect{id_value, compare->direction(), mode,
+  return FoldableSelect{compare->direction(), id_value, mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
-bool IsUniqueSource(int64_t id, const SourceTargetPairs& pairs) {
-  if (pairs.size() == 1 && pairs[0].first == id) return true;
-  return false;
-}
+std::optional<bool> StaticallyEvaluatePredicateForAllSourceIDs(
+    FoldableSelect select_match, SourceTargetPairs pairs) {
+  // If there are no pairs, the predicate is undefined.
+  if (pairs.empty()) return std::nullopt;
 
-bool IsNotPresentInSource(int64_t id, const SourceTargetPairs& pairs) {
-  return absl::c_none_of(
-      pairs, [id](const SourceTargetPair& pair) { return pair.first == id; });
-}
+  // Evaluate the select predicate for the first source target pair.
+  CHECK(select_match.cmp_direction == Comparison::Direction::kEq ||
+        select_match.cmp_direction == Comparison::Direction::kNe);
+  auto select_predicate_eval = [&select_match](const SourceTargetPair& pair) {
+    int64_t src_id = pair.first;
+    return select_match.cmp_direction == Comparison::Direction::kEq
+               ? src_id == select_match.constant_id
+               : src_id != select_match.constant_id;
+  };
+  bool result_candidate = select_predicate_eval(pairs.front());
 
-inline absl::StatusOr<bool> update(HloInstruction* cp, HloInstruction* data) {
-  TF_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, data));
-  return true;
-}
+  // Check that the result is the same for all source target pairs. If not,
+  // we have a contradiction and cannot statically evaluate the predicate. We
+  // return std::nullopt in this case.
+  if (!absl::c_all_of(pairs, [&](const SourceTargetPair& it) -> bool {
+        return result_candidate == select_predicate_eval(it);
+      })) {
+    return std::nullopt;
+  }
 
-// We have to maintain integrity of relationship between partition/replica
-// and collective-permute's channel_id. That is we can only fold select when
-//   1. cp has channel_id and condition is based on partition_id
-//   2. cp has no channel_id and condition is based on replica_id
-// See enum class CollectiveOpGroupMode for details.
-bool IsShardingConsistent(HloCollectivePermuteInstruction* cp,
-                          CollectiveOpGroupMode mode) {
-  std::optional<int64_t> id = cp->channel_id();
-
-  return (mode == CollectiveOpGroupMode::kCrossPartition && id.has_value()) ||
-         (mode == CollectiveOpGroupMode::kCrossReplica && !id.has_value());
+  // The predicate statically evaluates to the same value for all source target
+  // pairs.
+  return result_candidate;
 }
 
 // Recognizes the pattern and update if applicable.
 absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
+  // Root op must be a collective-permute.
   HloCollectivePermuteInstruction* cp =
       DynCast<HloCollectivePermuteInstruction>(inst);
   if (cp == nullptr) return false;
 
-  std::optional<FoldableSelect> select_info =
+  // Operand must be a foldable select, i.e. a select op that this pass'
+  // analysis supports.
+  std::optional<FoldableSelect> select_match =
       MatchFoldableSelect(inst->mutable_operand(0));
-  if (!select_info.has_value()) return false;
+  if (!select_match.has_value()) return false;
 
-  if (!IsShardingConsistent(cp, select_info->collective_mode)) return false;
+  // We have to maintain integrity of relationship between the predicate, which
+  // is based on partition or replica ID, and the collevtive mode of the
+  // collective-permute op.
+  TF_ASSIGN_OR_RETURN(
+      CollectiveOpGroupMode collective_mode,
+      GetCollectiveOpGroupMode(cp->channel_id().has_value(),
+                               /*use_global_device_ids=*/std::nullopt));
+  if (collective_mode != select_match->collective_mode) return false;
 
-  int64_t id = select_info->constant;
-  SourceTargetPairs pairs = cp->source_target_pairs();
+  // We can only actually fold the select if we can evaluate the predicate
+  // statically to a known value for all relevant source IDs.
+  std::optional<bool> predicate_value =
+      StaticallyEvaluatePredicateForAllSourceIDs(*select_match,
+                                                 cp->source_target_pairs());
+  if (!predicate_value.has_value()) return false;
 
-  if (select_info->direction == Comparison::Direction::kEq) {
-    if (IsUniqueSource(id, pairs)) {
-      return update(cp, select_info->true_operand);
-    } else if (IsNotPresentInSource(id, pairs)) {
-      return update(cp, select_info->false_operand);
-    }
-  }
-
-  if (select_info->direction == Comparison::Direction::kNe) {
-    if (IsNotPresentInSource(id, pairs)) {
-      return update(cp, select_info->true_operand);
-    } else if (IsUniqueSource(id, pairs)) {
-      return update(cp, select_info->false_operand);
-    }
-  }
-  return false;
+  // Fold select and forward the correct operand.
+  HloInstruction* new_operand = *predicate_value ? select_match->true_operand
+                                                 : select_match->false_operand;
+  TF_RETURN_IF_ERROR(cp->ReplaceOperandWith(0, new_operand));
+  return true;
 }
 
 }  // namespace
