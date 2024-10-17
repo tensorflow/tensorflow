@@ -52,12 +52,10 @@ cc_library(
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@flatbuffers//:runtime_cc",
         "@local_tsl//tsl/platform",
     ],
 )

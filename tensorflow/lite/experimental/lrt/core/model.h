@@ -22,6 +22,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/flatbuffer_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 //
@@ -125,7 +126,8 @@ struct LrtModelT {
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
-  LrtResult<FbBufferT> FindMetadata(absl::string_view key) const;
+  LrtResult<litert::internal::FbBufferT> FindMetadata(
+      absl::string_view key) const;
 };
 
 //

@@ -18,7 +18,33 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_model_serialize",
-    hdrs = ["lite_rt_model_serialize.h"],
-    deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
+    name = "litert_model_serialize",
+    srcs = ["litert_model_serialize.cc"],
+    hdrs = ["litert_model_serialize.h"],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "litert_model_serialize_test",
+    srcs = ["litert_model_serialize_test.cc"],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
+    deps = [
+        ":litert_model_serialize",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/lite/experimental/lrt/core:flatbuffer_utils",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

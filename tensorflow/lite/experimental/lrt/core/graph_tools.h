@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/flatbuffer_utils.h"
 
 #define _D_MATCH_TRUE(v)                                               \
   {                                                                    \
@@ -68,8 +69,9 @@
 namespace graph_tools {
 
 using RankedTypeInfo = std::tuple<LrtElementType, llvm::ArrayRef<int32_t>>;
-
 using TensorUseInfo = std::tuple<LrtOp, lrt_param_index_t>;
+using ::litert::internal::FbCharT;
+using ::litert::internal::FbConstBufferT;
 
 //===----------------------------------------------------------------------===//
 //                               Getters                                      //
@@ -211,6 +213,7 @@ inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
   return LrtResult<LrtSubgraph>::FromValue(subgraph);
 }
 
+// Get raw metadata buffer from model if it exists.
 inline LrtResult<FbConstBufferT> GetMetadata(LrtModel model,
                                              const absl::string_view key) {
   const void* buf;

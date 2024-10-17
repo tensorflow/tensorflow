@@ -17,24 +17,13 @@
 
 #include <stdio.h>
 
-#include <cstdint>
 #include <iostream>  // IWYU pragma: keep
 #include <memory>
 #include <variant>
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
 #include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
-
-// Flatbuffer's raw char type.
-typedef uint8_t FbCharT;
-
-// Const view of flatbuffer's raw buffer type.
-typedef absl::Span<const FbCharT> FbConstBufferT;
-
-// Mutable view of flatbuffer's raw buffer type.
-typedef absl::Span<FbCharT> FbBufferT;
 
 #define _CONCAT_NAME_IMPL(x, y) x##y
 

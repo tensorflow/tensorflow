@@ -32,6 +32,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -46,9 +47,9 @@ cc_library(
     ],
     deps = [
         ":api_internal",
+        ":flatbuffer_utils",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -63,12 +64,11 @@ cc_library(
     ],
     deps = [
         ":api_internal",
+        ":flatbuffer_utils",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -100,6 +100,7 @@ cc_test(
     tags = ["no_oss"],
     deps = [
         ":api_internal",
+        ":flatbuffer_utils",
         ":graph_tools",
         ":lite_rt_model_init",
         "//tensorflow/lite/experimental/lrt/test:common",
@@ -135,6 +136,7 @@ cc_library(
     ],
     deps = [
         ":api_internal",
+        ":flatbuffer_utils",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "@com_google_absl//absl/strings:string_view",
@@ -314,6 +316,19 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "flatbuffer_utils",
+    hdrs = [
+        "flatbuffer_utils.h",
+    ],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 

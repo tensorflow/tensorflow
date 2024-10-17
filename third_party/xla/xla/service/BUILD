@@ -395,6 +395,8 @@ xla_cc_test(
         ":float_support",
         ":hlo_creation_utils",
         ":hlo_verifier",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//xla:shape_util",
         "//xla:test",
         "//xla:test_helpers",
@@ -404,6 +406,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

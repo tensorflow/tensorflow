@@ -29,6 +29,7 @@
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/flatbuffer_utils.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
@@ -37,7 +38,8 @@
 namespace {
 
 using ::graph_tools::GetMetadata;
-using ::lrt::testing::VerifyFlatbuffer;
+using ::litert::internal::FbBufToStr;
+using ::litert::internal::VerifyFlatbuffer;
 
 inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
   auto model = lrt::testing::LoadTestFileModel(path);
@@ -125,9 +127,7 @@ TEST(TestSerializeModel, TestMetadata) {
                                   kMetadataData.size(), kMetadataName.data()));
   ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
                           GetMetadata(model.get(), kMetadataName));
-  EXPECT_EQ(absl::string_view(reinterpret_cast<const char*>(m_buffer.data()),
-                              m_buffer.size()),
-            kMetadataData);
+  EXPECT_EQ(FbBufToStr(m_buffer), kMetadataData);
 
   uint8_t* buf = nullptr;
   size_t buf_size;

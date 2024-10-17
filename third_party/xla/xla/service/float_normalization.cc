@@ -199,6 +199,10 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
   }
 
   bool is_root = computation->root_instruction() == hlo;
+  bool allow_excess_precision = computation->parent()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_allow_excess_precision();
 
   // If we are rewriting the root instruction of the entry computation, we need
   // to save and restore original input output alias config.
@@ -252,7 +256,7 @@ absl::Status FloatNormalizationVisitor::ChangeOutputTypeThenInsertConvertBack(
     //       Tuple [fp32, bf16]
     // So we should keep the 'Convert' and replace it after all of the other
     // users has been replaced.
-    if (user->opcode() == HloOpcode::kConvert &&
+    if (allow_excess_precision && user->opcode() == HloOpcode::kConvert &&
         user->shape().element_type() == to && to == HighPrecisionType() &&
         from == LowPrecisionType()) {
       conversions_to_simplify.emplace_back(user);

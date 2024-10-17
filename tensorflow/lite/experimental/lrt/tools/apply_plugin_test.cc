@@ -25,12 +25,17 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/core/experimental/litert_model_serialize.h"
+#include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
+using ::graph_tools::GetMetadata;
+using ::litert::internal::FbBufToStr;
 using ::lrt::tools::ApplyPlugin;
 using ::lrt::tools::ApplyPluginRun;
 using ::testing::HasSubstr;
@@ -155,8 +160,18 @@ TEST(TestApplyPluginTool, TestApply) {
   UniqueLrtModel u_model(model);
 
   EXPECT_EQ(model->subgraphs.size(), 1);
-  ASSERT_EQ(model->flatbuffer_model->metadata.size(), 2);
-  EXPECT_EQ(model->flatbuffer_model->metadata[1]->name, kSocManufacturer);
+
+  ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
+                          GetMetadata(model, kLiteRtMetadataByteCodeKey));
+  EXPECT_THAT(FbBufToStr(byte_code_buffer),
+              HasSubstr("Partition_0_with_1_muls"));
+
+  ASSERT_RESULT_OK_ASSIGN(auto tag_buffer,
+                          GetMetadata(model, kLiteRtBuildTagKey));
+  EXPECT_EQ(FbBufToStr(tag_buffer),
+            "soc_man:ExampleSocManufacturer,soc_model:ExampleSocModel,"
+            "serialization_strategy:"
+            "METADATA");
 }
 
 }  // namespace
