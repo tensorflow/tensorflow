@@ -3440,5 +3440,39 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSOutputFusionWithCollective) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithBitcast) {
+  const char* kModule = R"(
+    HloModule DUSLoopFusionWithBitcast
+
+    fused_dynamic_update_slice {
+      param_1.133 = bf16[32,1,4096,18432]{2,3,1,0} parameter(1)
+      bitcast.8539.1 = bf16[32,1,18432,4096]{3,2,1,0} bitcast(param_1.133)
+      param_0.168 = bf16[1,4096,18432]{1,0,2} parameter(0)
+      bitcast.8543.1 = bf16[1,1,18432,4096]{3,2,1,0} bitcast(param_0.168)
+      param_2.98 = s32[] parameter(2)
+      constant_2153_8 = s32[] constant(0)
+      compare.753.6 = pred[] compare(param_2.98, constant_2153_8), direction=LT
+      constant_2154_12 = s32[] constant(96)
+      add.950.6 = s32[] add(param_2.98, constant_2154_12)
+      select.883.5 = s32[] select(compare.753.6, add.950.6, param_2.98)
+      ROOT dynamic-update-slice.178.1 = bf16[32,1,18432,4096]{3,2,1,0} dynamic-update-slice(bitcast.8539.1, bitcast.8543.1, select.883.5, constant_2153_8, constant_2153_8, /*index=5*/constant_2153_8)
+    }
+
+    ENTRY entry {
+      p0 = bf16[1,4096,18432]{1,0,2} parameter(0)
+      p1 = bf16[32,1,4096,18432]{2,3,1,0} parameter(1)
+      p2 = s32[] parameter(2)
+      ROOT fusion1 = bf16[32,1,18432,4096]{3,2,1,0} fusion(p0, p1, p2), kind=kLoop, calls=fused_dynamic_update_slice
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  // p1 should be aliased with fusion1
+  expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 }  // namespace
 }  // namespace xla
