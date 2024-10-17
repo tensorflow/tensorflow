@@ -5,7 +5,6 @@ load("//tensorflow/lite/core:special_rules.bzl", "verifier_visibility_allowlist"
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/lite:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -68,11 +67,7 @@ cc_library(
     srcs = ["verifier_internal.cc"],
     hdrs = ["verifier_internal.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = verifier_internal_visibility_allowlist() + [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__pkg__",
-        "//tensorflow/lite/tools:__subpackages__",
-    ],
+    visibility = verifier_internal_visibility_allowlist() + ["//tensorflow/lite/tools:__subpackages__"],
     deps = [
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers//:runtime_cc",
