@@ -246,8 +246,9 @@ size_t TotalPackedSize<WireFormatLite::TYPE_SINT64, int64_t>(
 template <typename TensorT, typename ProtoT,
           WireFormatLite::FieldType FieldType,
           void Writer(ProtoT, CodedOutputStream*)>
-Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
-                  int message_index, int size, CodedOutputStream* output) {
+absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
+                        int message_index, int size,
+                        CodedOutputStream* output) {
   auto wire_type = WireFormatLite::WireTypeForFieldType(
       WireFormatLite::FieldType(field_desc.type()));
 
@@ -282,9 +283,9 @@ Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
 
 // Writes a possibly repeated string, bytes, or message field.
 template <typename T, void Writer(int, const T&, CodedOutputStream*)>
-Status WriteVarLenField(const FieldDescriptor& field_desc, const Tensor& input,
-                        int message_index, int size,
-                        CodedOutputStream* output) {
+absl::Status WriteVarLenField(const FieldDescriptor& field_desc,
+                              const Tensor& input, int message_index, int size,
+                              CodedOutputStream* output) {
   auto input_t = input.flat_inner_dims<T>();
   for (int64_t i = 0; i < size; i++) {
     const T& value = input_t(static_cast<int64_t>(message_index), i);
@@ -319,8 +320,9 @@ static void WriteBytesAdapter(int field_number, const tstring& value,
 // Writes a group field. Groups are treated like submessages, but tag-delimited
 // instead of length-delimited. WireFormatLite handles this differently so we
 // code it ourselves.
-Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
-                  int message_index, int size, CodedOutputStream* output) {
+absl::Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
+                        int message_index, int size,
+                        CodedOutputStream* output) {
   auto input_t = input.flat_inner_dims<tstring>();
   for (int64_t i = 0; i < size; i++) {
     const string& value = input_t(static_cast<int64_t>(message_index), i);
@@ -338,8 +340,9 @@ Status WriteGroup(const FieldDescriptor& field_desc, const Tensor& input,
 // responsibility to ensure that the type of the input tensor is compatible with
 // the type of the proto field descriptor, and that (message_index, size-1) is
 // within bounds.
-Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
-                  int message_index, int size, CodedOutputStream* output) {
+absl::Status WriteField(const FieldDescriptor& field_desc, const Tensor& input,
+                        int message_index, int size,
+                        CodedOutputStream* output) {
   DataType dtype = input.dtype();
 
   switch (field_desc.type()) {

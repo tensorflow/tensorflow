@@ -213,7 +213,7 @@ class DeserializeSparseOp : public OpKernel {
   }
 
  private:
-  Status Deserialize(const tstring& serialized, Tensor* result) {
+  absl::Status Deserialize(const tstring& serialized, Tensor* result) {
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, serialized)) {
       return errors::InvalidArgument("Could not parse serialized proto");
@@ -226,7 +226,7 @@ class DeserializeSparseOp : public OpKernel {
     return absl::OkStatus();
   }
 
-  Status GetAndValidateSparseTensor(
+  absl::Status GetAndValidateSparseTensor(
       const tstring& serialized_indices, const tstring& serialized_values,
       const tstring& serialized_shape, DataType values_dtype, int index,
       Tensor* output_indices, Tensor* output_values, Tensor* output_shape) {

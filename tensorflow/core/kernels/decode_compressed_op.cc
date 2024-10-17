@@ -34,14 +34,14 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   ~MemoryInputStream() override {}
 
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override {
     result->clear();
     if (bytes_to_read < 0) {
       return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                      bytes_to_read);
     }
     int64_t bytes = bytes_to_read;
-    Status s = absl::OkStatus();
+    absl::Status s = absl::OkStatus();
     if (pos_ + bytes_to_read > len_) {
       bytes = len_ - pos_;
       s = errors::OutOfRange("reached end of file");
@@ -56,7 +56,7 @@ class MemoryInputStream : public io::InputStreamInterface {
 
   int64_t Tell() const override { return pos_; }
 
-  Status Reset() override {
+  absl::Status Reset() override {
     pos_ = 0;
     return absl::OkStatus();
   }
@@ -107,7 +107,7 @@ class DecodeCompressedOp : public OpKernel {
                 input_stream.get(), static_cast<size_t>(kBufferSize),
                 static_cast<size_t>(kBufferSize), zlib_options));
         tstring output_string;
-        Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
+        absl::Status s = zlib_stream->ReadNBytes(INT_MAX, &output_string);
         OP_REQUIRES(context, (s.ok() || errors::IsOutOfRange(s)), s);
         output_flat(i) = std::move(output_string);
       }
