@@ -13,25 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.h"
+#ifndef XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS_H_
+#define XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS_H_
 
-#include "xla/backends/cpu/codegen/ir/xla_cpu_ops.h"  // IWYU pragma: keep
+#include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
+#include "mlir/IR/Attributes.h"  // IWYU pragma: keep
+#include "mlir/IR/BuiltinAttributes.h"  // IWYU pragma: keep
+#include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
+#include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
+#include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/ir/xla_cpu_types.h"  // IWYU pragma: keep
 
-// Include the auto-generated implementation file.
-#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.cc.inc"
+#define GET_OP_CLASSES
+#include "xla/backends/cpu/codegen/ir/xla_cpu_ops.h.inc"
 
-namespace xla::cpu {
-
-void XlaCpuDialect::initialize() {
-  addOperations<
-#define GET_OP_LIST
-#include "xla/backends/cpu/codegen/ir/xla_cpu_ops.cc.inc"
-      >();
-  addTypes<
-#define GET_TYPEDEF_LIST
-#include "xla/backends/cpu/codegen/ir/xla_cpu_types.cc.inc"
-      >();
-}
-
-}  // namespace xla::cpu
+#endif  // XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS_H_

@@ -13,24 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_TYPES
-#define XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_TYPES
+#ifndef XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS
+#define XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS
 
-include "mlir/IR/AttrTypeBase.td"
-include "mlir/IR/BuiltinTypes.td"
+include "mlir/IR/OpBase.td"
 include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.td"
+include "xla/backends/cpu/codegen/ir/xla_cpu_types.td"
 
-class XLACPU_Type<string name, string typeMnemonic, list<Trait> traits = []>
-    : TypeDef<XlaCpuDialect, name, traits> {
-  let mnemonic = typeMnemonic;
+class XLACPU_Op<string mnemonic, list<Trait> traits = []> :
+      Op<XlaCpuDialect, mnemonic, traits> {
 }
 
 //===----------------------------------------------------------------------===//
-// !xla_cpu.call_frame
+// !xla_cpu.load
 //===----------------------------------------------------------------------===//
 
-def XLACPU_CallFrame : XLACPU_Type<"CallFrame", "call_frame"> {
-  let summary = "XLA:CPU host kernel call frame";
+def XLACPU_LoadOp : XLACPU_Op<"load"> {
+  let summary = "Loads a tensor from an XLA:CPU call frame";
+
+  let description = [{
+    Loads a tensor from an XLA:CPU call frame at the given index.
+
+    ```mlir
+    %0 = xla_cpu.load %call_frame, 0 : tensor<32x32xf32>
+    ```
+  }];
+
+  let arguments = (ins XLACPU_CallFrame:$call_frame, I32Attr:$index);
+  let results = (outs AnyStaticShapeTensor:$result);
+
+  let assemblyFormat = "$call_frame `,` $index attr-dict `:` type($result)";
 }
 
-#endif // XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_TYPES
+#endif // XLA_BACKENDS_CPU_CODEGEN_IR_XLA_CPU_OPS

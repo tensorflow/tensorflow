@@ -13,25 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.h"
+#include "xla/backends/cpu/codegen/ir/xla_cpu_ops.h"
 
-#include "xla/backends/cpu/codegen/ir/xla_cpu_ops.h"  // IWYU pragma: keep
-#include "xla/backends/cpu/codegen/ir/xla_cpu_types.h"  // IWYU pragma: keep
+#include "mlir/IR/Builders.h"  // IWYU pragma: keep
 
-// Include the auto-generated implementation file.
-#include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.cc.inc"
-
-namespace xla::cpu {
-
-void XlaCpuDialect::initialize() {
-  addOperations<
-#define GET_OP_LIST
+#define GET_OP_CLASSES
 #include "xla/backends/cpu/codegen/ir/xla_cpu_ops.cc.inc"
-      >();
-  addTypes<
-#define GET_TYPEDEF_LIST
-#include "xla/backends/cpu/codegen/ir/xla_cpu_types.cc.inc"
-      >();
-}
-
-}  // namespace xla::cpu
