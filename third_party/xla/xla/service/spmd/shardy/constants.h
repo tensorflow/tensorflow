@@ -27,6 +27,10 @@ inline constexpr llvm::StringRef kXlaShardingAttr = "mhlo.sharding";
 // The target name of the Sharding custom call.
 inline constexpr llvm::StringRef kShardingCustomCallTargetName = "Sharding";
 
+// The target name of the ShardingGroup custom call.
+inline constexpr llvm::StringRef kShardingGroupCustomCallTargetName =
+    "ShardingGroup";
+
 // The target name of the SPMDFullToShardShape custom call.
 inline constexpr llvm::StringRef kSPMDFullToShardShapeCallTargetName =
     "SPMDFullToShardShape";
