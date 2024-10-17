@@ -228,7 +228,7 @@ INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32XnTests, DotAlgorithmSupportTest,
                                         PC::ALG_DOT_BF16_BF16_F32_X6),
                                  Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
-                                 Values(BackendRestriction::kTritonOnly),
+                                 Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 

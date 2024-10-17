@@ -158,6 +158,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
@@ -1489,6 +1490,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           &gpu_target_config.device_description);
       pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
     }
+
+    // Rewrite dot algorithms like dot_bf16_bf16_f32_x3 to the 3 separate dots.
+    pipeline.AddPass<DotAlgorithmRewriter>();
 
     // Rewrite GEMMs into custom calls.
     se::GpuComputeCapability gpu_version =
