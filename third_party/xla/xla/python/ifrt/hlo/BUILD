@@ -54,6 +54,7 @@ xla_cc_test(
         "//xla/mlir_hlo",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
