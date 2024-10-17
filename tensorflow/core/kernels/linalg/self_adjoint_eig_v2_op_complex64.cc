@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/kernels/linalg/linalg_ops_common.h"
 #include "tensorflow/core/kernels/linalg/self_adjoint_eig_v2_op_impl.h"
 
 namespace tensorflow {
