@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/c_api.h"
-#include "tensorflow/lite/core/c/c_api_experimental.h"
 
 namespace tflite {
 namespace {
