@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/thread_factory.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
