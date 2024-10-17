@@ -7557,7 +7557,6 @@ class Subgraph {
 TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   // Clear previous data, in case the delegate is reused without re-creation.
   static_unpacked_data_map_.clear();
-  static_unpacked_data_.clear();
   static_unpack_nodes_.clear();
   static_sparse_weights_.clear();
   variable_holder_.ClearTensorIdToGlobalId();
