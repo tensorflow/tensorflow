@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -31,6 +32,8 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -40,6 +43,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
+namespace {
+namespace m = match;
 
 class TestFloatSupport : public FloatSupport {
  public:
@@ -793,4 +798,48 @@ TEST_F(FloatNormalizationTest, KeepEntryInputOutputAlias) {
             HloInputOutputAliasConfig::AliasKind::kMustAlias);
 }
 
+TEST_F(FloatNormalizationTest, AllowExcessPrecisionTrue) {
+  const std::string hlo_text = R"(
+    HloModule dot_with_convert
+
+    ENTRY main {
+      Arg_0 = bf16[2,2]{1,0} parameter(0)
+      dot = bf16[2,2]{1,0} dot(Arg_0, Arg_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      convert = f32[2,2]{1,0} convert(dot)
+      ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_allow_excess_precision(true);
+
+  EXPECT_TRUE(Normalize(module.get(), BF16));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Dot(), m::Convert())));
+}
+
+TEST_F(FloatNormalizationTest, AllowExcessPrecisionFalse) {
+  const std::string hlo_text = R"(
+    HloModule dot_with_convert
+
+    ENTRY main {
+      Arg_0 = bf16[2,2]{1,0} parameter(0)
+      dot = bf16[2,2]{1,0} dot(Arg_0, Arg_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      convert = f32[2,2]{1,0} convert(dot)
+      ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_allow_excess_precision(false);
+
+  EXPECT_TRUE(Normalize(module.get(), BF16));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Tuple(m::Convert(m::Convert(m::Dot())), m::Convert())));
+}
+
+}  // namespace
 }  // namespace xla
