@@ -2939,14 +2939,19 @@ tf_kernel_library(
         ":gather_nd_op",
         ":resource_variable_util",
         ":scatter_functor",
+        ":scatter_nd_util",
         ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -6618,7 +6623,6 @@ filegroup(
         "transpose_op.h",
         "where_op.h",
         "xent_op.h",
-    ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels_headers",
         "//tensorflow/core/kernels/image:adjust_contrast_op.h",
         "//tensorflow/core/kernels/image:adjust_hue_op.h",
@@ -6767,9 +6771,6 @@ filegroup(
         "population_count_op.h",
         "winograd_transform.h",
         ":portable_extended_ops_headers",
-        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
-        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
-    ] + [
         "//tensorflow/core/kernels/image:colorspace_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.cc",
         "//tensorflow/core/kernels/image:crop_and_resize_op.h",
@@ -6787,6 +6788,8 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int32.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl_int64.cc",
         "//tensorflow/core/kernels/uniform_quant_ops:portable_all_op_kernels",
+        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel.cc",
+        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel.h",
     ],
 )
 
@@ -6971,7 +6974,6 @@ filegroup(
         "whole_file_read_ops.cc",
         "xent_op.cc",
         ":portable_extended_ops_headers",
-    ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
