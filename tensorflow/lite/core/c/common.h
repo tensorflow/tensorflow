@@ -442,12 +442,6 @@ enum {
   kTfLiteNullBufferHandle = -1,
 };
 
-/// Storage format of each dimension in a sparse tensor.
-typedef enum TfLiteDimensionType {
-  kTfLiteDimDense = 0,
-  kTfLiteDimSparseCSR,
-} TfLiteDimensionType;
-
 /// Metadata to encode each dimension in a sparse tensor.
 typedef struct TfLiteDimensionMetadata {
   TfLiteDimensionType format;
