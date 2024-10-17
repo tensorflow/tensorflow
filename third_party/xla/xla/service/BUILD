@@ -6776,6 +6776,7 @@ cc_library(
     deps = [
         ":call_inliner",
         ":hlo_creation_utils",
+        ":pattern_matcher",
         ":tuple_util",
         "//xla:comparison_util",
         "//xla:literal_util",
@@ -6786,7 +6787,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -6803,10 +6806,11 @@ xla_cc_test(
         "//xla:test",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
@@ -8695,6 +8699,44 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "while_loop_pipeline_unroller",
+    srcs = ["while_loop_pipeline_unroller.cc"],
+    hdrs = ["while_loop_pipeline_unroller.h"],
+    deps = [
+        ":call_inliner",
+        ":flatten_call_graph",
+        ":hlo_dce",
+        ":while_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_pipeline_unroller_test",
+    srcs = ["while_loop_pipeline_unroller_test.cc"],
+    deps = [
+        ":copy_insertion",
+        ":hlo_ordering",
+        ":while_loop_pipeline_unroller",
+        "//xla:test_helpers",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
