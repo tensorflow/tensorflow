@@ -26,7 +26,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-bool FilesExist(const std::vector<string>& files, std::vector<Status>* status) {
+bool FilesExist(const std::vector<string>& files,
+                std::vector<absl::Status>* status) {
   return Env::Default()->FilesExist(files, status);
 }
 
@@ -34,22 +35,23 @@ bool FilesExist(const std::set<string>& files) {
   return FilesExist(std::vector<string>(files.begin(), files.end()), nullptr);
 }
 
-bool FileExists(const string& file, Status* status) {
+bool FileExists(const string& file, absl::Status* status) {
   *status = Env::Default()->FileExists(file);
   return status->ok();
 }
 
-Status ReadGraphDefFromFile(const string& graph_def_path, GraphDef* result) {
-  Status status;
+absl::Status ReadGraphDefFromFile(const string& graph_def_path,
+                                  GraphDef* result) {
+  absl::Status status;
   if (!ReadBinaryProto(Env::Default(), graph_def_path, result).ok()) {
     return ReadTextProto(Env::Default(), graph_def_path, result);
   }
   return status;
 }
 
-Status ReadMetaGraphDefFromFile(const string& graph_def_path,
-                                MetaGraphDef* result) {
-  Status status;
+absl::Status ReadMetaGraphDefFromFile(const string& graph_def_path,
+                                      MetaGraphDef* result) {
+  absl::Status status;
   if (!ReadBinaryProto(Env::Default(), graph_def_path, result).ok()) {
     return ReadTextProto(Env::Default(), graph_def_path, result);
   }
