@@ -16,6 +16,13 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
+#include "tensorflow/lite/toco/toco_port.h"
+
 #ifdef __linux__
 #include <sys/utsname.h>
 #endif
