@@ -519,7 +519,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
         &context->tensors[node->temporaries->data[data->im2col_index]];
     im2col->type = input->type;
     if (is_hybrid) {
-      im2col->type = filter->type;
+      im2col->type = filter->type == kTfLiteInt4 ? kTfLiteInt8 : filter->type;
     }
     im2col->allocation_type = kTfLiteArenaRw;
     auto im2col_status = context->ResizeTensor(context, im2col, im2col_size);
