@@ -52,7 +52,7 @@ struct StatusCallbackInvocationParams {
 void InvokeStatusCallbackFn(void* arg) {
   StatusCallbackInvocationParams* params =
       reinterpret_cast<StatusCallbackInvocationParams*>(arg);
-  tensorflow::Status cc_status = StatusFromTF_Status(params->status);
+  absl::Status cc_status = StatusFromTF_Status(params->status);
   // Invokes the "done" callback here.
   params->callback(cc_status);
   // Explicitly delete the params after callback is done.
@@ -76,7 +76,7 @@ void NextPluggableDeviceContext::CopyDeviceTensorToCPU(
   tsl::profiler::TraceMeProducer traceme(
       [] { return "NextPluggableDeviceContext::CopyDeviceTensorToCPU"; },
       tsl::profiler::ContextType::kGeneric);
-  tensorflow::Status s;
+  absl::Status s;
   TF_Tensor* c_cpu_tensor = TF_TensorFromTensor(*cpu_tensor, &s);
   if (!s.ok()) {
     done(s);
@@ -105,7 +105,7 @@ void NextPluggableDeviceContext::CopyCPUTensorToDevice(
   tsl::profiler::TraceMeProducer traceme(
       [] { return "NextPluggableDeviceContext::CopyCPUTensorToDevice"; },
       tsl::profiler::ContextType::kGeneric);
-  tensorflow::Status s;
+  absl::Status s;
   TF_Tensor* c_cpu_tensor = TF_TensorFromTensor(*cpu_tensor, &s);
   if (!s.ok()) {
     done(s);
