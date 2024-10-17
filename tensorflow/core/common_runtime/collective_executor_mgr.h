@@ -17,7 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/platform/unbounded_work_queue.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 class ConfigProto;
