@@ -19,57 +19,57 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 //
 // Tensor
 //
 
-struct LrtWeightsT {
+struct LiteRtWeightsT {
   std::unique_ptr<tflite::BufferT> fb_buffer = nullptr;
 };
 
 typedef union {
-  LrtUnrankedTensorType unranked_tensor_type;
-  LrtRankedTensorType ranked_tensor_type;
-} LrtTypeDetail;
+  LiteRtUnrankedTensorType unranked_tensor_type;
+  LiteRtRankedTensorType ranked_tensor_type;
+} LiteRtTypeDetail;
 
-struct LrtTensorT {
+struct LiteRtTensorT {
   // Empty if subgraph output. This is a reference.
-  std::vector<LrtOp> users;
+  std::vector<LiteRtOp> users;
 
   // Which arg number for user i.
-  std::vector<lrt_param_index_t> user_arg_inds;
+  std::vector<LiteRtParamIndex> user_arg_inds;
 
   // Null if subgraph input or constant. This is a reference.
-  LrtOp defining_op = nullptr;
+  LiteRtOp defining_op = nullptr;
 
   // Which output ind from defining op made this tensor.
-  lrt_param_index_t defining_op_out_ind;
+  LiteRtParamIndex defining_op_out_ind;
 
   // Not a reference.
-  LrtWeightsT weights;
+  LiteRtWeightsT weights;
 
-  LrtTensorTypeId type_id;
+  LiteRtTensorTypeId type_id;
 
-  LrtTypeDetail type_detail;
+  LiteRtTypeDetail type_detail;
 };
 
 //
 // Op
 //
 
-struct LrtOpT {
+struct LiteRtOpT {
   // These are references.
-  std::vector<LrtTensor> inputs;
+  std::vector<LiteRtTensor> inputs;
 
   // These are references.
-  std::vector<LrtTensor> outputs;
+  std::vector<LiteRtTensor> outputs;
 
-  LrtOpCode op_code;
+  LiteRtOpCode op_code;
 
   // This is a placeholder to be used by just custom ops for now.
   std::string custom_options;
@@ -81,24 +81,24 @@ struct LrtOpT {
 // Subgraph
 //
 
-struct LrtSubgraphT {
+struct LiteRtSubgraphT {
   // Storage and views of tensors. Clients are only shown views. Facilitates
   // efficient topological mutation.
-  std::list<LrtTensorT> tensors_storage;
-  std::vector<LrtTensor> tensors;
+  std::list<LiteRtTensorT> tensors_storage;
+  std::vector<LiteRtTensor> tensors;
 
   // Storage and vies of ops.
-  std::list<LrtOpT> ops_storage;
-  std::vector<LrtOp> ops;
+  std::list<LiteRtOpT> ops_storage;
+  std::vector<LiteRtOp> ops;
 
   // Shared view of initial flatbuffer data.
   std::shared_ptr<tflite::SubGraphT> flatbuffer_subgraph;
 
   // These are references and a subset of `tensors`.
-  std::vector<LrtTensor> inputs;
+  std::vector<LiteRtTensor> inputs;
 
   // These are references and a subset of `tensors`.
-  std::vector<LrtTensor> outputs;
+  std::vector<LiteRtTensor> outputs;
 };
 
 //
@@ -108,9 +108,9 @@ struct LrtSubgraphT {
 // A (partial) unpacking of the flatbuffer model into a list of subgraphs.
 // Keeps a reference to the flatbuffer model. Lifetimes of all storage
 // are linked to the containing model.
-struct LrtModelT {
+struct LiteRtModelT {
   // Subgraphs that have been unpacked into usable types.
-  std::vector<LrtSubgraphT> subgraphs;
+  std::vector<LiteRtSubgraphT> subgraphs;
 
   // TODO: b/365299994 - Delete this.
   // Shared views of remaining unpacked flatbuffer data.
@@ -125,7 +125,7 @@ struct LrtModelT {
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
-  LrtResult<FbBufferT> FindMetadata(absl::string_view key) const;
+  LiteRtResult<FbBufferT> FindMetadata(absl::string_view key) const;
 };
 
 //
@@ -133,12 +133,12 @@ struct LrtModelT {
 //
 
 // Used for communicating selections of ops.
-class LrtOpListT {
+class LiteRtOpListT {
  public:
-  void Push(LrtOp op) { ops_.push_back(op); }
+  void Push(LiteRtOp op) { ops_.push_back(op); }
 
-  std::vector<LrtOp> Vec() const {
-    std::vector<LrtOp> res;
+  std::vector<LiteRtOp> Vec() const {
+    std::vector<LiteRtOp> res;
     res.reserve(ops_.size());
     res.assign(ops_.begin(), ops_.end());
     return res;
@@ -149,7 +149,7 @@ class LrtOpListT {
   // segfaults when freeing after code on another side of a compilation boundary
   // was doing pushes that resized. A list+copy to vector is not optimimal,
   // revisit if bottleneck.
-  std::list<LrtOp> ops_;
+  std::list<LiteRtOp> ops_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_

@@ -20,7 +20,7 @@
 
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
-namespace lrt::qnn::internal {
+namespace litert::qnn::internal {
 
 void Dump(const QnnManager& qnn, std::ostream& out = std::cerr);
 

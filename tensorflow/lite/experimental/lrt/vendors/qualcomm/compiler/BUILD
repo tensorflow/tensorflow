@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_dynamic_lib", "lite_rt_lib", "lite_rt_test")
+load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "litert_dynamic_lib", "litert_lib", "litert_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-lite_rt_dynamic_lib(
+litert_dynamic_lib(
     name = "qnn_compiler_plugin",
     srcs = ["qnn_compiler_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h"],
-    export_lrt_only = True,
+    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin.h"],
+    export_litert_only = True,
     shared_lib_name = "qnn_compiler_plugin_so",
-    so_name = "libLrtQnnCompilerPlugin.so",
+    so_name = "libLiteRtQnnCompilerPlugin.so",
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -41,7 +41,7 @@ lite_rt_dynamic_lib(
     ],
 )
 
-lite_rt_test(
+litert_test(
     name = "qnn_compiler_plugin_test",
     srcs = [
         "qnn_compiler_plugin_test.cc",
@@ -71,7 +71,7 @@ lite_rt_test(
     ],
 )
 
-lite_rt_lib(
+litert_lib(
     name = "qnn_compose_graph",
     srcs = ["qnn_compose_graph.cc"],
     hdrs = ["qnn_compose_graph.h"],
@@ -83,8 +83,8 @@ lite_rt_lib(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR:qnn_op",

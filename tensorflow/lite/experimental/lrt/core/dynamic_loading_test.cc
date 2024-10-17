@@ -25,43 +25,43 @@
 
 namespace {
 
-using ::lrt::testing::TouchTestFile;
+using ::litert::testing::TouchTestFile;
 
-constexpr absl::string_view kNotLrtSo = "notLibLrt.so";
-constexpr absl::string_view kLrtSo1 = "libLrtPlugin_1.so";
-constexpr absl::string_view kLrtSo2 = "libLrtPlugin_2.so";
+constexpr absl::string_view kNotLiteRtSo = "notLibLiteRt.so";
+constexpr absl::string_view kLiteRtSo1 = "libLiteRtPlugin_1.so";
+constexpr absl::string_view kLiteRtSo2 = "libLiteRtPlugin_2.so";
 
 TEST(TestDynamicLoading, GlobNoMatch) {
   const auto dir = testing::UniqueTestDirectory();
-  TouchTestFile(kNotLrtSo, dir);
+  TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(lrt::FindLrtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 0);
 }
 
 TEST(TestDynamicLoading, GlobOneMatch) {
   const auto dir = testing::UniqueTestDirectory();
-  TouchTestFile(kLrtSo1, dir);
-  TouchTestFile(kNotLrtSo, dir);
+  TouchTestFile(kLiteRtSo1, dir);
+  TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(lrt::FindLrtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 1);
-  EXPECT_TRUE(absl::string_view(results.front()).ends_with(kLrtSo1));
+  EXPECT_TRUE(absl::string_view(results.front()).ends_with(kLiteRtSo1));
 }
 
 TEST(TestDynamicLoading, GlobMultiMatch) {
   const auto dir = testing::UniqueTestDirectory();
-  TouchTestFile(kLrtSo1, dir);
-  TouchTestFile(kLrtSo2, dir);
-  TouchTestFile(kNotLrtSo, dir);
+  TouchTestFile(kLiteRtSo1, dir);
+  TouchTestFile(kLiteRtSo2, dir);
+  TouchTestFile(kNotLiteRtSo, dir);
 
   std::vector<std::string> results;
-  ASSERT_STATUS_OK(lrt::FindLrtSharedLibs(dir, results));
+  ASSERT_STATUS_OK(litert::FindLiteRtSharedLibs(dir, results));
   EXPECT_EQ(results.size(), 2);
-  EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLrtSo1)));
-  EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLrtSo2)));
+  EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLiteRtSo1)));
+  EXPECT_THAT(results, testing::Contains(testing::HasSubstr(kLiteRtSo2)));
 }
 
 }  // namespace

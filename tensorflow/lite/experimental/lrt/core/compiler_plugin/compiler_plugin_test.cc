@@ -29,8 +29,8 @@
 
 namespace {
 
-using ::lrt::internal::CompilerPlugin;
-using ::lrt::testing::TouchTestFile;
+using ::litert::internal::CompilerPlugin;
+using ::litert::testing::TouchTestFile;
 
 constexpr absl::string_view kTestPluginSearchPath =
     "third_party/tensorflow/lite/experimental/lrt/vendors/examples";
@@ -50,7 +50,7 @@ TEST(CompilerPluginTest, LoadTestPlugin) {
 
 TEST(CompilerPluginTest, LoadTestPluginWithMalformed) {
   const auto dir = testing::UniqueTestDirectory();
-  TouchTestFile("notLibLrt.so", dir);
+  TouchTestFile("notLibLiteRt.so", dir);
 
   ASSERT_RESULT_OK_MOVE(CompilerPlugin::VecT plugins,
                         CompilerPlugin::LoadPlugins({kTestPluginSearchPath}));
@@ -109,7 +109,7 @@ TEST(CompilerPluginTest, PartitionModel) {
   ASSERT_EQ(plugins.size(), 1);
   EXPECT_EQ(plugins.front().SocManufacturer(), kTestManufacturer);
 
-  auto model = lrt::testing::LoadTestFileModel("mul_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto ops, plugins.front().PartitionModel(*model));
   EXPECT_EQ(ops.size(), 2);
@@ -121,7 +121,7 @@ TEST(CompilerPluginTest, CompileModel) {
   ASSERT_EQ(plugins.size(), 1);
   EXPECT_EQ(plugins.front().SocManufacturer(), kTestManufacturer);
 
-  auto model = lrt::testing::LoadTestFileModel("mul_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
   std::ostringstream byte_code_out;
@@ -139,7 +139,7 @@ TEST(CompilerPluginTest, Dump) {
   ASSERT_EQ(plugins.size(), 1);
 
   std::stringstream dump;
-  lrt::internal::Dump(plugins.front(), dump);
+  litert::internal::Dump(plugins.front(), dump);
 
   ASSERT_EQ(dump.view(),
             "SocManufacturer: ExampleSocManufacturer\nSocModels: { "

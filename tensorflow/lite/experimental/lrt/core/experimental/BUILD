@@ -18,7 +18,7 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_model_serialize",
-    hdrs = ["lite_rt_model_serialize.h"],
-    deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
+    name = "litert_model_serialize",
+    hdrs = ["litert_model_serialize.h"],
+    deps = ["//tensorflow/lite/experimental/lrt/c:litert_c_api"],
 )

@@ -25,9 +25,9 @@ cc_library(
     deps = [
         ":dump",
         ":tool_display",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:litert_model_init",
         "//tensorflow/lite/experimental/lrt/core/compiler_plugin",
         "//tensorflow/lite/experimental/lrt/core/compiler_plugin:algo",
         "//tensorflow/lite/experimental/lrt/test:common",
@@ -52,8 +52,8 @@ cc_test(
     ],
     deps = [
         ":apply_plugin",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/core:litert_model_init",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_absl//absl/log:absl_check",
@@ -107,7 +107,7 @@ cc_library(
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/core/compiler_plugin",
         "@com_google_absl//absl/strings:str_format",

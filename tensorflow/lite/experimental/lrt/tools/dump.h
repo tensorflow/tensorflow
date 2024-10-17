@@ -18,50 +18,50 @@
 #include <istream>
 #include <ostream>
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
-namespace lrt::internal {
+namespace litert::internal {
 
 //
-// Lrt IR
+// LiteRt IR
 //
 
-// Dump details about the given LrtOpT to the given stream.
-void Dump(const LrtOpT& op, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtOpT to the given stream.
+void Dump(const LiteRtOpT& op, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtSubgraphT to the given stream.
-void Dump(const LrtSubgraphT& subgraph, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtSubgraphT to the given stream.
+void Dump(const LiteRtSubgraphT& subgraph, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtTensorT to the given stream.
-void Dump(const LrtTensorT& tensor, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtTensorT to the given stream.
+void Dump(const LiteRtTensorT& tensor, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtOpCode to the given stream.
-void Dump(LrtOpCode code, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtOpCode to the given stream.
+void Dump(LiteRtOpCode code, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtElementType to the given stream.
-void Dump(LrtElementType type, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtElementType to the given stream.
+void Dump(LiteRtElementType type, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtRankedTensorType to the given stream.
-void Dump(const LrtRankedTensorType& type, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtRankedTensorType to the given stream.
+void Dump(const LiteRtRankedTensorType& type, std::ostream& out = std::cerr);
 
-// Dump details about the given LrtModel to the given stream.
-void Dump(const LrtModelT& model, std::ostream& out = std::cerr);
+// Dump details about the given LiteRtModel to the given stream.
+void Dump(const LiteRtModelT& model, std::ostream& out = std::cerr);
 
 // Dump details about options
-void DumpOptions(const LrtOpT& op, std::ostream& out = std::cerr);
+void DumpOptions(const LiteRtOpT& op, std::ostream& out = std::cerr);
 
 //
 // Library Utilities
 //
 
-// Dumps details about the loaded LrtCompilerPlugin library.
+// Dumps details about the loaded LiteRtCompilerPlugin library.
 void Dump(const CompilerPlugin& plugin, std::ostream& out = std::cerr);
 
 // Dumps details about the dynamic library (see "dlinfo").
 void Dump(void* lib_handle, std::ostream& out = std::cerr);
 
-}  // namespace lrt::internal
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TOOLS_DUMP_H_

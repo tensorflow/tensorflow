@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_lib", "lite_rt_test")
-load("//tensorflow/lite/experimental/lrt/vendors/qualcomm:qualcomm_build_defs.bzl", "lite_rt_lib_with_qnn")
+load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "litert_lib", "litert_test")
+load("//tensorflow/lite/experimental/lrt/vendors/qualcomm:qualcomm_build_defs.bzl", "litert_lib_with_qnn")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -25,11 +25,11 @@ cc_library(
     hdrs = ["common.h"],
     deps = [
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
     ],
 )
 
-lite_rt_lib(
+litert_lib(
     name = "qnn_log",
     srcs = ["qnn_log.cc"],
     hdrs = ["qnn_log.h"],
@@ -42,7 +42,7 @@ lite_rt_lib(
     ],
 )
 
-lite_rt_lib_with_qnn(
+litert_lib_with_qnn(
     name = "qnn_manager",
     srcs = [
         "qnn_manager.cc",
@@ -66,7 +66,7 @@ lite_rt_lib_with_qnn(
     ],
 )
 
-lite_rt_test(
+litert_test(
     name = "qnn_manager_test",
     srcs = ["qnn_manager_test.cc"],
     linkstatic = True,
@@ -82,8 +82,8 @@ lite_rt_test(
     ],
     deps = [
         ":qnn_manager",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/tools:dump",
     ],

@@ -23,9 +23,9 @@
 #include "absl/status/statusor.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type) {
@@ -93,4 +93,4 @@ absl::StatusOr<RankedTensorType> ConvertTensorType(
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert

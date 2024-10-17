@@ -24,7 +24,7 @@
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 class QnnTensor {
@@ -54,6 +54,6 @@ class QnnTensor {
 };
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_TENSOR_H_

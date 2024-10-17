@@ -57,13 +57,13 @@ class OpCompatibilityTest : public ::testing::TestWithParam<OpInfo> {};
 TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   auto test_params = GetParam();
   std::string model_path = absl::StrFormat(kOpTpl, test_params.op_name);
-  auto model = lrt::testing::LoadTestFileModel(model_path);
+  auto model = litert::testing::LoadTestFileModel(model_path);
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
 
-  Qnn_OpConfig_t qnn_op = lrt::qnn::BuildDefaultOp();
-  ASSERT_STATUS_OK(lrt::qnn::LegalizeOp(ops[0], qnn_op));
+  Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
+  ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, test_params.op_name));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
@@ -73,7 +73,7 @@ TEST_P(OpCompatibilityTest, SupportedOpsTest) {
   EXPECT_EQ(qnn_op.v1.numOfOutputs, 0);
   EXPECT_EQ(qnn_op.v1.numOfParams, 0);
 
-  lrt::qnn::ResetOp(qnn_op);
+  litert::qnn::ResetOp(qnn_op);
 }
 
 INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, OpCompatibilityTest, kSupportedOps);

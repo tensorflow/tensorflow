@@ -20,13 +20,13 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 
-namespace lrt::tools {
+namespace litert::tools {
 
 ToolDisplay::ToolDisplay(OptOstreamRefT display_stream,
                          const absl::string_view tool_label)
     : display_(display_stream) {
   label_ = absl::StrFormat(
-      "[LRT_TOOLS%s] ",
+      "[LITERT_TOOLS%s] ",
       tool_label.empty() ? tool_label : absl::StrFormat(":%s", tool_label));
 }
 
@@ -58,4 +58,4 @@ void ToolDisplay::Fail() {
   Indented() << "Failed\n";
 }
 
-}  // namespace lrt::tools
+}  // namespace litert::tools

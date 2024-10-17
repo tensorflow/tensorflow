@@ -17,22 +17,23 @@
 
 #include <vector>
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
-namespace lrt::internal {
+namespace litert::internal {
 
 // Identifies sub-DAGs of ops connected w.r.t. the use-def chain. Expects
 // all "ops" belong to the same Subgraph. The ops in the input
 // and output will always be the same.
-std::vector<std::vector<LrtOp>> GroupPartitions(const std::vector<LrtOp>& ops);
+std::vector<std::vector<LiteRtOp>> GroupPartitions(
+    const std::vector<LiteRtOp>& ops);
 
 // Outlines "partitin" from "root" into the empty subgraph "slice". Assumes
 // the partition is a valid sub-DAG, and replaces it witha single
 // tfl.custom_op in "root". A reference to that op is returned.
-LrtOp OutlinePartition(LrtSubgraphT& root, LrtSubgraph slice,
-                       std::vector<LrtOp>& partition);
+LiteRtOp OutlinePartition(LiteRtSubgraphT& root, LiteRtSubgraph slice,
+                          std::vector<LiteRtOp>& partition);
 
-}  // namespace lrt::internal
+}  // namespace litert::internal
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_COMPILER_PLUGIN_ALGO_H_

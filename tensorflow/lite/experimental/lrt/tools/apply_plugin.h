@@ -21,9 +21,9 @@
 #include <ostream>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 
-namespace lrt::tools {
+namespace litert::tools {
 
 struct ApplyPluginRun {
   // NOTE: All StrFlagT are expected to have static storage duration.
@@ -122,9 +122,9 @@ struct ApplyPluginRun {
   Cmd cmd;
 
   // Collection of paths on local files system dictating where the tool should
-  // look for suitable LrtCompilerPlugin shared libraries. The tool will select
-  // the first ".so" file found with prefix "libLrtPlugin" that has the
-  // "soc_manufacturer" tag passed. Providing more than one plugin shared
+  // look for suitable LiteRtCompilerPlugin shared libraries. The tool will
+  // select the first ".so" file found with prefix "libLiteRtPlugin" that has
+  // the "soc_manufacturer" tag passed. Providing more than one plugin shared
   // library for the same manufacturer results in an error.
   StrFlagListT lib_search_paths = {};
 
@@ -175,8 +175,8 @@ struct ApplyPluginRun {
   Serialization serialization = Serialization::METADATA;
 };
 
-LrtStatus ApplyPlugin(ApplyPluginRun::Ptr run);
+LiteRtStatus ApplyPlugin(ApplyPluginRun::Ptr run);
 
-}  // namespace lrt::tools
+}  // namespace litert::tools
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TOOLS_APPLY_PLUGIN_H_

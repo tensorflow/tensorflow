@@ -25,7 +25,7 @@
                       << ::dlerror();                            \
   }
 
-namespace lrt {
+namespace litert {
 namespace pixel {
 
 Southbound::Southbound() : thr_functions_(new ThrFunctions) {}
@@ -128,4 +128,4 @@ absl::Status Southbound::LoadSymbols() {
 }
 
 }  // namespace pixel
-}  // namespace lrt
+}  // namespace litert

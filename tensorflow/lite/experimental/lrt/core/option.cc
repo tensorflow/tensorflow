@@ -14,207 +14,214 @@
 
 #include <cstdint>
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_options.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_options.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
 //
 // Op Options
 //
 
-LrtStatus LrtAddGetFusedActivationOption(LrtOp op, uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflAdd) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtAddGetFusedActivationOption(LiteRtOp op,
+                                               uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflAdd) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation = op->option.AsAddOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtBatchMatmulGetAdjXOption(LrtOp op, bool* adj_x) {
-  if (op->op_code != kLrtOpCodeTflBatchMatmul) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtBatchMatmulGetAdjXOption(LiteRtOp op, bool* adj_x) {
+  if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *adj_x = op->option.AsBatchMatMulOptions()->adj_x;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtBatchMatmulGetAdjYOption(LrtOp op, bool* adj_y) {
-  if (op->op_code != kLrtOpCodeTflBatchMatmul) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtBatchMatmulGetAdjYOption(LiteRtOp op, bool* adj_y) {
+  if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *adj_y = op->option.AsBatchMatMulOptions()->adj_y;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtBatchMatmulGetAsymmetricQuantizeInputOption(
-    LrtOp op, bool* asymmetric_quantize_input) {
-  if (op->op_code != kLrtOpCodeTflBatchMatmul) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtBatchMatmulGetAsymmetricQuantizeInputOption(
+    LiteRtOp op, bool* asymmetric_quantize_input) {
+  if (op->op_code != kLiteRtOpCodeTflBatchMatmul) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *asymmetric_quantize_input =
       op->option.AsBatchMatMulOptions()->asymmetric_quantize_inputs;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtConcatenationGetFusedActivationOption(LrtOp op,
-                                                   uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflConcatenation) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtConcatenationGetFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflConcatenation) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation =
       op->option.AsConcatenationOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtConcatenationGetAxisOption(LrtOp op, int32_t* axis) {
-  if (op->op_code != kLrtOpCodeTflConcatenation) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtConcatenationGetAxisOption(LiteRtOp op, int32_t* axis) {
+  if (op->op_code != kLiteRtOpCodeTflConcatenation) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *axis = op->option.AsConcatenationOptions()->axis;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtDivGetFusedActivationOption(LrtOp op, uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflDiv) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtDivGetFusedActivationOption(LiteRtOp op,
+                                               uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflDiv) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation = op->option.AsDivOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtFullyConnectedGetFusedActivationOption(
-    LrtOp op, uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflFullyConnected) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtFullyConnectedGetFusedActivationOption(
+    LiteRtOp op, uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation =
       op->option.AsFullyConnectedOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtFullyConnectedGetKeepNumDimsOption(LrtOp op, bool* keep_num_dims) {
-  if (op->op_code != kLrtOpCodeTflFullyConnected) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtFullyConnectedGetKeepNumDimsOption(LiteRtOp op,
+                                                      bool* keep_num_dims) {
+  if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *keep_num_dims = op->option.AsFullyConnectedOptions()->keep_num_dims;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtFullyConnectedGetQuantizedBiasTypeOption(
-    LrtOp op, uint32_t* quantized_bias_type) {
-  if (op->op_code != kLrtOpCodeTflFullyConnected) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtFullyConnectedGetQuantizedBiasTypeOption(
+    LiteRtOp op, uint32_t* quantized_bias_type) {
+  if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *quantized_bias_type =
       op->option.AsFullyConnectedOptions()->quantized_bias_type;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtFullyConnectedGetAsymmetricQuantizeInputOption(
-    LrtOp op, bool* asymmetric_quantize_input) {
-  if (op->op_code != kLrtOpCodeTflFullyConnected) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtFullyConnectedGetAsymmetricQuantizeInputOption(
+    LiteRtOp op, bool* asymmetric_quantize_input) {
+  if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *asymmetric_quantize_input =
       op->option.AsFullyConnectedOptions()->asymmetric_quantize_inputs;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtFullyConnectedGetWeightsFormatOption(LrtOp op,
-                                                  uint32_t* weights_format) {
-  if (op->op_code != kLrtOpCodeTflFullyConnected) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtFullyConnectedGetWeightsFormatOption(
+    LiteRtOp op, uint32_t* weights_format) {
+  if (op->op_code != kLiteRtOpCodeTflFullyConnected) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *weights_format = op->option.AsFullyConnectedOptions()->weights_format;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
-LrtStatus LrtMulGetFusedActivationOption(LrtOp op, uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflMul) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtMulGetFusedActivationOption(LiteRtOp op,
+                                               uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflMul) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation = op->option.AsMulOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtSoftmaxGetBetaOption(LrtOp op, float* beta) {
-  if (op->op_code != kLrtOpCodeTflSoftmax) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtSoftmaxGetBetaOption(LiteRtOp op, float* beta) {
+  if (op->op_code != kLiteRtOpCodeTflSoftmax) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *beta = op->option.AsSoftmaxOptions()->beta;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetBeginMaskOption(LrtOp op, int32_t* begin_mask) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetBeginMaskOption(LiteRtOp op,
+                                                  int32_t* begin_mask) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *begin_mask = op->option.AsStridedSliceOptions()->begin_mask;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetEndMaskOption(LrtOp op, int32_t* end_mask) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetEndMaskOption(LiteRtOp op,
+                                                int32_t* end_mask) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *end_mask = op->option.AsStridedSliceOptions()->end_mask;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetEllipsisMaskOption(LrtOp op,
-                                               int32_t* ellipsis_mask) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetEllipsisMaskOption(LiteRtOp op,
+                                                     int32_t* ellipsis_mask) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *ellipsis_mask = op->option.AsStridedSliceOptions()->ellipsis_mask;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetNewAxisMaskOption(LrtOp op,
-                                              int32_t* new_axis_mask) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetNewAxisMaskOption(LiteRtOp op,
+                                                    int32_t* new_axis_mask) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *new_axis_mask = op->option.AsStridedSliceOptions()->new_axis_mask;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetShrinkAxisMaskOption(LrtOp op,
-                                                 int32_t* shrink_axis_mask) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetShrinkAxisMaskOption(
+    LiteRtOp op, int32_t* shrink_axis_mask) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *shrink_axis_mask = op->option.AsStridedSliceOptions()->shrink_axis_mask;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtStridedSliceGetOffsetOption(LrtOp op, bool* offset) {
-  if (op->op_code != kLrtOpCodeTflStridedSlice) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtStridedSliceGetOffsetOption(LiteRtOp op, bool* offset) {
+  if (op->op_code != kLiteRtOpCodeTflStridedSlice) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *offset = op->option.AsStridedSliceOptions()->offset;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtSubGetFusedActivationOption(LrtOp op, uint32_t* fused_activation) {
-  if (op->op_code != kLrtOpCodeTflSub) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtSubGetFusedActivationOption(LiteRtOp op,
+                                               uint32_t* fused_activation) {
+  if (op->op_code != kLiteRtOpCodeTflSub) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *fused_activation = op->option.AsSubOptions()->fused_activation_function;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtReshapeGetNewShapeOption(LrtOp op, int32_t** new_shape,
-                                      int32_t* new_shape_size) {
-  if (op->op_code != kLrtOpCodeTflReshape) {
-    return kLrtStatusErrorInvalidArgument;
+LiteRtStatus LiteRtReshapeGetNewShapeOption(LiteRtOp op, int32_t** new_shape,
+                                            int32_t* new_shape_size) {
+  if (op->op_code != kLiteRtOpCodeTflReshape) {
+    return kLiteRtStatusErrorInvalidArgument;
   }
   if (op->option.AsReshapeOptions() == nullptr) {
     *new_shape_size = -1;
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   } else {
     *new_shape = op->option.AsReshapeOptions()->new_shape.data();
     *new_shape_size = op->option.AsReshapeOptions()->new_shape.size();
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }

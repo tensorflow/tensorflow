@@ -27,21 +27,21 @@
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 
-namespace lrt::internal {
+namespace litert::internal {
 
 namespace {
 
-void DumpNode(const LrtTensorT& tensor, std::ostream& out) {
+void DumpNode(const LiteRtTensorT& tensor, std::ostream& out) {
   switch (tensor.type_id) {
-    case kLrtRankedTensorType:
+    case kLiteRtRankedTensorType:
       Dump(tensor.type_detail.ranked_tensor_type, out);
       break;
-    case kLrtUnrankedTensorType:
+    case kLiteRtUnrankedTensorType:
       Dump(tensor.type_detail.unranked_tensor_type.element_type, out);
       break;
     default:
@@ -49,10 +49,10 @@ void DumpNode(const LrtTensorT& tensor, std::ostream& out) {
   }
 }
 
-void DumpNode(const LrtOpT& op, std::ostream& out) { Dump(op.op_code, out); }
+void DumpNode(const LiteRtOpT& op, std::ostream& out) { Dump(op.op_code, out); }
 
-void DumpSignature(const std::vector<LrtTensor>& ins,
-                   const std::vector<LrtTensor>& outs, std::ostream& out) {
+void DumpSignature(const std::vector<LiteRtTensor>& ins,
+                   const std::vector<LiteRtTensor>& outs, std::ostream& out) {
   out << "(";
   for (auto it = ins.begin(); it < ins.end(); ++it) {
     DumpNode(**it, out);
@@ -80,15 +80,15 @@ void DumpSignature(const std::vector<LrtTensor>& ins,
 
 }  // namespace
 
-void Dump(LrtOpCode code, std::ostream& out) {
+void Dump(LiteRtOpCode code, std::ostream& out) {
   switch (code) {
-    case kLrtOpCodeTflAdd:
+    case kLiteRtOpCodeTflAdd:
       out << "TFL_ADD";
       break;
-    case kLrtOpCodeTflMul:
+    case kLiteRtOpCodeTflMul:
       out << "TFL_MUL";
       break;
-    case kLrtOpCodeTflCustom:
+    case kLiteRtOpCodeTflCustom:
       out << "TFL_CUSTOM_OP";
       break;
     default:
@@ -97,34 +97,34 @@ void Dump(LrtOpCode code, std::ostream& out) {
   }
 };
 
-// Dump details about the given LrtElementType to the given stream.
-void Dump(LrtElementType type, std::ostream& out) {
+// Dump details about the given LiteRtElementType to the given stream.
+void Dump(LiteRtElementType type, std::ostream& out) {
   switch (type) {
-    case kLrtElementTypeFloat32:
+    case kLiteRtElementTypeFloat32:
       out << "f32";
       break;
-    case kLrtElementTypeInt32:
+    case kLiteRtElementTypeInt32:
       out << "i32";
       break;
-    case kLrtElementTypeFloat64:
+    case kLiteRtElementTypeFloat64:
       out << "f64";
       break;
-    case kLrtElementTypeInt64:
+    case kLiteRtElementTypeInt64:
       out << "i64";
       break;
-    case kLrtElementTypeFloat16:
+    case kLiteRtElementTypeFloat16:
       out << "f16";
       break;
-    case kLrtElementTypeInt16:
+    case kLiteRtElementTypeInt16:
       out << "i16";
       break;
-    case kLrtElementTypeInt8:
+    case kLiteRtElementTypeInt8:
       out << "i8";
       break;
-    case kLrtElementTypeUInt8:
+    case kLiteRtElementTypeUInt8:
       out << "ui8";
       break;
-    case kLrtElementTypeBool:
+    case kLiteRtElementTypeBool:
       out << "i1";
       break;
     default:
@@ -132,7 +132,7 @@ void Dump(LrtElementType type, std::ostream& out) {
   }
 }
 
-void Dump(const LrtRankedTensorType& type, std::ostream& out) {
+void Dump(const LiteRtRankedTensorType& type, std::ostream& out) {
   out << "<";
   for (int i = 0; i < type.layout.rank; ++i) {
     out << type.layout.dimensions[i] << "x";
@@ -141,8 +141,8 @@ void Dump(const LrtRankedTensorType& type, std::ostream& out) {
   out << ">";
 }
 
-void Dump(const LrtTensorT& tensor, std::ostream& out) {
-  out << "LrtTensor : ";
+void Dump(const LiteRtTensorT& tensor, std::ostream& out) {
+  out << "LiteRtTensor : ";
   DumpNode(tensor, out);
   out << " [ ";
   if (tensor.defining_op == nullptr) {
@@ -163,17 +163,17 @@ void Dump(const LrtTensorT& tensor, std::ostream& out) {
   out << "\n";
 }
 
-void Dump(const LrtOpT& op, std::ostream& out) {
-  out << "LrtOp : [ ";
+void Dump(const LiteRtOpT& op, std::ostream& out) {
+  out << "LiteRtOp : [ ";
   DumpNode(op, out);
   out << " ] ";
   DumpSignature(op.inputs, op.outputs, out);
   out << "\n";
 }
 
-void Dump(const LrtSubgraphT& subgraph, std::ostream& out) {
+void Dump(const LiteRtSubgraphT& subgraph, std::ostream& out) {
   constexpr absl::string_view kSubgraphTpl =
-      "LrtSubgraph : [ #ops=%d #tensors=%d ] ";
+      "LiteRtSubgraph : [ #ops=%d #tensors=%d ] ";
   out << absl::StreamFormat(kSubgraphTpl, subgraph.ops.size(),
                             subgraph.tensors.size());
   DumpSignature(subgraph.inputs, subgraph.outputs, out);
@@ -245,39 +245,39 @@ void Dump(void* lib_handle, std::ostream& out) {
 #endif
 }
 
-void Dump(const LrtModelT& model, std::ostream& out) {
-  out << absl::StreamFormat("LrtModel : [ #subgraphs=%d ]\n",
+void Dump(const LiteRtModelT& model, std::ostream& out) {
+  out << absl::StreamFormat("LiteRtModel : [ #subgraphs=%d ]\n",
                             model.subgraphs.size());
 }
 
-void DumpOptions(const LrtOpT& op, std::ostream& out) {
+void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
   switch (op.op_code) {
-    case kLrtOpCodeTflAdd:
+    case kLiteRtOpCodeTflAdd:
       out << "fused_activation_function: "
           << op.option.AsAddOptions()->fused_activation_function << "\n";
       break;
-    case kLrtOpCodeTflMul:
+    case kLiteRtOpCodeTflMul:
       out << "fused_activation_function: "
           << op.option.AsMulOptions()->fused_activation_function << "\n";
       break;
-    case kLrtOpCodeTflBatchMatmul:
+    case kLiteRtOpCodeTflBatchMatmul:
       out << "adj_x: " << op.option.AsBatchMatMulOptions()->adj_x << "\n";
       out << "adj_y: " << op.option.AsBatchMatMulOptions()->adj_y << "\n";
       out << "asymmetric_quantize_input: "
           << op.option.AsBatchMatMulOptions()->asymmetric_quantize_inputs
           << "\n";
       break;
-    case kLrtOpCodeTflConcatenation:
+    case kLiteRtOpCodeTflConcatenation:
       out << "fused_activation_function: "
           << op.option.AsConcatenationOptions()->fused_activation_function
           << "\n";
       out << "axis: " << op.option.AsConcatenationOptions()->axis << "\n";
       break;
-    case kLrtOpCodeTflDiv:
+    case kLiteRtOpCodeTflDiv:
       out << "fused_activation_function: "
           << op.option.AsDivOptions()->fused_activation_function << "\n";
       break;
-    case kLrtOpCodeTflFullyConnected:
+    case kLiteRtOpCodeTflFullyConnected:
       out << "fused_activation_function: "
           << op.option.AsFullyConnectedOptions()->fused_activation_function
           << "\n";
@@ -291,10 +291,10 @@ void DumpOptions(const LrtOpT& op, std::ostream& out) {
           << op.option.AsFullyConnectedOptions()->asymmetric_quantize_inputs
           << "\n";
       break;
-    case kLrtOpCodeTflSoftmax:
+    case kLiteRtOpCodeTflSoftmax:
       out << "beta: " << op.option.AsSoftmaxOptions()->beta << "\n";
       break;
-    case kLrtOpCodeTflStridedSlice:
+    case kLiteRtOpCodeTflStridedSlice:
       out << "begin_mask: " << op.option.AsStridedSliceOptions()->begin_mask
           << "\n";
       out << "end_mask: " << op.option.AsStridedSliceOptions()->end_mask
@@ -307,11 +307,11 @@ void DumpOptions(const LrtOpT& op, std::ostream& out) {
           << op.option.AsStridedSliceOptions()->shrink_axis_mask << "\n";
       out << "offset: " << op.option.AsStridedSliceOptions()->offset << "\n";
       break;
-    case kLrtOpCodeTflSub:
+    case kLiteRtOpCodeTflSub:
       out << "fused_activation_function: "
           << op.option.AsSubOptions()->fused_activation_function << "\n";
       break;
-    case kLrtOpCodeTflReshape:
+    case kLiteRtOpCodeTflReshape:
       out << "new_shape: ";
       if (op.option.AsReshapeOptions() != nullptr) {
         const int32_t* new_shape =
@@ -327,4 +327,4 @@ void DumpOptions(const LrtOpT& op, std::ostream& out) {
       break;
   }
 }
-}  // namespace lrt::internal
+}  // namespace litert::internal

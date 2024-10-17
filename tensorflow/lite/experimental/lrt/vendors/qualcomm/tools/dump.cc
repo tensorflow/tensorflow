@@ -22,7 +22,7 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
-namespace lrt::qnn::internal {
+namespace litert::qnn::internal {
 namespace {
 
 static constexpr absl::string_view kNullDumpTpl = "%s : nullptr\n";
@@ -85,4 +85,4 @@ void Dump(const QnnManager& qnn, std::ostream& out) {
   Dump(qnn.interface_, out);
   Dump(qnn.system_interface_, out);
 }
-}  // namespace lrt::qnn::internal
+}  // namespace litert::qnn::internal

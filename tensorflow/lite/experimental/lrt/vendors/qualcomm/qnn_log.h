@@ -17,12 +17,12 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnLog.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
 // Gets a default logger implementation to stdout.
 // This is used when initializing qnn logging.
 QnnLog_Callback_t GetDefaultStdOutLogger();
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_

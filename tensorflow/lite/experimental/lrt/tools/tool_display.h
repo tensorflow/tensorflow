@@ -21,7 +21,7 @@
 
 #include "absl/strings/string_view.h"
 
-namespace lrt::tools {
+namespace litert::tools {
 
 // Utility class for interactive logging for usage in command line tools only.
 // Allows user to explicitly set target stream.
@@ -59,6 +59,6 @@ class ToolDisplay {
   OptOstreamRefT display_;
 };
 
-}  // namespace lrt::tools
+}  // namespace litert::tools
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TOOLS_TOOL_DISPLAY_H_

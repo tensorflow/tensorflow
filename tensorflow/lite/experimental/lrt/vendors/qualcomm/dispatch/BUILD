@@ -31,12 +31,12 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        ":lrt_dispatch_device_context",
-        ":lrt_dispatch_invocation_context",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        ":litert_dispatch_device_context",
+        ":litert_dispatch_invocation_context",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
@@ -46,9 +46,9 @@ cc_library(
 )
 
 cc_library(
-    name = "lrt_dispatch_device_context",
-    srcs = ["lrt_dispatch_device_context.cc"],
-    hdrs = ["lrt_dispatch_device_context.h"],
+    name = "litert_dispatch_device_context",
+    srcs = ["litert_dispatch_device_context.cc"],
+    hdrs = ["litert_dispatch_device_context.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
@@ -61,24 +61,24 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
     ],
 )
 
 cc_library(
-    name = "lrt_dispatch_invocation_context",
-    srcs = ["lrt_dispatch_invocation_context.cc"],
-    hdrs = ["lrt_dispatch_invocation_context.h"],
+    name = "litert_dispatch_invocation_context",
+    srcs = ["litert_dispatch_invocation_context.cc"],
+    hdrs = ["litert_dispatch_invocation_context.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
     deps = [
-        ":lrt_dispatch_device_context",
+        ":litert_dispatch_device_context",
         ":registry",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
@@ -87,10 +87,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "//tensorflow/lite/experimental/lrt/core:utils",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:context_binary_info",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
     ],
@@ -107,7 +107,7 @@ cc_library(
 
 cc_shared_library(
     name = "dispatch_api_shared",
-    shared_lib_name = "libLrtDispatch.so",
+    shared_lib_name = "libLiteRtDispatch.so",
     visibility = ["//visibility:public"],
     deps = [":dispatch_api"],
 )
@@ -132,13 +132,13 @@ cc_test(
     ],
     deps = [
         ":dispatch_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core/dispatch",
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/experimental/lrt/test:simple_model",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_googletest//:gtest_main",

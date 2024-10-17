@@ -16,9 +16,8 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
 
 namespace {
 
@@ -30,13 +29,13 @@ constexpr const uint32_t kTensorStrides[] = {6, 3, 1};
 }  // namespace
 
 TEST(Layout, NoStrides) {
-  constexpr const LrtLayout kLayout = {
+  constexpr const LiteRtLayout kLayout = {
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/nullptr,
   };
 
-  lrt::Layout layout(kLayout);
+  litert::Layout layout(kLayout);
 
   ASSERT_EQ(layout.Rank(), kLayout.rank);
   for (auto i = 0; i < layout.Rank(); ++i) {
@@ -46,13 +45,13 @@ TEST(Layout, NoStrides) {
 }
 
 TEST(Layout, WithStrides) {
-  constexpr const LrtLayout kLayout = {
+  constexpr const LiteRtLayout kLayout = {
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/kTensorStrides,
   };
 
-  lrt::Layout layout(kLayout);
+  litert::Layout layout(kLayout);
 
   ASSERT_EQ(layout.Rank(), kLayout.rank);
   for (auto i = 0; i < layout.Rank(); ++i) {
@@ -65,12 +64,12 @@ TEST(Layout, WithStrides) {
 }
 
 TEST(Layout, Equal) {
-  lrt::Layout layout1({
+  litert::Layout layout1({
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/kTensorStrides,
   });
-  lrt::Layout layout2({
+  litert::Layout layout2({
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/kTensorStrides,
@@ -79,12 +78,12 @@ TEST(Layout, Equal) {
 }
 
 TEST(Layout, NotEqual) {
-  lrt::Layout layout1({
+  litert::Layout layout1({
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/nullptr,
   });
-  lrt::Layout layout2({
+  litert::Layout layout2({
       /*.rank=*/kRank,
       /*.dimensions=*/kTensorDimensions,
       /*.strides=*/kTensorStrides,

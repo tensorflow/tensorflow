@@ -21,9 +21,9 @@
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
 
-class LrtDispatchDelegateOptions {
+class LiteRtDispatchDelegateOptions {
  public:
   static constexpr auto kDispatchApiLibPath = "dispatch_api_lib_path";
 

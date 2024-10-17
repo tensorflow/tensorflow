@@ -16,11 +16,11 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_TFL_UTILS_H_
 
 #include "absl/status/statusor.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
 
 struct TfLiteOpaqueTensor;
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 absl::StatusOr<ElementType> ConvertElementType(TfLiteType tfl_type);
@@ -29,6 +29,6 @@ absl::StatusOr<RankedTensorType> ConvertTensorType(
     const TfLiteOpaqueTensor* tfl_opaque_tensor);
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_TFL_UTILS_H_

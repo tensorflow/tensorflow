@@ -21,7 +21,7 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnLog.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 namespace {
 
 void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
@@ -61,4 +61,4 @@ void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
 
 QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn

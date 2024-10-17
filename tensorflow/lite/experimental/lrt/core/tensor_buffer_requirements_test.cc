@@ -15,17 +15,17 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer_requirements.h"
 
 namespace {
 
-constexpr const LrtTensorBufferType kSupportedTensorBufferTypes[] = {
-    kLrtTensorBufferTypeHostMemory,
-    kLrtTensorBufferTypeAhwb,
-    kLrtTensorBufferTypeIon,
-    kLrtTensorBufferTypeFastRpc,
+constexpr const LiteRtTensorBufferType kSupportedTensorBufferTypes[] = {
+    kLiteRtTensorBufferTypeHostMemory,
+    kLiteRtTensorBufferTypeAhwb,
+    kLiteRtTensorBufferTypeIon,
+    kLiteRtTensorBufferTypeFastRpc,
 };
 
 constexpr const size_t kNumSupportedTensorBufferTypes =
@@ -37,30 +37,30 @@ constexpr const size_t kBufferSize = 1234;
 }  // namespace
 
 TEST(TensorBufferRequirements, SimpleTest) {
-  LrtTensorBufferRequirements requirements;
-  ASSERT_EQ(LrtCreateTensorBufferRequirements(kNumSupportedTensorBufferTypes,
-                                              kSupportedTensorBufferTypes,
-                                              kBufferSize, &requirements),
-            kLrtStatusOk);
+  LiteRtTensorBufferRequirements requirements;
+  ASSERT_EQ(LiteRtCreateTensorBufferRequirements(kNumSupportedTensorBufferTypes,
+                                                 kSupportedTensorBufferTypes,
+                                                 kBufferSize, &requirements),
+            kLiteRtStatusOk);
 
   int num_types;
-  ASSERT_EQ(LrtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
+  ASSERT_EQ(LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
                 requirements, &num_types),
-            kLrtStatusOk);
+            kLiteRtStatusOk);
   ASSERT_EQ(num_types, kNumSupportedTensorBufferTypes);
 
   for (auto i = 0; i < num_types; ++i) {
-    LrtTensorBufferType type;
-    ASSERT_EQ(LrtGetTensorBufferRequirementsSupportedTensorBufferType(
+    LiteRtTensorBufferType type;
+    ASSERT_EQ(LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
                   requirements, i, &type),
-              kLrtStatusOk);
+              kLiteRtStatusOk);
     ASSERT_EQ(type, kSupportedTensorBufferTypes[i]);
   }
 
   size_t size;
-  ASSERT_EQ(LrtGetTensorBufferRequirementsBufferSize(requirements, &size),
-            kLrtStatusOk);
+  ASSERT_EQ(LiteRtGetTensorBufferRequirementsBufferSize(requirements, &size),
+            kLiteRtStatusOk);
   ASSERT_EQ(size, kBufferSize);
 
-  LrtDestroyTensorBufferRequirements(requirements);
+  LiteRtDestroyTensorBufferRequirements(requirements);
 }

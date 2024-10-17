@@ -19,7 +19,7 @@
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 namespace {
@@ -54,4 +54,4 @@ LogSeverity Logger::SetMinimumSeverity(LogSeverity new_severity) {
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert

@@ -19,10 +19,10 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 struct Ratio {
@@ -32,16 +32,17 @@ struct Ratio {
   std::string ToString() const { return absl::StrCat(num, "/", denom); }
 };
 
-absl::StatusOr<Ratio> GetElementSize(LrtElementType element_type);
+absl::StatusOr<Ratio> GetElementSize(LiteRtElementType element_type);
 
-absl::StatusOr<size_t> GetNumElements(const LrtRankedTensorType& tensor_type);
+absl::StatusOr<size_t> GetNumElements(
+    const LiteRtRankedTensorType& tensor_type);
 
 // Get the number of bytes necessary to represent a tensor type, ignoring any
 // stride information.
 absl::StatusOr<size_t> GetNumPackedBytes(
-    const LrtRankedTensorType& tensor_type);
+    const LiteRtRankedTensorType& tensor_type);
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_UTILS_H_

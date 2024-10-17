@@ -21,7 +21,7 @@
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 
 #define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \
   auto result = (expr);                              \
@@ -41,26 +41,26 @@
 
 #define ASSERT_STATUS_HAS_CODE(expr, code) \
   {                                        \
-    LrtStatus status = (expr);             \
+    LiteRtStatus status = (expr);          \
     ASSERT_EQ(status, code);               \
   }
 
-#define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLrtStatusOk);
+#define ASSERT_STATUS_OK(expr) ASSERT_STATUS_HAS_CODE(expr, kLiteRtStatusOk);
 
-namespace lrt {
+namespace litert {
 namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename);
 
 absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename);
 
-UniqueLrtModel LoadTestFileModel(absl::string_view filename);
+UniqueLiteRtModel LoadTestFileModel(absl::string_view filename);
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir);
 
 bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size);
 
 }  // namespace testing
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_TEST_COMMON_H_

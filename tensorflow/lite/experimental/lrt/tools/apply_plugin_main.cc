@@ -22,8 +22,8 @@
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/lite/experimental/lrt/tools/apply_plugin.h"
 
-using ::lrt::tools::ApplyPlugin;
-using ::lrt::tools::ApplyPluginRun;
+using ::litert::tools::ApplyPlugin;
+using ::litert::tools::ApplyPluginRun;
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> cmd(

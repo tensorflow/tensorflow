@@ -22,10 +22,10 @@
 
 namespace {
 
-using ::lrt::tools::ToolDisplay;
+using ::litert::tools::ToolDisplay;
 
 static constexpr absl::string_view kToolName = "test-tool";
-static constexpr absl::string_view kLabel = "[LRT_TOOLS:test-tool]";
+static constexpr absl::string_view kLabel = "[LITERT_TOOLS:test-tool]";
 static constexpr absl::string_view kStartLabel = "Test Routine";
 static constexpr absl::string_view kDisplayInfo = "info";
 
@@ -54,7 +54,8 @@ TEST(TestToolDisplay, LabeledNoToolName) {
   std::stringstream out;
   ToolDisplay display(out);
   display.Labeled() << kDisplayInfo;
-  EXPECT_EQ(out.view(), absl::StrFormat("%s %s", "[LRT_TOOLS]", kDisplayInfo));
+  EXPECT_EQ(out.view(),
+            absl::StrFormat("%s %s", "[LITERT_TOOLS]", kDisplayInfo));
 }
 
 TEST(TestToolDisplay, Start) {

@@ -20,9 +20,9 @@
 
 namespace {
 
-using ::lrt::qnn::QnnManager;
-using ::lrt::qnn::SetupAll;
-using ::lrt::qnn::internal::Dump;
+using ::litert::qnn::QnnManager;
+using ::litert::qnn::SetupAll;
+using ::litert::qnn::internal::Dump;
 using ::testing::HasSubstr;
 
 // NOTE: This tests that all of the dynamic loading works properly and

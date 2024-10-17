@@ -21,7 +21,7 @@
 #include "absl/log/log.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/test/testdata/simple_model_test_vectors.h"
 #include "tensorflow/lite/interpreter.h"
@@ -32,13 +32,13 @@
 
 TEST(DispatchDelegate, Pixel) {
   auto npu_model_file_name = kPixelModelFileName;
-  auto npu_model = lrt::testing::LoadBinaryFile(npu_model_file_name);
+  auto npu_model = litert::testing::LoadBinaryFile(npu_model_file_name);
   ASSERT_TRUE(npu_model.ok());
   ABSL_LOG(INFO) << "Loaded model " << npu_model_file_name << ", "
                  << npu_model->size() << " bytes";
 
   auto tflite_file_name =
-      lrt::testing::GetTestFilePath("simple_model_npu.tflite");
+      litert::testing::GetTestFilePath("simple_model_npu.tflite");
   auto model = tflite::FlatBufferModel::BuildFromFile(tflite_file_name.data());
   ASSERT_NE(model, nullptr);
 
@@ -53,14 +53,14 @@ TEST(DispatchDelegate, Pixel) {
   ASSERT_EQ(interpreter->execution_plan().size(), 1);
 
   auto dispatch_delegate_options =
-      lrt::DispatchDelegateOptionsCreateDefaultPtr();
+      litert::DispatchDelegateOptionsCreateDefaultPtr();
   ASSERT_EQ(
-      LrtDispatchDelegateOptionsExecInfo(
+      LiteRtDispatchDelegateOptionsExecInfo(
           dispatch_delegate_options.get(), "npu_bytecode", npu_model->data(),
           npu_model->size(), /*function_name=*/nullptr),
       kTfLiteOk);
   auto dispatch_delegate =
-      lrt::DispatchDelegateCreatePtr(std::move(dispatch_delegate_options));
+      litert::DispatchDelegateCreatePtr(std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "

@@ -23,16 +23,16 @@
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
-using ::lrt::tools::ApplyPlugin;
-using ::lrt::tools::ApplyPluginRun;
+using ::litert::tools::ApplyPlugin;
+using ::litert::tools::ApplyPluginRun;
 using ::testing::HasSubstr;
 
 static constexpr absl::string_view kPluginSearchPath =
@@ -45,7 +45,8 @@ static constexpr absl::string_view kSocModel = "ExampleSocModel";
 absl::string_view TestModelPath() {
   static char kModelPath[512] = {};
   if (kModelPath[0] == '\0') {
-    const auto model_path = ::lrt::testing::GetTestFilePath("one_mul.tflite");
+    const auto model_path =
+        ::litert::testing::GetTestFilePath("one_mul.tflite");
     ABSL_CHECK(model_path.size() < 512);
     model_path.copy(kModelPath, model_path.size(), 0);
   }
@@ -68,7 +69,7 @@ TEST(TestApplyPluginTool, TestInfoBadConfig) {
   run->dump_out = {};
   run->lib_search_paths.clear();
   ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                         kLrtStatusErrorInvalidToolConfig);
+                         kLiteRtStatusErrorInvalidToolConfig);
 }
 
 TEST(TestApplyPluginTool, TestInfo) {
@@ -76,17 +77,17 @@ TEST(TestApplyPluginTool, TestInfo) {
   std::stringstream out;
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
-  EXPECT_THAT(
-      out.str(),
-      ::testing::HasSubstr("< LrtCompilerPlugin > \"ExampleSocManufacturer\" | "
-                           "\"ExampleSocModel\""));
+  EXPECT_THAT(out.str(),
+              ::testing::HasSubstr(
+                  "< LiteRtCompilerPlugin > \"ExampleSocManufacturer\" | "
+                  "\"ExampleSocModel\""));
 }
 
 TEST(TestApplyPluginTool, TestNoopBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::NOOP);
   run->model.reset();
   ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                         kLrtStatusErrorInvalidToolConfig);
+                         kLiteRtStatusErrorInvalidToolConfig);
 }
 
 TEST(TestApplyPluginTool, TestNoop) {
@@ -95,11 +96,11 @@ TEST(TestApplyPluginTool, TestNoop) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LrtModel model;
+  LiteRtModel model;
   ASSERT_STATUS_OK(
       LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
                 out.view().size(), &model));
-  UniqueLrtModel u_model(model);
+  UniqueLiteRtModel u_model(model);
 
   EXPECT_EQ(model->subgraphs.size(), 1);
 }
@@ -108,7 +109,7 @@ TEST(TestApplyPluginTool, TestPartitionBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::PARTITION);
   run->model.reset();
   ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                         kLrtStatusErrorInvalidToolConfig);
+                         kLiteRtStatusErrorInvalidToolConfig);
 }
 
 TEST(TestApplyPluginTool, TestPartition) {
@@ -123,7 +124,7 @@ TEST(TestApplyPluginTool, TestCompileBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::COMPILE);
   run->model.reset();
   ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                         kLrtStatusErrorInvalidToolConfig);
+                         kLiteRtStatusErrorInvalidToolConfig);
 }
 
 TEST(TestApplyPluginTool, TestCompile) {
@@ -139,7 +140,7 @@ TEST(TestApplyPluginTool, TestApplyBadConfig) {
   auto run = MakeBaseRun(ApplyPluginRun::Cmd::APPLY);
   run->model.reset();
   ASSERT_STATUS_HAS_CODE(ApplyPlugin(std::move(run)),
-                         kLrtStatusErrorInvalidToolConfig);
+                         kLiteRtStatusErrorInvalidToolConfig);
 }
 
 TEST(TestApplyPluginTool, TestApply) {
@@ -148,11 +149,11 @@ TEST(TestApplyPluginTool, TestApply) {
   run->outs.push_back(out);
   ASSERT_STATUS_OK(ApplyPlugin(std::move(run)));
 
-  LrtModel model;
+  LiteRtModel model;
   ASSERT_STATUS_OK(
       LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
                 out.view().size(), &model));
-  UniqueLrtModel u_model(model);
+  UniqueLiteRtModel u_model(model);
 
   EXPECT_EQ(model->subgraphs.size(), 1);
   ASSERT_EQ(model->flatbuffer_model->metadata.size(), 2);

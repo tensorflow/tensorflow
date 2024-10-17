@@ -20,7 +20,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 template <typename H, typename V>
@@ -69,6 +69,6 @@ class Registry {
 };
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_DISPATCH_REGISTRY_H_

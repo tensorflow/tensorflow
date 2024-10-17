@@ -27,7 +27,7 @@
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 namespace {
@@ -136,4 +136,4 @@ void FastRpcBuffer::Free(void* addr) {
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert

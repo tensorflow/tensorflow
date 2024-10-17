@@ -15,10 +15,10 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_AHWB_BUFFER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_AHWB_BUFFER_H_
 
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_event.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_event.h"
 
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
 #include <android/hardware_buffer.h>
 #else
 // Define a place holder AHardwareBuffer struct just to enable compilation.
@@ -29,11 +29,11 @@ typedef struct AHardwareBuffer AHardwareBuffer;
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // LRT_HAS_AHWB_SUPPORT
+#endif  // LITERT_HAS_AHWB_SUPPORT
 
 #include "absl/status/statusor.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 struct AhwbBuffer {
@@ -44,11 +44,11 @@ struct AhwbBuffer {
   static void Free(AHardwareBuffer* ahwb);
   static absl::StatusOr<size_t> GetSize(AHardwareBuffer* ahwb);
   static absl::StatusOr<void*> Lock(AHardwareBuffer* ahwb,
-                                    LrtEvent event = nullptr);
+                                    LiteRtEvent event = nullptr);
   static absl::Status Unlock(AHardwareBuffer* ahwb);
 };
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_AHWB_BUFFER_H_

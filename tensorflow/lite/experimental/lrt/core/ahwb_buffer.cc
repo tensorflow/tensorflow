@@ -19,14 +19,14 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_event.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_event.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 bool AhwbBuffer::IsSupported() {
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
   return true;
 #else
   return false;
@@ -34,7 +34,7 @@ bool AhwbBuffer::IsSupported() {
 }
 
 absl::StatusOr<AhwbBuffer> AhwbBuffer::Alloc(size_t size) {
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer* ahwb;
   AHardwareBuffer_Desc ahwb_desc = {
       .width = static_cast<uint32_t>(size),
@@ -51,17 +51,17 @@ absl::StatusOr<AhwbBuffer> AhwbBuffer::Alloc(size_t size) {
 #else
   return absl::InternalError(
       "AHardwareBuffers are not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
+#endif  // LITERT_HAS_AHWB_SUPPORT
 }
 
 void AhwbBuffer::Free(AHardwareBuffer* ahwb) {
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer_release(ahwb);
 #endif
 }
 
 absl::StatusOr<size_t> AhwbBuffer::GetSize(AHardwareBuffer* ahwb) {
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
   AHardwareBuffer_Desc ahwb_desc;
   AHardwareBuffer_describe(ahwb, &ahwb_desc);
   return static_cast<size_t>(ahwb_desc.width) * ahwb_desc.height *
@@ -69,15 +69,16 @@ absl::StatusOr<size_t> AhwbBuffer::GetSize(AHardwareBuffer* ahwb) {
 #else
   return absl::InternalError(
       "AHardwareBuffers are not supported on this platform");
-#endif  // LRT_HAS_AHWB_SUPPORT
+#endif  // LITERT_HAS_AHWB_SUPPORT
 }
 
-absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb, LrtEvent event) {
-#if LRT_HAS_AHWB_SUPPORT
+absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb,
+                                       LiteRtEvent event) {
+#if LITERT_HAS_AHWB_SUPPORT
   int fence = -1;
   if (event) {
-    if (auto status = LrtEventGetSyncFenceFd(event, &fence);
-        status != kLrtStatusOk) {
+    if (auto status = LiteRtEventGetSyncFenceFd(event, &fence);
+        status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get sync fence fd from event");
     }
   }
@@ -96,7 +97,7 @@ absl::StatusOr<void*> AhwbBuffer::Lock(AHardwareBuffer* ahwb, LrtEvent event) {
 }
 
 absl::Status AhwbBuffer::Unlock(AHardwareBuffer* ahwb) {
-#if LRT_HAS_AHWB_SUPPORT
+#if LITERT_HAS_AHWB_SUPPORT
   if (AHardwareBuffer_unlock(ahwb, /*fence=*/nullptr) != 0) {
     return absl::InternalError("Failed to unlock AHWB");
   }
@@ -108,4 +109,4 @@ absl::Status AhwbBuffer::Unlock(AHardwareBuffer* ahwb) {
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert

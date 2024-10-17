@@ -15,45 +15,50 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_DISPATCH_API_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_DISPATCH_API_H_
 
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
-namespace lrt {
+namespace litert {
 namespace pixel {
 
-LrtStatus GraphCreate(LrtDispatchDeviceContext device_context,
-                      LrtDispatchGraph* graph);
-LrtStatus GraphDestroy(LrtDispatchGraph graph);
-LrtStatus AddNode(LrtDispatchGraph graph, LrtDispatchNodeId node_id,
-                  LrtDispatchNodeType node_type);
-LrtStatus AddEdge(LrtDispatchGraph graph, LrtDispatchEdgeId edge_id);
-LrtStatus ConnectNodeInput(LrtDispatchGraph graph, LrtDispatchNodeId node_id,
-                           int input_index, LrtDispatchEdgeId edge_id);
-LrtStatus ConnectNodeOutput(LrtDispatchGraph graph, LrtDispatchNodeId node_id,
-                            int output_index, LrtDispatchEdgeId edge_id);
-LrtStatus ConnectGraphInput(LrtDispatchGraph graph, int input_index,
-                            LrtDispatchEdgeId edge_id);
-LrtStatus ConnectGraphOutput(LrtDispatchGraph graph, int output_index,
-                             LrtDispatchEdgeId edge_id);
-LrtStatus LoadExecutable(LrtDispatchDeviceContext device_context,
-                         LrtDispatchExecutableType type, const void* bytecode,
-                         size_t bytecode_size,
-                         LrtDispatchExecutableHandle* exec_handle);
-LrtStatus UnloadExecutable(LrtDispatchDeviceContext device_context,
-                           LrtDispatchExecutableHandle exec_handle);
-LrtStatus AssignNodeFunction(LrtDispatchGraph graph, LrtDispatchNodeId node_id,
-                             LrtDispatchExecutableHandle exec_handle,
-                             const char* function_name);
-LrtStatus AnnotateGraph(LrtDispatchGraph graph, const char* key,
-                        const char* value);
-LrtStatus AnnotateNode(LrtDispatchGraph graph, LrtDispatchNodeId node_id,
-                       const char* key, const char* value);
-LrtStatus AnnotateEdge(LrtDispatchGraph graph, LrtDispatchEdgeId edge_id,
-                       const char* key, const char* value);
-LrtStatus InvocationContextCreateFromGraph(
-    LrtDispatchDeviceContext device_context, LrtDispatchGraph graph,
-    LrtDispatchInvocationContext* invocation_context);
+LiteRtStatus GraphCreate(LiteRtDispatchDeviceContext device_context,
+                         LiteRtDispatchGraph* graph);
+LiteRtStatus GraphDestroy(LiteRtDispatchGraph graph);
+LiteRtStatus AddNode(LiteRtDispatchGraph graph, LiteRtDispatchNodeId node_id,
+                     LiteRtDispatchNodeType node_type);
+LiteRtStatus AddEdge(LiteRtDispatchGraph graph, LiteRtDispatchEdgeId edge_id);
+LiteRtStatus ConnectNodeInput(LiteRtDispatchGraph graph,
+                              LiteRtDispatchNodeId node_id, int input_index,
+                              LiteRtDispatchEdgeId edge_id);
+LiteRtStatus ConnectNodeOutput(LiteRtDispatchGraph graph,
+                               LiteRtDispatchNodeId node_id, int output_index,
+                               LiteRtDispatchEdgeId edge_id);
+LiteRtStatus ConnectGraphInput(LiteRtDispatchGraph graph, int input_index,
+                               LiteRtDispatchEdgeId edge_id);
+LiteRtStatus ConnectGraphOutput(LiteRtDispatchGraph graph, int output_index,
+                                LiteRtDispatchEdgeId edge_id);
+LiteRtStatus LoadExecutable(LiteRtDispatchDeviceContext device_context,
+                            LiteRtDispatchExecutableType type,
+                            const void* bytecode, size_t bytecode_size,
+                            LiteRtDispatchExecutableHandle* exec_handle);
+LiteRtStatus UnloadExecutable(LiteRtDispatchDeviceContext device_context,
+                              LiteRtDispatchExecutableHandle exec_handle);
+LiteRtStatus AssignNodeFunction(LiteRtDispatchGraph graph,
+                                LiteRtDispatchNodeId node_id,
+                                LiteRtDispatchExecutableHandle exec_handle,
+                                const char* function_name);
+LiteRtStatus AnnotateGraph(LiteRtDispatchGraph graph, const char* key,
+                           const char* value);
+LiteRtStatus AnnotateNode(LiteRtDispatchGraph graph,
+                          LiteRtDispatchNodeId node_id, const char* key,
+                          const char* value);
+LiteRtStatus AnnotateEdge(LiteRtDispatchGraph graph,
+                          LiteRtDispatchEdgeId edge_id, const char* key,
+                          const char* value);
+LiteRtStatus InvocationContextCreateFromGraph(
+    LiteRtDispatchDeviceContext device_context, LiteRtDispatchGraph graph,
+    LiteRtDispatchInvocationContext* invocation_context);
 
 }  // namespace pixel
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_DISPATCH_API_H_

@@ -16,9 +16,8 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
 
 namespace {
 
@@ -26,40 +25,40 @@ constexpr const int32_t kTensorDimensions[] = {1, 2, 3};
 constexpr const size_t kRank =
     sizeof(kTensorDimensions) / sizeof(kTensorDimensions[0]);
 
-constexpr const LrtLayout kLayout = {
+constexpr const LiteRtLayout kLayout = {
     /*.rank=*/kRank,
     /*.dimensions=*/kTensorDimensions,
     /*.strides=*/nullptr,
 };
 
-constexpr const LrtRankedTensorType kTensorType = {
-    /*.element_type=*/kLrtElementTypeFloat32,
+constexpr const LiteRtRankedTensorType kTensorType = {
+    /*.element_type=*/kLiteRtElementTypeFloat32,
     /*.layout=*/kLayout,
 };
 
 }  // namespace
 
 TEST(RankedTensorType, Accessors) {
-  lrt::Layout layout(kLayout);
-  lrt::RankedTensorType tensor_type(kTensorType);
+  litert::Layout layout(kLayout);
+  litert::RankedTensorType tensor_type(kTensorType);
   ASSERT_EQ(tensor_type.ElementType(),
-            static_cast<lrt::ElementType>(kTensorType.element_type));
+            static_cast<litert::ElementType>(kTensorType.element_type));
   ASSERT_TRUE(tensor_type.Layout() == layout);
 }
 
 TEST(Layout, Equal) {
-  lrt::RankedTensorType tensor_type1(kTensorType);
-  lrt::RankedTensorType tensor_type2({
-      /*.element_type=*/kLrtElementTypeFloat32,
+  litert::RankedTensorType tensor_type1(kTensorType);
+  litert::RankedTensorType tensor_type2({
+      /*.element_type=*/kLiteRtElementTypeFloat32,
       /*.layout=*/kLayout,
   });
   ASSERT_TRUE(tensor_type1 == tensor_type2);
 }
 
 TEST(Layout, NotEqual) {
-  lrt::RankedTensorType tensor_type1(kTensorType);
-  lrt::RankedTensorType tensor_type2({
-      /*.element_type=*/kLrtElementTypeFloat16,
+  litert::RankedTensorType tensor_type1(kTensorType);
+  litert::RankedTensorType tensor_type2({
+      /*.element_type=*/kLiteRtElementTypeFloat16,
       /*.layout=*/kLayout,
   });
   ASSERT_TRUE(tensor_type1 != tensor_type2);

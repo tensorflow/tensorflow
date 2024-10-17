@@ -28,7 +28,7 @@
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_tensor.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 namespace {
@@ -171,4 +171,4 @@ absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
 }
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert

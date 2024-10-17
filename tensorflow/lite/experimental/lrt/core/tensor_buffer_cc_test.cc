@@ -16,11 +16,11 @@
 #include <cstring>
 
 #include <gtest/gtest.h>  // NOLINT: Need when ANDROID_API_LEVEL >= 26
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/ahwb_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"  // IWYU pragma: keep
@@ -32,8 +32,8 @@ constexpr const float kTensorData[] = {10, 20, 30, 40};
 constexpr const int32_t kTensorDimensions[] = {sizeof(kTensorData) /
                                                sizeof(kTensorData[0])};
 
-constexpr const LrtRankedTensorType kTensorType = {
-    /*.element_type=*/kLrtElementTypeFloat32,
+constexpr const LiteRtRankedTensorType kTensorType = {
+    /*.element_type=*/kLiteRtElementTypeFloat32,
     /*.layout=*/{
         /*.rank=*/1,
         /*.dimensions=*/kTensorDimensions,
@@ -42,10 +42,10 @@ constexpr const LrtRankedTensorType kTensorType = {
 }  // namespace
 
 TEST(TensorBuffer, HostMemory) {
-  const lrt::RankedTensorType kTensorType(::kTensorType);
-  constexpr auto kTensorBufferType = kLrtTensorBufferTypeHostMemory;
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeHostMemory;
 
-  auto tensor_buffer = lrt::TensorBuffer::CreateManaged(
+  auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
   ASSERT_TRUE(tensor_buffer.ok());
 
@@ -56,7 +56,7 @@ TEST(TensorBuffer, HostMemory) {
   auto tensor_type = tensor_buffer->TensorType();
   ASSERT_TRUE(tensor_type.ok());
 
-  ASSERT_EQ(tensor_type->ElementType(), lrt::ElementType::Float32);
+  ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
   ASSERT_EQ(tensor_type->Layout().Dimensions()[0],
             kTensorType.Layout().Dimensions()[0]);
@@ -71,13 +71,13 @@ TEST(TensorBuffer, HostMemory) {
   ASSERT_EQ(*offset, 0);
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
@@ -86,15 +86,15 @@ TEST(TensorBuffer, HostMemory) {
 }
 
 TEST(TensorBuffer, Ahwb) {
-  if (!lrt::internal::AhwbBuffer::IsSupported()) {
+  if (!litert::internal::AhwbBuffer::IsSupported()) {
     GTEST_SKIP() << "AHardwareBuffers are not supported on this platform; "
                     "skipping the test";
   }
 
-  const lrt::RankedTensorType kTensorType(::kTensorType);
-  constexpr auto kTensorBufferType = kLrtTensorBufferTypeAhwb;
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeAhwb;
 
-  auto tensor_buffer = lrt::TensorBuffer::CreateManaged(
+  auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
   ASSERT_TRUE(tensor_buffer.ok());
 
@@ -105,7 +105,7 @@ TEST(TensorBuffer, Ahwb) {
   auto tensor_type = tensor_buffer->TensorType();
   ASSERT_TRUE(tensor_type.ok());
 
-  ASSERT_EQ(tensor_type->ElementType(), lrt::ElementType::Float32);
+  ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
   ASSERT_EQ(tensor_type->Layout().Dimensions()[0],
             kTensorType.Layout().Dimensions()[0]);
@@ -120,13 +120,13 @@ TEST(TensorBuffer, Ahwb) {
   ASSERT_EQ(*offset, 0);
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
@@ -135,15 +135,15 @@ TEST(TensorBuffer, Ahwb) {
 }
 
 TEST(TensorBuffer, Ion) {
-  if (!lrt::internal::IonBuffer::IsSupported()) {
+  if (!litert::internal::IonBuffer::IsSupported()) {
     GTEST_SKIP()
         << "ION buffers are not supported on this platform; skipping the test";
   }
 
-  const lrt::RankedTensorType kTensorType(::kTensorType);
-  constexpr auto kTensorBufferType = kLrtTensorBufferTypeIon;
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeIon;
 
-  auto tensor_buffer = lrt::TensorBuffer::CreateManaged(
+  auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
   ASSERT_TRUE(tensor_buffer.ok());
 
@@ -154,7 +154,7 @@ TEST(TensorBuffer, Ion) {
   auto tensor_type = tensor_buffer->TensorType();
   ASSERT_TRUE(tensor_type.ok());
 
-  ASSERT_EQ(tensor_type->ElementType(), lrt::ElementType::Float32);
+  ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
   ASSERT_EQ(tensor_type->Layout().Dimensions()[0],
             kTensorType.Layout().Dimensions()[0]);
@@ -169,13 +169,13 @@ TEST(TensorBuffer, Ion) {
   ASSERT_EQ(*offset, 0);
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
@@ -184,16 +184,16 @@ TEST(TensorBuffer, Ion) {
 }
 
 TEST(TensorBuffer, DmaBuf) {
-  if (!lrt::internal::DmaBufBuffer::IsSupported()) {
+  if (!litert::internal::DmaBufBuffer::IsSupported()) {
     GTEST_SKIP()
         << "DMA-BUF buffers are not supported on this platform; skipping "
            "the test";
   }
 
-  const lrt::RankedTensorType kTensorType(::kTensorType);
-  constexpr auto kTensorBufferType = kLrtTensorBufferTypeDmaBuf;
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeDmaBuf;
 
-  auto tensor_buffer = lrt::TensorBuffer::CreateManaged(
+  auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
   ASSERT_TRUE(tensor_buffer.ok());
 
@@ -204,7 +204,7 @@ TEST(TensorBuffer, DmaBuf) {
   auto tensor_type = tensor_buffer->TensorType();
   ASSERT_TRUE(tensor_type.ok());
 
-  ASSERT_EQ(tensor_type->ElementType(), lrt::ElementType::Float32);
+  ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
   ASSERT_EQ(tensor_type->Layout().Dimensions()[0],
             kTensorType.Layout().Dimensions()[0]);
@@ -219,13 +219,13 @@ TEST(TensorBuffer, DmaBuf) {
   ASSERT_EQ(*offset, 0);
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
@@ -234,16 +234,16 @@ TEST(TensorBuffer, DmaBuf) {
 }
 
 TEST(TensorBuffer, FastRpc) {
-  if (!lrt::internal::FastRpcBuffer::IsSupported()) {
+  if (!litert::internal::FastRpcBuffer::IsSupported()) {
     GTEST_SKIP()
         << "FastRPC buffers are not supported on this platform; skipping "
            "the test";
   }
 
-  const lrt::RankedTensorType kTensorType(::kTensorType);
-  constexpr auto kTensorBufferType = kLrtTensorBufferTypeFastRpc;
+  const litert::RankedTensorType kTensorType(::kTensorType);
+  constexpr auto kTensorBufferType = kLiteRtTensorBufferTypeFastRpc;
 
-  auto tensor_buffer = lrt::TensorBuffer::CreateManaged(
+  auto tensor_buffer = litert::TensorBuffer::CreateManaged(
       kTensorBufferType, kTensorType, sizeof(kTensorData));
   ASSERT_TRUE(tensor_buffer.ok());
 
@@ -254,7 +254,7 @@ TEST(TensorBuffer, FastRpc) {
   auto tensor_type = tensor_buffer->TensorType();
   ASSERT_TRUE(tensor_type.ok());
 
-  ASSERT_EQ(tensor_type->ElementType(), lrt::ElementType::Float32);
+  ASSERT_EQ(tensor_type->ElementType(), litert::ElementType::Float32);
   ASSERT_EQ(tensor_type->Layout().Rank(), 1);
   ASSERT_EQ(tensor_type->Layout().Dimensions()[0],
             kTensorType.Layout().Dimensions()[0]);
@@ -269,13 +269,13 @@ TEST(TensorBuffer, FastRpc) {
   ASSERT_EQ(*offset, 0);
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     std::memcpy(lock_and_addr->second, kTensorData, sizeof(kTensorData));
   }
 
   {
-    auto lock_and_addr = lrt::TensorBufferScopedLock::Create(*tensor_buffer);
+    auto lock_and_addr = litert::TensorBufferScopedLock::Create(*tensor_buffer);
     ASSERT_TRUE(lock_and_addr.ok());
     ASSERT_EQ(
         std::memcmp(lock_and_addr->second, kTensorData, sizeof(kTensorData)),
@@ -284,14 +284,15 @@ TEST(TensorBuffer, FastRpc) {
 }
 
 TEST(TensorBuffer, NotOwned) {
-  LrtTensorBuffer lrt_tensor_buffer;
-  ASSERT_EQ(
-      LrtCreateManagedTensorBuffer(kLrtTensorBufferTypeHostMemory, &kTensorType,
-                                   sizeof(kTensorData), &lrt_tensor_buffer),
-      kLrtStatusOk);
+  LiteRtTensorBuffer litert_tensor_buffer;
+  ASSERT_EQ(LiteRtCreateManagedTensorBuffer(kLiteRtTensorBufferTypeHostMemory,
+                                            &kTensorType, sizeof(kTensorData),
+                                            &litert_tensor_buffer),
+            kLiteRtStatusOk);
 
-  lrt::TensorBuffer tensor_buffer(lrt_tensor_buffer, /*owned=*/false);
-  ASSERT_EQ(static_cast<LrtTensorBuffer>(tensor_buffer), lrt_tensor_buffer);
+  litert::TensorBuffer tensor_buffer(litert_tensor_buffer, /*owned=*/false);
+  ASSERT_EQ(static_cast<LiteRtTensorBuffer>(tensor_buffer),
+            litert_tensor_buffer);
 
-  LrtDestroyTensorBuffer(lrt_tensor_buffer);
+  LiteRtDestroyTensorBuffer(litert_tensor_buffer);
 }

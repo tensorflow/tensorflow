@@ -18,43 +18,43 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
-absl::StatusOr<Ratio> GetElementSize(LrtElementType element_type) {
+absl::StatusOr<Ratio> GetElementSize(LiteRtElementType element_type) {
   switch (element_type) {
-    case kLrtElementTypeInt4:
+    case kLiteRtElementTypeInt4:
       return Ratio{1, 2};
-    case kLrtElementTypeBool:
+    case kLiteRtElementTypeBool:
       return Ratio{1, 1};
-    case kLrtElementTypeInt8:
-    case kLrtElementTypeUInt8:
+    case kLiteRtElementTypeInt8:
+    case kLiteRtElementTypeUInt8:
       return Ratio{1, 1};
-    case kLrtElementTypeInt16:
-    case kLrtElementTypeUInt16:
-    case kLrtElementTypeFloat16:
-    case kLrtElementTypeBFloat16:
+    case kLiteRtElementTypeInt16:
+    case kLiteRtElementTypeUInt16:
+    case kLiteRtElementTypeFloat16:
+    case kLiteRtElementTypeBFloat16:
       return Ratio{2, 1};
-    case kLrtElementTypeInt32:
-    case kLrtElementTypeUInt32:
-    case kLrtElementTypeFloat32:
+    case kLiteRtElementTypeInt32:
+    case kLiteRtElementTypeUInt32:
+    case kLiteRtElementTypeFloat32:
       return Ratio{4, 1};
-    case kLrtElementTypeInt64:
-    case kLrtElementTypeUInt64:
-    case kLrtElementTypeFloat64:
+    case kLiteRtElementTypeInt64:
+    case kLiteRtElementTypeUInt64:
+    case kLiteRtElementTypeFloat64:
       return Ratio{8, 1};
-    case kLrtElementTypeComplex64:
+    case kLiteRtElementTypeComplex64:
       return Ratio{16, 1};
-    case kLrtElementTypeComplex128:
+    case kLiteRtElementTypeComplex128:
       return Ratio{32, 1};
     default:
       return absl::InvalidArgumentError("Unexpected element type");
   }
 }
 
-absl::StatusOr<size_t> GetNumPackedBytes(const LrtRankedTensorType& type) {
+absl::StatusOr<size_t> GetNumPackedBytes(const LiteRtRankedTensorType& type) {
   auto element_size = GetElementSize(type.element_type);
   if (!element_size.ok()) {
     return element_size.status();
@@ -69,7 +69,8 @@ absl::StatusOr<size_t> GetNumPackedBytes(const LrtRankedTensorType& type) {
          element_size->denom;
 }
 
-absl::StatusOr<size_t> GetNumElements(const LrtRankedTensorType& tensor_type) {
+absl::StatusOr<size_t> GetNumElements(
+    const LiteRtRankedTensorType& tensor_type) {
   size_t num_elements = 1;
   for (auto i = 0; i < tensor_type.layout.rank; ++i) {
     auto dim = tensor_type.layout.dimensions[i];
@@ -86,4 +87,4 @@ absl::StatusOr<size_t> GetNumElements(const LrtRankedTensorType& tensor_type) {
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert

@@ -27,13 +27,13 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/verifier.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tsl/platform/platform.h"
 
-namespace lrt {
+namespace litert {
 namespace testing {
 
 std::string GetTestFilePath(absl::string_view filename) {
@@ -69,12 +69,12 @@ absl::StatusOr<std::vector<char>> LoadBinaryFile(absl::string_view filename) {
   return buffer;
 }
 
-UniqueLrtModel LoadTestFileModel(absl::string_view filename) {
-  LrtModel model = nullptr;
-  LRT_CHECK_STATUS_OK(
+UniqueLiteRtModel LoadTestFileModel(absl::string_view filename) {
+  LiteRtModel model = nullptr;
+  LITERT_CHECK_STATUS_OK(
       LoadModelFromFile(GetTestFilePath(filename).data(), &model));
   ABSL_CHECK_NE(model, nullptr);
-  return UniqueLrtModel(model);
+  return UniqueLiteRtModel(model);
 }
 
 void TouchTestFile(absl::string_view filename, absl::string_view dir) {
@@ -90,4 +90,4 @@ bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
 }
 
 }  // namespace testing
-}  // namespace lrt
+}  // namespace litert

@@ -19,12 +19,12 @@
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_delegate.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 // A TFL kernel that the interpreter calls to dispatch execution through the
@@ -36,8 +36,8 @@ class DispatchDelegateKernel
 
   ~DispatchDelegateKernel() override;
 
-  static absl::StatusOr<Ptr> Create(std::string&& graph_name,
-                                    const LrtDispatchDelegateOptions& options);
+  static absl::StatusOr<Ptr> Create(
+      std::string&& graph_name, const LiteRtDispatchDelegateOptions& options);
 
   TfLiteStatus Init(TfLiteOpaqueContext* context,
                     const TfLiteOpaqueDelegateParams* params) override;
@@ -49,9 +49,9 @@ class DispatchDelegateKernel
                     TfLiteOpaqueNode* node) override;
 
  private:
-  DispatchDelegateKernel(const LrtDispatchDelegateOptions& options,
+  DispatchDelegateKernel(const LiteRtDispatchDelegateOptions& options,
                          std::string&& graph_name,
-                         LrtDispatchDeviceContext device_context)
+                         LiteRtDispatchDeviceContext device_context)
       : options_(options),
         graph_name_(std::move(graph_name)),
         device_context_(device_context) {}
@@ -62,21 +62,21 @@ class DispatchDelegateKernel
   TfLiteStatus SetBuffer(const TfLiteOpaqueTensor* tfl_opaque_tensor,
                          int buffer_index, bool is_input);
 
-  const LrtDispatchDelegateOptions& options_;
+  const LiteRtDispatchDelegateOptions& options_;
   std::string graph_name_;
-  LrtDispatchDeviceContext device_context_;
-  LrtDispatchInvocationContext invocation_context_ = nullptr;
+  LiteRtDispatchDeviceContext device_context_;
+  LiteRtDispatchInvocationContext invocation_context_ = nullptr;
 
   std::vector<TensorBuffer> input_tensor_buffers_;
-  std::vector<LrtTensorBufferHandle> input_tensor_buffer_handles_;
+  std::vector<LiteRtTensorBufferHandle> input_tensor_buffer_handles_;
   std::vector<size_t> input_tensor_buffer_used_size_;
 
   std::vector<TensorBuffer> output_tensor_buffers_;
-  std::vector<LrtTensorBufferHandle> output_tensor_buffer_handles_;
+  std::vector<LiteRtTensorBufferHandle> output_tensor_buffer_handles_;
   std::vector<size_t> output_tensor_buffer_used_size_;
 };
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_DISPATCH_DISPATCH_DELEGATE_KERNEL_H_

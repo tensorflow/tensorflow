@@ -14,7 +14,7 @@
 
 """Build definitions for QualComm backend."""
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "append_rule_kwargs", "lite_rt_lib", "make_rpaths")
+load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "append_rule_kwargs", "litert_lib", "make_rpaths")
 
 _QNN_LIBCC_X86_64 = [
     # copybara:uncomment_begin(google-only)
@@ -42,18 +42,18 @@ _QNN_LIB_SYSTEM_X86_64 = [
     # copybara:uncomment_end
 ]
 
-def lite_rt_lib_with_qnn(
+def litert_lib_with_qnn(
         backend = "htp",
         include_system = False,
         use_custom_libcc = False,
-        **lite_rt_lib_kwargs):
-    """Creates a lite_rt_lib target with QualComm backend dependencies.
+        **litert_lib_kwargs):
+    """Creates a litert_lib target with QualComm backend dependencies.
 
     Args:
         backend: The backend to use. Currently only "htp" is supported.
         include_system: Whether to include libQnnSystem.so.
         use_custom_libcc: Whether to use a custom libcc. Not yet supported.
-        **lite_rt_lib_kwargs: Keyword arguments passed to lite_rt_lib.
+        **litert_lib_kwargs: Keyword arguments passed to litert_lib.
     """
     if backend != "htp":
         fail("Only htp currently supported")
@@ -72,7 +72,7 @@ def lite_rt_lib_with_qnn(
     })
 
     append_rule_kwargs(
-        lite_rt_lib_kwargs,
+        litert_lib_kwargs,
         data = data,
         linkopts = select({
             "//tensorflow:linux_x86_64": [make_rpaths(_QNN_LIB_RPATHS_X86_64)],
@@ -80,4 +80,4 @@ def lite_rt_lib_with_qnn(
         }),
     )
 
-    lite_rt_lib(**lite_rt_lib_kwargs)
+    litert_lib(**litert_lib_kwargs)

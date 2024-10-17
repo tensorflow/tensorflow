@@ -17,7 +17,7 @@
 
 #include "absl/status/statusor.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 struct FastRpcBuffer {
@@ -30,6 +30,6 @@ struct FastRpcBuffer {
 };
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_FASTRPC_BUFFER_H_

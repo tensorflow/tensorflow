@@ -20,9 +20,9 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
-namespace lrt {
+namespace litert {
 namespace pixel {
 
 class Southbound {
@@ -127,6 +127,6 @@ struct Southbound::ThrFunctions {
 };
 
 }  // namespace pixel
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_SOUTHBOUND_H_

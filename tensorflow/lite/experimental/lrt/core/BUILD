@@ -19,15 +19,15 @@ package(
 
 cc_library(
     name = "api_internal",
-    srcs = ["lite_rt_common.cc"],
+    srcs = ["litert_common.cc"],
     hdrs = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_common.h",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_model.h",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_op_code.h",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_options.h",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_support.h",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_support.h",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_common.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_model.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_op_code.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_options.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_support.h",
+        "//tensorflow/lite/experimental/lrt/cc:litert_support.h",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin.h",
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
@@ -73,9 +73,9 @@ cc_library(
 )
 
 cc_library(
-    name = "lite_rt_model_init",
-    srcs = ["lite_rt_model_init.cc"],
-    hdrs = ["lite_rt_model_init.h"],
+    name = "litert_model_init",
+    srcs = ["litert_model_init.cc"],
+    hdrs = ["litert_model_init.h"],
     deps = [
         ":api_internal",
         ":model",
@@ -101,7 +101,7 @@ cc_test(
     deps = [
         ":api_internal",
         ":graph_tools",
-        ":lite_rt_model_init",
+        ":litert_model_init",
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -119,7 +119,7 @@ cc_test(
     deps = [
         ":api_internal",
         ":graph_tools",
-        ":lite_rt_model_init",
+        ":litert_model_init",
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -150,8 +150,8 @@ cc_library(
     linkopts = ["-ldl"],
     deps = [
         ":logging",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -172,7 +172,7 @@ cc_library(
 #         "@com_google_googletest//:gtest_main",
 #         "//testing/base/public:unique-test-directory",
 #         "@com_google_absl//absl/strings:string_view",
-#         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+#         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
 #         "//tensorflow/lite/experimental/lrt/test:common",
 #     ],
 # )
@@ -184,8 +184,8 @@ cc_test(
         "layout_cc_test.cc",
     ],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -196,8 +196,8 @@ cc_test(
         "ranked_tensor_type_cc_test.cc",
     ],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -209,9 +209,9 @@ cc_library(
         "dmabuf_buffer.cc",
         "fastrpc_buffer.cc",
         "ion_buffer.cc",
-        "lite_rt_event.cc",
-        "lite_rt_tensor_buffer.cc",
-        "lite_rt_tensor_buffer_requirements.cc",
+        "litert_event.cc",
+        "litert_tensor_buffer.cc",
+        "litert_tensor_buffer_requirements.cc",
         "tensor_buffer.cc",
     ],
     hdrs = [
@@ -224,8 +224,8 @@ cc_library(
     deps = [
         ":logging",
         ":utils",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/status",
@@ -246,8 +246,8 @@ cc_test(
     }),
     deps = [
         ":tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -263,10 +263,10 @@ cc_test(
     }),
     deps = [
         ":tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor_buffer_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_tensor_buffer_cc_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -278,8 +278,8 @@ cc_test(
     ],
     deps = [
         ":tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -291,10 +291,10 @@ cc_test(
     ],
     deps = [
         ":tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_tensor_buffer_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_tensor_buffer_cc_api",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -309,7 +309,7 @@ cc_library(
         "utils.h",
     ],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -330,8 +330,8 @@ cc_library(
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

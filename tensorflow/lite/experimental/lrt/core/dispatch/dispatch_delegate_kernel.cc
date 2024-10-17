@@ -24,48 +24,48 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_delegate.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/core/dispatch/dispatch_delegate_options.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/core/tfl_utils.h"
 #include "tensorflow/lite/experimental/lrt/core/utils.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 DispatchDelegateKernel::~DispatchDelegateKernel() {
   for (size_t i = 0; i < input_tensor_buffer_handles_.size(); ++i) {
-    (void)LrtDispatchDetachInput(invocation_context_, i,
-                                 input_tensor_buffer_handles_[i]);
+    (void)LiteRtDispatchDetachInput(invocation_context_, i,
+                                    input_tensor_buffer_handles_[i]);
   }
 
   for (size_t i = 0; i < output_tensor_buffer_handles_.size(); ++i) {
-    (void)LrtDispatchDetachOutput(invocation_context_, i,
-                                  output_tensor_buffer_handles_[i]);
+    (void)LiteRtDispatchDetachOutput(invocation_context_, i,
+                                     output_tensor_buffer_handles_[i]);
   }
 
   if (invocation_context_) {
-    (void)LrtDispatchInvocationContextDestroy(invocation_context_);
+    (void)LiteRtDispatchInvocationContextDestroy(invocation_context_);
   }
 
   for (auto& buffer_handle : input_tensor_buffer_handles_) {
-    (void)LrtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
+    (void)LiteRtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
   }
 
   for (auto& buffer_handle : output_tensor_buffer_handles_) {
-    (void)LrtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
+    (void)LiteRtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
   }
 
   if (device_context_) {
-    (void)LrtDispatchDeviceContextDestroy(device_context_);
+    (void)LiteRtDispatchDeviceContextDestroy(device_context_);
   }
 
   input_tensor_buffers_.clear();
@@ -73,65 +73,67 @@ DispatchDelegateKernel::~DispatchDelegateKernel() {
 }
 
 absl::StatusOr<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
-    std::string&& graph_name, const LrtDispatchDelegateOptions& options) {
+    std::string&& graph_name, const LiteRtDispatchDelegateOptions& options) {
   auto dispatch_api_lib_path =
-      options.GetOption(LrtDispatchDelegateOptions::kDispatchApiLibPath);
-  if (auto status = LrtDispatchInitialize(dispatch_api_lib_path.has_value()
-                                              ? dispatch_api_lib_path->data()
-                                              : nullptr);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to initialize Dispatch API: %d", status);
+      options.GetOption(LiteRtDispatchDelegateOptions::kDispatchApiLibPath);
+  if (auto status = LiteRtDispatchInitialize(dispatch_api_lib_path.has_value()
+                                                 ? dispatch_api_lib_path->data()
+                                                 : nullptr);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to initialize Dispatch API: %d", status);
     return absl::InternalError("Failed to initialize Dispatch API");
   }
 
   const char* vendor_id;
-  if (auto status = LrtDispatchGetVendorId(&vendor_id);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get Dispatch API vendor ID: %d", status);
+  if (auto status = LiteRtDispatchGetVendorId(&vendor_id);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API vendor ID: %d",
+               status);
     return absl::InternalError("Failed to get Dispatch API vendor ID");
   }
-  LITE_RT_LOG(LRT_INFO, "Dispatch API vendor ID: %s", vendor_id);
+  LITERT_LOG(LITERT_INFO, "Dispatch API vendor ID: %s", vendor_id);
 
   const char* build_id;
-  if (auto status = LrtDispatchGetBuildId(&build_id); status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get Dispatch API build ID: %d", status);
+  if (auto status = LiteRtDispatchGetBuildId(&build_id);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API build ID: %d", status);
     return absl::InternalError("Failed to get Dispatch API build ID");
   }
-  LITE_RT_LOG(LRT_INFO, "Dispatch API build ID: %s", build_id);
+  LITERT_LOG(LITERT_INFO, "Dispatch API build ID: %s", build_id);
 
-  LrtDispatchApiVersion api_version;
-  if (auto status = LrtDispatchGetApiVersion(&api_version);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get Dispatch API version: %d", status);
+  LiteRtDispatchApiVersion api_version;
+  if (auto status = LiteRtDispatchGetApiVersion(&api_version);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API version: %d", status);
     return absl::InternalError("Failed to get Dispatch API version");
   }
-  LITE_RT_LOG(LRT_INFO, "Dispatch API version: %d.%d.%d", api_version.major,
-              api_version.minor, api_version.patch);
+  LITERT_LOG(LITERT_INFO, "Dispatch API version: %d.%d.%d", api_version.major,
+             api_version.minor, api_version.patch);
   // Check if the versions mach.
-  if (api_version.major != LRT_DISPATCH_API_VERSION_MAJOR ||
-      api_version.minor < LRT_DISPATCH_API_VERSION_MINOR) {
+  if (api_version.major != LITERT_DISPATCH_API_VERSION_MAJOR ||
+      api_version.minor < LITERT_DISPATCH_API_VERSION_MINOR) {
     return absl::InternalError(
         "Found Dispatch API with an unsupported version");
   }
 
   int capabilities;
-  if (auto status = LrtDispatchGetCapabilities(&capabilities);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get Dispatch API capabilities: %d",
-                status);
+  if (auto status = LiteRtDispatchGetCapabilities(&capabilities);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API capabilities: %d",
+               status);
     return absl::InternalError("Failed to get Dispatch API capabilities");
   }
-  LITE_RT_LOG(LRT_INFO, "Dispatch API capabilities: %d", capabilities);
+  LITERT_LOG(LITERT_INFO, "Dispatch API capabilities: %d", capabilities);
 
-  if (!(capabilities & kLrtDispatchCapabilitiesBasic)) {
+  if (!(capabilities & kLiteRtDispatchCapabilitiesBasic)) {
     return absl::InternalError("Dispatch API has insufficient capabilities");
   }
 
-  LrtDispatchDeviceContext device_context;
-  if (auto status = LrtDispatchDeviceContextCreate(&device_context);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get Dispatch API device context: %d",
-                status);
+  LiteRtDispatchDeviceContext device_context;
+  if (auto status = LiteRtDispatchDeviceContextCreate(&device_context);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to get Dispatch API device context: %d",
+               status);
     return absl::InternalError("Failed to create Dispatch API device context");
   }
 
@@ -141,11 +143,10 @@ absl::StatusOr<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
 
 TfLiteStatus DispatchDelegateKernel::Init(
     TfLiteOpaqueContext* context, const TfLiteOpaqueDelegateParams* params) {
-  LITE_RT_LOG(LRT_INFO, "DispatchDelegateKernel::Init");
+  LITERT_LOG(LITERT_INFO, "DispatchDelegateKernel::Init");
   if (params->nodes_to_replace->size != 1) {
-    LITE_RT_LOG(
-        LRT_ERROR,
-        "Models with more than one dispatch node are not yet supported");
+    LITERT_LOG(LITERT_ERROR,
+               "Models with more than one dispatch node are not yet supported");
     return kTfLiteError;
   }
 
@@ -155,7 +156,7 @@ TfLiteStatus DispatchDelegateKernel::Init(
   if (auto status = TfLiteOpaqueContextGetNodeAndRegistration(context, node_id,
                                                               &node, &op);
       status != kTfLiteOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get node and registration: %d", status);
+    LITERT_LOG(LITERT_ERROR, "Failed to get node and registration: %d", status);
     return status;
   }
 
@@ -164,11 +165,11 @@ TfLiteStatus DispatchDelegateKernel::Init(
   if (auto status = TfLiteOpaqueNodeGetCustomInitialData(node, &init_data,
                                                          &init_data_size);
       status != kTfLiteOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to get custom initial data: %d", status);
+    LITERT_LOG(LITERT_ERROR, "Failed to get custom initial data: %d", status);
     return status;
   }
   if (!init_data || !init_data_size) {
-    LITE_RT_LOG(LRT_ERROR, "Found custom op with missing initial data");
+    LITERT_LOG(LITERT_ERROR, "Found custom op with missing initial data");
     return kTfLiteError;
   }
 
@@ -176,8 +177,8 @@ TfLiteStatus DispatchDelegateKernel::Init(
                             init_data_size);
   auto exec_info = options_.GetExecInfo(custom_option);
   if (!exec_info.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to fetch ExecInfo for %s: %s",
-                custom_option.data(), exec_info.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "Failed to fetch ExecInfo for %s: %s",
+               custom_option.data(), exec_info.status().message().data());
     return kTfLiteError;
   }
 
@@ -186,12 +187,12 @@ TfLiteStatus DispatchDelegateKernel::Init(
                                   : nullptr;
   int num_inputs = params->input_tensors->size;
   int num_outputs = params->output_tensors->size;
-  if (auto status = LrtDispatchInvocationContextCreate(
-          device_context_, kLrtDispatchExecutableTypeMlModel,
+  if (auto status = LiteRtDispatchInvocationContextCreate(
+          device_context_, kLiteRtDispatchExecutableTypeMlModel,
           exec_info->bytecode.data(), exec_info->bytecode.size(), function_name,
           num_inputs, num_outputs, &invocation_context_);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to create invocation context: %d", status);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create invocation context: %d", status);
     return kTfLiteError;
   }
 
@@ -210,28 +211,28 @@ absl::StatusOr<TensorBufferRequirements>
 DispatchDelegateKernel::GetBufferRequirements(
     const RankedTensorType& tensor_type, int io_tensor_index,
     bool is_input) const {
-  auto lrt_tensor_type = static_cast<LrtRankedTensorType>(tensor_type);
-  LrtTensorBufferRequirements tensor_buffer_requirements;
+  auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(tensor_type);
+  LiteRtTensorBufferRequirements tensor_buffer_requirements;
   if (is_input) {
-    if (auto status = LrtDispatchGetInputRequirements(
+    if (auto status = LiteRtDispatchGetInputRequirements(
             invocation_context_, /*input_index=*/io_tensor_index,
-            &lrt_tensor_type, &tensor_buffer_requirements);
-        status != kLrtStatusOk) {
-      LITE_RT_LOG(LRT_ERROR,
-                  "Failed to get tensor buffer requirements for input %d: %d",
-                  io_tensor_index, status);
+            &litert_tensor_type, &tensor_buffer_requirements);
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR,
+                 "Failed to get tensor buffer requirements for input %d: %d",
+                 io_tensor_index, status);
       return absl::InternalError(
           "Failed to get tensor buffer requirements for input");
     }
 
   } else {
-    if (auto status = LrtDispatchGetOutputRequirements(
+    if (auto status = LiteRtDispatchGetOutputRequirements(
             invocation_context_, /*output_index=*/io_tensor_index,
-            &lrt_tensor_type, &tensor_buffer_requirements);
-        status != kLrtStatusOk) {
-      LITE_RT_LOG(LRT_ERROR,
-                  "Failed to get tensor buffer requirements for output %d: %d",
-                  io_tensor_index, status);
+            &litert_tensor_type, &tensor_buffer_requirements);
+        status != kLiteRtStatusOk) {
+      LITERT_LOG(LITERT_ERROR,
+                 "Failed to get tensor buffer requirements for output %d: %d",
+                 io_tensor_index, status);
       return absl::InternalError(
           "Failed to get tensor buffer requirements for output");
     }
@@ -253,7 +254,7 @@ TfLiteStatus DispatchDelegateKernel::SetBuffer(
 
   auto tensor_type = ConvertTensorType(tfl_opaque_tensor);
   if (!tensor_type.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_type.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", tensor_type.status().message().data());
     return kTfLiteError;
   }
 
@@ -262,8 +263,8 @@ TfLiteStatus DispatchDelegateKernel::SetBuffer(
   if (cached_tensor_buffer.IsValid()) {
     if (auto cached_tensor_type = cached_tensor_buffer.TensorType();
         !cached_tensor_type.ok()) {
-      LITE_RT_LOG(LRT_ERROR, "%s",
-                  cached_tensor_type.status().message().data());
+      LITERT_LOG(LITERT_ERROR, "%s",
+                 cached_tensor_type.status().message().data());
       return kTfLiteError;
     }
 
@@ -278,80 +279,85 @@ TfLiteStatus DispatchDelegateKernel::SetBuffer(
   auto tensor_buffer_requirements =
       GetBufferRequirements(*tensor_type, buffer_index, is_input);
   if (!tensor_buffer_requirements.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s",
-                tensor_buffer_requirements.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "%s",
+               tensor_buffer_requirements.status().message().data());
     return kTfLiteError;
   }
 
   auto supported_tensor_buffer_types =
       tensor_buffer_requirements->SupportedTypes();
   if (!supported_tensor_buffer_types.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s",
-                supported_tensor_buffer_types.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "%s",
+               supported_tensor_buffer_types.status().message().data());
     return kTfLiteError;
   }
 
   if (supported_tensor_buffer_types->empty()) {
-    LITE_RT_LOG(LRT_ERROR,
-                "Insufficient number of supported tensor buffer types");
+    LITERT_LOG(LITERT_ERROR,
+               "Insufficient number of supported tensor buffer types");
     return kTfLiteError;
   }
 
   // For now we simply pick the first buffer type that's supported.
-  LrtTensorBufferType tensor_buffer_type = (*supported_tensor_buffer_types)[0];
+  LiteRtTensorBufferType tensor_buffer_type =
+      (*supported_tensor_buffer_types)[0];
 
   auto tensor_buffer_size = tensor_buffer_requirements->BufferSize();
   if (!tensor_buffer_size.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", tensor_buffer_size.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "%s",
+               tensor_buffer_size.status().message().data());
     return kTfLiteError;
   }
 
-  auto lrt_tensor_type = static_cast<LrtRankedTensorType>(*tensor_type);
-  LrtTensorBuffer lrt_tensor_buffer;
-  if (auto status =
-          LrtCreateManagedTensorBuffer(tensor_buffer_type, &lrt_tensor_type,
-                                       *tensor_buffer_size, &lrt_tensor_buffer);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to create managed tensor buffer: %d",
-                status);
+  auto litert_tensor_type = static_cast<LiteRtRankedTensorType>(*tensor_type);
+  LiteRtTensorBuffer litert_tensor_buffer;
+  if (auto status = LiteRtCreateManagedTensorBuffer(
+          tensor_buffer_type, &litert_tensor_type, *tensor_buffer_size,
+          &litert_tensor_buffer);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create managed tensor buffer: %d",
+               status);
     return kTfLiteError;
   }
 
-  TensorBuffer tensor_buffer(lrt_tensor_buffer);
+  TensorBuffer tensor_buffer(litert_tensor_buffer);
 
-  LrtTensorBufferHandle buffer_handle;
-  if (auto status = LrtDispatchRegisterTensorBuffer(
-          device_context_, static_cast<LrtTensorBuffer>(tensor_buffer),
+  LiteRtTensorBufferHandle buffer_handle;
+  if (auto status = LiteRtDispatchRegisterTensorBuffer(
+          device_context_, static_cast<LiteRtTensorBuffer>(tensor_buffer),
           &buffer_handle);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to register tensor buffer: %d", status);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to register tensor buffer: %d", status);
     return kTfLiteError;
   }
 
   if (is_input) {
-    if (auto status = LrtDispatchAttachInput(invocation_context_, buffer_index,
-                                             buffer_handle);
-        status != kLrtStatusOk) {
-      (void)LrtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
-      LITE_RT_LOG(LRT_ERROR, "Failed to attach tensor buffer to input %d: %d",
-                  buffer_index, status);
+    if (auto status = LiteRtDispatchAttachInput(invocation_context_,
+                                                buffer_index, buffer_handle);
+        status != kLiteRtStatusOk) {
+      (void)LiteRtDispatchUnregisterTensorBuffer(device_context_,
+                                                 buffer_handle);
+      LITERT_LOG(LITERT_ERROR, "Failed to attach tensor buffer to input %d: %d",
+                 buffer_index, status);
       return kTfLiteError;
     }
   } else {
-    if (auto status = LrtDispatchAttachOutput(invocation_context_, buffer_index,
-                                              buffer_handle);
-        status != kLrtStatusOk) {
-      (void)LrtDispatchUnregisterTensorBuffer(device_context_, buffer_handle);
-      LITE_RT_LOG(LRT_ERROR, "Failed to attach tensor buffer to output %d: %d",
-                  buffer_index, status);
+    if (auto status = LiteRtDispatchAttachOutput(invocation_context_,
+                                                 buffer_index, buffer_handle);
+        status != kLiteRtStatusOk) {
+      (void)LiteRtDispatchUnregisterTensorBuffer(device_context_,
+                                                 buffer_handle);
+      LITERT_LOG(LITERT_ERROR,
+                 "Failed to attach tensor buffer to output %d: %d",
+                 buffer_index, status);
       return kTfLiteError;
     }
   }
 
   auto num_bytes = internal::GetNumPackedBytes(
-      static_cast<LrtRankedTensorType>(*tensor_type));
+      static_cast<LiteRtRankedTensorType>(*tensor_type));
   if (!num_bytes.ok()) {
-    LITE_RT_LOG(LRT_ERROR, "%s", num_bytes.status().message().data());
+    LITERT_LOG(LITERT_ERROR, "%s", num_bytes.status().message().data());
     return kTfLiteError;
   }
 
@@ -389,7 +395,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
                                           TfLiteOpaqueNode* node) {
   size_t num_node_inputs = TfLiteOpaqueNodeNumberOfInputs(node);
   if (num_node_inputs != input_tensor_buffers_.size()) {
-    LITE_RT_LOG(LRT_ERROR, "Invalid number of inputs");
+    LITERT_LOG(LITERT_ERROR, "Invalid number of inputs");
     return kTfLiteError;
   }
 
@@ -400,7 +406,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr.ok()) {
-      LITE_RT_LOG(LRT_ERROR, "%s", lock_and_addr.status().message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.status().message().data());
       return kTfLiteError;
     }
 
@@ -408,15 +414,15 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
     std::memcpy(lock_and_addr->second, tensor_data, buffer_size);
   }
 
-  if (auto status = LrtDispatchInvoke(invocation_context_);
-      status != kLrtStatusOk) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to invoke context: %d", status);
+  if (auto status = LiteRtDispatchInvoke(invocation_context_);
+      status != kLiteRtStatusOk) {
+    LITERT_LOG(LITERT_ERROR, "Failed to invoke context: %d", status);
     return kTfLiteError;
   }
 
   size_t num_node_outputs = TfLiteOpaqueNodeNumberOfOutputs(node);
   if (num_node_outputs != output_tensor_buffers_.size()) {
-    LITE_RT_LOG(LRT_ERROR, "Invalid number of outputs");
+    LITERT_LOG(LITERT_ERROR, "Invalid number of outputs");
     return kTfLiteError;
   }
 
@@ -427,7 +433,7 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 
     auto lock_and_addr = TensorBufferScopedLock::Create(tensor_buffer);
     if (!lock_and_addr.ok()) {
-      LITE_RT_LOG(LRT_ERROR, "%s", lock_and_addr.status().message().data());
+      LITERT_LOG(LITERT_ERROR, "%s", lock_and_addr.status().message().data());
       return kTfLiteError;
     }
 
@@ -439,4 +445,4 @@ TfLiteStatus DispatchDelegateKernel::Eval(TfLiteOpaqueContext* context,
 }
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
