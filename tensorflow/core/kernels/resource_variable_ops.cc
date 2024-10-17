@@ -99,10 +99,11 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
 
 namespace {
 
-Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
+absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
+                          const Tensor* t) {
   Tensor* output;
   Notification n;
-  Status status;
+  absl::Status status;
   AllocatorAttributes attr;
   if (t->dtype() == DT_VARIANT) {
     attr.set_on_host(true);
@@ -116,7 +117,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     // OpKernelContext
     Device* device = down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
-        t, device, output, [&n, &status](const Status& s) {
+        t, device, output, [&n, &status](const absl::Status& s) {
           status = s;
           n.Notify();
         });
@@ -357,7 +358,7 @@ DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
 
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& p = HandleFromInput(ctx, 0);
-  Status status = DeleteResource(ctx, p);
+  absl::Status status = DeleteResource(ctx, p);
   if (ignore_lookup_error_ && errors::IsNotFound(status)) {
     return;
   }
@@ -688,7 +689,8 @@ class VarIsInitializedOp : public OpKernel {
                    context->allocate_output(0, TensorShape({}), &output));
     auto output_tensor = output->tensor<bool, 0>();
     core::RefCountPtr<Var> variable;
-    Status s = LookupResource(context, HandleFromInput(context, 0), &variable);
+    absl::Status s =
+        LookupResource(context, HandleFromInput(context, 0), &variable);
     if (!s.ok()) {
       output_tensor() = false;
       return;
@@ -973,12 +975,14 @@ bool ValidateInput<Variant>(const Tensor& updates) {
 }
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
-Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                 const Tensor& updates, Index num_indices);
+absl::Status DoScatter(OpKernelContext* c, Tensor* params,
+                       const Tensor& indices, const Tensor& updates,
+                       Index num_indices);
 
 template <typename T, typename Index, scatter_op::UpdateOp Op>
-Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                      const Tensor& updates, Index num_indices);
+absl::Status DoScatterOnCpu(OpKernelContext* c, Tensor* params,
+                            const Tensor& indices, const Tensor& updates,
+                            Index num_indices);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1046,8 +1050,9 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
-Status DoScatter(OpKernelContext* c, Tensor* params, const Tensor& indices,
-                 const Tensor& updates, Index num_indices) {
+absl::Status DoScatter(OpKernelContext* c, Tensor* params,
+                       const Tensor& indices, const Tensor& updates,
+                       Index num_indices) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
       tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
@@ -1107,7 +1112,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
     // We use the same kernel for many operations.
     // Each operation has a different set of attributes defined in its nodes.
-    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    absl::Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
     if (!s.ok()) {
       use_exclusive_lock_ = false;
     }
