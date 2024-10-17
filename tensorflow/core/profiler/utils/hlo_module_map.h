@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -128,6 +129,10 @@ using HloModuleMap =
 
 void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
                  const xla::HloProto& hlo_proto);
+
+// Process HloModuleMap from single XSpace.
+void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
+                                   const XSpace* space);
 
 // WARNING: The returned pointer will be invalidated if HloModuleMap is mutated.
 inline const HloModuleWrapper* GetHloModule(const HloModuleMap* hlo_module_map,

@@ -448,11 +448,13 @@ tf_cuda_library(
     ],
     visibility = [":friends"],
     deps = [
+        ":hlo_proto_map",
         ":hlo_proto_to_module",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_cost_analysis",
         "@local_xla//xla/service:hlo_proto_cc",
