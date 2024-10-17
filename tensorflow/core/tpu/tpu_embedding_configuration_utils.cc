@@ -15,23 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_configuration_utils.h"
 
+#include <cstdint>
+#include <set>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
+#include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 
 namespace tensorflow {
 namespace tpu {
 
-absl::StatusOr<int32_t> ComputeTotalTagCountForDynamicLearningRates(
+absl::StatusOr<int32_t> ComputeTotalTagCountForOptimizerDynamicInputs(
     const tensorflow::tpu::TPUEmbeddingConfiguration& tpu_embedding_config) {
   // Ordering of tag elements helps make the subsequent error checking simpler.
   std::set<int32_t> tag_set;
-
   for (const auto& table_descriptor : tpu_embedding_config.table_descriptor()) {
-    const auto& lr_spec =
-        table_descriptor.optimization_parameters().learning_rate();
-    if (lr_spec.has_dynamic()) {
-      tag_set.insert(lr_spec.dynamic().tag());
-    }
+    const auto& opt_params = table_descriptor.optimization_parameters();
+    const auto tags_for_table = GetOptimizerDynamicInputTags(opt_params);
+    tag_set.insert(tags_for_table.begin(), tags_for_table.end());
   }
 
   // Traverse the tag set to determine that tags are contiguous.
@@ -46,7 +50,7 @@ absl::StatusOr<int32_t> ComputeTotalTagCountForDynamicLearningRates(
     ++next_tag;
   }
 
-  return tag_set.size();
+  return static_cast<int32_t>(tag_set.size());
 }
 
 }  // namespace tpu

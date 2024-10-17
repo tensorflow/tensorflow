@@ -19,13 +19,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
@@ -42,6 +42,8 @@ std::string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
       return "AdagradMomentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "BoundedAdagrad";
+    case OptimizationAlgorithm::kFrequencyAwareAdagrad:
+      return "FrequencyAwareAdagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
       return "StochasticGradientDescent";
     case OptimizationAlgorithm::kFtrl:
@@ -86,6 +88,8 @@ std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
       return "Adagrad with Momentum";
     case OptimizationAlgorithm::kBoundedAdagrad:
       return "Bounded Adagrad";
+    case OptimizationAlgorithm::kFrequencyAwareAdagrad:
+      return "Frequency Aware Adagrad";
     case OptimizationAlgorithm::kStochasticGradientDescent:
       return "stochastic gradient descent";
     case OptimizationAlgorithm::kFtrl:
@@ -125,8 +129,8 @@ std::string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
 // Returns the number of optimization parameter vectors used by the optimization
 // algorithm, excluding the weights themselves and assuming no gradient
 // accumulation.
-Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
-                                      int* count) {
+absl::Status GetBaseAuxiliaryParameterCount(
+    const OptimizationParameters& params, int* count) {
   switch (params.parameters_case()) {
     case OptimizationAlgorithm::kAdagrad:
       *count = 1;
@@ -136,6 +140,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
       return absl::OkStatus();
     case OptimizationAlgorithm::kBoundedAdagrad:
       *count = 1;
+      return absl::OkStatus();
+    case OptimizationAlgorithm::kFrequencyAwareAdagrad:
+      *count = 2;
       return absl::OkStatus();
     case OptimizationAlgorithm::kStochasticGradientDescent:
       *count = 0;
@@ -205,8 +212,9 @@ Status GetBaseAuxiliaryParameterCount(const OptimizationParameters& params,
   return errors::InvalidArgument("No optimization algorithm specified");
 }
 
-Status GetGradientAccumulationSupport(const OptimizationParameters& params,
-                                      GradientAccumulationSupport* support) {
+absl::Status GetGradientAccumulationSupport(
+    const OptimizationParameters& params,
+    GradientAccumulationSupport* support) {
   int auxiliary_parameter_count;
   TF_RETURN_IF_ERROR(
       GetBaseAuxiliaryParameterCount(params, &auxiliary_parameter_count));
@@ -216,8 +224,8 @@ Status GetGradientAccumulationSupport(const OptimizationParameters& params,
   return absl::OkStatus();
 }
 
-Status UseGradientAccumulation(const OptimizationParameters& params,
-                               bool* use_gradient_accumulation) {
+absl::Status UseGradientAccumulation(const OptimizationParameters& params,
+                                     bool* use_gradient_accumulation) {
   GradientAccumulationSupport support;
   TF_RETURN_IF_ERROR(GetGradientAccumulationSupport(params, &support));
   bool raw_gradient_accumulation_status = false;
@@ -260,7 +268,7 @@ Status UseGradientAccumulation(const OptimizationParameters& params,
   return absl::OkStatus();
 }
 
-Status GetOptimizationAlgorithmStateVariables(
+absl::Status GetOptimizationAlgorithmStateVariables(
     const OptimizationParameters& params,
     std::vector<StateVariableSpecification>* state_variables) {
   // The parameter set for the weights themselves is required to be named
@@ -293,6 +301,12 @@ Status GetOptimizationAlgorithmStateVariables(
     case OptimizationAlgorithm::kBoundedAdagrad: {
       add_state_variable("parameters");
       add_state_variable("accumulators");
+      break;
+    }
+    case OptimizationAlgorithm::kFrequencyAwareAdagrad: {
+      add_state_variable("parameters");
+      add_state_variable("accumulators");
+      add_state_variable("counters");
       break;
     }
     case OptimizationAlgorithm::kStochasticGradientDescent: {
@@ -406,11 +420,39 @@ Status GetOptimizationAlgorithmStateVariables(
   return absl::OkStatus();
 }
 
+absl::flat_hash_set<int> GetOptimizerDynamicInputTags(
+    const OptimizationParameters& params) {
+  absl::flat_hash_set<int> tags;
+  if (params.learning_rate().has_dynamic()) {
+    tags.insert(params.learning_rate().dynamic().tag());
+  }
+  tags.merge(GetOptimizerHyperParameterTags(params));
+  return tags;
+}
+
+absl::flat_hash_set<int> GetOptimizerHyperParameterTags(
+    const OptimizationParameters& params) {
+  absl::flat_hash_set<int> tags;
+  switch (params.parameters_case()) {
+    case OptimizationAlgorithm::kFrequencyAwareAdagrad:
+      tags.insert(params.frequency_aware_adagrad().step_counter().tag());
+      break;
+    default:
+      break;
+  }
+  return tags;
+}
+
+bool UsesDynamicInputsInOptimizer(const OptimizationParameters& params) {
+  return !GetOptimizerDynamicInputTags(params).empty();
+}
+
 std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   return {
       OptimizationAlgorithm::kAdagrad,
       OptimizationAlgorithm::kAdagradMomentum,
       OptimizationAlgorithm::kBoundedAdagrad,
+      OptimizationAlgorithm::kFrequencyAwareAdagrad,
       OptimizationAlgorithm::kStochasticGradientDescent,
       OptimizationAlgorithm::kFtrl,
       OptimizationAlgorithm::kAdam,
@@ -429,7 +471,7 @@ std::vector<OptimizationAlgorithm> GetOptimizationAlgorithms() {
   };
 }
 
-Status LoadOpShapeFunction::operator()(
+absl::Status LoadOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
@@ -459,7 +501,7 @@ Status LoadOpShapeFunction::operator()(
   return absl::OkStatus();
 }
 
-Status RetrieveOpShapeFunction::operator()(
+absl::Status RetrieveOpShapeFunction::operator()(
     shape_inference::InferenceContext* c) const {
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
