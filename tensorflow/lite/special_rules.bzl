@@ -48,8 +48,20 @@ def op_resolver_internal_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
+def c_api_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/c:c_api_internal.
+
+    This is a no-op outside of Google."""
+    return []
+
 def c_api_opaque_internal_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/c:c_api_opaque_internal.
+
+    This is a no-op outside of Google."""
+    return []
+
+def common_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/c:common_internal.
 
     This is a no-op outside of Google."""
     return []
