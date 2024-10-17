@@ -51,7 +51,6 @@ bool InferDotShardingFromOperands(
 // operands, which are expected to have sharding annotations.
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           const CallGraph& call_graph,
-                                          int64_t aggressiveness,
                                           bool may_combine_partial_sharding,
                                           bool is_spmd);
 
