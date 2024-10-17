@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file -triton-nvidia-gpu-fence-insertion | FileCheck %s
+// RUN: xla-opt %s -split-input-file -triton-nvidia-gpu-fence-insertion | FileCheck %s
 
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 3, versionMinor = 0, warpsPerCTA = [4, 1], instrShape = [16, 64, 16]}>
@@ -12,7 +12,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     %1 = triton_gpu.local_alloc %B : (tensor<64x64xf16, #rhs>) -> !tt.memdesc<64x64xf16, #shared>
     %2 = triton_gpu.convert_layout %meta : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>>
     // CHECK: triton_nvidia_gpu.fence_async_shared
-    %3 = triton_gpu.sparse_dot %0, %1, %C, %2 : !tt.memdesc<64x32xf16, #shared> meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>> * !tt.memdesc<64x64xf16, #shared> -> tensor<64x64xf32, #mma>
+    %3 = triton_xla.sparse_dot %0, %1, %C, %2 : !tt.memdesc<64x32xf16, #shared> meta tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #mma}>> * !tt.memdesc<64x64xf16, #shared> -> tensor<64x64xf32, #mma>
     tt.return
   }
 }
