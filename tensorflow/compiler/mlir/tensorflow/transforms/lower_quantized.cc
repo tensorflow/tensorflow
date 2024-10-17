@@ -17,6 +17,7 @@ limitations under the License.
 // non-quantized inputs and outputs.
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"

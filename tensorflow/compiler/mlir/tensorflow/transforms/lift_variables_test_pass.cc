@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
+#include "tensorflow/core/public/session.h"
 
 namespace mlir {
 namespace tf_saved_model {

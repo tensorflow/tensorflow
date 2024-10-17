@@ -17,19 +17,25 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Threading.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {
