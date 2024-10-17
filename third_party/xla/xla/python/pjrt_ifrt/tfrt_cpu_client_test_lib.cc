@@ -27,7 +27,7 @@ namespace {
 const bool kUnused = (test_util::RegisterClientFactory(
                           []() -> absl::StatusOr<std::shared_ptr<Client>> {
                             CpuClientOptions options;
-                            options.cpu_device_count = 4;
+                            options.cpu_device_count = 8;
                             TF_ASSIGN_OR_RETURN(auto pjrt_client,
                                                 xla::GetTfrtCpuClient(options));
                             return std::shared_ptr<Client>(
