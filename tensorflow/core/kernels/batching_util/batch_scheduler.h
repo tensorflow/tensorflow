@@ -361,7 +361,7 @@ class BatchScheduler {
   // substantial amount of time. If the method returns Status::OK, the task is
   // processed asynchronously, and any errors that occur during the processing
   // of the batch that includes the task can be reported to 'task'.
-  virtual Status Schedule(std::unique_ptr<TaskType>* task) = 0;
+  virtual absl::Status Schedule(std::unique_ptr<TaskType>* task) = 0;
 
   // Returns the number of tasks that have been scheduled (i.e. accepted by
   // Schedule()), but have yet to be handed to a thread for execution as part of
