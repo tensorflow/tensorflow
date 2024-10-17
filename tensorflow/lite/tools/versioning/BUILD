@@ -116,6 +116,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "jet_gpu_compatibility",
+    srcs = [
+        "jet_gpu_compatibility.cc",
+    ],
+    hdrs = [
+        "jet_gpu_compatibility.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":op_signature",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "gpu_compatibility_test",
     srcs = [
