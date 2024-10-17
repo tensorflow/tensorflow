@@ -339,10 +339,15 @@ absl::StatusOr<Value> EmitElementwise(ImplicitLocOpBuilder& b,
               device_info.gpu_compute_capability())) {
         triple.setTriple("amdgcn-unknown-unknown");
       }
+      PrimitiveType output_type = hlo.shape().element_type();
+      PrimitiveType original_type = output_type;
+      if (hlo.operand(0)->opcode() == HloOpcode::kConvert) {
+        original_type = hlo.operand(0)->operand(0)->shape().element_type();
+      }
       return b.create<mt::ExternElementwiseOp>(
           inputs[0].getType(), inputs, "libdevice", libdevice_path,
-          ObtainDeviceFunctionName(dev_fn_id.value(),
-                                   hlo.shape().element_type(), triple),
+          ObtainDeviceFunctionName(dev_fn_id.value(), triple, output_type,
+                                   original_type),
           /*pure=*/true);
     }
   }
