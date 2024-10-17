@@ -40,10 +40,10 @@ using tensorflow::Output;
 using tensorflow::TensorShape;
 
 // Runs a TensorFlow graph to convert an audio file into a visualization.
-tensorflow::Status WavToSpectrogram(const tensorflow::string& input_wav,
-                                    int32_t window_size, int32_t stride,
-                                    float brightness,
-                                    const tensorflow::string& output_image) {
+absl::Status WavToSpectrogram(const tensorflow::string& input_wav,
+                              int32_t window_size, int32_t stride,
+                              float brightness,
+                              const tensorflow::string& output_image) {
   auto root = tensorflow::Scope::NewRootScope();
   using namespace tensorflow::ops;  // NOLINT(build/namespaces)
   // The following block creates a TensorFlow graph that:
