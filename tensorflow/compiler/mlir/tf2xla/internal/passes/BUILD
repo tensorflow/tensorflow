@@ -309,6 +309,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalize_tf",
+        "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -481,14 +482,11 @@ cc_library(
     ],
     deps = [
         ":lowering_passes_inc_gen",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tf2xla/transforms:legalization_op_config",
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -498,8 +496,8 @@ tf_cc_test(
     deps = [
         ":lowering_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
-        "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
