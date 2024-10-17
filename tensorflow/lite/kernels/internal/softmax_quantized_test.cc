@@ -22,11 +22,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "base/types.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/dequantize.h"
+#include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
