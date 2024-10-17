@@ -16,28 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_GATHER_BROADCAST_REORDER_H_
 #define XLA_SERVICE_ALL_GATHER_BROADCAST_REORDER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass that reorders all-gather(broadcast(x)) -> broadcast(all-gather(x)).
-// The intent is to reduce the size of all-gather when possible by doing an
-// all-gather on the (smaller) pre-broadcasted data and then applying the
-// broadcast.
-class AllGatherBroadcastReorder : public HloModulePass {
- public:
-  absl::string_view name() const override { return "all-gather-bcast-reorder"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/all_gather_broadcast_reorder.h"
 
 #endif  // XLA_SERVICE_ALL_GATHER_BROADCAST_REORDER_H_

@@ -16,40 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_COMBINER_H_
 #define XLA_SERVICE_ALL_REDUCE_COMBINER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/array2d.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/xla_data.pb.h"
-
-namespace xla {
-
-// Combines small non-dependent AllReduce ops into larger combined
-// AllReduce ops. A typical AllReduce implementation has a minimum
-// latency-induced time for a AllReduce op so a single combined op can be
-// more efficient than many small ones.
-class AllReduceCombiner : public HloModulePass {
- public:
-  AllReduceCombiner(int64_t combine_threshold_in_bytes,
-                    int64_t combine_threshold_count);
-
-  absl::string_view name() const override { return "all-reduce-combiner"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  // Combine all reduce ops up to this threshold.
-  int64_t combine_threshold_in_bytes_;
-
-  // Combine all reduce ops up to this threshold (number of operands).
-  int64_t combine_threshold_count_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 
 #endif  // XLA_SERVICE_ALL_REDUCE_COMBINER_H_

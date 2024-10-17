@@ -15,44 +15,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HOST_MEMORY_TRANSFER_ASYNCIFIER_H_
 #define XLA_SERVICE_HOST_MEMORY_TRANSFER_ASYNCIFIER_H_
 
-#include <cstdint>
-
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-/*
-This pass finds copies between the host memory and device memory and converts
-them into the async ops. This includes, but is not limited to:
- - device to host DynamicUpdateSlice
- - host to device DynamicSlice
-* The examples below are not yet supported *
- - host to device DynamicUpdateSlice
- - device to host DynamicSlice
- - host to device Copy
- - device to host Copy
-*/
-class HostMemoryTransferAsyncifier : public HloModulePass {
- public:
-  explicit HostMemoryTransferAsyncifier(int64_t host_memory_space_color)
-      : kHostMemorySpaceColor(host_memory_space_color) {}
-  ~HostMemoryTransferAsyncifier() override = default;
-
-  absl::string_view name() const override {
-    return "host-memory-transfer-asyncifier";
-  }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  const int64_t kHostMemorySpaceColor;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/host_memory_transfer_asyncifier.h"
 
 #endif  // XLA_SERVICE_HOST_MEMORY_TRANSFER_ASYNCIFIER_H_

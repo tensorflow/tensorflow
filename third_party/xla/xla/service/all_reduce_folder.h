@@ -16,35 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_FOLDER_H_
 #define XLA_SERVICE_ALL_REDUCE_FOLDER_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass that folds an all-reduce feeding into another all-reduce by expanding
-// the replica groups. As an example:
-//
-//   ar0 = all-reduce(x) replica_groups={{0,1},{2,3},{4,5},{6,7}}
-//   ar1 = all-reduce(all-reduce0) replica_groups={{0,2},{1,3},{4,6},{5,7}}
-//
-//  Can be combined into a single all-reduce:
-//
-//   ar1 = all-reduce(x) replica_groups={{0,1,2,3},{4,5,6,7}}
-//
-
-class AllReduceFolder : public HloModulePass {
- public:
-  absl::string_view name() const override { return "all-reduce-folder"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
 
 #endif  // XLA_SERVICE_ALL_REDUCE_FOLDER_H_

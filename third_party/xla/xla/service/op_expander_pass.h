@@ -16,48 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OP_EXPANDER_PASS_H_
 #define XLA_SERVICE_OP_EXPANDER_PASS_H_
 
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// This pass is an abstract superclass for passes that replace operations that
-// match a pattern. It is intended to be subclassed, not used directly.
-//
-// This pass is useful for legalizing HLO instructions that a particular backend
-// does not support into other HLO instructions.
-class OpExpanderPass : public HloModulePass {
- public:
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  // extra_filter: Optional extra filtering criteria for matching instructions,
-  // used in conjunction with InstructionMatchesPattern.
-  // preserve_sharding and relay_control_dependency: If we preserve sharding and
-  // relay control dependency when replacing the matched instructions.
-  explicit OpExpanderPass(HloPredicate extra_filter = nullptr,
-                          bool preserve_sharding = false,
-                          bool relay_control_dependency = false)
-      : extra_filter_(std::move(extra_filter)),
-        preserve_sharding_(preserve_sharding),
-        relay_control_dependency_(relay_control_dependency) {}
-
- protected:
-  // Returns `true` if `instruction` should be expanded by this pass.
-  virtual bool InstructionMatchesPattern(HloInstruction* instruction) = 0;
-
-  // Returns a replacement for `instruction`, or nullptr if no replacement is
-  // needed (e.g. only the to_apply subcomputation of the instruction was
-  // modified).
-  virtual absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) = 0;
-
-  HloPredicate extra_filter_;
-  const bool preserve_sharding_;
-  const bool relay_control_dependency_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 #endif  // XLA_SERVICE_OP_EXPANDER_PASS_H_

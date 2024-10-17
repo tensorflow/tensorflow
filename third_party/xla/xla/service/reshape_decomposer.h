@@ -16,25 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_RESHAPE_DECOMPOSER_H_
 #define XLA_SERVICE_RESHAPE_DECOMPOSER_H_
 
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Decomposes a reshape which does not satisfy the ReshapeIsBitcast precondition
-// into a bitcast and a copy (physical transposition). Tries to create only one
-// transposition, but when it's not possible, creates two.
-//
-// Postcondition: All reshapes are turned into bitcasts.
-class ReshapeDecomposer : public HloModulePass {
- public:
-  absl::string_view name() const override { return "reshape-decomposer"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 
 #endif  // XLA_SERVICE_RESHAPE_DECOMPOSER_H_

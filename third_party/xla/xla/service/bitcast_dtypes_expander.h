@@ -13,36 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-
-#include "absl/container/flat_hash_map.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/op_expander_pass.h"
-
 #ifndef XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
 #define XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
 
-namespace xla {
-
-// A pass which expands bitcast-convert between differently sized dtypes to a
-// reduction.
-class BitcastDtypesExpander : public OpExpanderPass {
- public:
-  absl::string_view name() const override { return "bitcast_dtypes_expander"; }
-
- protected:
-  bool InstructionMatchesPattern(HloInstruction* instruction) override;
-
-  absl::StatusOr<HloInstruction*> ExpandInstruction(
-      HloInstruction* instruction) override;
-
- private:
-  absl::flat_hash_map<std::string, HloComputation*> computation_cache_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 
 #endif  // XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_

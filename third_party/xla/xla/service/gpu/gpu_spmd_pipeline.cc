@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/hlo/transforms/hlo_constant_splitter.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
