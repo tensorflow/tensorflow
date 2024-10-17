@@ -17,12 +17,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
