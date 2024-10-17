@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/rocm/rocm_command_buffer.h"
 #include "xla/stream_executor/rocm/rocm_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
@@ -960,9 +961,7 @@ absl::StatusOr<std::unique_ptr<Stream>> RocmExecutor::CreateStream(
 absl::StatusOr<std::unique_ptr<CommandBuffer>>
 RocmExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
-  GpuGraphHandle graph = nullptr;
-  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
-  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
+  return RocmCommandBuffer::Create(mode, this);
 }
 
 absl::Status RocmExecutor::TrimGraphMemory() {
