@@ -20,7 +20,7 @@
 #include <tuple>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 
 #ifndef NDEBUG
 #include <iostream>
@@ -70,6 +70,7 @@ namespace graph_tools {
 using RankedTypeInfo = std::tuple<LiteRtElementType, llvm::ArrayRef<int32_t>>;
 
 using TensorUseInfo = std::tuple<LiteRtOp, LiteRtParamIndex>;
+using ::litert::BufferRef;
 
 //===----------------------------------------------------------------------===//
 //                               Getters                                      //
@@ -214,14 +215,17 @@ inline LiteRtResult<LiteRtSubgraph> GetSubgraph(LiteRtModel model) {
   return LiteRtResult<LiteRtSubgraph>::FromValue(subgraph);
 }
 
-inline LiteRtResult<FbConstBufferT> GetMetadata(LiteRtModel model,
-                                                const absl::string_view key) {
-  const void* buf;
+// Get raw metadata buffer from model if it exists.
+inline LiteRtResult<BufferRef<uint8_t>> GetMetadata(
+    LiteRtModel model, const absl::string_view key) {
+  using ResT = LiteRtResult<BufferRef<uint8_t>>;
+  const uint8_t* buf;
   size_t size;
   LITERT_RETURN_RESULT_IF_NOT_OK(
-      LiteRtModelGetMetadata(model, key.data(), &buf, &size), FbConstBufferT);
-  auto res = absl::MakeConstSpan(reinterpret_cast<const FbCharT*>(buf), size);
-  return LiteRtResult<FbConstBufferT>::FromValue(res);
+      LiteRtModelGetMetadata(model, key.data(),
+                             reinterpret_cast<const void**>(&buf), &size),
+      BufferRef<uint8_t>);
+  return ResT::FromValue(BufferRef(buf, size));
 }
 
 //===----------------------------------------------------------------------===//

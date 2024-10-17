@@ -83,11 +83,5 @@ void TouchTestFile(absl::string_view filename, absl::string_view dir) {
   std::ofstream f(path);
 }
 
-bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
-  flatbuffers::Verifier::Options options;
-  flatbuffers::Verifier verifier(buf, buf_size, options);
-  return tflite::VerifyModelBuffer(verifier);
-}
-
 }  // namespace testing
 }  // namespace litert
