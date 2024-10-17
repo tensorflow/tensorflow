@@ -49,7 +49,7 @@ class RocmEvent : public Event {
   explicit RocmEvent(StreamExecutor* executor, hipEvent_t handle)
       : executor_(executor), handle_(handle) {}
 
-  // The Executor used to which this object and GpuEventHandle are bound.
+  // The Executor used to which this object and hipEvent_t are bound.
   StreamExecutor* executor_;
 
   // The underlying CUDA event handle.
