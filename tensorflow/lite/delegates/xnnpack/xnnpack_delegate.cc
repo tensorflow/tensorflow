@@ -510,7 +510,7 @@ class Delegate {
                     TfLiteContext* context = nullptr) {
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     pthreadpool_t threadpool = nullptr;
-#ifdef TFLITE_KERNEL_USE_XNNPACK
+#ifdef TFLITE_USE_XNNPACK
     if (context != nullptr) {
       threadpool =
           CpuBackendContext::GetFromContext(context)->get_xnnpack_threadpool();
