@@ -1326,7 +1326,9 @@ xla_test(
 
 cc_library(
     name = "cuda_command_buffer",
-    srcs = ["cuda_command_buffer.cc"],
+    srcs = [
+        "cuda_command_buffer.cc",
+    ],
     hdrs = ["cuda_command_buffer.h"],
     tags = [
         "cuda-only",
@@ -1334,13 +1336,20 @@ cc_library(
     ],
     deps = [
         ":command_buffer_kernels",
+        ":cuda_context",
         ":cuda_status",
+        "//xla/stream_executor:bit_pattern",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],

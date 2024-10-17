@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
+#include <cstddef>
+#include <cstring>
 #include <memory>
+#include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/cuda/command_buffer_kernels.h"
+#include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -37,6 +46,36 @@ absl::StatusOr<CUgraph> CreateGraph() {
                                     "Failed to create CUDA graph"));
   VLOG(2) << "Created CUDA graph " << graph;
   return graph;
+}
+
+CUdeviceptr AsDevicePtr(const DeviceMemoryBase& mem) {
+  return absl::bit_cast<CUdeviceptr>(mem.opaque());
+}
+
+using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
+
+// Converts a platform independent GraphNodeHandle into a CUDA specific
+// CUgraphNode.
+CUgraphNode ToCudaGraphHandle(GraphNodeHandle handle) {
+  return absl::bit_cast<CUgraphNode>(handle);
+}
+
+// Converts a list of platform independent GraphNodeHandles into a list of
+// CUDA specific CUgraphNode.
+std::vector<CUgraphNode> ToCudaGraphHandles(
+    absl::Span<const GraphNodeHandle> opaque_handles) {
+  std::vector<CUgraphNode> handles;
+  handles.reserve(opaque_handles.size());
+  for (const GraphNodeHandle opaque_handle : opaque_handles) {
+    handles.push_back(ToCudaGraphHandle(opaque_handle));
+  }
+  return handles;
+}
+
+// Converts a CUDA specific CUgraphNode into a platform independent
+// GraphNodeHandle.
+GraphNodeHandle FromCudaGraphHandle(CUgraphNode handle) {
+  return absl::bit_cast<GraphNodeHandle>(handle);
 }
 }  // namespace
 
@@ -120,6 +159,63 @@ std::unique_ptr<GpuCommandBuffer> CudaCommandBuffer::CreateNestedCommandBuffer(
   return std::unique_ptr<CudaCommandBuffer>(
       new CudaCommandBuffer(Mode::kNested, parent_, graph,
                             /*is_owned_graph=*/false));
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemsetNode(
+    const Dependencies& dependencies, DeviceMemoryBase destination,
+    BitPattern bit_pattern, size_t num_elements) {
+  CudaContext* cuda_context =
+      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
+  VLOG(2) << "Add memset node to a graph " << graph_
+          << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << bit_pattern.ToString()
+          << "; num_elements: " << num_elements
+          << "; context: " << cuda_context->context()
+          << "; deps: " << dependencies.size();
+
+  CUDA_MEMSET_NODE_PARAMS params{};
+  params.dst = AsDevicePtr(destination);
+  params.elementSize = bit_pattern.GetElementSize();
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = bit_pattern.GetPatternBroadcastedToUint32();
+  params.width = num_elements;
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+
+  CUgraphNode node_handle = nullptr;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddMemsetNode(&node_handle, graph_, deps.data(), deps.size(),
+                           &params, cuda_context->context()),
+      "Failed to add memset node to a CUDA graph"));
+
+  return FromCudaGraphHandle(node_handle);
+}
+
+absl::Status CudaCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
+                                                 DeviceMemoryBase destination,
+                                                 BitPattern bit_pattern,
+                                                 size_t num_elements) {
+  CudaContext* cuda_context =
+      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
+  VLOG(2) << "Set memset node params " << node_handle << " in graph executable "
+          << exec_ << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << bit_pattern.ToString()
+          << "; num_elements: " << num_elements
+          << "; context: " << cuda_context->context();
+
+  CUDA_MEMSET_NODE_PARAMS params{};
+  params.dst = AsDevicePtr(destination);
+  params.elementSize = bit_pattern.GetElementSize();
+  params.height = 1;
+  params.pitch = 0;  // unused if height is 1
+  params.value = bit_pattern.GetPatternBroadcastedToUint32();
+  params.width = num_elements;
+
+  return cuda::ToStatus(
+      cuGraphExecMemsetNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
+                                     &params, cuda_context->context()),
+      "Failed to set memset node params");
 }
 
 }  // namespace stream_executor::gpu
