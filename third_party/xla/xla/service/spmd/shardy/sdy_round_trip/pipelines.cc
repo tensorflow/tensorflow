@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/Passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
