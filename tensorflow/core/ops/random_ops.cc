@@ -45,7 +45,7 @@ REGISTER_OP("RandomUniformInt")
     .Attr("T: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      Status s = c->WithRank(c->input(1), 0, &unused);
+      absl::Status s = c->WithRank(c->input(1), 0, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
             "minval must be a scalar; got a tensor of shape ",
