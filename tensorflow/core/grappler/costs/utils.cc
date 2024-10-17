@@ -136,7 +136,7 @@ static void ExtractExtraProperties(
 
         Env* env = Env::Default();
         FileStatistics stat;
-        Status s = env->Stat(filename, &stat);
+        absl::Status s = env->Stat(filename, &stat);
         if (!s.ok()) {
           continue;
         }
@@ -250,7 +250,7 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
     if (parsed.type == "GPU") {
       TfDeviceId tf_device_id(parsed.id);
       PlatformDeviceId platform_device_id;
-      Status s =
+      absl::Status s =
           GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.

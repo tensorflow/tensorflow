@@ -49,7 +49,7 @@ TEST_F(GraphMemoryTest, Basic) {
   item.feed.clear();
 
   GraphMemory memory(item);
-  Status s = memory.InferStatically(devices_);
+  absl::Status s = memory.InferStatically(devices_);
   TF_CHECK_OK(s);
   const GraphMemory::MemoryUsage& mem_usage =
       memory.GetPeakMemoryUsage("/CPU:0");
@@ -77,7 +77,7 @@ TEST_F(GraphMemoryTest, UnknownBatchSize) {
   item.feed.clear();
 
   GraphMemory memory(item);
-  Status s = memory.InferStatically(devices_);
+  absl::Status s = memory.InferStatically(devices_);
   TF_CHECK_OK(s);
   // Same maths as before, except that batch size is unknown and therefore
   // assumed to be one.
@@ -104,7 +104,7 @@ TEST_F(GraphMemoryTest, MultiDevice) {
   item.feed.clear();
 
   GraphMemory memory(item);
-  Status s = memory.InferStatically(devices_);
+  absl::Status s = memory.InferStatically(devices_);
   TF_CHECK_OK(s);
 
   const GraphMemory::MemoryUsage& cpu_mem = memory.GetPeakMemoryUsage("/CPU:0");
@@ -143,7 +143,7 @@ TEST_F(GraphMemoryTest, GpuSwapping) {
   {
     // Estimate the max memory usage for the graph.
     GraphMemory memory(item);
-    Status s = memory.InferStatically(devices_);
+    absl::Status s = memory.InferStatically(devices_);
     TF_CHECK_OK(s);
 
     const GraphMemory::MemoryUsage& gpu_mem =
@@ -171,7 +171,7 @@ TEST_F(GraphMemoryTest, GpuSwapping) {
       }
     }
     GraphMemory memory(item);
-    Status s = memory.InferStatically(devices_);
+    absl::Status s = memory.InferStatically(devices_);
     TF_CHECK_OK(s);
     const GraphMemory::MemoryUsage& new_gpu_mem =
         memory.GetPeakMemoryUsage("/GPU:0");
@@ -207,7 +207,7 @@ TEST_F(GraphMemoryTest, CtrlDependencies) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphMemory memory(item);
-  Status status = memory.InferStatically(devices_);
+  absl::Status status = memory.InferStatically(devices_);
   TF_CHECK_OK(status);
 
   const GraphMemory::MemoryUsage& mem = memory.GetPeakMemoryUsage("/CPU:0");
