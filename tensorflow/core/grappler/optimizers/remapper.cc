@@ -2883,7 +2883,8 @@ bool FindContractionWithBiasAddAndHardSwish(
 bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
                           std::map<string, int>* matched_nodes_map,
                           std::set<int>* remove_node_indices,
-                          std::vector<string>* input_node_names) {
+                          std::vector<string>* input_node_names,
+                          bool* without_add) {
   if (!IsMKLEnabled()) return false;
 
   using utils::MatchingDirection;
@@ -2920,6 +2921,16 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
         {"*", "addend", NodeStatus::kRemain}
       }
     };
+
+  // For Fp16, we see that the AddV2 op gets constant folded leaving with just
+  // BMMV2 and Mul op which can also be fused
+  utils::OpTypePattern fusion_pattern3 =
+    {"Mul", "output", NodeStatus::kReplace,
+      {
+        {"BatchMatMulV2", "batch_matmul", NodeStatus::kRemove},
+        {"*", "multiplicand", NodeStatus::kRemain}
+      }
+    };
   // clang-format on
 
   utils::SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
@@ -2942,7 +2953,18 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
                                       matched_nodes_map, remove_node_indices);
     if (found_op_type_match) pattern = 2;
   }
-
+  if (!found_op_type_match) {
+    matched_nodes_map->clear();
+    remove_node_indices->clear();
+    found_op_type_match =
+        graph_matcher.GetMatchedNodes(fusion_pattern3, ctx->nodes_to_preserve,
+                                      ctx->graph_view.GetNode(node_index),
+                                      matched_nodes_map, remove_node_indices);
+    if (found_op_type_match) {
+      pattern = 3;
+      *without_add = true;
+    }
+  }
   // OneDNN is not optimized for all shapes with regard to binary-post ops
   // fusion. Allow limited cases only for now that are optimized, (i)
   // multiplicand is scalar, (ii) BatchMatmulV2 output is 4D tensor, and (iii)
@@ -2970,29 +2992,35 @@ bool FindFusedBatchMatMul(RemapperContext* ctx, int node_index,
   auto batch_matmul_props =
       ctx->graph_properties.GetOutputProperties(batch_matmul_node_def->name());
   if (Rank(batch_matmul_props[0].shape()) != 4) return false;
-
-  NodeDef* addend_node_def =
-      ctx->graph_view.GetNode(matched_nodes_map->at("addend"))->node();
-  auto addend_props =
-      ctx->graph_properties.GetOutputProperties(addend_node_def->name());
-  auto addend_shape = addend_props[0].shape();
-  if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1)) {
-    return false;
-  }
   input_node_names->clear();
-  input_node_names->resize(4);
-  if (pattern == 1) {
+  if (pattern == 1 || pattern == 2) {
+    input_node_names->resize(4);
+    NodeDef* addend_node_def =
+        ctx->graph_view.GetNode(matched_nodes_map->at("addend"))->node();
+    auto addend_props =
+        ctx->graph_properties.GetOutputProperties(addend_node_def->name());
+    auto addend_shape = addend_props[0].shape();
+    if (!(Rank(addend_shape) == 4 && addend_shape.dim(1).size() == 1)) {
+      return false;
+    }
+    if (pattern == 1) {
+      input_node_names->at(0) = batch_matmul_node_def->input(0);
+      input_node_names->at(1) = batch_matmul_node_def->input(1);
+      input_node_names->at(2) = multiplicand_node_def->name();
+      input_node_names->at(3) = addend_node_def->name();
+    } else if (pattern == 2) {
+      auto* mul_input0_node_def =
+          ctx->graph_view.GetNode(matched_nodes_map->at("mul_input0"))->node();
+      input_node_names->at(0) = mul_input0_node_def->name();
+      input_node_names->at(1) = batch_matmul_node_def->input(1);
+      input_node_names->at(2) = multiplicand_node_def->name();
+      input_node_names->at(3) = addend_node_def->name();
+    }
+  } else if (pattern == 3) {
+    input_node_names->resize(3);
     input_node_names->at(0) = batch_matmul_node_def->input(0);
     input_node_names->at(1) = batch_matmul_node_def->input(1);
     input_node_names->at(2) = multiplicand_node_def->name();
-    input_node_names->at(3) = addend_node_def->name();
-  } else if (pattern == 2) {
-    auto* mul_input0_node_def =
-        ctx->graph_view.GetNode(matched_nodes_map->at("mul_input0"))->node();
-    input_node_names->at(0) = mul_input0_node_def->name();
-    input_node_names->at(1) = batch_matmul_node_def->input(1);
-    input_node_names->at(2) = multiplicand_node_def->name();
-    input_node_names->at(3) = addend_node_def->name();
   }
   return found_op_type_match;
 }
@@ -4382,7 +4410,8 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
                            const std::set<int>& remove_node_indices,
                            const std::vector<string>& input_node_names,
                            std::vector<bool>* invalidated_nodes,
-                           std::vector<bool>* nodes_to_delete) {
+                           std::vector<bool>* nodes_to_delete,
+                           const bool without_add) {
   auto* output_node =
       ctx->graph_view.GetNode(matched_nodes_map.at("output"))->node();
   auto* batch_matmul_node =
@@ -4395,7 +4424,11 @@ Status AddFusedBatchMatMul(RemapperContext* ctx,
   for (const auto& name : input_node_names) fused_node.add_input(name);
 
   CopyBatchMatMulAttributes(*batch_matmul_node, &fused_node);
-  SetFusedOpAttributes(&fused_node, {"Mul", "Add"}, /*num_args=*/2);
+  if (without_add) {
+    SetFusedOpAttributes(&fused_node, {"Mul"}, /*num_args=*/1);
+  } else {
+    SetFusedOpAttributes(&fused_node, {"Mul", "Add"}, /*num_args=*/2);
+  }
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
@@ -5010,15 +5043,18 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
-      // Remap BatchMatMul+Mul+AddV2 into the _FusedBatchMatMul.
+      // Remap BatchMatMul+Mul+AddV2 into the _FusedBatchMatMul
+      // Or Remap BatchMatMul+Mul into the _FusedBatchMatMul
       matched_nodes_map.clear();
       remove_node_indices.clear();
       input_node_names.clear();
+      bool without_add = false;
       if (FindFusedBatchMatMul(&ctx, i, &matched_nodes_map,
-                               &remove_node_indices, &input_node_names)) {
+                               &remove_node_indices, &input_node_names,
+                               &without_add)) {
         TF_RETURN_IF_ERROR(AddFusedBatchMatMul(
             &ctx, matched_nodes_map, remove_node_indices, input_node_names,
-            &invalidated_nodes, &nodes_to_delete));
+            &invalidated_nodes, &nodes_to_delete, without_add));
         continue;
       }
 
