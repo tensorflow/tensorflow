@@ -47,7 +47,7 @@ absl::StatusOr<DataServiceMetadata> GetDataServiceMetadata(
   absl::Time deadline =
       absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
 
-  Status status = grpc_util::Retry(
+  absl::Status status = grpc_util::Retry(
       [&]() { return client.GetDataServiceMetadata(dataset_id, metadata); },
       absl::Substitute("Get data service metadata for dataset $0, "
                        "with dispatcher at $1.",
