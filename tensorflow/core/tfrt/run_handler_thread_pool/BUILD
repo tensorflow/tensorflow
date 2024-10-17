@@ -26,7 +26,10 @@ cc_library(
     name = "run_handler_util",
     srcs = ["run_handler_util.cc"],
     hdrs = ["run_handler_util.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:numbers",
+    ],
 )
 
 tf_cc_test(
@@ -36,7 +39,6 @@ tf_cc_test(
     deps = [
         ":run_handler_util",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -51,14 +53,17 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:connected_traceme",
-        "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
+        "@eigen_archive//:eigen3_test",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
         "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )
 
@@ -76,7 +81,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
@@ -96,8 +100,11 @@ cc_library(
     hdrs = ["run_handler_concurrent_work_queue.h"],
     deps = [
         ":run_handler",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
@@ -114,12 +121,12 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
     ],
 )
