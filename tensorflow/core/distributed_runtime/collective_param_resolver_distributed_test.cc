@@ -39,7 +39,7 @@ static std::unique_ptr<Device> NewDevice(const string& type,
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -75,7 +75,7 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Status status = wi->GetStatus(&req, &resp);
+    absl::Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
       return;
@@ -101,7 +101,7 @@ class FakeNcclCommunicator : public NcclCommunicatorInterface {
     done(absl::OkStatus());
   }
 
-  void StartAbort(const Status& s) override {}
+  void StartAbort(const absl::Status& s) override {}
 };
 
 class DeviceResDistTest : public ::testing::Test {
@@ -220,7 +220,7 @@ class DeviceResDistTest : public ::testing::Test {
     CHECK(cp_res);
     cp_res->CompleteParamsAsync(
         device->attributes(), cp, &cm_,
-        [this, device_name, group_size](const Status& s) {
+        [this, device_name, group_size](const absl::Status& s) {
           status_[device_name] = s;
           {
             mutex_lock l(mu_);
@@ -312,7 +312,7 @@ class DeviceResDistTest : public ::testing::Test {
   absl::flat_hash_map<string, std::unique_ptr<Worker>> workers_;
   // Below are keyed by device names;
   absl::flat_hash_map<string, CollectiveParams*> cp_;
-  absl::flat_hash_map<string, Status> status_;
+  absl::flat_hash_map<string, absl::Status> status_;
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
