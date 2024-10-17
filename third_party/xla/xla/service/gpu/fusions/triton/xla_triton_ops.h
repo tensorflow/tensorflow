@@ -25,6 +25,10 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/service/gpu/fusions/triton/xla_triton_dialect.h.inc"  // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/Dialect.h"  // IWYU pragma: keep
+#include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"  // IWYU pragma: keep
+
+#define GET_ATTRDEF_CLASSES
+#include "xla/service/gpu/fusions/triton/xla_triton_attrs.h.inc"
 #define GET_OP_CLASSES
 #include "xla/service/gpu/fusions/triton/xla_triton_ops.h.inc"
 
