@@ -98,10 +98,6 @@ class GpuExecutor : public StreamExecutorCommon {
   void operator=(const GpuExecutor&) = delete;
 };
 
-inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {
-  return static_cast<GpuExecutor*>(stream_exec);
-}
-
 }  // namespace gpu
 }  // namespace stream_executor
 

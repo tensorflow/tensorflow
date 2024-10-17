@@ -123,9 +123,7 @@ cc_library(
     hdrs = ["scoped_activate_context.h"],
     deps = [
         ":context",
-        ":gpu_executor_header",
         "//xla/stream_executor:activate_context",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -359,16 +357,9 @@ gpu_only_cc_library(
     hdrs = ["gpu_stream.h"],
     deps = [
         ":gpu_types_header",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_common",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
     ],
 )
 

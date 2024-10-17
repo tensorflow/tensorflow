@@ -15,43 +15,18 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_stream.h"
 
-#include <optional>
-
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 
 namespace stream_executor {
 namespace gpu {
 
-absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
-                               const BlockDim& block_dims, const Kernel& kernel,
-                               const KernelArgs& args) {
-  return Launch(thread_dims, block_dims, std::nullopt, kernel, args);
-}
-
-absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
-                               const BlockDim& block_dims,
-                               const ClusterDim& cluster_dims,
-                               const Kernel& kernel, const KernelArgs& args) {
-  return Launch(thread_dims, block_dims, std::make_optional(cluster_dims),
-                kernel, args);
-}
-
-GpuStream* AsGpuStream(Stream* stream) {
-  DCHECK(stream != nullptr);
-  return static_cast<GpuStream*>(stream);
-}
-
 GpuStreamHandle AsGpuStreamValue(Stream* stream) {
   DCHECK(stream != nullptr);
   return absl::bit_cast<GpuStreamHandle>(
-      AsGpuStream(stream)->platform_specific_handle().stream);
+      stream->platform_specific_handle().stream);
 }
 
 }  // namespace gpu

@@ -1212,8 +1212,6 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",

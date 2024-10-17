@@ -18,14 +18,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -33,8 +35,19 @@ limitations under the License.
 namespace stream_executor {
 
 StreamCommon::StreamCommon(StreamExecutor *parent)
-    : parent_(parent), status_(absl::OkStatus()) {
+    : parent_(parent),
+      status_(absl::OkStatus()),
+      stream_priority_(StreamPriority::Default) {
   CHECK_NE(parent, nullptr);
+}
+
+StreamCommon::StreamCommon(
+    StreamExecutor *parent,
+    std::optional<std::variant<StreamPriority, int>> priority)
+    : StreamCommon(parent) {
+  if (priority.has_value()) {
+    stream_priority_ = priority.value();
+  }
 }
 
 StreamCommon::PlatformSpecificHandle StreamCommon::platform_specific_handle()
