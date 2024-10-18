@@ -69,8 +69,8 @@ Node* MakeNeutral(const Scope& scope, const string& id) {
   return ops::Const(scope.WithOpName("Const" + id), 42.0f).node();
 }
 
-Status ComputeIncompatiblePairs(Graph* g,
-                                std::vector<std::pair<int, int>>* result) {
+absl::Status ComputeIncompatiblePairs(
+    Graph* g, std::vector<std::pair<int, int>>* result) {
   FixupSourceAndSinkEdges(g);
   return ComputeIncompatibleResourceOperationPairs(*g, &g->flib_def(), {},
                                                    result);
@@ -250,7 +250,7 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
 }
 
 Node* MakeCall(Graph* graph, const string& callee_name, const string& node_name,
-               Status* status) {
+               absl::Status* status) {
   NodeDef call_node;
   call_node.set_name(node_name);
   call_node.set_op(callee_name);
@@ -265,7 +265,7 @@ TEST(ResourceOperationSafetyAnalysisTest, CallRead) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* read = MakeRead(root, "R");
-  Status status;
+  absl::Status status;
   Node* call = MakeCall(root.graph(), "Const_func", "C", &status);
   TF_ASSERT_OK(status);
 
@@ -287,7 +287,7 @@ TEST(ResourceOperationSafetyAnalysisTest, ReadCall) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* read = MakeRead(root, "R");
-  Status status;
+  absl::Status status;
   Node* call = MakeCall(root.graph(), "Const_func", "C", &status);
   TF_ASSERT_OK(status);
 
@@ -307,7 +307,7 @@ TEST(ResourceOperationSafetyAnalysisTest, CallWrite) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* write = MakeWrite(root, "W");
-  Status status;
+  absl::Status status;
   Node* call = MakeCall(root.graph(), "Const_func", "C", &status);
   TF_ASSERT_OK(status);
 
@@ -327,7 +327,7 @@ TEST(ResourceOperationSafetyAnalysisTest, WriteCall) {
   TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* write = MakeWrite(root, "W");
-  Status status;
+  absl::Status status;
   Node* call = MakeCall(root.graph(), "Const_func", "C", &status);
   TF_ASSERT_OK(status);
 
