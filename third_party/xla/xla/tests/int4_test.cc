@@ -157,5 +157,34 @@ XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+class HloTestBaseWithAlgsimpDisabled : public HloTestBase {
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions options = HloTestBase::GetDebugOptionsForTest();
+    options.add_xla_disable_hlo_passes("algsimp");
+    return options;
+  }
+};
+
+XLA_TEST_F(HloTestBaseWithAlgsimpDisabled, TwoDots) {
+  // This tests a regression that occured when a non-parameter non-ROOT
+  // instruction was s4 as the input or output of a fusion. Fusion passes tend
+  // to make any int4 instructions only internal to a fusion, but this HLO, at
+  // the time it is written, has an int4 tensor existing between fusions when
+  // algebraic simplifier is disabled.
+  const std::string hlo_text = R"(
+  HloModule TwoDots
+
+  ENTRY main {
+    x = s8[25,20,10,5] parameter(0)
+    y = s8[25,20,10,5] parameter(1)
+    z = s8[5,20] parameter(2)
+    dot0 = s8[25,20,10,5] dot(x, y), lhs_batch_dims={0,1,2,3}, lhs_contracting_dims={}, rhs_batch_dims={0,1,2,3}, rhs_contracting_dims={}
+    dot0_4 = s4[25,20,10,5] convert(dot0)
+    dot0_8 = s8[25,20,10,5] convert(dot0_4)
+    dot1 = s8[5,25,10] dot(z, dot0_8), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={3}, rhs_contracting_dims={1}
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
 }  // namespace
 }  // namespace xla
