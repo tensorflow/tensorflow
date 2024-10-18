@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -274,9 +275,9 @@ TEST_F(AsyncAllReduceCreatorTest, ControlPredecessor) {
   constexpr absl::string_view hlo_string = R"(
   HloModule test
   ENTRY entry {
-    p0 = f32[1] parameter(0)
-    ag = f32[8] all-gather(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}, control-predecessors={p0}
-    p1 = f32[1] parameter(1), control-predecessors={ag}
+    p0 = f32[128] parameter(0)
+    ag = f32[1024] all-gather(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}, control-predecessors={p0}
+    p1 = f32[128] parameter(1), control-predecessors={ag}
     ROOT sum = add(ag, ag)
   }
   )";
@@ -285,6 +286,7 @@ TEST_F(AsyncAllReduceCreatorTest, ControlPredecessor) {
                           ParseAndReturnVerifiedModule(hlo_string));
   AsyncCollectiveCreator::CollectiveCreatorConfig config;
   config.convert_all_gather = HloPredicateTrue;
+  config.all_gather_min_threshold_in_bytes = 4096;
   TF_ASSERT_OK(
       RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
   SCOPED_TRACE(hlo_module->ToString());
