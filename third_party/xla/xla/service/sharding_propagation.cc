@@ -199,6 +199,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kPad:
     case HloOpcode::kPower:
     case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kReverse:
     case HloOpcode::kSlice:
     case HloOpcode::kShiftLeft:

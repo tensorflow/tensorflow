@@ -2895,6 +2895,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduceScatter:
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
+    case HloOpcode::kRaggedAllToAll:
       return false;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
