@@ -27,22 +27,23 @@ namespace data {
 
 // Stores a DT_VARIANT value representing an Optional with the given value
 // in the `output_index`^th output of the given kernel execution context.
-Status WriteOptionalWithValueToOutput(OpKernelContext* ctx, int output_index,
-                                      std::vector<Tensor> value);
+absl::Status WriteOptionalWithValueToOutput(OpKernelContext* ctx,
+                                            int output_index,
+                                            std::vector<Tensor> value);
 
 // Stores a DT_VARIANT value representing an Optional with no value
 // in the `output_index`^th output of the given kernel execution context.
-Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index);
+absl::Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index);
 
 template <typename Device>
-Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
-                         OptionalVariant* y) {
+absl::Status OptionalZerosLike(OpKernelContext* ctx, const OptionalVariant& x,
+                               OptionalVariant* y) {
   return OptionalZerosLike(ctx, x, y, ZerosLikeTensor<Device>);
 }
 
 template <typename Device>
-Status OptionalBinaryAdd(OpKernelContext* ctx, const OptionalVariant& a,
-                         const OptionalVariant& b, OptionalVariant* out) {
+absl::Status OptionalBinaryAdd(OpKernelContext* ctx, const OptionalVariant& a,
+                               const OptionalVariant& b, OptionalVariant* out) {
   return OptionalBinaryAdd(ctx, a, b, out, BinaryAddTensors<Device>);
 }
 

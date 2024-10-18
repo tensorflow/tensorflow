@@ -51,8 +51,8 @@ class SerializeSparseOp : public OpKernel {
 
   bool IsExpensive() override;
 
-  Status Initialize(Tensor* result);
-  Status Serialize(const Tensor& input, T* result);
+  absl::Status Initialize(Tensor* result);
+  absl::Status Serialize(const Tensor& input, T* result);
 
   void Compute(OpKernelContext* context) override {
     const Tensor* input_indices;
@@ -105,14 +105,14 @@ bool SerializeSparseOp<Variant>::IsExpensive() {
 }
 
 template <>
-Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
+absl::Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({3}));
   return absl::OkStatus();
 }
 
 template <>
-Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
-                                             tstring* result) {
+absl::Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
+                                                   tstring* result) {
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
@@ -125,14 +125,14 @@ REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
                         SerializeSparseOp<tstring>);
 
 template <>
-Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
+absl::Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
   *result = Tensor(DT_VARIANT, TensorShape({3}));
   return absl::OkStatus();
 }
 
 template <>
-Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
-                                             Variant* result) {
+absl::Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
+                                                   Variant* result) {
   *result = input;
   return absl::OkStatus();
 }
@@ -147,9 +147,9 @@ struct SerializeGroups {};
 
 template <typename T>
 struct SerializeGroups<T, tstring> {
-  Status operator()(sparse::GroupIterable* minibatch,
-                    const Tensor& output_shape, int64_t N, int rank,
-                    Tensor* serialized_sparse) {
+  absl::Status operator()(sparse::GroupIterable* minibatch,
+                          const Tensor& output_shape, int64_t N, int rank,
+                          Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->matrix<tstring>();
 
     int64_t last_nonempty_group = -1;
@@ -251,9 +251,9 @@ void CopyValues<Eigen::half>(const Eigen::half* src, Eigen::half* dest,
 
 template <typename T>
 struct SerializeGroups<T, Variant> {
-  Status operator()(sparse::GroupIterable* minibatch,
-                    const Tensor& output_shape, int64_t N, int rank,
-                    Tensor* serialized_sparse) {
+  absl::Status operator()(sparse::GroupIterable* minibatch,
+                          const Tensor& output_shape, int64_t N, int rank,
+                          Tensor* serialized_sparse) {
     auto serialized_sparse_t = serialized_sparse->template matrix<Variant>();
 
     int64_t last_nonempty_group = -1;

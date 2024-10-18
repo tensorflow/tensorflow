@@ -53,7 +53,7 @@ struct PoolParameters {
                  TensorFormat data_format, const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
-  Status forward_output_shape(TensorShape* shape);
+  absl::Status forward_output_shape(TensorShape* shape);
 
   int depth;
 

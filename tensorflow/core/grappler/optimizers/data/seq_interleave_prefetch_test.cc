@@ -267,8 +267,8 @@ bool IsInterleaveNode(const NodeDef &node) {
 
 }  // namespace
 
-Status OptimizeWithInjectInterleavePrefetch(const GrapplerItem &item,
-                                            GraphDef *output) {
+absl::Status OptimizeWithInjectInterleavePrefetch(const GrapplerItem &item,
+                                                  GraphDef *output) {
   SeqInterleavePrefetch optimizer;
   return optimizer.Optimize(nullptr, item, output);
 }
