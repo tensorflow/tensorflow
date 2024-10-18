@@ -40,17 +40,17 @@ Permuter::Permuter()
     : col_ctx_(nullptr), col_params_(nullptr), done_(nullptr), counter_(0) {}
 
 StatusCallback Permuter::CheckCounterAndCallDone() {
-  return [this](const Status& s) {
+  return [this](const absl::Status& s) {
     mu_.lock();
     status_.Update(s);
     int counter = ++counter_;
-    Status status = status_;
+    absl::Status status = status_;
     mu_.unlock();
     if (counter == 2) done_(status);
   };
 }
 
-Status Permuter::InitializeCollectiveContext(
+absl::Status Permuter::InitializeCollectiveContext(
     std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
