@@ -20,10 +20,15 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -35,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/sparse/dim_comparator.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace sparse {
