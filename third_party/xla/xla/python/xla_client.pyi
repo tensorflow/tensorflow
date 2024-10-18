@@ -25,6 +25,7 @@ from . import xla_extension as _xla
 from .xla_extension import ArrayImpl as ArrayImpl
 from .xla_extension import Client as Client
 from .xla_extension import CompileOptions as CompileOptions
+from .xla_extension import DebugOptions as DebugOptions
 from .xla_extension import Device as Device
 from .xla_extension import DeviceAssignment as DeviceAssignment
 from .xla_extension import DeviceList as DeviceList
