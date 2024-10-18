@@ -47,6 +47,8 @@ class GpuCommandBuffer : public CommandBuffer {
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
   struct GpuGraphNodeInfo {
+    explicit GpuGraphNodeInfo(GpuGraphNodeHandle handle) : handle(handle) {}
+    GpuGraphNodeInfo() = default;
     // A handle to the gpu graph node corresponding to a command.
     GpuGraphNodeHandle handle = nullptr;
   };
@@ -58,7 +60,7 @@ class GpuCommandBuffer : public CommandBuffer {
     // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
     // node created to be a barrier. We try to reuse existing nodes as barriers
     // if possible to reduce the size of constructed gpu graphs.
-    GpuGraphNodeHandle handle = nullptr;
+    const GpuGraphNodeInfo* node = nullptr;
 
     // If `true` it means `handle` corresponds to an empty node specifically
     // created to act as an execution barrier, otherwise `handle` points to one
@@ -137,10 +139,10 @@ class GpuCommandBuffer : public CommandBuffer {
     return static_cast<const GpuCommandBuffer*>(command_buffer);
   }
 
-  absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
+  absl::Span<const GpuGraphNodeInfo* const> nodes(ExecutionScopeId id) const;
   absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
-  absl::Span<const GpuGraphNodeInfo> nodes() const {
+  absl::Span<const GpuGraphNodeInfo* const> nodes() const {
     return nodes(kDefaulExecutionScope);
   }
 
@@ -160,7 +162,7 @@ class GpuCommandBuffer : public CommandBuffer {
   static int64_t AliveExecs();
 
  private:
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+  using Dependencies = absl::InlinedVector<const GpuGraphNodeInfo*, 1>;
 
  protected:
   using NoOpKernel = TypedKernel<>;
@@ -283,7 +285,7 @@ class GpuCommandBuffer : public CommandBuffer {
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
   // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
+  absl::StatusOr<GpuGraphNodeInfo*> CreateBarrierNode(
       const Dependencies& dependencies);
 
   // Collects a set of dependencies for a new barrier.
@@ -327,7 +329,7 @@ class GpuCommandBuffer : public CommandBuffer {
 
     // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
     // etc.).
-    std::vector<GpuGraphNodeInfo> nodes;
+    std::vector<GpuGraphNodeInfo*> nodes;
 
     // Gpu graph barriers that define recorded commands execution order.
     std::vector<GpuGraphBarrierInfo> barriers;
@@ -342,6 +344,12 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Execution scopes recorded into the command buffer.
   absl::flat_hash_map<ExecutionScopeId, ExecutionScope> execution_scopes_;
+
+  // A place to store GpuGraphNodeInfo instances, so that they can be referenced
+  // in `ExecutionScope::nodes` and `ExecutionScope::barriers`.
+  // This will go away once all node factory functions have been migrated into
+  // the subclasses.
+  std::vector<std::unique_ptr<GpuGraphNodeInfo>> node_storage_;
 
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
