@@ -96,7 +96,7 @@ class LogisticLossUpdater : public DualLossUpdater {
 
   // Converts binary example labels from 0.0 or 1.0 to -1.0 or 1.0 respectively
   // as expected by logistic regression.
-  Status ConvertLabel(float* const example_label) const final {
+  absl::Status ConvertLabel(float* const example_label) const final {
     if (*example_label == 0.0) {
       *example_label = -1;
       return absl::OkStatus();

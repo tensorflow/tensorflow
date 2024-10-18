@@ -30,9 +30,9 @@ namespace {
 
 using test::function::NDef;
 
-Status OptimizeWithDisablePrefetchLegacyAutotune(const GrapplerItem &item,
-                                                 GraphDef *output,
-                                                 bool autotune) {
+absl::Status OptimizeWithDisablePrefetchLegacyAutotune(const GrapplerItem &item,
+                                                       GraphDef *output,
+                                                       bool autotune) {
   DisablePrefetchLegacyAutotune optimizer;
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {

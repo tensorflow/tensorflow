@@ -33,11 +33,11 @@ class TFDataMetaOptimizer : public CustomGraphOptimizer {
 
   bool UsesFunctionLibrary() const override { return true; }
 
-  Status Init(
+  absl::Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override;
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* output) override;
 
  private:
   absl::flat_hash_map<string, std::unique_ptr<GraphOptimizer>>
@@ -45,8 +45,8 @@ class TFDataMetaOptimizer : public CustomGraphOptimizer {
 
   // Applies an optimization with the specified name on `item`, and stores
   // the result in `item.graph`
-  Status ApplyOptimization(const string& name, Cluster* cluster,
-                           GrapplerItem* item) const;
+  absl::Status ApplyOptimization(const string& name, Cluster* cluster,
+                                 GrapplerItem* item) const;
 };
 
 }  // namespace grappler

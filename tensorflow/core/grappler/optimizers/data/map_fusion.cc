@@ -156,10 +156,10 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
 
 }  // namespace
 
-Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                          const GrapplerItem& item,
-                                          GraphDef* output,
-                                          OptimizationStats* stats) {
+absl::Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;

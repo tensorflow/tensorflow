@@ -34,7 +34,7 @@ namespace {
 
 class PrintingV2GraphTest : public OpsTestBase {
  protected:
-  Status Init(const string& output_stream = "log(warning)") {
+  absl::Status Init(const string& output_stream = "log(warning)") {
     TF_CHECK_OK(NodeDefBuilder("op", "PrintV2")
                     .Input(FakeInput(DT_STRING))
                     .Attr("output_stream", output_stream)
@@ -61,8 +61,8 @@ TEST_F(PrintingV2GraphTest, InvalidInputRank) {
 
 class PrintingGraphTest : public OpsTestBase {
  protected:
-  Status Init(DataType input_type1, DataType input_type2, string msg = "",
-              int first_n = -1, int summarize = 3) {
+  absl::Status Init(DataType input_type1, DataType input_type2, string msg = "",
+                    int first_n = -1, int summarize = 3) {
     TF_CHECK_OK(NodeDefBuilder("op", "Print")
                     .Input(FakeInput(input_type1))
                     .Input(FakeInput(2, input_type2))
@@ -132,7 +132,7 @@ TEST_F(PrintingGraphTest, FirstNSuccess) {
 
 class TimestampTest : public OpsTestBase {
  protected:
-  Status Init() {
+  absl::Status Init() {
     TF_CHECK_OK(NodeDefBuilder("op", "Timestamp").Finalize(node_def()));
     return InitOp();
   }
