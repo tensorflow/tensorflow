@@ -11,6 +11,7 @@ xla_cc_binary(
     visibility = ["//xla/backends/cpu/codegen:__subpackages__"],
     deps = [
         "//xla/backends/cpu/codegen/ir:xla_cpu",
+        "//xla/backends/cpu/codegen/transforms:passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",

@@ -20,13 +20,19 @@ limitations under the License.
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/codegen/ir/xla_cpu_dialect.h"
+#include "xla/backends/cpu/codegen/transforms/passes.h"
 
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::func::FuncDialect, xla::cpu::XlaCpuDialect>();
+
+  // Register builtin MLIR passes.
   mlir::func::registerAllExtensions(registry);
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
+
+  // Register XLA:CPU passes.
+  xla::cpu::registerXlaCpuTransformsPasses();
 
   return mlir::failed(
       MlirOptMain(argc, argv, "XLA:CPU Pass Driver\n", registry));
