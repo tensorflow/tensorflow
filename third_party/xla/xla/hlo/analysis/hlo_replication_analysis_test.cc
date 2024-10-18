@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_replication_analysis.h"
+#include "xla/hlo/analysis/hlo_replication_analysis.h"
 
 #include <memory>
 #include <string>
@@ -21,15 +21,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class HloReplicationAnalysisTest : public HloTestBase {};
+class HloReplicationAnalysisTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloReplicationAnalysisTest, NoControlFlow) {
   const std::string module_str = R"(

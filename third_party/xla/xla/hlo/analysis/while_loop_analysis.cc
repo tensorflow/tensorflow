@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/while_loop_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <algorithm>
 #include <cmath>

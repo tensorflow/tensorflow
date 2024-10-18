@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/logical_buffer_analysis.h"
+#include "xla/hlo/analysis/logical_buffer_analysis.h"
 
 #include <utility>
 

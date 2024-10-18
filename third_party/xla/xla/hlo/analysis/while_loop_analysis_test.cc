@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/while_loop_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 
 #include <cstdint>
 #include <memory>
@@ -33,15 +33,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class WhileLoopAnalysisTest : public HloTestBase {
+class WhileLoopAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
       int init, int limit, int step, ComparisonDirection dir);

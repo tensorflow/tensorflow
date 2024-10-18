@@ -796,44 +796,6 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "hlo_dfs_reachability_test",
-    srcs = ["hlo_dfs_reachability_test.cc"],
-    deps = [
-        ":computation_placer_hdr",
-        ":hlo_module_config",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_dfs_reachability",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test_benchmark",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_reachability_test",
-    srcs = ["hlo_reachability_test.cc"],
-    deps = [
-        ":computation_placer",
-        ":hlo_module_config",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_reachability",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/random",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:test_benchmark",
-    ],
-)
-
-xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
     tags = ["not_run:arm"],
@@ -1751,50 +1713,12 @@ xla_cc_test(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_ordering instead.
 cc_library(
     name = "hlo_ordering",
-    srcs = ["hlo_ordering.cc"],
     hdrs = ["hlo_ordering.h"],
-    deps = [
-        ":call_graph",
-        ":hlo_dataflow_analysis",
-        ":hlo_proto_cc",
-        ":hlo_value",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_reachability",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_ordering_test",
-    size = "small",
-    srcs = ["hlo_ordering_test.cc"],
-    deps = [
-        ":hlo_dataflow_analysis",
-        ":hlo_ordering",
-        ":hlo_value",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_ordering"],
 )
 
 xla_cc_test(
@@ -2922,42 +2846,12 @@ xla_cc_test(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:while_loop_analysis instead.
 cc_library(
     name = "while_loop_analysis",
-    srcs = ["while_loop_analysis.cc"],
     hdrs = ["while_loop_analysis.h"],
-    deps = [
-        ":pattern_matcher",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_reachability",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-xla_cc_test(
-    name = "while_loop_analysis_test",
-    srcs = ["while_loop_analysis_test.cc"],
-    deps = [
-        ":while_loop_analysis",
-        "//xla:comparison_util",
-        "//xla:test",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+    deps = ["//xla/hlo/analysis:while_loop_analysis"],
 )
 
 cc_library(
@@ -3655,63 +3549,12 @@ cc_library(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dataflow_analysis instead.
 cc_library(
     name = "hlo_dataflow_analysis",
-    srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],
-    deps = [
-        ":call_graph",
-        ":hlo_phi_graph",
-        ":hlo_value",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_dataflow_analysis_test",
-    srcs = ["hlo_dataflow_analysis_test.cc"],
-    deps = [
-        ":hlo_creation_utils",
-        ":hlo_dataflow_analysis",
-        ":hlo_ordering",
-        ":hlo_value",
-        "//xla:comparison_util",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:flatten_call_graph",
-        "//xla/service:hlo_dce",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_dataflow_analysis"],
 )
 
 cc_library(
@@ -3738,119 +3581,28 @@ xla_cc_test(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_value_semantics_analysis instead.
 cc_library(
     name = "hlo_value_semantics_analysis",
-    srcs = ["hlo_value_semantics_analysis.cc"],
     hdrs = ["hlo_value_semantics_analysis.h"],
-    deps = [
-        ":hlo_value",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:side_effect_util",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_value_semantics_analysis"],
 )
 
-xla_cc_test(
-    name = "hlo_value_semantics_analysis_test",
-    srcs = ["hlo_value_semantics_analysis_test.cc"],
-    deps = [
-        ":hlo_value_semantics_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_replication_analysis instead.
 cc_library(
     name = "hlo_replication_analysis",
-    srcs = ["hlo_replication_analysis.cc"],
     hdrs = ["hlo_replication_analysis.h"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_replication_analysis"],
 )
 
-xla_cc_test(
-    name = "hlo_replication_analysis_test",
-    srcs = ["hlo_replication_analysis_test.cc"],
-    deps = [
-        ":hlo_replication_analysis",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-    ],
-)
-
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_liveness_analysis instead.
 cc_library(
     name = "hlo_liveness_analysis",
-    srcs = ["hlo_liveness_analysis.cc"],
     hdrs = ["hlo_liveness_analysis.h"],
-    deps = [
-        ":call_graph",
-        ":hlo_value",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_liveness_analysis_test",
-    srcs = ["hlo_liveness_analysis_test.cc"],
-    deps = [
-        ":hlo_liveness_analysis",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_liveness_analysis"],
 )
 
 cc_library(
@@ -3872,127 +3624,28 @@ cc_library(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_alias_analysis instead.
 cc_library(
     name = "hlo_alias_analysis",
-    srcs = ["hlo_alias_analysis.cc"],
     hdrs = ["hlo_alias_analysis.h"],
-    deps = [
-        ":hlo_buffer",
-        ":hlo_dataflow_analysis",
-        ":hlo_ordering",
-        ":hlo_value",
-        "//xla:comparison_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_alias_analysis"],
 )
 
-xla_cc_test(
-    name = "hlo_alias_analysis_test",
-    srcs = ["hlo_alias_analysis_test.cc"],
-    deps = [
-        ":hlo_alias_analysis",
-        ":hlo_buffer",
-        ":hlo_ordering",
-        ":hlo_value",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/service:flatten_call_graph",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:logical_buffer_analysis instead.
 cc_library(
     name = "logical_buffer_analysis",
-    srcs = ["logical_buffer_analysis.cc"],
     hdrs = ["logical_buffer_analysis.h"],
-    deps = [
-        ":logical_buffer",
-        "//xla:shape_util",
-        "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-    ],
+    deps = ["//xla/hlo/analysis:logical_buffer_analysis"],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:tuple_points_to_analysis instead.
 cc_library(
     name = "tuple_points_to_analysis",
-    srcs = ["tuple_points_to_analysis.cc"],
     hdrs = ["tuple_points_to_analysis.h"],
-    deps = [
-        ":hlo_dataflow_analysis",
-        ":logical_buffer",
-        ":logical_buffer_analysis",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/tsl/lib/gtl:compactptrset",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-xla_cc_test(
-    name = "tuple_points_to_analysis_test",
-    srcs = ["tuple_points_to_analysis_test.cc"],
-    deps = [
-        ":logical_buffer",
-        ":tuple_points_to_analysis",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ],
+    deps = ["//xla/hlo/analysis:tuple_points_to_analysis"],
 )
 
 cc_library(
@@ -5398,46 +5051,12 @@ cc_library(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:indexed_array_analysis instead.
 cc_library(
     name = "indexed_array_analysis",
-    srcs = ["indexed_array_analysis.cc"],
     hdrs = ["indexed_array_analysis.h"],
-    deps = [
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "indexed_array_analysis_test",
-    srcs = ["indexed_array_analysis_test.cc"],
-    deps = [
-        ":indexed_array_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+    deps = ["//xla/hlo/analysis:indexed_array_analysis"],
 )
 
 # Deprecated, use //third_party/tensorflow/compiler/xla/hlo/parser:hlo_parser

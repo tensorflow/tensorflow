@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 
 #include <memory>
 #include <set>
@@ -21,20 +21,20 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -46,9 +46,9 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-class HloAliasAnalysisTest : public HloTestBase {
+class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
-  HloAliasAnalysisTest() : HloTestBase() {
+  HloAliasAnalysisTest() : HloHardwareIndependentTestBase() {
     module_ = CreateNewVerifiedModule();
   }
 

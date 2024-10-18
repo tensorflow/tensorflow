@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/indexed_array_analysis.h"
+#include "xla/hlo/analysis/indexed_array_analysis.h"
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-class IndexedArrayAnalysisTest : public HloTestBase {
+class IndexedArrayAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const std::string& hlo_text,
                                       const std::string& root_expression) {

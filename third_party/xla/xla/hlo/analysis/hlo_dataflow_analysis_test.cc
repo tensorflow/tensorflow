@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 
 #include <cstdint>
 #include <initializer_list>
@@ -27,20 +27,20 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -55,7 +55,7 @@ using ::testing::UnorderedElementsAre;
 
 // Test is parameterized on a bool which is whether the dataflow analysis is
 // performed with SSA form.
-class HloDataflowAnalysisTest : public HloTestBase,
+class HloDataflowAnalysisTest : public HloHardwareIndependentTestBase,
                                 public ::testing::WithParamInterface<bool> {
  protected:
   HloDataflowAnalysisTest() : module_(CreateNewVerifiedModule()) {}
@@ -2155,7 +2155,7 @@ std::unique_ptr<HloDataflowAnalysis> RunAnalysis(
       .value();
 }
 
-using DoesNotUseOperandBufferTest = HloTestBase;
+using DoesNotUseOperandBufferTest = HloHardwareIndependentTestBase;
 
 TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
   auto builder = HloComputation::Builder(TestName());
@@ -2267,7 +2267,7 @@ TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
       dataflow_analysis->DoesNotUseOperandBuffer(tuple_param, {0}, fusion));
 }
 
-using CanShareOperandBufferWithUserTest = HloTestBase;
+using CanShareOperandBufferWithUserTest = HloHardwareIndependentTestBase;
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
   auto builder = HloComputation::Builder(TestName());
@@ -3090,7 +3090,7 @@ TEST_F(CanShareOperandBufferWithUserTest, MultipleConcatenates) {
                                                                 fusion, {2}));
 }
 
-using GetInPlaceInputOutputPairsTest = HloTestBase;
+using GetInPlaceInputOutputPairsTest = HloHardwareIndependentTestBase;
 
 TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
   const char* kModule = R"(

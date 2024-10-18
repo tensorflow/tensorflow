@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 
 #include <algorithm>
 #include <memory>

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_ordering.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
 #include <utility>

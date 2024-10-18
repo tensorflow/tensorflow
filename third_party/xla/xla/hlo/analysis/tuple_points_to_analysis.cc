@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 
 #include <memory>
 #include <ostream>
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/map_util.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/types.h"
 #include "xla/util.h"

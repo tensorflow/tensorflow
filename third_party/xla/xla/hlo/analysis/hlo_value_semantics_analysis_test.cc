@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_value_semantics_analysis.h"
+#include "xla/hlo/analysis/hlo_value_semantics_analysis.h"
 
 #include <memory>
 #include <string>
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -155,7 +155,7 @@ ENTRY MnistTrainingLoopWithInfeed.140 {
 }
 )";
 
-class HloValueSemanticsAnalysisTest : public HloTestBase {
+class HloValueSemanticsAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   bool HasLabel(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
                 HloModule* module, absl::string_view instruction_name,
@@ -590,7 +590,7 @@ TEST_F(HloValueSemanticsAnalysisTest, MnistTrainingLoop) {
       IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.99"));
 }
 
-class EinsumDepthAnalysisTest : public HloTestBase {
+class EinsumDepthAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionDepth(const EinsumDepthMap& depth_map,
                           HloComputation* computation, absl::string_view name) {
@@ -686,7 +686,7 @@ TEST_F(EinsumDepthAnalysisTest, HandleAfterAll) {
             0);
 }
 
-class EinsumHeightAnalysisTest : public HloTestBase {
+class EinsumHeightAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionHeight(const EinsumHeightMap& height_map,
                            HloComputation* computation,

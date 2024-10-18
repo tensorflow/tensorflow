@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/tuple_points_to_analysis.h"
+#include "xla/hlo/analysis/tuple_points_to_analysis.h"
 
 #include <cstdint>
 #include <memory>
@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -46,7 +46,7 @@ namespace {
 using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedElementsAreArray;
 
-class TuplePointsToAnalysisTest : public HloTestBase {
+class TuplePointsToAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   // Builds a module with the given entry computation and runs points to
   // analysis.
@@ -745,7 +745,7 @@ ENTRY %FusionParam0TwoUsers (param0: (f32[8], f32[3])) -> f32[8] {
   Run(hlo_str, /*expected_num_users=*/2);
 }
 
-class PointsToAnalysisTestBase : public HloTestBase {
+class PointsToAnalysisTestBase : public HloHardwareIndependentTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
     module_ = CreateNewVerifiedModule();

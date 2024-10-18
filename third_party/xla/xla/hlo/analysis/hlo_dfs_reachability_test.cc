@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/ir/hlo_dfs_reachability.h"
+#include "xla/hlo/analysis/hlo_dfs_reachability.h"
 
 #include <cstddef>
 #include <memory>
@@ -23,13 +23,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -37,7 +37,7 @@ namespace xla {
 
 namespace {
 
-class HloDfsReachabilityTest : public HloTestBase {};
+class HloDfsReachabilityTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(HloDfsReachabilityTest, NonTrivialReachability) {
   // Test reachability of a non-trivial computation:

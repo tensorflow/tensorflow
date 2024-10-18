@@ -13,23 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_liveness_analysis.h"
+#include "xla/hlo/analysis/hlo_liveness_analysis.h"
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class HloLivenessAnalysisTest : public HloTestBase {
+class HloLivenessAnalysisTest : public HloHardwareIndependentTestBase {
  protected:
   HloLivenessAnalysisTest() {}
 
