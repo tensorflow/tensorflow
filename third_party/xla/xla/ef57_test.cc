@@ -19,8 +19,6 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/log/log_streamer.h"
 #include "absl/random/random.h"
 #include "absl/types/span.h"
 #include "xla/test.h"

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 
