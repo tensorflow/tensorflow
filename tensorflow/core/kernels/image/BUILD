@@ -77,7 +77,10 @@ cc_library(
     srcs = ["sampling_kernels.cc"],
     hdrs = ["sampling_kernels.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -155,7 +158,10 @@ IMAGE_TEST_DEPS = [
 tf_kernel_library(
     name = "adjust_contrast_op",
     prefix = "adjust_contrast_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@eigen_archive//:eigen3_test",
+    ],
 )
 
 cc_library(
@@ -179,7 +185,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "attention_ops",
     prefix = "attention_ops",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(
@@ -205,7 +211,9 @@ tf_kernel_library(
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
         "@com_google_absl//absl/strings",
+        "@libjpeg_turbo//:jpeg",
         "@local_xla//xla/tsl/util:byte_swap_array",
+        "@png",
     ],
 )
 
@@ -227,6 +235,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3_test",
         "@local_tsl//tsl/platform:mutex",
     ],
 )
@@ -279,7 +288,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -291,13 +303,13 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_area_op",
     prefix = "resize_area_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(
     name = "resize_bicubic_op",
     prefix = "resize_bicubic_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(
@@ -318,19 +330,22 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:stateless_random_ops"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/kernels:stateless_random_ops",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 tf_kernel_library(
     name = "image_ops",
     prefix = "image_ops",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@eigen_archive//:eigen3_test"],
 )
 
 # Tests ------------------------
@@ -363,6 +378,7 @@ tf_cc_test(
     srcs = ["non_max_suppression_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "@com_google_benchmark//:benchmark",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -395,6 +411,7 @@ tf_cuda_cc_test(
     srcs = ["crop_and_resize_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "@com_google_benchmark//:benchmark",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -403,6 +420,7 @@ tf_cuda_cc_test(
     srcs = ["mirror_pad_op_benchmark_test.cc"],
     deps = [
         ":mirror_pad_op",
+        "@com_google_benchmark//:benchmark",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -444,6 +462,7 @@ tf_cc_test(
     srcs = ["encode_jpeg_op_test.cc"],
     deps = [
         ":encode_jpeg_op",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -454,6 +473,9 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -465,7 +487,9 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
+        "@libjpeg_turbo//:jpeg",
         "@local_xla//xla/tsl/util:byte_swap_array",
+        "@png",
     ],
     alwayslink = 1,
 )
