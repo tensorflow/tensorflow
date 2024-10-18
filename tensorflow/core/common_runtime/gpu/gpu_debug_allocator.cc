@@ -20,11 +20,12 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 #define MASK_WORDS 2
 #define MASK_BYTES (MASK_WORDS * sizeof(int64_t))
