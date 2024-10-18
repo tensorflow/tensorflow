@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <array>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
