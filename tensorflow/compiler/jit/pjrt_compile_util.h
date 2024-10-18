@@ -30,7 +30,7 @@ namespace tensorflow {
 // The compilation result is output in `compilation_result`. The PJRT client
 // used for compilation is output in `client`. The PJRT executable is output in
 // `executable`.
-Status CompileToPjRtLoadedExecutable(
+absl::Status CompileToPjRtLoadedExecutable(
     const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
@@ -46,7 +46,7 @@ Status CompileToPjRtLoadedExecutable(
 // - `rm`: the resource manager for DeviceCompiler to store JIT-compiled XLA
 // computation.
 // - `flr`: the FunctionLibraryRuntime for the `function`.
-Status CompileToPjRtLoadedExecutable(
+absl::Status CompileToPjRtLoadedExecutable(
     const DeviceBase* device, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
