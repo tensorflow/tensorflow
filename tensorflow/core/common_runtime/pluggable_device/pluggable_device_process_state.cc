@@ -196,9 +196,9 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
         se, numa_node, pluggable_device_host_alloc_visitors_[numa_node],
         pluggable_device_host_free_visitors_[numa_node]);
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
-    Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                        1LL << 17 /*128GB max by default*/,
-                                        &pluggable_device_host_mem_limit_in_mb);
+    absl::Status status = ReadInt64FromEnvVar(
+        "TF_GPU_HOST_MEM_LIMIT_IN_MB", 1LL << 17 /*128GB max by default*/,
+        &pluggable_device_host_mem_limit_in_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetPluggableDeviceHostAllocator: " << status.message();
     }

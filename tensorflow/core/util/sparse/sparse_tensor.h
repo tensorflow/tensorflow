@@ -44,17 +44,17 @@ class SparseTensor {
   typedef absl::Span<const int64_t> VarDimArray;
   typedef absl::InlinedVector<int64_t, 8UL> ShapeArray;
 
-  static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
-                       const VarDimArray order, SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
+                             const VarDimArray order, SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
-                       SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
+                             SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
-                       SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const VarDimArray shape,
+                             SparseTensor* result);
 
-  static Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
-                       const VarDimArray order, SparseTensor* result);
+  static absl::Status Create(Tensor ix, Tensor vals, const TensorShape& shape,
+                             const VarDimArray order, SparseTensor* result);
 
   SparseTensor() : dims_(0) {}
 
@@ -113,7 +113,7 @@ class SparseTensor {
 
   DataType dtype() const { return vals_.dtype(); }
 
-  Status IndicesValid() const;
+  absl::Status IndicesValid() const;
 
   VarDimArray shape() const { return shape_; }
 
@@ -170,8 +170,9 @@ class SparseTensor {
   // isn't an integer multiple of split_dim, we add one extra dimension for
   // each slice.
   template <typename T>
-  static Status Split(const SparseTensor& tensor, const int split_dim,
-                      const int num_split, std::vector<SparseTensor>* result);
+  static absl::Status Split(const SparseTensor& tensor, const int split_dim,
+                            const int num_split,
+                            std::vector<SparseTensor>* result);
 
   // Slice() will slice the input SparseTensor into a SparseTensor based on
   // specified start and size. Both start and size are 1-D array with each
@@ -212,7 +213,7 @@ class SparseTensor {
   bool IndicesValidMatrix32BitFastPath() const;
 
   template <bool standard_order>
-  Status IndicesValidHelper() const;
+  absl::Status IndicesValidHelper() const;
 
   // Helper for ToDense<T>()
   template <typename T>
@@ -493,9 +494,10 @@ inline SparseTensor SparseTensor::Concat(
 }
 
 template <typename T>
-inline Status SparseTensor::Split(const SparseTensor& input_tensor,
-                                  const int split_dim, const int num_split,
-                                  std::vector<SparseTensor>* result) {
+inline absl::Status SparseTensor::Split(const SparseTensor& input_tensor,
+                                        const int split_dim,
+                                        const int num_split,
+                                        std::vector<SparseTensor>* result) {
   std::vector<Tensor> output_indices;
   std::vector<Tensor> output_values;
   std::vector<TensorShape> output_shapes;
@@ -567,7 +569,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
   result->reserve(num_split);
   for (int i = 0; i < num_split; ++i) {
     SparseTensor tensor;
-    Status create_status =
+    absl::Status create_status =
         Create(output_indices[i], output_values[i], output_shapes[i], &tensor);
     if (!create_status.ok()) {
       return create_status;
