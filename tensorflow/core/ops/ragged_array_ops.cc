@@ -22,7 +22,7 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-Status RaggedGatherShapeFn(InferenceContext* c);
+absl::Status RaggedGatherShapeFn(InferenceContext* c);
 
 //==============================================================================
 // Registered Ops
@@ -184,7 +184,7 @@ REGISTER_OP("RaggedFillEmptyRowsGrad")
 // Shape Functions
 //==============================================================================
 
-Status RaggedGatherShapeFn(InferenceContext* c) {
+absl::Status RaggedGatherShapeFn(InferenceContext* c) {
   int num_splits;
   int64_t PARAMS_RAGGED_RANK;
   TF_RETURN_IF_ERROR(
