@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -36,10 +39,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
@@ -52,7 +59,23 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 using ::testing::HasSubstr;
+using ::testing::Return;
 using tsl::testing::StatusIs;
+
+class MockTopology final
+    : public llvm::RTTIExtends<MockTopology, xla::ifrt::Topology> {
+ public:
+  MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
+  MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
+  MOCK_METHOD(xla::PjRtPlatformId, platform_id, (), (const, final));
+  MOCK_METHOD(std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>,
+              DeviceDescriptions, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<xla::Layout>, GetDefaultLayout,
+              (xla::PrimitiveType element_type, absl::Span<const int64_t> dims),
+              (const, final));
+  MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
+  MOCK_METHOD(const xla::ifrt::AttributeMap&, Attributes, (), (const, final));
+};
 
 // TODO(b/229726259): Make EqualsProto available in OSS
 class ProtoStringMatcher {
@@ -106,10 +129,17 @@ TEST(Tf2HloTest, Empty) {
       tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, {}));
-
-  auto result =
-      CompileTfToHlo(mlir_module.get(), {}, "main", *client, compile_metadata,
-                     tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::TpuName()));
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = {},
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+  auto result = CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 }
@@ -146,9 +176,19 @@ TEST(Tf2HloTest, Tuple) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
-                               *client, compile_metadata,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::TpuName()));
+
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+
+  auto result = CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 }
@@ -184,9 +224,19 @@ TEST(Tf2HloTest, Spmd) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
-                               *client, compile_metadata,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::TpuName()));
+
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+
+  auto result = CompileTfToHlo(arg);
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -260,9 +310,19 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
-                               *client, compile_metadata,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::TpuName()));
+
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+
+  auto result = CompileTfToHlo(arg);
 
   LOG(INFO) << result->compile_metadata;
   TF_ASSERT_OK(result.status());
@@ -361,9 +421,19 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
       GetCompileMetadata(mlir_module.get(), *client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
-                               *client, compile_metadata,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::TpuName()));
+
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+
+  auto result = CompileTfToHlo(arg);
 
   TF_ASSERT_OK(result.status());
 
@@ -402,9 +472,6 @@ TEST(Tf2HloTest, GpuShouldFailWithWrongDeviceType) {
       .WillByDefault([]() -> absl::StatusOr<xla::DeviceAssignment> {
         return xla::DeviceAssignment(1, 1);
       });
-  ON_CALL(mock_client, platform_name).WillByDefault([]() -> absl::string_view {
-    return xla::CudaName();
-  });
 
   std::vector<DtypeAndShape> dtype_and_shapes;
   dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {}});
@@ -414,9 +481,19 @@ TEST(Tf2HloTest, GpuShouldFailWithWrongDeviceType) {
       GetCompileMetadata(mlir_module.get(), mock_client));
   TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
 
-  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
-                               mock_client, compile_metadata,
-                               tensorflow::IdentityShapeRepresentationFn());
+  std::shared_ptr<MockTopology> topology = std::make_shared<MockTopology>();
+  ON_CALL(*topology, platform_name()).WillByDefault(Return(xla::CudaName()));
+
+  Tf2HloArg arg{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = topology,
+  };
+
+  auto result = CompileTfToHlo(arg);
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
                                HasSubstr("CUDA or ROCM build required")));
 }
