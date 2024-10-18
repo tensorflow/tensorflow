@@ -290,7 +290,11 @@ REGISTER_OP("SqrtGrad").UNARY_GRADIENT_COMPLEX();
 
 REGISTER_OP("Rsqrt").UNARY_COMPLEX();
 
-REGISTER_OP("Round").UNARY();
+REGISTER_OP("Round")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RsqrtGrad").UNARY_GRADIENT_COMPLEX();
 
