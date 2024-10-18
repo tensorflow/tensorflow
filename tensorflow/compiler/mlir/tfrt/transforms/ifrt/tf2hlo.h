@@ -21,9 +21,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_compilation.pb.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -31,9 +33,11 @@ namespace tensorflow {
 namespace ifrt_serving {
 
 struct Tf2HloResult {
+  xla::HloModuleProto hlo_module_proto;
   mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module;
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tf2xla::HostComputeMetadata host_compute_metadata;
+  Tf2HLOResultProto ToProto() const;
 };
 
 absl::Status UpdateCompileMetadata(
