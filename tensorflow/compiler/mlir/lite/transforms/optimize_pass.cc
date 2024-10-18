@@ -22,7 +22,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -157,6 +156,103 @@ bool IsBalancedPaddingArray(int spatials_start, int spatials_end,
                                    data.value_end<int32_t>()));
   }
   return false;
+}
+
+bool AreAdjacentDimsTransposedAndContracted(llvm::ArrayRef<int64_t> input_shape,
+                                            DenseElementsAttr permutation,
+                                            DenseElementsAttr reshape_shape) {
+  auto permutation_values = permutation.getValues<int32_t>();
+  auto reshape_shape_values = reshape_shape.getValues<int32_t>();
+
+  // Step-1: Get the list of dimensions moved via transpose operation
+  std::pair<int32_t, int32_t> permuted_dims_range = std::make_pair(0, 0);
+  size_t permutation_idx = 0;
+  while (permutation_idx < permutation_values.size()) {
+    if (permutation_values[permutation_idx] != permutation_idx) {
+      // This utility currently only supports verification of only ONE
+      // sub-section of the input dimensions.
+      if ((permuted_dims_range.first != 0) &&
+          (permuted_dims_range.second != 0)) {
+        return false;
+      }
+
+      permuted_dims_range.first = permutation_idx;
+      while ((permutation_idx < permutation_values.size()) &&
+             (permutation_values[permutation_idx] != permutation_idx)) {
+        ++permutation_idx;
+      }
+      permuted_dims_range.second = permutation_idx;
+    }
+    ++permutation_idx;
+  }
+
+  // Step-2: Calculate the expected contracted dimension value and return if it
+  // is not present in the output shapes vector.
+  // If the product of the permuted dimensions is not present in the
+  // reshape_shape_values, then this is not a match.
+  int64_t contracted_value = 1;
+  for (size_t idx = permuted_dims_range.first; idx < permuted_dims_range.second;
+       ++idx) {
+    contracted_value *= input_shape[idx];
+  }
+
+  bool transposed_dims_are_contracted = false;
+  auto found_it = reshape_shape_values.begin();
+
+  while ((found_it = std::find(found_it, reshape_shape_values.end(),
+                               contracted_value)) !=
+         reshape_shape_values.end()) {
+    size_t contracting_dim_idx =
+        std::distance(reshape_shape_values.begin(), found_it);
+    // Check if the dimensions following the contracted dimension are a match
+    bool trailing_dims_match = true;
+    for (size_t input_search_idx = permuted_dims_range.second;
+         input_search_idx < input_shape.size(); ++input_search_idx) {
+      size_t shape_search_idx = contracting_dim_idx + 1;
+      if (input_shape[input_search_idx] !=
+              reshape_shape_values[shape_search_idx] &&
+          input_shape[input_search_idx] != 1) {
+        trailing_dims_match = false;
+      }
+      if (!trailing_dims_match) {
+        break;
+      }
+      ++shape_search_idx;
+    }
+
+    // If the tailing dimensions are not a match, don't check the leading
+    // dimension. Skip and find for another match for the contracted_value.
+    if (!trailing_dims_match) {
+      ++found_it;
+      continue;
+    }
+
+    // Check if the dimensions prior to the contracted dimension are a match
+    bool leading_dims_match = true;
+    for (size_t input_search_idx = 0;
+         input_search_idx < permuted_dims_range.first; ++input_search_idx) {
+      size_t shape_search_idx = contracting_dim_idx - 1;
+      if (input_shape[input_search_idx] !=
+              reshape_shape_values[shape_search_idx] &&
+          input_shape[input_search_idx] != 1) {
+        leading_dims_match = false;
+      }
+      if (!leading_dims_match) {
+        break;
+      }
+      --shape_search_idx;
+    }
+
+    if (trailing_dims_match && leading_dims_match) {
+      transposed_dims_are_contracted = true;
+      break;
+    }
+    // Need to increment the iterator to look for a matching sub-section, if a
+    // match was not found earlier.
+    ++found_it;
+  }
+
+  return transposed_dims_are_contracted;
 }
 
 bool HasSameStridedDim(int in, int dilate, int stride, int k, int p) {
