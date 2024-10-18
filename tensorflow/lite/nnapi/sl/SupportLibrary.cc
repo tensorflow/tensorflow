@@ -24,8 +24,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+#include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
 namespace tflite {
 namespace nnapi {
