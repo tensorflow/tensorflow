@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/all_gather_combiner.h"
+#include "xla/hlo/transforms/collectives/all_gather_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_collective_combiner_utils.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"

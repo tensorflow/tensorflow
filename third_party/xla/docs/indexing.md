@@ -316,7 +316,7 @@ d1 in [0, 29]
 ```
 
 ### [Gather](https://openxla.org/xla/operation_semantics#gather)
-Only the simplified gather is supported. See [gather_simplifier].(https://github.com/openxla/xla/blob/main/xla/service/gather_simplifier.h).
+Only the simplified gather is supported. See [gather_simplifier].(https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_simplifier.h).
 
 ```c++
 operand = f32[33,76,70] parameter(0)

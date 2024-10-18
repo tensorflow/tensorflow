@@ -22,8 +22,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 

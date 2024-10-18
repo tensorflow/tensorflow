@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/tests/hlo_test_base.h"
