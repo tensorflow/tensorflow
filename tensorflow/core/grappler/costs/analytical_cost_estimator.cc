@@ -37,11 +37,11 @@ namespace grappler {
 namespace {
 
 // Helper function in PredictCosts() to add cost node to cost_graph.
-Status AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
-                   int node_id, const Costs& node_costs,
-                   gtl::FlatMap<string, CostGraphDef::Node*>* name_to_cost_node,
-                   gtl::FlatMap<string, int>* name_to_id,
-                   CostGraphDef* cost_graph) {
+absl::Status AddCostNode(
+    ReadyNodeManager* node_manager, const OpContext& op_context, int node_id,
+    const Costs& node_costs,
+    gtl::FlatMap<string, CostGraphDef::Node*>* name_to_cost_node,
+    gtl::FlatMap<string, int>* name_to_id, CostGraphDef* cost_graph) {
   const string& op_name = op_context.name;
   auto it = name_to_cost_node->find(op_name);
   CostGraphDef::Node* node;
@@ -149,14 +149,14 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
       node_manager_.get(), std::move(placer));
 }
 
-Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
+absl::Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   item_ = &item;
   return absl::OkStatus();
 }
 
-Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
-                                             RunMetadata* run_metadata,
-                                             Costs* costs) const {
+absl::Status AnalyticalCostEstimator::PredictCosts(
+    const GraphDef& optimized_graph, RunMetadata* run_metadata,
+    Costs* costs) const {
   std::unique_ptr<GrapplerItem> item_storage;
   const GrapplerItem* item;
   // Many callers to PredictCosts() pass the same optimized_graph as was used
@@ -209,7 +209,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
 
     // TODO(pcma): Add unit tests for generating CostGraphDef.
     if (cost_graph) {
-      Status s =
+      absl::Status s =
           AddCostNode(node_manager_.get(), op_context, node_id++, node_costs,
                       &name_to_cost_node, &name_to_id, cost_graph);
       if (!s.ok()) {

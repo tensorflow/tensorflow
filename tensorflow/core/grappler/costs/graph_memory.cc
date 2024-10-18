@@ -31,13 +31,13 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-Status GraphMemory::InferStatically(
+absl::Status GraphMemory::InferStatically(
     const std::unordered_map<string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
   TF_RETURN_IF_ERROR(cluster.Provision());
   TF_RETURN_IF_ERROR(cluster.Initialize(item_));
   RunMetadata metadata;
-  Status s = cluster.Run(item_, &metadata);
+  absl::Status s = cluster.Run(item_, &metadata);
   // The virtual cluster returns the RESOURCE_EXHAUSTED error when it detects
   // that the model would run out of memory. We still get the metadata we need
   // out of the simulation, so we just ignore this error.
@@ -48,7 +48,7 @@ Status GraphMemory::InferStatically(
   return absl::OkStatus();
 }
 
-Status GraphMemory::InferDynamically(Cluster* cluster) {
+absl::Status GraphMemory::InferDynamically(Cluster* cluster) {
   if (!cluster->DetailedStatsEnabled()) {
     return errors::Unavailable("Detailed stats collection must be enabled");
   }
