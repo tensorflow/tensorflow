@@ -125,15 +125,15 @@ struct Conv2DDimensions {
 
 // Initializes and validates Conv2D parameters configured by OpKernel
 // attributes.
-Status InitConv2DParameters(const OpKernelConstruction* context,
-                            Conv2DParameters* params);
+absl::Status InitConv2DParameters(const OpKernelConstruction* context,
+                                  Conv2DParameters* params);
 
 // Computes and validates convolutions dimensions from Conv2D parameters. If
 // parameters are valid, dimensions will be updated with derived convolution
 // dimensions, otherwise an error will be returned.
-Status ComputeConv2DDimension(const Conv2DParameters& params,
-                              const Tensor& input, const Tensor& filter,
-                              Conv2DDimensions* dimensions);
+absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
+                                    const Tensor& input, const Tensor& filter,
+                                    Conv2DDimensions* dimensions);
 
 }  // namespace tensorflow
 

@@ -308,7 +308,7 @@ class Im2ColConvFunctor {
     // use TensorFlow's resource management to ensure that the memory will be
     // released when the session is over.
     Im2ColBufferResource<T1, chunk_value_count>* im2col_buffer_resource;
-    std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)>
+    std::function<absl::Status(Im2ColBufferResource<T1, chunk_value_count>**)>
         creator = [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return absl::OkStatus();
