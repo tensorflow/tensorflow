@@ -19,9 +19,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/lib/monitoring/cell_reader.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
