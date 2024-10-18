@@ -28,8 +28,8 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name) {
   }
 };
 
-Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
-                    NodeDef** node) {
+absl::Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
+                          NodeDef** node) {
   string node_name = NodeName(input);
   NodeDef* node_by_name = ctx.node_map->GetNode(node_name);
   if (node_by_name == nullptr) {
@@ -40,9 +40,9 @@ Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
   return absl::OkStatus();
 }
 
-Status GetTensorProperties(const GraphOptimizerContext& ctx,
-                           const string& tensor,
-                           const OpInfo::TensorProperties** properties) {
+absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
+                                 const string& tensor,
+                                 const OpInfo::TensorProperties** properties) {
   if (ctx.graph_properties == nullptr) {
     return errors::InvalidArgument("Graph properties are unknown.");
   }
