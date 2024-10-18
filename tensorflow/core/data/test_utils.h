@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/dataset.h"
