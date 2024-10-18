@@ -35,7 +35,6 @@ cc_library(
 cc_library(
     name = "litert_tensor_buffer_cc_api",
     hdrs = [
-        "litert_handle.h",
         "litert_tensor_buffer.h",
         "litert_tensor_buffer_requirements.h",
     ],

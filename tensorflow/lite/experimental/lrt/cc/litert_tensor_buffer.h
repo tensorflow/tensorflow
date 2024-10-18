@@ -16,6 +16,7 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITERT_TENSOR_BUFFER_H_
 
 #include <cstddef>
+#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -24,7 +25,6 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_event.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/cc/litert_handle.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_model.h"
 
 namespace litert {
@@ -37,7 +37,15 @@ class TensorBuffer {
   // Parameter `owned` indicates if the created TensorBuffer object should take
   // ownership of the provided `tensor_buffer` handle.
   explicit TensorBuffer(LiteRtTensorBuffer tensor_buffer, bool owned = true)
-      : handle_(tensor_buffer, owned ? LiteRtDestroyTensorBuffer : nullptr) {}
+      : handle_(tensor_buffer,
+                owned ? LiteRtDestroyTensorBuffer : DummyDestroy) {}
+
+  TensorBuffer(TensorBuffer&& other) { *this = std::move(other); }
+
+  TensorBuffer& operator=(TensorBuffer&& other) {
+    std::swap(handle_, other.handle_);
+    return *this;
+  }
 
   static absl::StatusOr<TensorBuffer> CreateManaged(
       LiteRtTensorBufferType buffer_type, const RankedTensorType& tensor_type,
@@ -54,15 +62,15 @@ class TensorBuffer {
   }
 
   // Return true if the underlying LiteRtTensorBuffer handle is valid.
-  bool IsValid() const { return handle_.IsValid(); }
+  explicit operator bool() const { return static_cast<bool>(handle_); }
 
   // Return the underlying LiteRtTensorBuffer handle.
-  explicit operator LiteRtTensorBuffer() { return handle_.Get(); }
+  explicit operator LiteRtTensorBuffer() { return handle_.get(); }
 
   absl::StatusOr<LiteRtTensorBufferType> BufferType() const {
     LiteRtTensorBufferType tensor_buffer_type;
     if (auto status =
-            LiteRtGetTensorBufferType(handle_.Get(), &tensor_buffer_type);
+            LiteRtGetTensorBufferType(handle_.get(), &tensor_buffer_type);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get tensor buffer type");
     }
@@ -72,7 +80,7 @@ class TensorBuffer {
   absl::StatusOr<RankedTensorType> TensorType() const {
     LiteRtRankedTensorType tensor_type;
     if (auto status =
-            LiteRtGetTensorBufferTensorType(handle_.Get(), &tensor_type);
+            LiteRtGetTensorBufferTensorType(handle_.get(), &tensor_type);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get tensor type");
     }
@@ -81,7 +89,7 @@ class TensorBuffer {
 
   absl::StatusOr<size_t> Size() const {
     size_t size;
-    if (auto status = LiteRtGetTensorBufferSize(handle_.Get(), &size);
+    if (auto status = LiteRtGetTensorBufferSize(handle_.get(), &size);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get tensor size");
     }
@@ -90,7 +98,7 @@ class TensorBuffer {
 
   absl::StatusOr<size_t> Offset() const {
     size_t offset;
-    if (auto status = LiteRtGetTensorBufferOffset(handle_.Get(), &offset);
+    if (auto status = LiteRtGetTensorBufferOffset(handle_.get(), &offset);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get tensor offset");
     }
@@ -100,7 +108,7 @@ class TensorBuffer {
   absl::StatusOr<void*> Lock(LiteRtEvent event = nullptr) {
     void* host_mem_addr;
     if (auto status =
-            LiteRtLockTensorBuffer(handle_.Get(), &host_mem_addr, event);
+            LiteRtLockTensorBuffer(handle_.get(), &host_mem_addr, event);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to lock the tensor buffer");
     }
@@ -108,7 +116,7 @@ class TensorBuffer {
   }
 
   absl::Status Unlock() {
-    if (auto status = LiteRtUnlockTensorBuffer(handle_.Get());
+    if (auto status = LiteRtUnlockTensorBuffer(handle_.get());
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to unlock the tensor buffer");
     }
@@ -116,7 +124,9 @@ class TensorBuffer {
   }
 
  private:
-  internal::Handle<LiteRtTensorBuffer> handle_;
+  static void DummyDestroy(LiteRtTensorBuffer) {}
+  std::unique_ptr<LiteRtTensorBufferT, void (*)(LiteRtTensorBufferT*)> handle_ =
+      {nullptr, nullptr};
 };
 
 class TensorBufferScopedLock {
