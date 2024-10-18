@@ -224,6 +224,7 @@ cc_library(
         "manual",
     ]),
     deps = [
+        ":rocm_command_buffer",
         ":rocm_context",
         ":rocm_diagnostics",  # buildcleaner: keep
         ":rocm_driver",  # buildcleaner: keep
@@ -1161,5 +1162,31 @@ cc_test(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "rocm_command_buffer",
+    srcs = ["rocm_command_buffer.cc"],
+    hdrs = ["rocm_command_buffer.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ] + if_google([
+        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
+        "manual",
+    ]),
+    deps = [
+        ":rocm_driver_wrapper",
+        ":rocm_status",
+        "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
+        "//xla/stream_executor/gpu:gpu_executor_header",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
