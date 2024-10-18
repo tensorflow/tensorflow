@@ -319,7 +319,7 @@ tf_mkl_kernel_library(
         "mkl_pooling_ops_common.cc",
     ],
     hdrs = ["mkl_pooling_ops_common.h"],
-    deps = MKL_SHORT_DEPS,
+    deps = MKL_SHORT_DEPS + ["//tensorflow/core/kernels:pooling_ops_hdrs"],
 )
 
 tf_mkl_kernel_library(
