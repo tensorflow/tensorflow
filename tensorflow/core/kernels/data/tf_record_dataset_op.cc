@@ -102,16 +102,17 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return absl::OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* filenames = nullptr;
     TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
     Node* compression_type = nullptr;
@@ -133,9 +134,9 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       out_tensors->reserve(1);
       mutex_lock l(mu_);
       do {
@@ -143,7 +144,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         if (reader_) {
           out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                     TensorShape({}));
-          Status s =
+          absl::Status s =
               reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
           if (s.ok()) {
             static monitoring::CounterCell* bytes_counter =
@@ -179,8 +180,9 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       } while (true);
     }
 
-    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
-                        bool* end_of_sequence, int* num_skipped) override {
+    absl::Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                              bool* end_of_sequence,
+                              int* num_skipped) override {
       *num_skipped = 0;
       mutex_lock l(mu_);
       do {
@@ -188,8 +190,8 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
         // the next (num_to_skip - *num_skipped) record.
         if (reader_) {
           int last_num_skipped;
-          Status s = reader_->SkipRecords(num_to_skip - *num_skipped,
-                                          &last_num_skipped);
+          absl::Status s = reader_->SkipRecords(num_to_skip - *num_skipped,
+                                                &last_num_skipped);
           *num_skipped += last_num_skipped;
           if (s.ok()) {
             *end_of_sequence = false;
@@ -226,8 +228,8 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
@@ -239,8 +241,8 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       ResetStreamsLocked();
       int64_t current_file_index;
@@ -258,7 +260,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     // Sets up reader streams to read from the file at `current_file_index_`.
-    Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
         return errors::InvalidArgument(
             "current_file_index_:", current_file_index_,
