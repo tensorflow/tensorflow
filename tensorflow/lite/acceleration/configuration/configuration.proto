@@ -789,6 +789,17 @@ message MtkNeuronSettings {
   // Optional path to the platform-dependent Neuron configuration file.
   // See docs at https://neuropilot.mediatek.com/ for more details.
   optional string neuron_config_path = 10;
+
+  // The deadline time duration (in ms) of the inference (waiting + execution).
+  // The scheduler would adjust scheduling based on this value. Note that
+  // setting this value to zero implies no deadline requirement.
+  optional int32 inference_deadline_ms = 11;
+
+  // The maximum inference (waiting + execution) time duration (in ms). The
+  // scheduler would abort the inference if the inference time dutation exceed
+  // the time specified. Note that setting this value to zero implies no abort
+  // time requirement.
+  optional int32 inference_abort_time_ms = 12;
 }
 
 // How to configure TFLite.
