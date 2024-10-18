@@ -26,14 +26,13 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Tanh(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
-    float val = input_data[i];
-    float result = std::tanh(val);
-    output_data[i] = result;
+    output_data[i] = static_cast<T>(std::tanh(input_data[i]));
   }
 }
 
