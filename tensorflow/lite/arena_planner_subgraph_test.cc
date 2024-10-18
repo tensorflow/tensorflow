@@ -15,6 +15,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
 namespace tflite {
