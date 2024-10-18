@@ -88,6 +88,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_COMPLEX128:
       *type = xla::C128;
       return absl::OkStatus();
+    case tensorflow::DT_TOKEN:
+      *type = xla::TOKEN;
+      return absl::OkStatus();
     default:
       return errors::InvalidArgument(
           "Unsupported type in DataTypeToPrimitiveType: '",
@@ -118,6 +121,7 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
           {xla::U32, DT_UINT32},
           {xla::U64, DT_UINT64},
           {xla::C128, DT_COMPLEX128},
+          {xla::TOKEN, DT_TOKEN},
       });
 
   auto it = data_type_map.find(type);
