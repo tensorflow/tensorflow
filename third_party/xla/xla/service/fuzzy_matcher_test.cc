@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/fuzzy_matcher.h"
 
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -38,8 +39,54 @@ TEST_F(FuzzyMatcherTest, IgnoreConvert) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto* root = hlo_module->entry_computation()->root_instruction();
+
+  auto ignore_convert = [](auto pattern) { return match::Convert(pattern); };
+  EXPECT_TRUE(Match(root, fm::Divide(ignore_convert, match::Parameter(0),
+                                     match::Parameter(1))));
+}
+
+TEST_F(FuzzyMatcherTest, IgnoreBitcast) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      x = f32[2,3] parameter(0)
+      y = f32[6] parameter(1)
+      exp_x = f32[2,3] exponential(x)
+      exp_y = f32[6] exponential(y)
+      bit = f32[2,3] bitcast(exp_y)
+      ROOT add = f32[2,3] add(exp_x, bit)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  auto ignore_bitcast = [](auto pattern) { return match::Bitcast(pattern); };
   EXPECT_TRUE(
-      Match(root, fm::Divide(match::Parameter(0), match::Parameter(1))));
+      Match(root, match::Add(fm::Exp(ignore_bitcast, match::Parameter(0)),
+                             fm::Exp(ignore_bitcast, match::Parameter(1)))));
+}
+
+TEST_F(FuzzyMatcherTest, IgnoreConvertOrBitcast) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      x = f32[6] parameter(0)
+      y = f64[2,3] parameter(1)
+      convert = f64[6] convert(x)
+      bitcast = f64[6] bitcast(y)
+      ROOT sub = f64[6] subtract(convert, bitcast)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  auto ignore_convert_or_bitcast = [](auto pattern) {
+    return match::AnyOf<HloInstruction>(match::Convert(pattern),
+                                        match::Bitcast(pattern));
+  };
+  EXPECT_TRUE(
+      Match(root, match::Subtract(fm::Parameter(ignore_convert_or_bitcast),
+                                  fm::Parameter(ignore_convert_or_bitcast))));
 }
 
 }  // namespace
