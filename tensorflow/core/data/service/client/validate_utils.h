@@ -22,7 +22,8 @@ namespace tensorflow {
 namespace data {
 
 // Validates data service dataset parameters.
-Status ValidateDataServiceParams(const DataServiceParams& data_service_params);
+absl::Status ValidateDataServiceParams(
+    const DataServiceParams& data_service_params);
 
 }  // namespace data
 }  // namespace tensorflow
