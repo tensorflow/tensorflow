@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
@@ -36,12 +35,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
-#include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -57,8 +52,6 @@ struct ClusterInfo;
 
 namespace xla {
 namespace gpu {
-
-namespace mt = ::mlir::triton;
 
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
@@ -109,7 +102,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 absl::Status CreateTritonPipeline(
     mlir::OpPassManager& pm, const se::GpuComputeCapability& cc,
     const BlockLevelParameters& block_level_parameters,
-    mt::nvidia_gpu::ClusterInfo& out_cluster_info);
+    ::mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
@@ -124,7 +117,7 @@ llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
 
 // Used for creating Triton Load and Store ops.
 struct MakeTensorPtrOpAndBoundaryChecks {
-  mt::MakeTensorPtrOp op;
+  ::mlir::triton::MakeTensorPtrOp op;
 
   // Indices of dimensions where the original tile size is not a power of 2 and
   // requires a boundary check.
@@ -133,7 +126,7 @@ struct MakeTensorPtrOpAndBoundaryChecks {
 
 absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     mlir::ImplicitLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value argument_block);
+    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
 }  // namespace ir_emitter_triton_internal
 
 }  // namespace gpu
