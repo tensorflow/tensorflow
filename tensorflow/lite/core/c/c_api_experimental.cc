@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
 #include "tensorflow/lite/signature_runner.h"
 
@@ -318,6 +319,18 @@ void TfLiteInterpreterOptionsSetTelemetryProfiler(
     TfLiteInterpreterOptions* options,
     TfLiteTelemetryProfilerStruct* profiler) {
   options->telemetry_profiler = profiler;
+}
+
+TfLiteLogSeverity TfLiteLoggerOptionsGetMinimumLogSeverity() {
+  return static_cast<TfLiteLogSeverity>(
+      tflite::LoggerOptions::GetMinimumLogSeverity());
+}
+
+TfLiteLogSeverity TfLiteLoggerOptionsSetMinimumLogSeverity(
+    TfLiteLogSeverity new_severity) {
+  return static_cast<TfLiteLogSeverity>(
+      tflite::LoggerOptions::SetMinimumLogSeverity(
+          static_cast<tflite::LogSeverity>(new_severity)));
 }
 
 }  // extern "C"
