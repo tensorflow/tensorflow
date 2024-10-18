@@ -20,12 +20,15 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -232,7 +235,8 @@ float RuntimeSimulator::SimulateAsyncCopyLikeDone(
   return elapsed_time;
 };
 
-float RuntimeSimulator::SimulateComputeInstruction(
+RuntimeSimulator::ElapsedAndIdleTimes
+RuntimeSimulator::SimulateComputeInstruction(
     const HloInstruction* instruction,
     absl::Span<const std::pair<int64_t, ShapeIndex>>
         operands_in_alternate_memory,
@@ -245,17 +249,21 @@ float RuntimeSimulator::SimulateComputeInstruction(
           outputs_in_alternate_memory);
 
   // Execute the outstanding async copy likes in the idle time.
-  ProcessAsyncCopyLikesInIdleTime(default_memory_idle_time);
+  default_memory_idle_time =
+      ProcessAsyncCopyLikesInIdleTime(default_memory_idle_time);
 
   float inst_elapsed = cost_analysis_->GetInstructionElapsedInAlternateMemory(
       *instruction, operands_in_alternate_memory, outputs_in_alternate_memory);
-  return inst_elapsed;
+  return {inst_elapsed, default_memory_idle_time};
 }
 
-void RuntimeSimulator::ProcessAsyncCopyLikesInIdleTime(float time) {
+float RuntimeSimulator::ProcessAsyncCopyLikesInIdleTime(float time) {
   if (time <= 0.0) {
-    return;
+    return 0.0;
   }
+
+  float available_bandwidth = cost_analysis_->base_costs().BytesPerSecond();
+
   float remaining_simulation_time = time;
   // This loop simulates the execution of the front memory requests in the
   // read and/or write queues. The loop terminates when the remaining time is
@@ -263,7 +271,6 @@ void RuntimeSimulator::ProcessAsyncCopyLikesInIdleTime(float time) {
   while ((!outstanding_read_default_queue_.empty() ||
           !outstanding_write_default_queue_.empty()) &&
          remaining_simulation_time > 0.0) {
-    float available_bandwidth = cost_analysis_->base_costs().BytesPerSecond();
     if (!outstanding_read_default_queue_.empty() &&
         !outstanding_write_default_queue_.empty()) {
       // Need to share the bandwidth
@@ -283,15 +290,33 @@ void RuntimeSimulator::ProcessAsyncCopyLikesInIdleTime(float time) {
 
     float real_elapsed_time = bytes_to_process / available_bandwidth;
     remaining_simulation_time -= real_elapsed_time;
+    if (remaining_simulation_time <= 0.0) {
+      // This can happen due to floating point errors.
+      remaining_simulation_time = 0.0;
+    }
+
     RemoveBytesFromQueueIfNotEmpty(outstanding_read_default_queue_,
                                    bytes_to_process);
     RemoveBytesFromQueueIfNotEmpty(outstanding_write_default_queue_,
                                    bytes_to_process);
   }
+
+  return remaining_simulation_time;
 }
 
+namespace {
+
+float GetUnusedDefaultMemBandwidthBytes(float bytes_per_second, float seconds) {
+  CHECK_GE(bytes_per_second, 0.0);
+
+  return bytes_per_second * seconds;
+}
+
+}  // namespace
+
 float RuntimeSimulator::SimulateElapsedTime(
-    const HloModule* hlo_module, const AllocationSequence& allocations) {
+    const HloModule* hlo_module, const AllocationSequence& allocations,
+    const std::vector<int64_t>* alt_mem_bytes_occupied) {
   InitializeAlternateMemoryMap(allocations);
 
   std::unique_ptr<xla::HloAliasAnalysis> alias_analysis =
@@ -305,11 +330,21 @@ float RuntimeSimulator::SimulateElapsedTime(
   CHECK_GT(cost_analysis_->base_costs().BytesPerSecond(), 0.0);
 
   float total_elapsed = 0.0;
+  // The number of additional bytes that could be transferred between default
+  // and alternate memory.
+  float cumulative_available_transfer_bytes = 0.0;
 
+  if (alt_mem_bytes_occupied) {
+    CHECK_EQ(
+        alt_mem_bytes_occupied->size(),
+        hlo_live_range->flattened_instruction_sequence().instructions().size());
+  }
   const auto& instruction_sequence =
       hlo_live_range->flattened_instruction_sequence().instructions();
-  for (const HloInstruction* instruction : instruction_sequence) {
+  for (int time = 0; time < instruction_sequence.size(); ++time) {
+    const HloInstruction* instruction = instruction_sequence[time];
     float inst_elapsed = 0.0;
+    float idle_default_memory_bandwidth_time = 0.0;
     if (instruction->opcode() == HloOpcode::kWhile) {
       // Since the instructions in the while body are calculated
       // separately, we can skip the while instruction.
@@ -356,10 +391,14 @@ float RuntimeSimulator::SimulateElapsedTime(
       if (operand_it != operands_in_alternate_memory_map_.end())
         operands_in_alternate_memory = absl::MakeSpan(operand_it->second);
 
-      inst_elapsed =
+      ElapsedAndIdleTimes elapsed_and_idle =
           SimulateComputeInstruction(instruction, operands_in_alternate_memory,
                                      outputs_in_alternate_memory);
+      inst_elapsed = elapsed_and_idle.elapsed_time;
+      idle_default_memory_bandwidth_time =
+          elapsed_and_idle.idle_default_memory_bandwidth_time;
     }
+    float total_trip_count = 0.0;
     if (inst_elapsed > 0.0) {
       // The calculation assumes all instructions are executed independently.
       // Thus, the execution time is the same for each invocation. This property
@@ -368,12 +407,39 @@ float RuntimeSimulator::SimulateElapsedTime(
       // the loop body. In this case, the first async copy in the first
       // iteration will be slower than other iterations, since it needs to wait
       // for the async copies issued before the loop.
-      float total_trip_count = cost_analysis_->CalculateNestTripCount(
+      total_trip_count = cost_analysis_->CalculateNestTripCount(
           instruction, &cost_analysis_cache_);
       total_elapsed += inst_elapsed * total_trip_count;
     }
+
+    cumulative_available_transfer_bytes +=
+        (GetUnusedDefaultMemBandwidthBytes(
+             cost_analysis_->base_costs().BytesPerSecond(),
+             idle_default_memory_bandwidth_time) *
+         total_trip_count);
+    VLOG(2) << [&]() {
+      std::string instruction_name(instruction->name());
+      if (instruction->opcode() == HloOpcode::kCopyStart &&
+          instruction->cross_program_prefetch_index().has_value()) {
+        absl::StrAppend(&instruction_name, " (xprogram prefetch)");
+      }
+      std::string alt_mem_bytes_occupied_str = "";
+      if (alt_mem_bytes_occupied) {
+        alt_mem_bytes_occupied_str =
+            absl::StrCat("; alt mem usage: ", alt_mem_bytes_occupied->at(time));
+      }
+
+      return absl::StrCat(time, ": instruction: ", instruction_name,
+                          "; elapsed: ", inst_elapsed,
+                          "; cumulative available transfer bytes: ",
+                          cumulative_available_transfer_bytes,
+                          "; trip count: ", total_trip_count,
+                          alt_mem_bytes_occupied_str);
+    }();
   }
+
   return total_elapsed;
 }
+
 }  // namespace memory_space_assignment
 }  // namespace xla
