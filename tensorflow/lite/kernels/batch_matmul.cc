@@ -798,8 +798,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   lhs_dims_count = orig_lhs_shape.DimensionsCount();
   const TfLiteTensor* rhs_tensor = rhs;
   bool implicit_transpose_possible = true;
-  if ((lhs->type == kTfLiteFloat32 && rhs->type == kTfLiteInt8) ||
-      kernel_type == kReference || rhs->type == kTfLiteInt16) {
+  if (lhs->type == kTfLiteFloat32 || kernel_type == kReference ||
+      rhs->type == kTfLiteInt16) {
     implicit_transpose_possible = false;
   }
   bool do_implicit_transpose = !adj_y && implicit_transpose_possible;
@@ -827,18 +827,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (rhs->type) {
     case kTfLiteFloat32:
       // Note we pass RHS args first, LHS args second. See note above.
-      if (kernel_type == kGenericOptimized) {
-        optimized_ops::BatchMatMul(
-            rhs_shape, GetTensorData<float>(rhs_tensor), lhs_shape,
-            GetTensorData<float>(lhs_tensor), GetTensorShape(output),
-            GetTensorData<float>(output),
-            CpuBackendContext::GetFromContext(context), do_implicit_transpose);
-      } else {
-        reference_ops::BatchMatMul(rhs_shape, GetTensorData<float>(rhs_tensor),
-                                   lhs_shape, GetTensorData<float>(lhs_tensor),
-                                   GetTensorShape(output),
-                                   GetTensorData<float>(output));
-      }
+      reference_ops::BatchMatMul(rhs_shape, GetTensorData<float>(rhs_tensor),
+                                 lhs_shape, GetTensorData<float>(lhs_tensor),
+                                 GetTensorShape(output),
+                                 GetTensorData<float>(output));
       break;
     case kTfLiteInt8:
     case kTfLiteInt16:
