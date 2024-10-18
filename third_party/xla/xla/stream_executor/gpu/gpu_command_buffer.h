@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -46,9 +45,55 @@ class GpuCommandBuffer : public CommandBuffer {
  public:
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
-  struct GpuGraphNodeInfo {
-    // A handle to the gpu graph node corresponding to a command.
+  class GpuGraphNodeInfo {
+   public:
+    GpuGraphNodeInfo() = default;
+    explicit GpuGraphNodeInfo(GpuGraphNodeHandle handle) : handle(handle) {}
+
+    // A handle to the gpu graph node corresponding to a command. The handle
+    // will be migrated into the subclasses once all GpuDriver calls are moved.
+    // NOLINTNEXTLINE(*-class-member-naming)
     GpuGraphNodeHandle handle = nullptr;
+
+    // Updates the memset node with the given parameters. Will return an error
+    // if the given node has not been created as a memset node. This function
+    // will become pure virtual once all GpuDriver calls are moved into
+    // subclasses.
+    virtual absl::Status UpdateMemsetNode(DeviceMemoryBase destination,
+                                          BitPattern bit_pattern,
+                                          size_t num_elements) {
+      return absl::UnimplementedError("Not a memset node");
+    };
+
+    // Updates the memcpy node with the given parameters. Will return an error
+    // if the given node has not been created as a memcpy node. This function
+    // will become pure virtual once all GpuDriver calls were moved into
+    // subclasses.
+    virtual absl::Status UpdateMemcpyD2DNode(DeviceMemoryBase destination,
+                                             DeviceMemoryBase source,
+                                             uint64_t size) {
+      return absl::UnimplementedError("Not a memcpy node");
+    }
+
+    // Associate another command buffer with this child node. Will return an
+    // error if the given node has not been created as a child node. This
+    // function will become pure virtual once all GpuDriver calls were moved
+    // into subclasses.
+    virtual absl::Status UpdateChildNode(const CommandBuffer& nested) {
+      return absl::UnimplementedError("Not a child node");
+    }
+
+    // Updates the kernel launch node with the given parameters. Will return an
+    // error if the given node has not been created as a kernel launch node.
+    // This function will become pure virtual once all GpuDriver calls were
+    // moved into subclasses.
+    virtual absl::Status UpdateKernelNode(
+        const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+        const KernelArgsPackedArrayBase& args) {
+      return absl::UnimplementedError("Not a kernel launch node");
+    };
+
+    virtual ~GpuGraphNodeInfo() = default;
   };
 
   // A handle to Gpu graph barrier and metadata describing its properties. Each
@@ -58,7 +103,7 @@ class GpuCommandBuffer : public CommandBuffer {
     // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
     // node created to be a barrier. We try to reuse existing nodes as barriers
     // if possible to reduce the size of constructed gpu graphs.
-    GpuGraphNodeHandle handle = nullptr;
+    const GpuGraphNodeInfo* node = nullptr;
 
     // If `true` it means `handle` corresponds to an empty node specifically
     // created to act as an execution barrier, otherwise `handle` points to one
@@ -124,7 +169,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Submit(Stream* stream) override;
 
   GpuGraphExecHandle executable() const { return exec_; }
-  GpuGraphHandle graph() const { return graph_; }
 
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
@@ -137,10 +181,10 @@ class GpuCommandBuffer : public CommandBuffer {
     return static_cast<const GpuCommandBuffer*>(command_buffer);
   }
 
-  absl::Span<const GpuGraphNodeInfo> nodes(ExecutionScopeId id) const;
+  absl::Span<const GpuGraphNodeInfo* const> nodes(ExecutionScopeId id) const;
   absl::Span<const GpuGraphBarrierInfo> barriers(ExecutionScopeId id) const;
 
-  absl::Span<const GpuGraphNodeInfo> nodes() const {
+  absl::Span<const GpuGraphNodeInfo* const> nodes() const {
     return nodes(kDefaulExecutionScope);
   }
 
@@ -149,9 +193,6 @@ class GpuCommandBuffer : public CommandBuffer {
   }
 
  private:
-  absl::Status Trace(Stream* stream,
-                     absl::AnyInvocable<absl::Status()> function) override;
-
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
   // allocates resources on a GPU devices (rule of thumb is ~8kb per node), so
@@ -159,10 +200,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
 
- private:
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
-
  protected:
+  using Dependencies = absl::InlinedVector<const GpuGraphNodeInfo*, 1>;
+
   using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
@@ -273,18 +313,16 @@ class GpuCommandBuffer : public CommandBuffer {
       const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& packed_args);
 
+ protected:
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   absl::Status CheckNotFinalized();
 
+ private:
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.
   absl::Status CheckNumCommandBuffers(
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
-
-  // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
-      const Dependencies& dependencies);
 
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
@@ -301,12 +339,16 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuExecutor* parent_;  // not owned, must outlive *this
 
+  // TODO(hebecker): Move fields to subclasses once we have moved all GpuDriver
+  // calls.
+ protected:
   GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
   bool is_owned_graph_ = true;      // ownership of `graph_`
 
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
+ private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an
   // barriers added to a graph) for a single execution scope.
   struct ExecutionScope {
@@ -327,7 +369,7 @@ class GpuCommandBuffer : public CommandBuffer {
 
     // Gpu graph nodes corresponding to recorded commands (launch, memcpy,
     // etc.).
-    std::vector<GpuGraphNodeInfo> nodes;
+    std::vector<GpuGraphNodeInfo*> nodes;
 
     // Gpu graph barriers that define recorded commands execution order.
     std::vector<GpuGraphBarrierInfo> barriers;
@@ -343,6 +385,12 @@ class GpuCommandBuffer : public CommandBuffer {
   // Execution scopes recorded into the command buffer.
   absl::flat_hash_map<ExecutionScopeId, ExecutionScope> execution_scopes_;
 
+  // A place to store GpuGraphNodeInfo instances, so that they can be referenced
+  // in `ExecutionScope::nodes` and `ExecutionScope::barriers`.
+  // This will go away once all node factory functions have been migrated into
+  // the subclasses.
+  std::vector<std::unique_ptr<GpuGraphNodeInfo>> node_storage_;
+
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
 
@@ -350,6 +398,30 @@ class GpuCommandBuffer : public CommandBuffer {
   // The given graph will not be owned by the created command buffer.
   virtual std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       GpuGraphHandle graph) = 0;
+
+  // Adds a new memset node to the graph.
+  virtual absl::StatusOr<GpuGraphNodeInfo*> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) = 0;
+
+  // Adds a new memcpy node to the graph.
+  virtual absl::StatusOr<GpuGraphNodeInfo*> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) = 0;
+
+  // Adds a new nested command buffer node to the graph.
+  virtual absl::StatusOr<GpuGraphNodeInfo*> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) = 0;
+
+  // Adds a new kernel launch node to the graph.
+  virtual absl::StatusOr<GpuGraphNodeInfo*> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
+
+  // Creates a new no-op node acting as a barrier and adds it to the graph.
+  virtual absl::StatusOr<GpuGraphNodeInfo*> CreateBarrierNode(
+      const Dependencies& dependencies) = 0;
 };
 
 }  // namespace stream_executor::gpu
