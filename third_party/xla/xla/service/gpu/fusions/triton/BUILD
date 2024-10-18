@@ -94,6 +94,7 @@ cc_library(
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/transforms:passes",
+        "//xla/service/gpu/fusions/triton:xla_triton",
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:symbolic_tile_analysis",
@@ -184,6 +185,7 @@ cc_library(
         "//xla/service/gpu:target_util",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu:triton_tiling_propagation",
+        "//xla/service/gpu/fusions/triton:xla_triton",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -292,6 +294,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        ":xla_triton",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:GPUCommonTransforms",
@@ -333,15 +336,11 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
-            [
-                "-gen-dialect-decls",
-            ],
+            ["-gen-dialect-decls"],
             "xla_triton_dialect.h.inc",
         ),
         (
-            [
-                "-gen-dialect-defs",
-            ],
+            ["-gen-dialect-defs"],
             "xla_triton_dialect.cc.inc",
         ),
     ],
@@ -355,15 +354,11 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
-            [
-                "-gen-op-decls",
-            ],
+            ["-gen-op-decls"],
             "xla_triton_ops.h.inc",
         ),
         (
-            [
-                "-gen-op-defs",
-            ],
+            ["-gen-op-defs"],
             "xla_triton_ops.cc.inc",
         ),
     ],
@@ -378,23 +373,50 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "xla_triton_attrs_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-attrdef-decls",
+                "-attrdefs-dialect=triton_xla",
+            ],
+            "xla_triton_attrs.h.inc",
+        ),
+        (
+            [
+                "-gen-attrdef-defs",
+                "-attrdefs-dialect=triton_xla",
+            ],
+            "xla_triton_attrs.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_triton_attrs.td",
+    deps = [
+        ":xla_triton_td_files",
+        "@triton//:td_files",
+    ],
+)
+
 cc_library(
     name = "xla_triton",
-    srcs = ["xla_triton_ops.cc"],
+    srcs = [
+        "xla_triton_attrs.cc",
+        "xla_triton_ops.cc",
+    ],
     hdrs = ["xla_triton_ops.h"],
     deps = [
+        ":xla_triton_attrs_inc_gen",
         ":xla_triton_dialect_inc_gen",
         ":xla_triton_ops_inc_gen",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeOpInterface",
-        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@triton//:TritonDialects",
-        "@triton//:triton_gpu_attr_inc_gen",
-        "@triton//:triton_gpu_types_inc_gen",
-        "@triton//:triton_ops_inc_gen",
     ],
 )
 
