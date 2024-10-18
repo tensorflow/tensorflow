@@ -145,10 +145,15 @@ absl::Status ContextBinaryInfo::Init(
 
 absl::StatusOr<ContextBinaryInfo> ContextBinaryInfo::Create(
     QnnManager& qnn, const void* exec_bytecode_ptr, size_t exec_bytecode_size) {
+  auto system_context_handle = qnn.CreateSystemContextHandle();
+  if (!system_context_handle.ok()) {
+    return system_context_handle.status();
+  }
+
   const QnnSystemContext_BinaryInfo_t* binary_info = nullptr;
   Qnn_ContextBinarySize_t binary_info_size = 0;
   if (auto status = qnn.SystemApi()->systemContextGetBinaryInfo(
-          qnn.SystemContextHandle(), const_cast<void*>(exec_bytecode_ptr),
+          system_context_handle->get(), const_cast<void*>(exec_bytecode_ptr),
           exec_bytecode_size, &binary_info, &binary_info_size);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get context binary info: " << status;

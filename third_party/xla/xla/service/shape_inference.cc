@@ -348,6 +348,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
     case HloOpcode::kFloor:
+    case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
+                            // backends.
     case HloOpcode::kCeil:
     case HloOpcode::kErf:
     case HloOpcode::kRoundNearestAfz:
@@ -368,7 +370,6 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&

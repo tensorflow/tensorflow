@@ -40,25 +40,22 @@
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 using ::litert::qnn::QnnManager;
-using ::litert::qnn::config::GetDefaultContextConfigs;
 
 LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
     litert::qnn::QnnManager& qnn_manager,
     const litert::qnn::ContextBinaryInfo& context_binary_info,
     LiteRtDispatchDeviceContextT& device_context,
+    QnnManager::ContextHandle&& context_handle,
     Qnn_ProfileHandle_t profile_handle, int graph_index,
     Qnn_GraphHandle_t graph_handle)
     : qnn_manager_(qnn_manager),
       device_context_(device_context),
+      context_handle_(std::move(context_handle)),
       profile_handle_(profile_handle),
       graph_index_(graph_index),
       graph_handle_(graph_handle),
       inputs_(context_binary_info.Graphs()[graph_index].Inputs()),
       outputs_(context_binary_info.Graphs()[graph_index].Outputs()) {}
-
-LiteRtDispatchInvocationContextT::~LiteRtDispatchInvocationContextT() {
-  qnn_manager_.FreeContext();
-}
 
 absl::StatusOr<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
@@ -84,25 +81,27 @@ LiteRtDispatchInvocationContextT::Create(
     return absl::InternalError("Function name not found");
   }
 
+  auto configs = QnnManager::DefaultContextConfigs();
   Qnn_ProfileHandle_t profile_handle = nullptr;
-  if (auto status = qnn.Api()->contextCreateFromBinary(
-          qnn.BackendHandle(), /*deviceHandle*/ nullptr,
-          GetDefaultContextConfigs().data(), exec_bytecode_ptr,
-          exec_bytecode_size, &qnn.ContextHandle(), profile_handle);
-      status != QNN_SUCCESS) {
-    return absl::InternalError("Failed to create context from context binary");
+  auto context_handle = qnn.CreateContextHandle(
+      configs,
+      absl::MakeSpan(static_cast<const uint8_t*>(exec_bytecode_ptr),
+                     exec_bytecode_size),
+      profile_handle);
+  if (!context_handle.ok()) {
+    return context_handle.status();
   }
 
   Qnn_GraphHandle_t graph_handle;
-  if (auto status = qnn.Api()->graphRetrieve(qnn.ContextHandle(), function_name,
-                                             &graph_handle);
+  if (auto status = qnn.Api()->graphRetrieve(context_handle->get(),
+                                             function_name, &graph_handle);
       status != QNN_SUCCESS) {
     return absl::InternalError("Failed to retrieve graph");
   }
 
   return Ptr(new LiteRtDispatchInvocationContextT(
-      qnn, std::move(*context_binary_info), device_context, profile_handle,
-      graph_index, graph_handle));
+      qnn, std::move(*context_binary_info), device_context,
+      std::move(*context_handle), profile_handle, graph_index, graph_handle));
 }
 
 namespace {

@@ -52,12 +52,15 @@ inline absl::Span<const QnnGraph_Config_t*> GetDefaultGraphConfigs() {
 // to QNN Graphs.
 class GraphMapper {
  public:
-  static LiteRtStatus MapGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
+  static LiteRtStatus MapGraph(QnnManager& qnn,
+                               Qnn_ContextHandle_t context_handle,
+                               LiteRtSubgraph subgraph,
                                absl::string_view qnn_graph_name);
 
  private:
-  GraphMapper(LiteRtSubgraph subgraph, QnnManager* qnn)
-      : subgraph_(subgraph), qnn_(qnn) {}
+  GraphMapper(LiteRtSubgraph subgraph, QnnManager& qnn,
+              Qnn_ContextHandle_t context_handle)
+      : subgraph_(subgraph), qnn_(qnn), context_handle_(context_handle) {}
 
   // Can implementation handle given LiteRtSubgraph topology (see comment at
   // bottom of file).
@@ -113,8 +116,8 @@ class GraphMapper {
   // QNN Sdk State
   //
 
-  QnnManager& Qnn();
-  QnnManager* qnn_;
+  QnnManager& qnn_;
+  Qnn_ContextHandle_t context_handle_;
 
   LiteRtStatus Finalize();
   LiteRtStatus InitQnnGraph(absl::string_view qnn_graph_name);
@@ -178,8 +181,6 @@ LiteRtStatus GraphMapper::PushToScope(LiteRtTensor litert_tensor,
   return kLiteRtStatusOk;
 }
 
-QnnManager& GraphMapper::Qnn() { return *qnn_; }
-
 Qnn_GraphHandle_t& GraphMapper::QnnGraph() { return qnn_graph_; }
 
 LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
@@ -187,7 +188,7 @@ LiteRtStatus GraphMapper::LegalizeAndRegister(LiteRtTensor litert_tensor,
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeTensor(litert_tensor, qnn_tensor));
   LITERT_RETURN_STATUS_IF_NOT_OK(AssignName(qnn_tensor));
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
+      qnn_.Api()->tensorCreateGraphTensor(QnnGraph(), &qnn_tensor));
 
   return kLiteRtStatusOk;
 }
@@ -226,20 +227,22 @@ LiteRtStatus GraphMapper::IsLiteRtSubgraphSupported() {
 
 LiteRtStatus GraphMapper::InitQnnGraph(absl::string_view qnn_graph_name) {
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().Api()->graphCreate(Qnn().ContextHandle(), qnn_graph_name.data(),
-                               GetDefaultGraphConfigs().data(), &QnnGraph()));
+      qnn_.Api()->graphCreate(context_handle_, qnn_graph_name.data(),
+                              GetDefaultGraphConfigs().data(), &QnnGraph()));
   return kLiteRtStatusOk;
 }
 
 LiteRtStatus GraphMapper::Finalize() {
   LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
-      Qnn().Api()->graphFinalize(QnnGraph(), nullptr, nullptr));
+      qnn_.Api()->graphFinalize(QnnGraph(), nullptr, nullptr));
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus GraphMapper::MapGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
+LiteRtStatus GraphMapper::MapGraph(QnnManager& qnn,
+                                   Qnn_ContextHandle_t context_handle,
+                                   LiteRtSubgraph subgraph,
                                    absl::string_view qnn_graph_name) {
-  GraphMapper graph_mapper(subgraph, &qnn);
+  GraphMapper graph_mapper(subgraph, qnn, context_handle);
   LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.ParseLiteRtSubgraph());
   LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.IsLiteRtSubgraphSupported());
   LITERT_RETURN_STATUS_IF_NOT_OK(graph_mapper.InitQnnGraph(qnn_graph_name));
@@ -305,8 +308,8 @@ LiteRtStatus GraphMapper::MapGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
     qnn_op.v1.numOfOutputs = op_outs.size();
     qnn_op.v1.outputTensors = qnn_op_outs;
 
-    LITERT_RETURN_STATUS_IF_QNN_NOT_OK(graph_mapper.Qnn().Api()->graphAddNode(
-        graph_mapper.QnnGraph(), qnn_op));
+    LITERT_RETURN_STATUS_IF_QNN_NOT_OK(
+        graph_mapper.qnn_.Api()->graphAddNode(graph_mapper.QnnGraph(), qnn_op));
   }
 
   // NOTE: Subgraph outputs are fully configured during "LegalizeAndRegister".
@@ -352,10 +355,11 @@ LiteRtStatus GraphMapper::MapGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
 //
 //===----------------------------------------------------------------------===//
 
-LiteRtStatus ComposeGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
+LiteRtStatus ComposeGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
+                          LiteRtSubgraph subgraph,
                           absl::string_view qnn_graph_name) {
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      GraphMapper::MapGraph(qnn, subgraph, qnn_graph_name));
+      GraphMapper::MapGraph(qnn, context_handle, subgraph, qnn_graph_name));
   return kLiteRtStatusOk;
 }
 
