@@ -25,7 +25,7 @@ namespace filesystem_registration {
 //
 // Don't call this directly. Instead call `RegisterFilesystemPlugin`.
 // Exposed only for static registration of local filesystems.
-Status RegisterFilesystemPluginImpl(const TF_FilesystemPluginInfo* info);
+absl::Status RegisterFilesystemPluginImpl(const TF_FilesystemPluginInfo* info);
 
 }  // namespace filesystem_registration
 }  // namespace tensorflow
