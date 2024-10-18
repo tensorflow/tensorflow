@@ -248,7 +248,7 @@ class ScaleAndTranslateOpTest : public OpsTestBase {
                              {output_image_height, output_image_width});
     AddInputFromArray<float>(TensorShape({2}), {scale[1], scale[0]});
     AddInputFromArray<float>(TensorShape({2}), {translate[1], translate[0]});
-    Status s = RunOpKernel();
+    absl::Status s = RunOpKernel();
     const int batch_size = GetOutput(0)->dim_size(0);
     const int channels = GetOutput(0)->dim_size(3);
     Tensor expected(allocator(), DT_FLOAT,
