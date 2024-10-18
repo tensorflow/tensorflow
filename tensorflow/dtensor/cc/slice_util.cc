@@ -138,7 +138,7 @@ std::optional<Token> Token::GetLocalToken(int64_t dim_size,
   return std::nullopt;
 }
 
-Status TokenProcessor::Run(const std::vector<Token>& tokens) {
+absl::Status TokenProcessor::Run(const std::vector<Token>& tokens) {
   int64_t input_rank = input_rank_;
   int64_t output_rank;
   TF_ASSIGN_OR_RETURN(int64_t ellipsis_size,
