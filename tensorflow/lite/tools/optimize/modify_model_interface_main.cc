@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 //
 // Note: This is a private API, subject to change.
