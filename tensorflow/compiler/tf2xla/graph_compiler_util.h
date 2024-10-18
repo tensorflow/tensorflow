@@ -26,8 +26,8 @@ limitations under the License.
 namespace tensorflow {
 
 // Fills in xla_args from the corresponding _Arg nodes in the graph.
-Status CreateXlaArgs(const Graph& graph,
-                     std::vector<XlaCompiler::Argument>* xla_args);
+absl::Status CreateXlaArgs(const Graph& graph,
+                           std::vector<XlaCompiler::Argument>* xla_args);
 
 // Populate xla_args for the given XLA config.
 void PopulateXlaArgs(const tf2xla::Config& config,
@@ -43,8 +43,8 @@ void PopulateXlaArgs(const tf2xla::Config& config,
 // _Arg node instead.  Each fetch id causes a new _Retval node to be created,
 // with a new edge pointing from the named node's output index to that _Retval
 // node.
-Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
-                 std::unique_ptr<Graph>* graph);
+absl::Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
+                       std::unique_ptr<Graph>* graph);
 
 }  // namespace tensorflow
 
