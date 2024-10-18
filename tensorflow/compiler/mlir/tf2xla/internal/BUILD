@@ -54,6 +54,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/hlo/builder:xla_computation",
