@@ -175,9 +175,6 @@ class HloBufferDonorConfig {
       return std::forward_as_tuple(param_number, param_index) <
              std::forward_as_tuple(other.param_number, other.param_index);
     }
-    bool operator>(const BufferDonor& other) const { return other < *this; }
-    bool operator<=(const BufferDonor& other) const { return !(*this > other); }
-    bool operator>=(const BufferDonor& other) const { return !(*this < other); }
 
     // A hash function borrowed from go/absl-hash.
     template <typename H>
@@ -222,10 +219,6 @@ class HloBufferDonorConfig {
   // A set recording the registered buffer donors.
   absl::btree_set<BufferDonor> buffer_donor_;
 };
-
-std::ostream& operator<<(std::ostream& out,
-                         const HloInputOutputAliasConfig& config);
-std::ostream& operator<<(std::ostream& out, const HloBufferDonorConfig& config);
 
 }  // namespace xla
 
