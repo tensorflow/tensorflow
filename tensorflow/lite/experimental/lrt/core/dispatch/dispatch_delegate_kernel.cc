@@ -260,7 +260,7 @@ TfLiteStatus DispatchDelegateKernel::SetBuffer(
 
   // Check if we can reuse a cached tensor buffer or we need to create a new
   // one.
-  if (cached_tensor_buffer.IsValid()) {
+  if (static_cast<bool>(cached_tensor_buffer)) {
     if (auto cached_tensor_type = cached_tensor_buffer.TensorType();
         !cached_tensor_type.ok()) {
       LITERT_LOG(LITERT_ERROR, "%s",
