@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view_internal.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
