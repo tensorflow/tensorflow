@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

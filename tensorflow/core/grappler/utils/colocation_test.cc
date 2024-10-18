@@ -43,7 +43,7 @@ TEST(ColocationTest, ReassignColocation_SingleNode) {
   //  [B]
 
   NodeDef ndef;
-  const Status status =
+  const absl::Status status =
       NodeDefBuilder("A", "Const").Attr("_class", {"loc:@B"}).Finalize(&ndef);
   TF_EXPECT_OK(status);
   GraphDef gdef = test::function::GDef({ndef});
@@ -72,7 +72,7 @@ TEST(ColocationTest, ReassignColocation_MultiNode_SingleGroup) {
   // +---+-E-+---+
 
   NodeDef ndef_a, ndef_b, ndef_c, ndef_d, ndef_e;
-  Status status =
+  absl::Status status =
       NodeDefBuilder("A", "Const").Attr("_class", {"loc:@X"}).Finalize(&ndef_a);
   TF_EXPECT_OK(status);
   status =
@@ -134,7 +134,7 @@ TEST(ColocationTest, ReassignColocation_MultiNode_MultiGroup) {
   // V
 
   NodeDef ndef_a, ndef_b, ndef_c, ndef_d, ndef_e, ndef_u, ndef_v;
-  Status status =
+  absl::Status status =
       NodeDefBuilder("A", "Const").Attr("_class", {"loc:@X"}).Finalize(&ndef_a);
   TF_EXPECT_OK(status);
   status =
