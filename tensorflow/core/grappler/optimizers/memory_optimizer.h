@@ -44,8 +44,8 @@ class MemoryOptimizer : public GraphOptimizer {
 
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* pruned_graph) override;
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* pruned_graph) override;
 
  private:
   RewriterConfig::MemOptType optimization_level_;
