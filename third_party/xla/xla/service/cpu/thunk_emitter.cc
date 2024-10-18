@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/topk_thunk.h"
 #include "xla/backends/cpu/runtime/while_thunk.h"
+#include "xla/comparison_util.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout_util.h"
+#include "xla/printer.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/dot_op_emitter.h"
@@ -1015,7 +1018,32 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
     const HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
 
-  TF_ASSIGN_OR_RETURN(auto comparator, ir_emitter_.EmitSortComparator(sort));
+  HloComputation* hlocomparator = sort->to_apply();
+
+  std::optional<SortThunk::SortDirection> direction = std::nullopt;
+
+  if (hlocomparator->root_instruction()->opcode() == HloOpcode::kCompare) {
+    auto* compare =
+        Cast<HloCompareInstruction>(hlocomparator->root_instruction());
+    switch (compare->comparison_direction()) {
+      case ComparisonDirection::kGe:
+        direction = SortThunk::SortDirection::kDescending;
+        break;
+      case ComparisonDirection::kLt:
+        direction = SortThunk::SortDirection::kAscending;
+        break;
+      default:
+        break;
+    }
+  }
+
+  // TODO: REMOVE!
+  StringPrinter p;
+  hlocomparator->Print(&p);
+  std::cout << "hlocomparator: " << std::move(p).ToString() << std::endl;
+
+  TF_ASSIGN_OR_RETURN(auto comparator,
+                      ir_emitter_.EmitSortComparator(hlocomparator));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(sort));
 
   if (buffers.arguments.size() != buffers.results.size()) {
@@ -1048,7 +1076,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   TF_ASSIGN_OR_RETURN(
       thunks.emplace_back(),
       SortThunk::Create(ThunkInfo(instruction), inputs, sort->sort_dimension(),
-                        sort->is_stable(), comparator.name));
+                        sort->is_stable(), comparator.name, direction));
 
   return thunks;
 }
