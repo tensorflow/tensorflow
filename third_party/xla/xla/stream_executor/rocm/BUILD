@@ -358,23 +358,6 @@ xla_test(
 )
 
 cc_library(
-    name = "command_buffer_kernels",
-    srcs = ["command_buffer_kernels.cc"],
-    tags = [
-        "gpu",
-        "rocm-only",
-    ] + if_google([
-        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
-        "manual",
-    ]),
-    deps = [
-        "//xla/stream_executor:kernel_spec",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
     name = "rocm_platform",
     srcs = ["rocm_platform.cc"],
     hdrs = ["rocm_platform.h"],
@@ -1184,6 +1167,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
         "@local_tsl//tsl/platform:errors",
