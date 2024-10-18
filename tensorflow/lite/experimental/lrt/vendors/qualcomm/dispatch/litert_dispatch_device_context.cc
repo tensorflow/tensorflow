@@ -82,10 +82,6 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
     return absl::InternalError("Failed to get tensor buffer type");
   }
 
-  if (tensor_buffer_type != kLiteRtTensorBufferTypeFastRpc) {
-    return absl::InternalError("Unsupported tensor buffer type");
-  }
-
   size_t tensor_buffer_size;
   if (auto status =
           LiteRtGetTensorBufferSize(tensor_buffer, &tensor_buffer_size);
@@ -121,25 +117,44 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
     return absl::InternalError("Tensor strides are not supported by QNN");
   }
 
-  void* fastrpc_buffer_addr;
-  int fastrpc_buffer_fd;
+  void* buffer_host_addr;
+  int buffer_fd;
+  (void)buffer_host_addr;
+
+  switch (tensor_buffer_type) {
+    case kLiteRtTensorBufferTypeFastRpc:
 #if LITERT_HAS_FASTRPC_SUPPORT
-  if (auto status = LiteRtGetTensorBufferFastRpcBuffer(
-          tensor_buffer, &fastrpc_buffer_addr, &fastrpc_buffer_fd);
-      status != kLiteRtStatusOk) {
-    return absl::InternalError("Failed to get FastRPC buffer");
-  }
+      if (auto status = LiteRtGetTensorBufferFastRpcBuffer(
+              tensor_buffer, &buffer_host_addr, &buffer_fd);
+          status != kLiteRtStatusOk) {
+        return absl::InternalError("Failed to get FastRPC buffer");
+      }
 #else
-  (void)fastrpc_buffer_addr;
-  (void)fastrpc_buffer_fd;
-  return absl::InternalError("FastRPC support is missing on this platform");
-#endif  // LITERT_HAS_FASTRPC_SUPPORT
+      return absl::InternalError("FastRPC support is missing on this platform");
+#endif  // LRT_HAS_FASTRPC_SUPPORT
+      break;
+
+    case kLiteRtTensorBufferTypeDmaBuf:
+#if LITERT_HAS_DMABUF_SUPPORT
+      if (auto status = LiteRtGetTensorBufferDmaBufBuffer(
+              tensor_buffer, &buffer_host_addr, &buffer_fd);
+          status != kLiteRtStatusOk) {
+        return absl::InternalError("Failed to get DMA-BUF buffer");
+      }
+#else
+      return absl::InternalError("DmaBuf support is missing on this platform");
+#endif  // LRT_HAS_DMABUF_SUPPORT
+      break;
+
+    default:
+      return absl::InternalError("Unsupported tensor buffer type");
+  }
 
   QnnMemHtp_Descriptor_t mem_htp_descriptor = {};
   mem_htp_descriptor.type = QNN_HTP_MEM_SHARED_BUFFER;
   mem_htp_descriptor.size = tensor_buffer_size;
-  mem_htp_descriptor.sharedBufferConfig = {fastrpc_buffer_fd,
-                                           tensor_buffer_offset};
+  mem_htp_descriptor.sharedBufferConfig =
+      QnnHtpMem_SharedBufferConfig_t{buffer_fd, tensor_buffer_offset};
 
   Qnn_MemDescriptor_t mem_descriptor = {};
   mem_descriptor.memShape = {tensor_rank, tensor_dimensions, nullptr};
