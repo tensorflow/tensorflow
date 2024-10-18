@@ -240,15 +240,11 @@ example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
 
-*   `use_xnnpack`: `bool` (default=false) \
-    Note if this option is explicitly set to `false`, the TfLite runtime will
-    use its original CPU kernels for model execution. In other words, after
-    enabling the feature that the XNNPACK delegate is applied by default in
-    TfLite runtime, explictly setting this flag to `false` will cause the
-    benchmark tool to disable the feature at runtime, and to use the original
-    non-delegated CPU execution path for model benchmarking.
+*   `use_xnnpack`: `bool` (default=true) \
+    If this option is explicitly set to `false`, the TfLite runtime will
+    use its reference CPU kernels for model execution which may be much slower.
 *   `xnnpack_force_fp16`: `bool` (default=false) \
-    Enforce float16 inference.
+    Force float16 inference within the XNNPack delegate if all operators support fp16 inference.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
