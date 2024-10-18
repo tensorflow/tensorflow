@@ -1,0 +1,180 @@
+# *******************************************************************************
+# Copyright 2025 Arm Limited and affiliates.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+diff --git a/src/cpu/aarch64/acl_thread.cpp b/src/cpu/aarch64/acl_thread.cpp
+index 53175a05f9..89731cb356 100644
+--- a/src/cpu/aarch64/acl_thread.cpp
++++ b/src/cpu/aarch64/acl_thread.cpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2022-2024 Arm Ltd. and affiliates
++* Copyright 2022-2025 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -83,17 +83,20 @@ void acl_set_threadpool_num_threads() {
+ }
+ // Swap BenchmarkScheduler for custom scheduler builds (i.e. ThreadPoolScheduler)
+ void acl_set_tp_benchmark_scheduler() {
+-    static std::once_flag flag_once;
+-    // Create threadpool scheduler
+-    std::unique_ptr<arm_compute::IScheduler> threadpool_scheduler
+-            = std::make_unique<ThreadpoolScheduler>();
+-    arm_compute::IScheduler *_real_scheduler = nullptr;
+-    _real_scheduler = threadpool_scheduler.release();
+-    // Create benchmark scheduler and set TP as real scheduler
+-    std::shared_ptr<arm_compute::IScheduler> benchmark_scheduler
+-            = std::make_unique<BenchmarkScheduler>(*_real_scheduler);
+-    std::call_once(flag_once,
+-            [&]() { arm_compute::Scheduler::set(benchmark_scheduler); });
++    static thread_local std::once_flag flag_once;
++    std::call_once(flag_once, [&]() {
++        // Create threadpool scheduler
++        std::unique_ptr<arm_compute::IScheduler> threadpool_scheduler
++                = std::make_unique<ThreadpoolScheduler>();
++        arm_compute::IScheduler *_real_scheduler = nullptr;
++        _real_scheduler = threadpool_scheduler.release();
++
++        // Create benchmark scheduler and set TP as real scheduler
++        std::shared_ptr<arm_compute::IScheduler> benchmark_scheduler
++                = std::make_unique<BenchmarkScheduler>(*_real_scheduler);
++
++        arm_compute::Scheduler::set(benchmark_scheduler);
++    });
+ }
+ #endif
+ 
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.cpp b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+index 30910398d9..34cf44b7e2 100644
+--- a/src/cpu/aarch64/acl_threadpool_scheduler.cpp
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2022-2024 Arm Ltd. and affiliates
++* Copyright 2022-2025 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -18,24 +18,17 @@
+ 
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+ 
+-#include "cpu/aarch64/acl_thread.hpp"
+-
+ #include "common/counting_barrier.hpp"
+ #include "common/dnnl_thread.hpp"
++#include "cpu/aarch64/acl_thread.hpp"
+ 
+ #include "arm_compute/core/CPP/ICPPKernel.h"
+ #include "arm_compute/core/Error.h"
+-#include "arm_compute/core/Helpers.h"
+-#include "arm_compute/core/Utils.h"
+ #include "arm_compute/runtime/IScheduler.h"
+ 
+-// BARRIER
+ #include <atomic>
+ #include <cassert>
+-#include <chrono>
+ #include <mutex>
+-#include <thread>
+-#include <condition_variable>
+ 
+ namespace dnnl {
+ namespace impl {
+@@ -51,7 +44,7 @@ public:
+ 
+     /// Function to check the next element in the range if there is one.
+     bool get_next(unsigned int &next) {
+-        next = atomic_fetch_add_explicit(
++        next = std::atomic_fetch_add_explicit(
+                 &_atomic_counter, 1u, std::memory_order_relaxed);
+         return next < _end;
+     }
+@@ -70,11 +63,8 @@ void process_workloads(std::vector<IScheduler::Workload> &workloads,
+     } while (feeder.get_next(workload_index));
+ }
+ 
+-ThreadpoolScheduler::ThreadpoolScheduler() {
+-    using namespace dnnl::impl::threadpool_utils;
+-    // Set number of threads to one when threadpool is not available.
+-    _num_threads = get_active_threadpool() == nullptr ? 1 : num_threads_hint();
+-}
++ThreadpoolScheduler::ThreadpoolScheduler()
++    : _num_threads(dnnl_get_max_threads()) {}
+ 
+ ThreadpoolScheduler::~ThreadpoolScheduler() = default;
+ 
+@@ -83,8 +73,8 @@ unsigned int ThreadpoolScheduler::num_threads() const {
+ }
+ 
+ void ThreadpoolScheduler::set_num_threads(unsigned int num_threads) {
+-    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
+-    _num_threads = num_threads == 0 ? num_threads_hint() : num_threads;
++    std::lock_guard<std::mutex> lock(this->_mtx);
++    _num_threads = num_threads == 0 ? dnnl_get_max_threads() : num_threads;
+ }
+ 
+ void ThreadpoolScheduler::schedule(ICPPKernel *kernel, const Hints &hints) {
+@@ -104,7 +94,7 @@ void ThreadpoolScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
+ void ThreadpoolScheduler::run_workloads(
+         std::vector<arm_compute::IScheduler::Workload> &workloads) {
+ 
+-    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
++    std::lock_guard<std::mutex> lock(this->_mtx);
+ 
+     const unsigned int num_threads
+             = std::min(static_cast<unsigned int>(_num_threads),
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.hpp b/src/cpu/aarch64/acl_threadpool_scheduler.hpp
+index e9ba21c803..384dfec1b9 100644
+--- a/src/cpu/aarch64/acl_threadpool_scheduler.hpp
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.hpp
+@@ -1,5 +1,5 @@
+ /*******************************************************************************
+-* Copyright 2022 Arm Ltd. and affiliates
++* Copyright 2022, 2025 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -22,7 +22,8 @@
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+ 
+ #include "arm_compute/runtime/IScheduler.h"
+-#include "support/Mutex.h"
++
++#include <mutex>
+ 
+ namespace dnnl {
+ namespace impl {
+@@ -32,7 +33,7 @@ namespace aarch64 {
+ class ThreadpoolScheduler final : public arm_compute::IScheduler {
+ public:
+     ThreadpoolScheduler();
+-    ~ThreadpoolScheduler();
++    ~ThreadpoolScheduler() override;
+ 
+     /// Sets the number of threads the scheduler will use to run the kernels.
+     void set_num_threads(unsigned int num_threads) override;
+@@ -54,8 +55,8 @@ protected:
+     void run_workloads(std::vector<Workload> &workloads) override;
+ 
+ private:
+-    uint _num_threads {};
+-    arm_compute::Mutex _run_workloads_mutex {};
++    unsigned int _num_threads {};
++    std::mutex _mtx;
+ };
+ 
+ } // namespace aarch64
