@@ -52,8 +52,9 @@ void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
       device, this, input_tensor, output_tensor, done);
 }
 
-Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
-                                           std::function<void()> func) {
+absl::Status PluggableDeviceContext::ThenExecute(Device* device,
+                                                 se::Stream* stream,
+                                                 std::function<void()> func) {
   const DeviceBase::AcceleratorDeviceInfo* device_info =
       device->tensorflow_accelerator_device_info();
   device_info->event_mgr->ThenExecute(stream, func);

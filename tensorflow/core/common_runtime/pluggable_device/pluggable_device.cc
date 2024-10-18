@@ -199,7 +199,7 @@ PluggableDevice::~PluggableDevice() {
   device_context_->Unref();
 }
 
-Status PluggableDevice::Init(const SessionOptions& options) {
+absl::Status PluggableDevice::Init(const SessionOptions& options) {
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DeviceType(device_type()), platform, tf_device_id_);
@@ -337,7 +337,9 @@ void PluggableDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
 
 // Based on the semantics of Device::Sync, this call should wait for
 // all streams not just the current one.
-Status PluggableDevice::Sync() { return PluggableDeviceUtil::SyncAll(this); }
+absl::Status PluggableDevice::Sync() {
+  return PluggableDeviceUtil::SyncAll(this);
+}
 
 void PluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
                                    OpKernelContext* context,
@@ -355,7 +357,7 @@ void PluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
   op_kernel->ComputeAsync(context, std::move(done));
 }
 
-Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
+absl::Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     const AllocatorAttributes& alloc_attrs, const Tensor& from, Tensor* to,
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
@@ -364,8 +366,9 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     return absl::OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
-      Status err = errors::Internal("PluggableDevice copy from non-DMA ",
-                                    DataTypeString(from.dtype()), " tensor");
+      absl::Status err =
+          errors::Internal("PluggableDevice copy from non-DMA ",
+                           DataTypeString(from.dtype()), " tensor");
       done(err);
       return err;
     }
@@ -376,14 +379,15 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     // If the tensor is not initialized, we likely ran out of memory.
     if (!copy->IsInitialized()) {
       delete copy;
-      Status err = errors::ResourceExhausted(
+      absl::Status err = errors::ResourceExhausted(
           "OOM when allocating tensor of shape ", from.shape().DebugString(),
           " and type ", DataTypeString(from.dtype()));
       done(err);
       return err;
     }
 
-    auto wrapped_done = [to, copy, done = std::move(done)](const Status& s) {
+    auto wrapped_done = [to, copy,
+                         done = std::move(done)](const absl::Status& s) {
       if (s.ok()) {
         *to = std::move(*copy);
       }
@@ -397,7 +401,7 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
   }
 }
 
-Status PluggableDevice::MakeTensorFromProto(
+absl::Status PluggableDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
   AllocatorAttributes attr;
@@ -417,7 +421,7 @@ Status PluggableDevice::MakeTensorFromProto(
     Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;
-    Status copy_status;
+    absl::Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
@@ -425,14 +429,14 @@ Status PluggableDevice::MakeTensorFromProto(
       notifications.emplace_back();
       Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToPluggableDevice(
-          alloc_attrs, from, to, [&n, &copy_status](const Status& s) {
+          alloc_attrs, from, to, [&n, &copy_status](const absl::Status& s) {
             if (copy_status.ok()) {
               copy_status.Update(s);
             }
             n.Notify();
           });
     };
-    Status s;
+    absl::Status s;
     for (int64_t ix = 0; ix < parsed.NumElements(); ++ix) {
       s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE,
                             from[ix], &copy_variant[ix], copier);
@@ -450,9 +454,9 @@ Status PluggableDevice::MakeTensorFromProto(
     return copy_status;
   } else {
     Notification n;
-    Status status;
+    absl::Status status;
     TF_RETURN_IF_ERROR(MaybeCopyTensorToPluggableDevice(
-        alloc_attrs, parsed, tensor, [&n, &status](const Status& s) {
+        alloc_attrs, parsed, tensor, [&n, &status](const absl::Status& s) {
           status = s;
           n.Notify();
         }));
