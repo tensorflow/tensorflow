@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 
 namespace xla {
@@ -36,9 +35,7 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
 
   PjRtClient* client() const override { return device_->client(); }
 
-  absl::Span<PjRtDevice* const> devices() const override {
-    return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
-  }
+  PjRtDevice* device() const override { return device_; }
 
   int id() const override { return id_; }
 
@@ -70,9 +67,7 @@ class PinnedHostMemorySpace : public PjRtMemorySpace {
 
   PjRtClient* client() const override { return device_->client(); }
 
-  absl::Span<PjRtDevice* const> devices() const override {
-    return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
-  }
+  PjRtDevice* device() const override { return device_; }
 
   int id() const override { return id_; }
 
