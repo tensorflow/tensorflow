@@ -18,11 +18,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "absl/status/status.h"
-#include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
