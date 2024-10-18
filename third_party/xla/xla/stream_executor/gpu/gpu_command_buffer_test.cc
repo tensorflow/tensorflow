@@ -18,11 +18,14 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -78,16 +81,37 @@ using AddI32Ptrs3 = TypedKernelFactory<internal::Ptrs3<int32_t>>;
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
+using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
+
+// Converts a platform independent GraphNodeHandle into a platform specific
+// GpuGraphNodeHandle. This function will be removed once
+// GraphNodeGetDependencies has been migrated into GpuCommandBuffer..
+static GpuGraphNodeHandle ToPlatformSpecificHandle(GraphNodeHandle handle) {
+  return absl::bit_cast<GpuGraphNodeHandle>(handle);
+}
+
+// Converts a platform specific GpuGraphNodeHandle into a platform independent
+// GraphNodeHandle. This function will be removed once GraphNodeGetDependencies
+// has been migrated into GpuCommandBuffer.
+static GraphNodeHandle FromPlatformSpecificHandle(GpuGraphNodeHandle handle) {
+  return absl::bit_cast<GraphNodeHandle>(handle);
+}
+
 template <typename Info>
-static std::vector<GpuGraphNodeHandle> Deps(Info info) {
-  if (auto deps = GpuDriver::GraphNodeGetDependencies(info.handle); deps.ok()) {
-    return *deps;
+static std::vector<GraphNodeHandle> Deps(Info info) {
+  if (auto deps = GpuDriver::GraphNodeGetDependencies(
+          ToPlatformSpecificHandle(info.handle));
+      deps.ok()) {
+    std::vector<GraphNodeHandle> handles;
+    std::transform(deps->begin(), deps->end(), std::back_inserter(handles),
+                   FromPlatformSpecificHandle);
+    return handles;
   }
-  return {GpuGraphNodeHandle(0xDEADBEEF)};
+  return {GraphNodeHandle(0xDEADBEEF)};
 }
 
 template <typename... Infos>
-static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
+static std::vector<GraphNodeHandle> ExpectedDeps(Infos... info) {
   return {info.handle...};
 }
 

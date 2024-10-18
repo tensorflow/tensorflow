@@ -25,11 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/stream_executor/stream.h"
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -63,6 +64,7 @@ namespace stream_executor::gpu {
 
 using Mode = CommandBuffer::Mode;
 using State = CommandBuffer::State;
+using GraphNodeHandle = GpuCommandBuffer::GraphNodeHandle;
 
 std::string_view to_string(State state) {
   switch (state) {
@@ -156,8 +158,33 @@ GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
   cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
 }
 
-static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
-  return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
+// Converts a platform independent GraphNodeHandle into a platform specific
+// GpuGraphNodeHandle. This function will be removed once all
+// Node factory functions have been migrated into the subclasses.
+static GpuGraphNodeHandle ToPlatformSpecificHandle(
+    GpuCommandBuffer::GraphNodeHandle handle) {
+  return absl::bit_cast<GpuGraphNodeHandle>(handle);
+}
+
+// Converts a list of platform independent GraphNodeHandles into a list of
+// platform specific GpuGraphNodeHandles. This function will be removed once
+// all Node factory functions have been migrated into the subclasses.
+static std::vector<GpuGraphNodeHandle> ToPlatformSpecificHandles(
+    absl::Span<const GraphNodeHandle> opaque_handles) {
+  std::vector<GpuGraphNodeHandle> handles;
+  handles.reserve(opaque_handles.size());
+  for (const GraphNodeHandle opaque_handle : opaque_handles) {
+    handles.push_back(ToPlatformSpecificHandle(opaque_handle));
+  }
+  return handles;
+}
+
+// Converts a platform specific GpuGraphNodeHandle into a platform independent
+// GraphNodeHandle. This function will be removed once all Node factory
+// functions have been migrated into the subclasses.
+static GpuCommandBuffer::GraphNodeHandle FromPlatformSpecificHandle(
+    GpuGraphNodeHandle handle) {
+  return absl::bit_cast<GpuCommandBuffer::GraphNodeHandle>(handle);
 }
 
 absl::Status GpuCommandBuffer::Trace(
@@ -222,8 +249,8 @@ absl::Status GpuCommandBuffer::DisableBarriersExecution(
 
   for (GpuGraphBarrierInfo& barrier : execution_scope.barriers) {
     if (barrier.is_barrier_node) {
-      TF_RETURN_IF_ERROR(
-          GpuDriver::GraphNodeSetEnabled(exec, barrier.handle, false));
+      TF_RETURN_IF_ERROR(GpuDriver::GraphNodeSetEnabled(
+          exec, ToPlatformSpecificHandle(barrier.handle), false));
     }
   }
   for (ConditionalCommandBuffers& cmd_buffers :
@@ -251,26 +278,6 @@ absl::Status GpuCommandBuffer::CheckNumCommandBuffers(
         " conditional command buffers, got ", cmd_buffers.handles.size()));
   }
   return absl::OkStatus();
-}
-
-absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
-    const Dependencies& dependencies) {
-  GpuGraphNodeHandle barrier_handle = nullptr;
-#if !defined(TENSORFLOW_USE_ROCM) && CUDA_VERSION < 12040
-  // Instead of empty nodes we create no-op kernel nodes as barriers because
-  // CUDA 12.3 does not support empty nodes inside conditional command buffers.
-  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-
-  TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-      &barrier_handle, graph_, dependencies, "noop",
-      AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
-      /*kernel_params=*/nullptr, /*extra=*/nullptr));
-#else
-  TF_RETURN_IF_ERROR(
-      GpuDriver::GraphAddEmptyNode(&barrier_handle, graph_, dependencies));
-#endif  // TENSORFLOW_USE_ROCM
-
-  return barrier_handle;
 }
 
 GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrierDependencies(
@@ -446,30 +453,20 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
 
-  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
-  GpuFunctionHandle gpu_func = gpu_kernel->gpu_function();
-
-  void** kernel_params =
-      const_cast<void**>(packed_args.argument_addresses().data());
-
   // Adds a new kernel node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-    return GpuDriver::GraphAddKernelNode(
-        &node_info.handle, graph_, barrier, kernel.name(), gpu_func, blocks.x,
-        blocks.y, blocks.z, threads.x, threads.y, threads.z,
-        packed_args.number_of_shared_bytes(), kernel_params, /*extra=*/nullptr);
+    TF_ASSIGN_OR_RETURN(
+        execution_scope.nodes.emplace_back().handle,
+        CreateKernelNode(barrier, threads, blocks, kernel, packed_args));
+    return absl::OkStatus();
   }
 
   // Updates kernel node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node =
-        execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecKernelNodeSetParams(
-        exec_, node, kernel.name(), gpu_func, blocks.x, blocks.y, blocks.z,
-        threads.x, threads.y, threads.z, packed_args.number_of_shared_bytes(),
-        kernel_params, /*extra=*/nullptr);
+    return UpdateKernelNode(
+        execution_scope.nodes[execution_scope.update_state.node_idx++].handle,
+        threads, blocks, kernel, packed_args);
   }
 
   return UnsupportedStateError(state_);
@@ -511,21 +508,19 @@ absl::Status GpuCommandBuffer::AddNestedCommandBuffer(
 
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
-
   // Adds a child graph node to the graph under construction.
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-    return GpuDriver::GraphAddChildNode(&node_info.handle, graph_, barrier,
-                                        child_graph);
+    TF_ASSIGN_OR_RETURN(execution_scope.nodes.emplace_back().handle,
+                        CreateChildNode(barrier, nested));
+    return absl::OkStatus();
   }
 
   // Updates child graph node in the executable graph.
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node =
+    GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecChildNodeSetParams(exec_, node, child_graph);
+    return UpdateChildNode(node, nested);
   }
 
   return UnsupportedStateError(state_);
@@ -540,18 +535,15 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-    return GpuDriver::GraphAddMemcpyD2DNode(
-        parent_->gpu_context(), &node_info.handle, graph_, barrier,
-        AsDevicePtr(*dst), AsDevicePtr(src), size);
+    TF_ASSIGN_OR_RETURN(execution_scope.nodes.emplace_back().handle,
+                        CreateMemcpyD2DNode(barrier, *dst, src, size));
+    return absl::OkStatus();
   }
 
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node =
+    GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-        parent_->gpu_context(), exec_, node, AsDevicePtr(*dst),
-        AsDevicePtr(src), size);
+    return UpdateMemcpyD2DNode(node, *dst, src, size);
   }
 
   return UnsupportedStateError(state_);
@@ -559,7 +551,7 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
 
 absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
                                       DeviceMemoryBase* dst,
-                                      CommandBuffer::BitPattern bit_pattern,
+                                      BitPattern bit_pattern,
                                       size_t num_elements) {
   ExecutionScope& execution_scope = execution_scopes_[execution_scope_id];
 
@@ -567,18 +559,16 @@ absl::Status GpuCommandBuffer::Memset(ExecutionScopeId execution_scope_id,
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
-    return GpuDriver::GraphAddMemsetNode(
-        parent_->gpu_context(), &node_info.handle, graph_, barrier,
-        AsDevicePtr(*dst), bit_pattern, num_elements);
+    TF_ASSIGN_OR_RETURN(
+        execution_scope.nodes.emplace_back().handle,
+        CreateMemsetNode(barrier, *dst, bit_pattern, num_elements));
+    return absl::OkStatus();
   }
 
   if (state_ == State::kUpdate) {
-    GpuGraphNodeHandle node =
+    GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecMemsetNodeSetParams(
-        parent_->gpu_context(), exec_, node, AsDevicePtr(*dst), bit_pattern,
-        num_elements);
+    return UpdateMemsetNode(node, *dst, bit_pattern, num_elements);
   }
 
   return UnsupportedStateError(state_);
@@ -655,18 +645,21 @@ GpuCommandBuffer::CreateConditionalNodes(
 
   for (GpuGraphConditionalHandle handle : handles) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeInfo& node_info = execution_scope.nodes.emplace_back();
 
     ConditionalParams params;
     params.type = type;
     params.handle = handle;
     params.context = parent_->gpu_context();
 
+    GpuGraphNodeHandle node_handle = nullptr;
+
     TF_ASSIGN_OR_RETURN(
         GpuDriver::GpuGraphNodeResult result,
-        GpuDriver::GraphAddNode(&node_info.handle, graph_, barrier, params));
+        GpuDriver::GraphAddNode(&node_handle, graph_,
+                                ToPlatformSpecificHandles(barrier), params));
 
     conditional_graphs.push_back(std::get<ConditionalResult>(result).graph);
+    execution_scope.nodes.emplace_back(FromPlatformSpecificHandle(node_handle));
   }
 
   return conditional_graphs;
