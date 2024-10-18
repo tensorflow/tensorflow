@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/convert_custom_calls.h"
 
 #include <cstdint>
 #include <memory>
@@ -33,11 +33,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/sharding_op_util.h"
 
 namespace xla {
@@ -49,7 +49,9 @@ using ::mlir::StringRef;
 
 using ::mlir::mhlo::CustomCallOp;
 
+using ::mlir::IntegerAttr;
 using ::mlir::sdy::ShardingConstraintOp;
+using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
 
 class ShardingCustomCallPattern
@@ -95,47 +97,92 @@ class ShardingCustomCallPattern
   }
 };
 
+class ShardingGroupCustomCallPattern
+    : public mlir::OpConversionPattern<CustomCallOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      CustomCallOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    if (op.getCallTargetName() != kShardingGroupCustomCallTargetName) {
+      return rewriter.notifyMatchFailure(
+          op, "expected CustomCallOp with target name " +
+                  kShardingCustomCallTargetName.str());
+    }
+
+    CHECK_EQ(op.getNumOperands(), 1);
+    CHECK_LE(op.getNumResults(), 1);
+
+    std::optional<IntegerAttr> shardingGroupId =
+        tryGetFrontendAttr<IntegerAttr>(op, kShardingGroupIdAttr);
+    if (!shardingGroupId.has_value()) {
+      return op.emitError()
+             << "expected CustomCallOp with a sharding group id.";
+    }
+
+    rewriter.replaceOpWithNewOp<ShardingGroupOp>(
+        op, adaptor.getInputs().front(), shardingGroupId->getInt());
+
+    return mlir::success();
+  }
+};
+
 // Converts a CustomCall with target name Sharding into a
-// ShardingConstraintOp.
-class ConvertShardingCustomCallsPass
-    : public mlir::PassWrapper<ConvertShardingCustomCallsPass,
+// ShardingConstraintOp and ShardingGroup into a ShardingGroupOp.
+class ConvertCustomCallsPass
+    : public mlir::PassWrapper<ConvertCustomCallsPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertShardingCustomCallsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertCustomCallsPass)
 
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
-    mlir::ConversionTarget target(context);
-    target.addLegalDialect<mlir::sdy::SdyDialect>();
-    target.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
+    // Helper lambda to apply conversion patterns.
+    auto applyConversion = [&](mlir::ConversionTarget& target,
+                               mlir::RewritePatternSet& patterns) {
+      if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
+                                                    std::move(patterns)))) {
+        signalPassFailure();
+      }
+    };
+
+    // Convert: `CustomCallOp` -> `ShardingConstraintOp`.
+    mlir::ConversionTarget shardingTarget(context);
+    shardingTarget.addLegalDialect<mlir::sdy::SdyDialect>();
+    shardingTarget.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
       return op.getCallTargetName() != kShardingCustomCallTargetName;
     });
-    mlir::RewritePatternSet patterns(&context);
-    patterns.add<ShardingCustomCallPattern>(&context);
-    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
-                                                  std::move(patterns)))) {
-      signalPassFailure();
-    }
+    mlir::RewritePatternSet shardingPatterns(&context);
+    shardingPatterns.add<ShardingCustomCallPattern>(&context);
+    applyConversion(shardingTarget, shardingPatterns);
+
+    // Convert: `CustomCallOp` -> `ShardingGroupOp`.
+    mlir::ConversionTarget shardingGroupTarget(context);
+    shardingGroupTarget.addLegalOp<ShardingGroupOp>();
+    mlir::RewritePatternSet shardingGroupPatterns(&context);
+    shardingGroupPatterns.add<ShardingGroupCustomCallPattern>(&context);
+    applyConversion(shardingGroupTarget, shardingGroupPatterns);
   }
 
   StringRef getArgument() const override {
-    return "xla-sdy-convert-sharding-custom-calls";
+    return "xla-sdy-convert-custom-calls";
   }
 
   StringRef getDescription() const override {
     return "Converts a CustomCall with target name Sharding into a "
-           "ShardingConstraintOp.";
+           "ShardingConstraintOp and with target name ShardingGroup into a "
+           "ShardingGroupOp.";
   }
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createConvertShardingCustomCallsPass() {
-  return std::make_unique<ConvertShardingCustomCallsPass>();
+std::unique_ptr<mlir::Pass> createConvertCustomCallsPass() {
+  return std::make_unique<ConvertCustomCallsPass>();
 }
 
-void registerConvertShardingCustomCallsPass() {
-  mlir::registerPass(createConvertShardingCustomCallsPass);
+void registerConvertCustomCallsPass() {
+  mlir::registerPass(createConvertCustomCallsPass);
 }
 
 }  // namespace sdy
