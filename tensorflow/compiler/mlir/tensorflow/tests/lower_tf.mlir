@@ -1410,3 +1410,31 @@ func.func @unranked_matrix_band_part(%input: tensor<*xf32>, %num_lower: tensor<i
   %0 = "tf.MatrixBandPart"(%input, %num_lower, %num_upper) : (tensor<*xf32>, tensor<i64>, tensor<i64>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
+
+// CHECK-LABEL: func @image_projective_transform_translation
+func.func @image_projective_transform_translation(%arg0: tensor<8x2000x2000x3xf16>, %arg1: tensor<8x3x2000x2000xf16>) ->
+     (tensor<8x2000x2000x3xf16>, tensor<8x2000x2000x3xf16>) {
+  %cst_0 = "tf.Const"() {value = dense<[[1.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.000000e+00, -2.000000e+00, 0.000000e+00, 0.000000e+00]]> : tensor<1x8xf32>} : () -> tensor<1x8xf32>
+  %cst_1 = "tf.Const"() {value = dense<[[1.000000e+00, 0.000000e+00, 4.000000e+00, 0.000000e+00, 1.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]]> : tensor<1x8xf32>} : () -> tensor<1x8xf32>
+  %output_shape = "tf.Const"() {value = dense<2000> : tensor<2xi32>} : () -> tensor<2xi32>
+  %fill_val = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // Translation along rows: shifting down.
+  %trA = "tf.ImageProjectiveTransformV3"(%arg0, %cst_0, %output_shape, %fill_val) {device = "", dtype = f16, fill_mode = "CONSTANT", interpolation = "NEAREST"} : (tensor<8x2000x2000x3xf16>, tensor<1x8xf32>, tensor<2xi32>, tensor<f32>) -> tensor<8x2000x2000x3xf16>
+  // Translation along columns: shifting left.
+  %trB = "tf.ImageProjectiveTransformV3"(%arg0, %cst_1, %output_shape, %fill_val) {device = "", dtype = f16, fill_mode = "CONSTANT", interpolation = "NEAREST"} : (tensor<8x2000x2000x3xf16>, tensor<1x8xf32>, tensor<2xi32>, tensor<f32>) -> tensor<8x2000x2000x3xf16>
+
+  return %trA, %trB : tensor<8x2000x2000x3xf16>, tensor<8x2000x2000x3xf16>
+  // CHECK-DAG: %[[LOW_PADDING:.*]] = "tf.Const"() <{value = dense<[{{.*}}[0, 0], [2, 0], [0, 0], [0, 0]]> : tensor<4x2xi64>}>
+  // CHECK-DAG: %[[HIGH_PADDING:.*]] = "tf.Const"() <{value = dense<[{{.*}}[0, 0], [0, 0], [0, 4], [0, 0]]> : tensor<4x2xi64>}>
+  // CHECK-DAG: %[[FILL_VALUE:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f16>}> : () -> tensor<f16>
+  // CHECK-DAG: %[[STARTS_A:.*]] = "tf.Const"() <{value = dense<0> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG: %[[STARTS_B:.*]] = "tf.Const"() <{value = dense<[0, 0, 4, 0]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // CHECK-DAG: %[[SIZES:.*]] = "tf.Const"() <{value = dense<[8, 2000, 2000, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
+  // High-side padding here along columns.
+  // CHECK-NEXT: %[[L_PAD:.*]] = "tf.PadV2"(%{{.*}}, %[[LOW_PADDING]], %[[FILL_VALUE]]) : (tensor<8x2000x2000x3xf16>, tensor<4x2xi64>, tensor<f16>) -> tensor<8x2002x2000x3xf16>
+  // CHECK-NEXT: %[[OUT_A:.*]] = "tf.Slice"(%[[L_PAD]], %[[STARTS_A]], %[[SIZES]]) : (tensor<8x2002x2000x3xf16>, tensor<4xi64>, tensor<4xi64>) -> tensor<8x2000x2000x3xf16>
+  // High-side padding here along rows.
+  // CHECK-NEXT: %[[H_PAD:.*]] = "tf.PadV2"(%{{.*}}, %[[HIGH_PADDING]], %[[FILL_VALUE]]) : (tensor<8x2000x2000x3xf16>, tensor<4x2xi64>, tensor<f16>) -> tensor<8x2000x2004x3xf16>
+  // CHECK-NEXT: %[[OUT_B:.*]] = "tf.Slice"(%[[H_PAD]], %[[STARTS_B]], %[[SIZES]]) : (tensor<8x2000x2004x3xf16>, tensor<4xi64>, tensor<4xi64>) -> tensor<8x2000x2000x3xf16>
+  // CHECK-NEXT: return %[[OUT_A]], %[[OUT_B]]
+}
