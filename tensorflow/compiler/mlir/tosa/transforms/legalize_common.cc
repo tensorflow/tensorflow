@@ -2432,16 +2432,19 @@ std::optional<Value> convertStridedSliceOp(
   // 0. Process begin/end masks, since they are basically syntactic sugar
   // on top of the begin_value/end_value arrays
   //
-  // 1. Slice1: Ignoring stride, slice the interesting range from the input
+  // 1. Slice: Ignoring stride, slice the interesting range from the input
   // tensor
+  // 
+  // 2. Pad: Add padding to guarantee that the size in each dimension is a
+  // multiple of the corresponding stride.
   //
-  // 2. Reshape2: Reshape the tensor from (1) such that each dimension with
+  // 3. Reshape: Reshape the padded tensor such that each dimension with
   // abs(stride) != 1 is split into two dimensions of size_i/stride_i, stride_i.
   //
-  // 3. Slice3: Slice the tensor from (2) such that we select index [0] from
-  // each of the stride_i dimensions in (2)
+  // 4. Slice: Slice the tensor such that we select index [0] from each of the
+  // stride_i dimensions.
   //
-  // 4. Reshape4: Reshape the tensor to eliminate the stride_i dimensions, add
+  // 5. Reshape: Reshape the tensor to eliminate the stride_i dimensions, add
   // any dimensions in new_axis_mask and remove any dimensions in the
   // shrink_axis_mask
 
@@ -2609,36 +2612,73 @@ std::optional<Value> convertStridedSliceOp(
         .getResult();
   }
 
-  // Step 2: reshape the sliced array
+  // Step 2: add padding if necessary
+  SmallVector<int32_t> abs_strides = llvm::to_vector(llvm::map_range(strides, [](int32_t stride) {
+    return abs(stride);
+  }));
+  SmallVector<int64_t> rounded_size;
+  bool needs_padding = false;
+  for (auto [size_elem, abs_stride] : llvm::zip(a1_size, abs_strides)) {
+    int32_t rounded_size_elem = (size_elem + abs_stride - 1) / abs_stride * abs_stride;
+    needs_padding |= size_elem != -1 && size_elem != rounded_size_elem;
+    rounded_size.push_back(rounded_size_elem);
+  }
+
+  TosaOp tosa_slice_or_pad_op = a1_slice_op;
+  if (needs_padding) {
+    // Emit 'tosa.const'
+    SmallVector<int64_t> padding_data;
+    for (auto [size_elem, rounded_size_elem] : llvm::zip(a1_size, rounded_size)) {
+      padding_data.push_back(0);
+      padding_data.push_back(rounded_size_elem - size_elem);
+    }
+    auto padding_type = RankedTensorType::get({input_rank, 2}, rewriter.getI64Type());
+    auto padding_attr = mlir::DenseElementsAttr::get(padding_type, ArrayRef(padding_data));
+    auto padding_op = CreateOpAndInfer<tosa::ConstOp>(
+        rewriter, op->getLoc(), padding_type, padding_attr);
+
+    // Emit 'tosa.const'
+    auto pad_const_type = RankedTensorType::get({}, element_type);
+    auto pad_const_zero = rewriter.getZeroAttr(pad_const_type).cast<ElementsAttr>();
+    auto pad_const_op = CreateOpAndInfer<tosa::ConstOp>(
+        rewriter, op->getLoc(), pad_const_type, pad_const_zero);
+    
+    // Emit 'tosa.pad'
+    auto padded_type = RankedTensorType::get(rounded_size, element_type);
+    tosa_slice_or_pad_op = CreateOpAndInfer<tosa::PadOp>(
+        rewriter, op->getLoc(), padded_type,
+        a1_slice_op, padding_op, pad_const_op);
+  }
+
+  // Step 3: reshape the sliced array
   SmallVector<int64_t> a2_shape;
   for (int i = 0; i < input_rank; ++i) {
-    int64_t abs_stride_i = abs(strides[i]);
-    a2_shape.push_back(a1_size[i] == -1 ? -1 : a1_size[i] / abs_stride_i);
-    if (abs_stride_i != 1) {
+    a2_shape.push_back(a1_size[i] == -1 ? -1 : rounded_size[i] / abs_strides[i]);
+    if (abs_strides[i] != 1) {
       // only add a stride dimension if strides[i] != 1
-      a2_shape.push_back(abs_stride_i);
+      a2_shape.push_back(abs_strides[i]);
     }
   }
 
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_shape, element_type),
-      a1_slice_op.getResult(),
+      tosa_slice_or_pad_op->getResult(0),
       rewriter.getDenseI64ArrayAttr(
+
           tensorflow::ConvertMlirShapeToTF(a2_shape)));
 
-  // Step 3: take a slice along the strides
+  // Step 4: take a slice along the strides
   SmallVector<int64_t> a3_begin, a3_size;
   for (int i = 0; i < input_rank; ++i) {
-    int64_t abs_stride_i = abs(strides[i]);
     a3_begin.push_back(0);
 
     if (shrink_axis_mask & (1 << i)) {
       a3_size.push_back(1);
     } else {
-      a3_size.push_back((a1_size[i] == -1) ? -1 : (a1_size[i] / abs_stride_i));
+      a3_size.push_back((a1_size[i] == -1) ? -1 : (rounded_size[i] / abs_strides[i]));
     }
-    if (abs_stride_i != 1) {
+    if (abs_strides[i] != 1) {
       // previous reshape only adds a stride dimension if strides[i] != 1
       a3_begin.push_back(0);
       a3_size.push_back(1);
@@ -2653,13 +2693,13 @@ std::optional<Value> convertStridedSliceOp(
       a2_reshape_op.getResult(), rewriter.getDenseI64ArrayAttr(a3_begin),
       rewriter.getDenseI64ArrayAttr(tensorflow::ConvertMlirShapeToTF(a3_size)));
 
-  // Step 4: reshape the now-strided tensor
+  // Step 5: reshape the now-strided tensor
   SmallVector<int64_t> a4_shape;
   for (int i = 0; i < input_rank; ++i) {
     if (!(shrink_axis_mask & (1 << i))) {
       if (new_axis_mask & (1 << i)) a4_shape.push_back(1);
       a4_shape.push_back(
-          ((a1_size[i] == -1) ? -1 : (a1_size[i] / abs(strides[i]))));
+          ((a1_size[i] == -1) ? -1 : (rounded_size[i] / abs_strides[i])));
     }
   }
 
