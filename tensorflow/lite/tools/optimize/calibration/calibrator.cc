@@ -263,9 +263,11 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
 
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];
-    TF_LITE_ENSURE_STATUS(
-        logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
-                               tensor.bytes / sizeof(float), error_reporter));
+    if (tensor.data.raw != nullptr) {
+      TF_LITE_ENSURE_STATUS(
+          logger->LogTensorValue(op_info.subgraph_index, i, tensor.data.f,
+                                 tensor.bytes / sizeof(float), error_reporter));
+    }
   }
 
   return kTfLiteOk;
