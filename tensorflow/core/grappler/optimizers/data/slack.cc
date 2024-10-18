@@ -77,8 +77,8 @@ constexpr std::array<const char*, 22> kPassThroughOps = {
 
 }  // namespace
 
-Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
-                                  NodeDef* dataset_node) {
+absl::Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
+                                        NodeDef* dataset_node) {
   if (dataset_node->op() == kPrefetchDatasetOp) {
     if (HasNodeAttr(*dataset_node, "slack_period")) {
       (*dataset_node->mutable_attr())["slack_period"].set_i(slack_period_);
@@ -105,10 +105,10 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
   return absl::OkStatus();
 }
 
-Status Slack::OptimizeAndCollectStats(Cluster* cluster,
-                                      const GrapplerItem& item,
-                                      GraphDef* output,
-                                      OptimizationStats* stats) {
+absl::Status Slack::OptimizeAndCollectStats(Cluster* cluster,
+                                            const GrapplerItem& item,
+                                            GraphDef* output,
+                                            OptimizationStats* stats) {
   if (slack_period_ < 1)
     return errors::InvalidArgument("Invalid `slack_period` parameter: ",
                                    slack_period_);

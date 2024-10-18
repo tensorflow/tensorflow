@@ -32,37 +32,37 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status DirectPluginOpKernelConstruction::GetBoolAttr(std::string_view attr_name,
-                                                     bool* value) const {
+absl::Status DirectPluginOpKernelConstruction::GetBoolAttr(
+    std::string_view attr_name, bool* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt32Attr(
+absl::Status DirectPluginOpKernelConstruction::GetInt32Attr(
     std::string_view attr_name, int* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt32AttrList(
+absl::Status DirectPluginOpKernelConstruction::GetInt32AttrList(
     std::string_view attr_name, std::vector<int32_t>* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetInt64Attr(
+absl::Status DirectPluginOpKernelConstruction::GetInt64Attr(
     std::string_view attr_name, int64_t* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetStringAttr(
+absl::Status DirectPluginOpKernelConstruction::GetStringAttr(
     std::string_view attr_name, std::string* value) const {
   return ctx_->GetAttr(attr_name, value);
 }
 
-Status DirectPluginOpKernelConstruction::GetFunctionAttr(
+absl::Status DirectPluginOpKernelConstruction::GetFunctionAttr(
     std::string_view attr_name, NameAttrList* function) const {
   return ctx_->GetAttr(attr_name, function);
 }
 
-Status DirectPluginOpKernelContext::CreatePluginVariable(
+absl::Status DirectPluginOpKernelContext::CreatePluginVariable(
     int index, PluginVariable** variable) const {
   const auto& arg_tensor = ctx_->input(index);
   if (arg_tensor.dtype() != DT_RESOURCE) {
@@ -78,7 +78,7 @@ Status DirectPluginOpKernelContext::CreatePluginVariable(
   return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
+absl::Status DirectPluginOpKernelContext::AllocateTempForPluginVariable(
     PluginVariable* variable) {
   auto* direct_variable = reinterpret_cast<DirectPluginVariable*>(variable);
   if (direct_variable->var_info_.var() == nullptr) {
@@ -96,7 +96,7 @@ DirectPluginOpKernelContext::GetResourceMgrDefaultContainerName() {
   return ctx_->resource_manager()->default_container();
 }
 
-Status DirectPluginOpKernelContext::LookupOrCreateResource(
+absl::Status DirectPluginOpKernelContext::LookupOrCreateResource(
     std::string_view container_name, std::string_view plugin_resource_name,
     void** result_plugin_resource, void* (*create_func)(void*),
     void* create_func_args, void (*delete_func)(void*)) {
@@ -126,12 +126,12 @@ absl::Status DirectPluginOpKernelContext::GetInput(
   return absl::OkStatus();
 }
 
-Status DirectPluginOpKernelContext::GetInput(const char* name,
-                                             const Tensor** tensor) const {
+absl::Status DirectPluginOpKernelContext::GetInput(
+    const char* name, const Tensor** tensor) const {
   return ctx_->input(name, tensor);
 }
 
-Status DirectPluginOpKernelContext::GetInputRange(
+absl::Status DirectPluginOpKernelContext::GetInputRange(
     std::string_view name, std::pair<int, int>* range) const {
   return ctx_->op_kernel().InputRange(name, &range->first, &range->second);
 }

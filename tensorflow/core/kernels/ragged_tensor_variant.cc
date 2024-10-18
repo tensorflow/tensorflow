@@ -52,7 +52,7 @@ bool RaggedTensorVariant::Decode(const VariantTensorData& data) {
 
 namespace {
 
-Status RaggedTensorVariantDeviceCopy(
+absl::Status RaggedTensorVariantDeviceCopy(
     const RaggedTensorVariant& from, RaggedTensorVariant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   // RaggedTensorVariant is only used by kernels that run on the CPU, so we
