@@ -515,13 +515,17 @@ tf_cuda_library(
         ":trt_allocator",
         ":trt_engine_utils",
         ":trt_logging",
+        ":trt_parameters",
         ":utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/grappler:op_types",
+        "@com_google_absl//absl/log:check",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -1020,9 +1024,11 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
