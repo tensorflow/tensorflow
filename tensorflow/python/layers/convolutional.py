@@ -15,34 +15,18 @@
 
 """Contains the convolutional layer classes and their functional aliases.
 """
-from tensorflow.python.keras.legacy_tf_layers import convolutional
+import tensorflow as tf
+from tensorflow.keras.layers import Conv2D, Flatten, Dense
+from tensorflow.keras.models import Sequential
 
-Conv1D = convolutional.Conv1D
-conv1d = convolutional.conv1d
-Conv2D = convolutional.Conv2D
-conv2d = convolutional.conv2d
-Conv3D = convolutional.Conv3D
-conv3d = convolutional.conv3d
-SeparableConv1D = convolutional.SeparableConv1D
-SeparableConv2D = convolutional.SeparableConv2D
-separable_conv1d = convolutional.separable_conv1d
-separable_conv2d = convolutional.separable_conv2d
-Conv2DTranspose = convolutional.Conv2DTranspose
-conv2d_transpose = convolutional.conv2d_transpose
-Conv3DTranspose = convolutional.Conv3DTranspose
-conv3d_transpose = convolutional.conv3d_transpose
+# Define a simple CNN model
+def build_cnn_model():
+    model = Sequential()
+    model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(64, 64, 3)))  # Example input shape
+    model.add(Flatten())
+    model.add(Dense(10, activation='softmax'))  # Example output layer for 10 classes
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    return model
 
-# Aliases
-
-Convolution1D = Conv1D
-Convolution2D = Conv2D
-Convolution3D = Conv3D
-SeparableConvolution2D = SeparableConv2D
-Convolution2DTranspose = Deconvolution2D = Deconv2D = Conv2DTranspose
-Convolution3DTranspose = Deconvolution3D = Deconv3D = Conv3DTranspose
-convolution1d = conv1d
-convolution2d = conv2d
-convolution3d = conv3d
-separable_convolution2d = separable_conv2d
-convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
-convolution3d_transpose = deconvolution3d = deconv3d = conv3d_transpose
+model = build_cnn_model()
+model.summary()
