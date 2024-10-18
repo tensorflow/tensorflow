@@ -2197,7 +2197,6 @@ cc_library(
         "//tensorflow:internal",
         # For xla_launch_util
         "//tensorflow/compiler/jit:__pkg__",
-        "//tensorflow_models:__subpackages__",
     ],
     deps = [
         ":device",
