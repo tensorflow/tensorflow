@@ -53,7 +53,7 @@ using IsPositionAllowedInAlternateMemoryFunction =
 using ReservedScopedMemoryFunction = std::function<int64_t(
     const HloInstruction*,
     const absl::flat_hash_set<
-        std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
+        std::pair<int, ShapeIndex>>& /*prefetched_operands*/,
     const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
 using PositionRequiresContiguousAllocationFunction =
     std::function<bool(const HloPosition&)>;
@@ -105,11 +105,13 @@ struct Options {
           [](const HloPosition&) { return true; };
 
   // This function returns the amount of scoped memory in bytes that should be
-  // reserved during the execution of this instruction.
+  // reserved during the execution of this instruction. Note that the
+  // `prefetched_operands` includes both the fully prefetched operands
+  // and the window prefetched operands.
   ReservedScopedMemoryFunction reserved_scoped_memory_fn =
       [](const HloInstruction*,
          const absl::flat_hash_set<
-             std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
+             std::pair<int, ShapeIndex>>& /*prefetched_operands*/,
          const absl::flat_hash_set<
              ShapeIndex>& /*outputs_in_alternate_memory*/) { return 0; };
 
