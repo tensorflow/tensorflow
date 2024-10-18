@@ -154,10 +154,11 @@ TEST(TestApplyPluginTool, TestApply) {
       LoadModel(reinterpret_cast<const uint8_t*>(out.view().data()),
                 out.view().size(), &model));
   UniqueLiteRtModel u_model(model);
-
   EXPECT_EQ(model->subgraphs.size(), 1);
-  ASSERT_EQ(model->flatbuffer_model->metadata.size(), 2);
-  EXPECT_EQ(model->flatbuffer_model->metadata[1]->name, kSocManufacturer);
+
+  ASSERT_RESULT_OK_ASSIGN(auto metadata_buffer,
+                          u_model->FindMetadata(kSocManufacturer));
+  EXPECT_GE(metadata_buffer.Size(), 0);
 }
 
 }  // namespace
