@@ -33,6 +33,7 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/litert_dispatch_invocation_context.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 using ::litert::qnn::QnnManager;
@@ -162,9 +163,15 @@ LiteRtDispatchDeviceContextT::RegisterTensorBuffer(
   mem_descriptor.memType = QNN_MEM_TYPE_CUSTOM;
   mem_descriptor.customInfo = &mem_htp_descriptor;
 
+  if (invocation_context_ == nullptr) {
+    return absl::InternalError("Missing invocation context");
+  }
+
+  Qnn_ContextHandle_t context_handle = invocation_context_->ContextHandle();
+
   Qnn_MemHandle_t mem_handle = nullptr;
   if (auto status = qnn_manager_.Api()->memRegister(
-          qnn_manager_.ContextHandle(), &mem_descriptor, 1UL, &mem_handle);
+          context_handle, &mem_descriptor, 1UL, &mem_handle);
       status != QNN_SUCCESS) {
     return absl::InternalError("Failed to register tensor buffer");
   }

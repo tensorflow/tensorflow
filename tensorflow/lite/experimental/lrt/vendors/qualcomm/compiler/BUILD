@@ -37,6 +37,7 @@ litert_dynamic_lib(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:logging",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
     ],
 )
