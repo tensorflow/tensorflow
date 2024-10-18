@@ -1,7 +1,7 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
 package(
@@ -62,6 +62,7 @@ py_strict_test(
     ],
     deps = [
         ":interpreter",
+        ":pywrap_tflite",
         #internal proto upb dep
         "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
@@ -179,6 +180,16 @@ py_strict_test(
     ],
 )
 
+pybind_extension(
+    name = "pywrap_tflite",
+    srcs = ["pywrap_tflite.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/delegates/flex:delegate",
+        "@pybind11",
+    ],
+)
+
 py_strict_library(
     name = "lite",
     srcs = ["lite.py"],
@@ -252,6 +263,7 @@ py_strict_test(
         ":interpreter",
         ":lite",
         ":lite_constants",
+        ":pywrap_tflite",
         ":schema_py",
         ":util",
         #internal proto upb dep
@@ -301,6 +313,7 @@ py_strict_test(
         ":interpreter",
         ":lite",
         ":lite_v2_test_util",
+        ":pywrap_tflite",
         ":schema_py",
         ":test_util",
         ":util",
@@ -341,6 +354,7 @@ py_strict_library(
     deps = [
         ":interpreter",
         ":lite",
+        ":pywrap_tflite",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -366,6 +380,7 @@ py_strict_test(
         ":convert",
         ":interpreter",
         ":lite",
+        ":pywrap_tflite",
         ":test_util",
         #internal proto upb dep
         "//third_party/py/numpy",
@@ -520,6 +535,7 @@ pytype_strict_contrib_test(
         ":convert",
         ":interpreter",
         ":op_hint",
+        ":pywrap_tflite",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_py",
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
         "//tensorflow/lite/python/metrics:metrics_wrapper",
