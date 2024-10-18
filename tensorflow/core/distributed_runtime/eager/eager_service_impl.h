@@ -76,36 +76,36 @@ class EagerServiceImpl {
     }
   }
 
-  Status CreateContext(const CreateContextRequest* request,
-                       CreateContextResponse* response);
+  absl::Status CreateContext(const CreateContextRequest* request,
+                             CreateContextResponse* response);
 
-  Status UpdateContext(const UpdateContextRequest* request,
-                       UpdateContextResponse* response);
+  absl::Status UpdateContext(const UpdateContextRequest* request,
+                             UpdateContextResponse* response);
 
   // Create a ServerContext for master eager context.
-  Status CreateMasterContext(const tensorflow::uint64 context_id,
-                             EagerContext* context);
+  absl::Status CreateMasterContext(const tensorflow::uint64 context_id,
+                                   EagerContext* context);
 
   static constexpr uint64 kInvalidStreamId = 0;
 
   // Used by both Enqueue and StreamingEnqueue RPCs.
-  Status Enqueue(CallOptions* call_opts, const EnqueueRequest* request,
-                 EnqueueResponse* response,
-                 uint64 stream_id = kInvalidStreamId);
+  absl::Status Enqueue(CallOptions* call_opts, const EnqueueRequest* request,
+                       EnqueueResponse* response,
+                       uint64 stream_id = kInvalidStreamId);
 
-  Status WaitQueueDone(const WaitQueueDoneRequest* request,
-                       WaitQueueDoneResponse* response);
+  absl::Status WaitQueueDone(const WaitQueueDoneRequest* request,
+                             WaitQueueDoneResponse* response);
 
   void RunComponentFunction(CallOptions* call_opts,
                             const RunComponentFunctionRequest* request,
                             RunComponentFunctionResponse* response,
                             StatusCallback done);
 
-  Status KeepAlive(const KeepAliveRequest* request,
-                   KeepAliveResponse* response);
+  absl::Status KeepAlive(const KeepAliveRequest* request,
+                         KeepAliveResponse* response);
 
-  Status CloseContext(const CloseContextRequest* request,
-                      CloseContextResponse* response);
+  absl::Status CloseContext(const CloseContextRequest* request,
+                            CloseContextResponse* response);
 
  protected:
   // This is the server-side execution context. All state regarding execution of
@@ -166,7 +166,7 @@ class EagerServiceImpl {
     const bool is_master_;
   };
   // The returned ServerContext will need to be Unrefed.
-  tensorflow::Status GetServerContext(uint64, ServerContext**);
+  absl::Status GetServerContext(uint64, ServerContext**);
 
   class ClientTensorHandleDeleteNode : public EagerNode {
    public:
@@ -181,7 +181,7 @@ class EagerServiceImpl {
 
     ~ClientTensorHandleDeleteNode() override { context_->Unref(); }
 
-    Status Run() override {
+    absl::Status Run() override {
       VLOG(3) << "ServerContext: Deleting tensor handle "
               << handle_to_delete_->op_id << ":"
               << handle_to_delete_->output_num;
@@ -189,7 +189,7 @@ class EagerServiceImpl {
           *handle_to_delete_);
     }
 
-    void Abort(Status status) override {}
+    void Abort(absl::Status status) override {}
 
     // Remote node deletions are best effort
     bool Fatal() const override { return false; }
@@ -208,18 +208,19 @@ class EagerServiceImpl {
   };
 
  private:
-  Status ExecuteOp(CallOptions* call_opts, const Operation& operation,
-                   EagerContext* eager_context, EagerExecutor* eager_executor,
-                   QueueResponse* queue_response);
-  Status SendTensor(const SendTensorOp& send_tensor,
-                    EagerContext* eager_context);
-  Status SendPackedHandle(const SendPackedHandleOp& send_packed_handle,
+  absl::Status ExecuteOp(CallOptions* call_opts, const Operation& operation,
+                         EagerContext* eager_context,
+                         EagerExecutor* eager_executor,
+                         QueueResponse* queue_response);
+  absl::Status SendTensor(const SendTensorOp& send_tensor,
                           EagerContext* eager_context);
-  Status RegisterFunction(const RegisterFunctionOp& register_function,
-                          EagerContext* eager_context);
-  Status RemoveFunction(const RemoveFunctionOp& remove_function,
-                        EagerContext* eager_context);
-  Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
+  absl::Status SendPackedHandle(const SendPackedHandleOp& send_packed_handle,
+                                EagerContext* eager_context);
+  absl::Status RegisterFunction(const RegisterFunctionOp& register_function,
+                                EagerContext* eager_context);
+  absl::Status RemoveFunction(const RemoveFunctionOp& remove_function,
+                              EagerContext* eager_context);
+  absl::Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
 
   WorkerEnv* const env_;  // Not owned.
 
