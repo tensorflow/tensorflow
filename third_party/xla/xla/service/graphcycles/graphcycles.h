@@ -127,9 +127,6 @@ class GraphCycles {
   // Return a copy of the successors set. This is needed for code using the
   // collection while modifying the GraphCycles.
   std::vector<int32_t> SuccessorsCopy(int32_t node) const;
-  // Return a copy of the predecessors set. This is needed for code using the
-  // collection while modifying the GraphCycles.
-  std::vector<int32_t> PredecessorsCopy(int32_t node) const;
 
   // Returns all nodes in post order.
   //
