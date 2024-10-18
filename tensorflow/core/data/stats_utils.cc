@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
