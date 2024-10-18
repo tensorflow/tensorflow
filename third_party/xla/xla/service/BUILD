@@ -3692,7 +3692,6 @@ xla_cc_test(
     deps = [
         ":hlo_creation_utils",
         ":hlo_dataflow_analysis",
-        ":hlo_graph_dumper",
         ":hlo_ordering",
         ":hlo_value",
         "//xla:comparison_util",
@@ -3906,10 +3905,8 @@ xla_cc_test(
     deps = [
         ":hlo_alias_analysis",
         ":hlo_buffer",
-        ":hlo_graph_dumper",
         ":hlo_ordering",
         ":hlo_value",
-        ":instruction_fusion",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
