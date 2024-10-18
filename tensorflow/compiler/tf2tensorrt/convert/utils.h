@@ -228,7 +228,11 @@ class DimsAdapter {
   //  in via the result pointer.
   void TrtDims(nvinfer1::Dims* result) const {
     result->nbDims = num_dims_;
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     absl::c_copy(storage_, static_cast<int32_t*>(result->d));
+#else
+    absl::c_copy(storage_, static_cast<int64_t*>(result->d));
+#endif
   }
 
   // Converts to an nvinfer1::Dims and return by value.

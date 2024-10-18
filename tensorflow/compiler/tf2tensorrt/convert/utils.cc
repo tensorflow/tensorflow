@@ -221,10 +221,21 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   int n_bindings = engine->getNbBindings();
+#else
+  int n_bindings = engine->getNbIOTensors();
+#endif
   int n_input = 0;
   for (int i = 0; i < n_bindings; i++) {
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     if (engine->bindingIsInput(i)) n_input++;
+#else
+    if (engine->getTensorIOMode(engine->getIOTensorName(i)) ==
+        nvinfer1::TensorIOMode::kINPUT) {
+      n_input++;
+    }
+#endif
   }
   // According to TensorRT 7 doc: "If the engine has been built for K profiles,
   // the first getNbBindings() / K bindings are used by profile number 0, the
@@ -232,7 +243,11 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   // Therefore, to get the number of input tensors, we need to divide by the
   // the number of profiles.
   int n_profiles = engine->getNbOptimizationProfiles();
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
   return n_input / n_profiles;
+#else
+  return n_input;
+#endif
 }
 
 absl::string_view GetDeviceName(const Node* node) {
