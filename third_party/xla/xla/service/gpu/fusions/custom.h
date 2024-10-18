@@ -50,6 +50,16 @@ class CustomFusion : public FusionInterface {
 // compile-time instead of allocating a new buffer for it at runtime by
 // translating the static slice into offset + size of the original buffer passed
 // into the custom call `%gemm`.
+//
+// It is possible to inscribe the results of the custom call within a larger
+// array. In that case, the affected results are each fed into a
+// `dynamic-update-slice` operation, whose result is one of the fusion's
+// outputs.
+//
+// The pass makes the assumption that, for each one of the custom-call's outputs
+// there is exactly one path to the fusion root. The resulting shape for the
+// dynamic slice fusion may be an unwrapped array, a flat tuple, or even a
+// nested tuple.
 class DynamicSliceFusion : public FusionInterface {
  public:
   explicit DynamicSliceFusion(const HloFusionAnalysis& analysis)

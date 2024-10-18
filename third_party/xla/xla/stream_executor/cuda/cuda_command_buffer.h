@@ -33,7 +33,33 @@ class CudaCommandBuffer : public GpuCommandBuffer {
       Mode mode, GpuExecutor* parent);
 
  private:
-  using GpuCommandBuffer::GpuCommandBuffer;
+  CudaCommandBuffer(Mode mode, GpuExecutor* parent, CUgraph graph,
+                    bool is_owned_graph)
+      : GpuCommandBuffer(mode, parent, graph, is_owned_graph),
+        parent_(parent) {}
+
+  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel() override;
+  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel()
+      override;
+  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel() override;
+  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() override;
+  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel()
+      override;
+  absl::StatusOr<NoOpKernel*> GetNoOpKernel() override;
+
+  std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
+      CUgraph graph) override;
+
+  // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
+  // barriers, updating conditional handles, etc.).
+  SetIfConditionKernel set_if_condition_kernel_;
+  SetIfElseConditionKernel set_if_else_condition_kernel_;
+  SetCaseConditionKernel set_case_condition_kernel_;
+  SetForConditionKernel set_for_condition_kernel_;
+  SetWhileConditionKernel set_while_condition_kernel_;
+  NoOpKernel noop_kernel_;
+
+  GpuExecutor* parent_;
 };
 
 }  // namespace stream_executor::gpu

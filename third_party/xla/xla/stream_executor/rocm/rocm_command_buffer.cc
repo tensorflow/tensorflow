@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -42,7 +44,45 @@ absl::StatusOr<hipGraph_t> CreateGraph() {
 absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
     Mode mode, GpuExecutor* parent) {
   TF_ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
-  return std::make_unique<RocmCommandBuffer>(mode, parent, graph,
-                                             /*is_owned_graph=*/true);
+  return std::unique_ptr<RocmCommandBuffer>(
+      new RocmCommandBuffer(mode, parent, graph,
+                            /*is_owned_graph=*/true));
+}
+
+std::unique_ptr<GpuCommandBuffer> RocmCommandBuffer::CreateNestedCommandBuffer(
+    hipGraph_t graph) {
+  return std::unique_ptr<RocmCommandBuffer>(
+      new RocmCommandBuffer(Mode::kNested, parent_, graph,
+                            /*is_owned_graph=*/false));
+}
+
+absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
+RocmCommandBuffer::GetSetIfConditionKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
+RocmCommandBuffer::GetSetIfElseConditionKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
+RocmCommandBuffer::GetSetCaseConditionKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
+RocmCommandBuffer::GetSetForConditionKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
+RocmCommandBuffer::GetSetWhileConditionKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
+RocmCommandBuffer::GetNoOpKernel() {
+  return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 }  // namespace stream_executor::gpu

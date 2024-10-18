@@ -31,8 +31,8 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                             /*use_aggressive_shape_inference=*/true),
       suffix_(suffix) {}
 
-Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
-                                    bool verbose) {
+absl::Status CostAnalyzer::GenerateReport(std::ostream& os,
+                                          bool per_node_report, bool verbose) {
   GatherCosts();
   PreprocessCosts();
   AnalyzeCosts();
@@ -45,7 +45,7 @@ void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
   TF_CHECK_OK(cost_estimator->Initialize(*item_));
   RunMetadata run_metadata;
   Costs costs;
-  const Status status =
+  const absl::Status status =
       cost_estimator->PredictCosts(item_->graph, &run_metadata, &costs);
   if (cost_graph) {
     cost_graph->Swap(run_metadata.mutable_cost_graph());

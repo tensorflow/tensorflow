@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 
@@ -32,7 +33,24 @@ class RocmCommandBuffer : public GpuCommandBuffer {
       Mode mode, GpuExecutor* parent);
 
  private:
-  using GpuCommandBuffer::GpuCommandBuffer;
+  RocmCommandBuffer(Mode mode, GpuExecutor* parent, hipGraph_t graph,
+                    bool is_owned_graph)
+      : GpuCommandBuffer(mode, parent, graph, is_owned_graph),
+        parent_(parent) {}
+
+  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel() override;
+  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel()
+      override;
+  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel() override;
+  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() override;
+  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel()
+      override;
+  absl::StatusOr<NoOpKernel*> GetNoOpKernel() override;
+
+  std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
+      hipGraph_t graph) override;
+
+  GpuExecutor* parent_;
 };
 
 }  // namespace stream_executor::gpu

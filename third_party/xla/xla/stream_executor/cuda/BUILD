@@ -631,6 +631,8 @@ cuda_library(
         "command_buffer_kernels.cc",
         "command_buffer_kernels.cu.cc",
     ],
+    hdrs = ["command_buffer_kernels.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = ["cuda-only"],
     deps = [
         "//xla/stream_executor:kernel_spec",
@@ -1326,7 +1328,9 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":command_buffer_kernels",
         ":cuda_status",
+        "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "@com_google_absl//absl/log",

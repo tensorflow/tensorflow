@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
@@ -35,8 +36,11 @@ using mlir::StringAttr;
 using mlir::TypeID;
 using mlir::TF::InfeedDequeueTupleOp;
 using mlir::TF::kDeviceAttr;
+using mlir::tf_executor::GraphOp;
 
 bool IsPotentialUnsupportedOp(Operation* op);
+
+bool HasV1ControlFlow(GraphOp graph);
 
 }  // namespace internal
 }  // namespace tf2xla

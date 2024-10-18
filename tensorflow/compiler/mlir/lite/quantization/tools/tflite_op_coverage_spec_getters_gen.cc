@@ -129,7 +129,7 @@ void EmitSparseOp(std::vector<const Record *> &defs, raw_ostream *ostream) {
   os.indent(0) << "}\n";
 }
 
-bool CheckTypeConstraints(llvm::Init *input_value,
+bool CheckTypeConstraints(const llvm::Init *input_value,
                           std::list<std::string> required_types,
                           bool per_axis) {
   auto *def_init = llvm::cast<llvm::DefInit>(input_value);
@@ -183,7 +183,7 @@ void GenerateStaticQuantOp(std::vector<const Record *> &defs,
     Operator op(def);
     if (!op.getTrait("::mlir::OpTrait::quant::QuantizableResult")) continue;
 
-    llvm::DagInit *args_in_dag = def->getValueAsDag("arguments");
+    const llvm::DagInit *args_in_dag = def->getValueAsDag("arguments");
     // Assumes argument name is "input" for input activations. Otherwise, assume
     // the first argument is the input activation.
     int input_idx = 0;
