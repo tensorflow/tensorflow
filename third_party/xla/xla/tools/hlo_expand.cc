@@ -18,12 +18,12 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
+#include "xla/hlo/transforms/expanders/rng_expander.h"
 #include "xla/service/batchnorm_expander.h"
-#include "xla/service/cholesky_expander.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/rng_bit_generator_expander.h"
-#include "xla/service/rng_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/triangular_solve_expander.h"

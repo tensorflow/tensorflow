@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
 #define XLA_SERVICE_GPU_PREPARE_HLO_FOR_IR_EMITTING_PIPELINE_H_
 
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 
 namespace xla {
 namespace gpu {
