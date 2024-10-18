@@ -33,27 +33,27 @@ namespace tensorflow {
 class MasterInterface {
  public:
   virtual ~MasterInterface() {}
-  virtual Status CreateSession(CallOptions* call_options,
-                               const CreateSessionRequest* request,
-                               CreateSessionResponse* response) = 0;
+  virtual absl::Status CreateSession(CallOptions* call_options,
+                                     const CreateSessionRequest* request,
+                                     CreateSessionResponse* response) = 0;
 
-  virtual Status ExtendSession(CallOptions* call_options,
-                               const ExtendSessionRequest* request,
-                               ExtendSessionResponse* response) = 0;
+  virtual absl::Status ExtendSession(CallOptions* call_options,
+                                     const ExtendSessionRequest* request,
+                                     ExtendSessionResponse* response) = 0;
 
-  virtual Status PartialRunSetup(CallOptions* call_options,
-                                 const PartialRunSetupRequest* request,
-                                 PartialRunSetupResponse* response) {
+  virtual absl::Status PartialRunSetup(CallOptions* call_options,
+                                       const PartialRunSetupRequest* request,
+                                       PartialRunSetupResponse* response) {
     return errors::Unimplemented("Partial run not implemented for this master");
   }
 
-  virtual Status RunStep(CallOptions* call_options,
-                         RunStepRequestWrapper* request,
-                         MutableRunStepResponseWrapper* response) = 0;
+  virtual absl::Status RunStep(CallOptions* call_options,
+                               RunStepRequestWrapper* request,
+                               MutableRunStepResponseWrapper* response) = 0;
 
-  virtual Status RunStep(CallOptions* call_options,
-                         const RunStepRequest* request,
-                         RunStepResponse* response) {
+  virtual absl::Status RunStep(CallOptions* call_options,
+                               const RunStepRequest* request,
+                               RunStepResponse* response) {
     std::unique_ptr<RunStepRequestWrapper> wrapped_request(
         new ProtoRunStepRequest(request));
     std::unique_ptr<MutableRunStepResponseWrapper> wrapped_response(
@@ -81,26 +81,27 @@ class MasterInterface {
     return new OwnedProtoRunStepResponse;
   }
 
-  virtual Status CloseSession(CallOptions* call_options,
-                              const CloseSessionRequest* request,
-                              CloseSessionResponse* response) = 0;
+  virtual absl::Status CloseSession(CallOptions* call_options,
+                                    const CloseSessionRequest* request,
+                                    CloseSessionResponse* response) = 0;
 
-  virtual Status ListDevices(CallOptions* call_options,
-                             const ListDevicesRequest* request,
-                             ListDevicesResponse* response) = 0;
+  virtual absl::Status ListDevices(CallOptions* call_options,
+                                   const ListDevicesRequest* request,
+                                   ListDevicesResponse* response) = 0;
 
-  virtual Status Reset(CallOptions* call_options, const ResetRequest* request,
-                       ResetResponse* response) = 0;
+  virtual absl::Status Reset(CallOptions* call_options,
+                             const ResetRequest* request,
+                             ResetResponse* response) = 0;
 
-  virtual Status MakeCallable(CallOptions* call_options,
-                              const MakeCallableRequest* request,
-                              MakeCallableResponse* response) = 0;
-  virtual Status RunCallable(CallOptions* call_options,
-                             const RunCallableRequest* request,
-                             RunCallableResponse* response) = 0;
-  virtual Status ReleaseCallable(CallOptions* call_options,
-                                 const ReleaseCallableRequest* request,
-                                 ReleaseCallableResponse* response) = 0;
+  virtual absl::Status MakeCallable(CallOptions* call_options,
+                                    const MakeCallableRequest* request,
+                                    MakeCallableResponse* response) = 0;
+  virtual absl::Status RunCallable(CallOptions* call_options,
+                                   const RunCallableRequest* request,
+                                   RunCallableResponse* response) = 0;
+  virtual absl::Status ReleaseCallable(CallOptions* call_options,
+                                       const ReleaseCallableRequest* request,
+                                       ReleaseCallableResponse* response) = 0;
 
  protected:
   // NOTE: This should only be called by implementations of this

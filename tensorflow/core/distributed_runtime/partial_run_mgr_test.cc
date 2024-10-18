@@ -65,22 +65,22 @@ TEST(PartialRunMgr, PartialRunRemoved) {
 
   int called = 0;
   partial_run_mgr.PartialRunDone(
-      step_id, [&called](Status status) { called++; }, absl::OkStatus());
+      step_id, [&called](absl::Status status) { called++; }, absl::OkStatus());
   partial_run_mgr.ExecutorDone(step_id, absl::OkStatus());
 
   // Calling ExecutorDone and PartialRunDone on the step_id should still only
   // result in the callback being called once.
   // This proves that the original PartialRun has been removed.
   partial_run_mgr.PartialRunDone(
-      step_id, [&called](Status status) { called++; }, absl::OkStatus());
+      step_id, [&called](absl::Status status) { called++; }, absl::OkStatus());
   partial_run_mgr.ExecutorDone(step_id, absl::OkStatus());
   EXPECT_EQ(1, called);
 }
 
 struct StatusTestParam {
-  Status executor_status;
-  Status partial_run_status;
-  Status expected_status;
+  absl::Status executor_status;
+  absl::Status partial_run_status;
+  absl::Status expected_status;
 };
 
 class StatusPropagationTest : public ::testing::TestWithParam<StatusTestParam> {
@@ -89,15 +89,15 @@ class StatusPropagationTest : public ::testing::TestWithParam<StatusTestParam> {
 
   // State to help keep track of when the callback is called.
   Notification invoked_;
-  Status status_;
+  absl::Status status_;
 
-  void set_status(const Status& status) {
+  void set_status(const absl::Status& status) {
     status_ = status;
     invoked_.Notify();
   }
 
   // Blocks until status is set.
-  Status status() {
+  absl::Status status() {
     invoked_.WaitForNotification();
     return status_;
   }
@@ -112,9 +112,9 @@ TEST_P(StatusPropagationTest, ExecutorDoneFirst) {
   partial_run_mgr_.FindOrCreate(step_id, &cancellation_manager);
 
   partial_run_mgr_.ExecutorDone(step_id, param.executor_status);
-  partial_run_mgr_.PartialRunDone(step_id,
-                                  [this](Status status) { set_status(status); },
-                                  param.partial_run_status);
+  partial_run_mgr_.PartialRunDone(
+      step_id, [this](absl::Status status) { set_status(status); },
+      param.partial_run_status);
 
   EXPECT_EQ(status(), param.expected_status);
 }
@@ -127,9 +127,9 @@ TEST_P(StatusPropagationTest, PartialRunDoneFirst) {
   CancellationManager* cancellation_manager;
   partial_run_mgr_.FindOrCreate(step_id, &cancellation_manager);
 
-  partial_run_mgr_.PartialRunDone(step_id,
-                                  [this](Status status) { set_status(status); },
-                                  param.partial_run_status);
+  partial_run_mgr_.PartialRunDone(
+      step_id, [this](absl::Status status) { set_status(status); },
+      param.partial_run_status);
   partial_run_mgr_.ExecutorDone(step_id, param.executor_status);
 
   EXPECT_EQ(status(), param.expected_status);
@@ -137,8 +137,8 @@ TEST_P(StatusPropagationTest, PartialRunDoneFirst) {
 
 // Instantiate tests for all error orderings, for both call orders of
 // ExecutorDone and PartialRunDone.
-Status ExecutorError() { return errors::Internal("executor error"); }
-Status PartialRunError() { return errors::Internal("partial run error"); }
+absl::Status ExecutorError() { return errors::Internal("executor error"); }
+absl::Status PartialRunError() { return errors::Internal("partial run error"); }
 INSTANTIATE_TEST_SUITE_P(
     PartialRunMgr, StatusPropagationTest,
     ::testing::Values(
