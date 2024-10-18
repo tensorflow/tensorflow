@@ -59,8 +59,7 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_text, config).value();
   auto executable =
-      test_runner_.CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
-          .value();
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true).value();
 
   auto device_assn = MakeDeviceAssn(kNumReplicas);
 
@@ -81,7 +80,7 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   opts.use_threads = true;
 
   TF_ASSERT_OK(
-      test_runner_.ExecuteReplicated(executable.get(), opts, &device_assn)
+      ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
           .status());
 
   // Verify that each infeed and outfeed is routed correctly. Each replica
