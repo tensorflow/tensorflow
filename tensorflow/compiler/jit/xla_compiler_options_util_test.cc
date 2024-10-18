@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -118,9 +119,10 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
       compilation_device_type, platform_id, xla_device_metadata.get(),
       /*pjrt_device_metadata=*/nullptr, custom_allocator);
 
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info,
-      /*pjrt_device_compiler=*/nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompiler::Options options,
+                          GenerateCompilerOptionsForPjRt(
+                              *device_setup_.flr(), device, platform_info,
+                              /*pjrt_device_compiler=*/nullptr));
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);
@@ -154,9 +156,10 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsPjRtBaseDevice) {
       /*pjrt_device_metadata=*/pjrt_device_metadata.get(),
       /*device_allocator=*/nullptr);
 
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info,
-      /*pjrt_device_compiler=*/nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(XlaCompiler::Options options,
+                          GenerateCompilerOptionsForPjRt(
+                              *device_setup_.flr(), device, platform_info,
+                              /*pjrt_device_compiler=*/nullptr));
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);
@@ -190,8 +193,10 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsNonXlaDevice) {
       CreatePjRtDeviceCompiler(compilation_device_type, nullptr);
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
 
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info, pjrt_device_compiler);
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::Options options,
+      GenerateCompilerOptionsForPjRt(*device_setup_.flr(), device,
+                                     platform_info, pjrt_device_compiler));
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);

@@ -39,7 +39,7 @@ using PjRtDeviceCompiler =
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 Status CompileToPjRtLoadedExecutable(
-    const DeviceBase* device, const XlaPlatformInfo& platform_info,
+    DeviceBase* device, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     DeviceCompileMode compile_mode, bool has_ref_vars,
@@ -59,8 +59,9 @@ Status CompileToPjRtLoadedExecutable(
 
   *client = pjrt_device_compiler->client();
 
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *flr, device, platform_info, pjrt_device_compiler);
+  TF_ASSIGN_OR_RETURN(XlaCompiler::Options options,
+                      GenerateCompilerOptionsForPjRt(
+                          *flr, device, platform_info, pjrt_device_compiler));
 
   XlaCompiler::CompileOptions compile_options =
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);

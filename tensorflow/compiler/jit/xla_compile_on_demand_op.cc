@@ -177,9 +177,10 @@ absl::Status XlaCompileOnDemandOp::Compile(
       *ctx, platform_info_, ctx->function_library(), pjrt_device_compiler,
       profiler));
 
-  XlaCompiler::Options options =
+  TF_ASSIGN_OR_RETURN(
+      XlaCompiler::Options options,
       GenerateCompilerOptionsForPjRt(*(ctx->function_library()), ctx->device(),
-                                     platform_info_, *pjrt_device_compiler);
+                                     platform_info_, *pjrt_device_compiler));
   // No detailed logging for on demand op.
   options.detailed_logging = false;
   XlaCompiler::CompileOptions compile_options = GetCompileOptions(true);
