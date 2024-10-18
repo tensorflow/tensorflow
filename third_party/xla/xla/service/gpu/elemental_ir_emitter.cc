@@ -92,8 +92,9 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
                            PrimitiveType_Name(output_type));
   }
   const std::string& munged_callee = ObtainDeviceFunctionName(
-      funcid, output_type,
-      llvm::Triple(b()->GetInsertBlock()->getModule()->getTargetTriple()));
+      funcid,
+      llvm::Triple(b()->GetInsertBlock()->getModule()->getTargetTriple()),
+      output_type, output_type);
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
                             .value();

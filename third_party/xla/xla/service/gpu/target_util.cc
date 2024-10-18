@@ -310,15 +310,24 @@ absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
 }
 
 std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
+                                     llvm::Triple target_triple,
                                      PrimitiveType output_type,
-                                     llvm::Triple target_triple) {
+                                     PrimitiveType original_type) {
   // The device math functions differentiate between "double" and "float" by
   // appending a double or float specific suffix to a root name. The suffix and
   // the root name are specific to the target.
   struct TargetDeviceFunction gpu_root_names = GetDeviceFunctionRoot(func_id);
   if (target_triple.isNVPTX()) {
     if (output_type == F32) {
-      return StrCat(gpu_root_names.nvptx_root, "f");
+      std::string function_name = StrCat(gpu_root_names.nvptx_root, "f");
+      // TODO(b/373338985): Extend this to other functions that have a fast
+      // version.
+      if (original_type == BF16 && func_id == TargetDeviceFunctionID::kExp) {
+        // All function names start with "__nv". The approximate version of the
+        // function names continues with "_fast".
+        function_name = function_name.insert(strlen("__nv"), "_fast");
+      }
+      return function_name;
     } else if (output_type == F64) {
       return gpu_root_names.nvptx_root;
     } else {

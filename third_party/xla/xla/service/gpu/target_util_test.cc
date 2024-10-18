@@ -63,6 +63,18 @@ TEST_F(TargetUtilTest, AMDGCNGroupBarrier) {
   EXPECT_FALSE(llvm::verifyModule(module_, &llvm::errs()));
 }
 
+TEST(TargetUtil, ObtainDeviceFunctionNameExp) {
+  llvm::Triple triple("nvptx64-unknown-unknown");
+  EXPECT_EQ("__nv_expf", ObtainDeviceFunctionName(TargetDeviceFunctionID::kExp,
+                                                  triple, /*output_type=*/F32,
+                                                  /*original_type=*/F32));
+  // If the original type is BF16, we want to use the fast expf function.
+  EXPECT_EQ("__nv_fast_expf",
+            ObtainDeviceFunctionName(TargetDeviceFunctionID::kExp, triple,
+                                     /*output_type=*/F32,
+                                     /*original_type=*/BF16));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
