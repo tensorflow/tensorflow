@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -24,11 +26,20 @@ namespace internal {
 
 using mlir::OpPassManager;
 
-TEST(ClusteringBridgePassesTest, AddsBridgePasses) {
+TEST(ClusteringBridgePassesTest, AddsBridgePassesICIFlagTrue) {
+  flags::Global().enable_tf2min_ici_weight.reset(true);
   OpPassManager pass_manager;
   AddReplicatedBridgeClusteringPipelinePasses(pass_manager);
 
   EXPECT_EQ(pass_manager.size(), 45);
+}
+
+TEST(ClusteringBridgePassesTest, AddsBridgePassesICIFlagFalse) {
+  flags::Global().enable_tf2min_ici_weight.reset(false);
+  OpPassManager pass_manager;
+  AddReplicatedBridgeClusteringPipelinePasses(pass_manager);
+
+  EXPECT_EQ(pass_manager.size(), 43);
 }
 
 TEST(ClusteringBridgePassesTest, AddsNonTPUBridgePasses) {
