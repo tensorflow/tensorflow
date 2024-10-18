@@ -28,12 +28,12 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
+#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 using ::litert::qnn::QnnManager;
-using ::litert::qnn::SetupAll;
 
 //
 // Configurations
@@ -183,9 +183,19 @@ LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
                                  LiteRtCompiledResult* compiled_result) {
   auto opt_soc_model = FindSocModel(soc_model);
 
-  QnnManager qnn;
-  LITERT_RETURN_STATUS_IF_NOT_OK(SetupAll(
-      opt_soc_model, qnn, /*load_system=*/false, /*load_context=*/true));
+  auto backend_configs = QnnManager::DefaultBackendConfigs();
+  auto qnn_manager = QnnManager::Create(backend_configs, opt_soc_model);
+  if (!qnn_manager.ok()) {
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.status().message().data());
+    return kLiteRtStatusErrorRuntimeFailure;
+  }
+
+  auto context_configs = QnnManager::DefaultContextConfigs();
+  auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
+  if (!context_handle.ok()) {
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.status().message().data());
+    return kLiteRtStatusErrorRuntimeFailure;
+  }
 
   auto result = std::make_unique<LiteRtCompiledResultT>();
 
@@ -194,11 +204,13 @@ LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LITERT_RETURN_STATUS_IF_NOT_OK(
-        ComposeGraph(qnn, partitions[0], entry_point_name));
+    LITERT_RETURN_STATUS_IF_NOT_OK(ComposeGraph(
+        **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
   }
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(qnn.GenerateContextBin(result->context_bin));
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      (*qnn_manager)
+          ->GenerateContextBinary(context_handle->get(), result->context_bin));
 
   *compiled_result = result.release();
 

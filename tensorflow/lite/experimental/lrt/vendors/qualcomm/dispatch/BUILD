@@ -21,6 +21,13 @@ cc_library(
     name = "dispatch_api",
     srcs = [
         "dispatch_api.cc",
+        "litert_dispatch_device_context.cc",
+        "litert_dispatch_invocation_context.cc",
+    ],
+    hdrs = [
+        "litert_dispatch_device_context.h",
+        "litert_dispatch_invocation_context.h",
+        "registry.h",
     ],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],
@@ -31,55 +38,6 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        ":litert_dispatch_device_context",
-        ":litert_dispatch_invocation_context",
-        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-cc_library(
-    name = "litert_dispatch_device_context",
-    srcs = ["litert_dispatch_device_context.cc"],
-    hdrs = ["litert_dispatch_device_context.h"],
-    tags = [
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-    ],
-    deps = [
-        ":registry",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:absl_check",
-        "@com_google_absl//absl/log:absl_log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
-    ],
-)
-
-cc_library(
-    name = "litert_dispatch_invocation_context",
-    srcs = ["litert_dispatch_invocation_context.cc"],
-    hdrs = ["litert_dispatch_invocation_context.h"],
-    tags = [
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-    ],
-    deps = [
-        ":litert_dispatch_device_context",
-        ":registry",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/log:absl_log",
@@ -89,19 +47,12 @@ cc_library(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core:utils",
         "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:context_binary_info",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
-    ],
-)
-
-cc_library(
-    name = "registry",
-    hdrs = ["registry.h"],
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
