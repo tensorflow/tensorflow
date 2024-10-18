@@ -400,6 +400,57 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
   EXPECT_TRUE(interval_picker.Done());
 }
 
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, AllAsyncCopiesTheSameDuration) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,4] parameter(0)
+    ROOT root = f32[1,4] slice(param0), slice={[0:1], [0:4]}
+
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto cost_analysis,
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
+      /*mem_size_bytes=*/32);
+  const Shape shape = ShapeUtil::MakeShape(F32, {3, 3});
+  EXPECT_FALSE(interval_picker.shape_override().has_value());
+  interval_picker.SetShapeOverrideUnlessTreatingAllTheSame(shape);
+  EXPECT_EQ(interval_picker.shape_override().value(), shape);
+
+  // When the shape override is set at the constructor, we treat all async
+  // copies the same, and silently ignore any shape override set calls
+  // afterwards.
+  const Shape universal_shape_1 = ShapeUtil::MakeShape(F32, {3, 3});
+  const Shape universal_shape_2 = ShapeUtil::MakeShape(F32, {5, 3});
+  CostAnalysisPrefetchIntervalPicker interval_picker_same_duration(
+      *cost_analysis,
+      /*min_overlap_to_async_copy_ratio=*/1.0,
+      /*preferred_overlap_to_async_copy_ratio=*/2.0,
+      /*max_overlap_to_mem_size_async_copy_ratio=*/4.0,
+      /*mem_size_bytes=*/32, /*shape_override=*/&universal_shape_1);
+  EXPECT_EQ(interval_picker_same_duration.shape_override().value(),
+            universal_shape_1);
+  interval_picker_same_duration.SetShapeOverrideUnlessTreatingAllTheSame(
+      universal_shape_2);
+  EXPECT_NE(interval_picker_same_duration.shape_override().value(),
+            universal_shape_2);
+  EXPECT_EQ(interval_picker_same_duration.shape_override().value(),
+            universal_shape_1);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
