@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -34,9 +36,12 @@ limitations under the License.
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
