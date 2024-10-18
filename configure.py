@@ -27,7 +27,7 @@ import sys
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 
-_SUPPORTED_ANDROID_NDK_VERSIONS = [19, 20, 21, 25]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [19, 20, 21, 25, 26]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -750,11 +750,9 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   # Now grab the NDK API level to use. Note that this is different from the
   # SDK API level, as the NDK API level is effectively the *min* target SDK
   # version.
-  meta = open(os.path.join(android_ndk_home_path, 'meta/platforms.json'))
-  platforms = json.load(meta)
-  meta.close()
-  aliases = platforms['aliases']
-  api_levels = sorted(list(set([aliases[i] for i in aliases])))
+  with open(os.path.join(android_ndk_home_path, 'meta/platforms.json')) as f:
+    platforms = json.load(f)
+    api_levels = list(range(platforms['min'], platforms['max'] + 1))
 
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
@@ -765,7 +763,10 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
           '[Available levels: %s]'
       )
       % api_levels,
-      check_success=(lambda *_: True),
+      # api_levels are sorted, hence only check if it is inside the range
+      check_success=(
+          lambda api_level: api_levels[0] <= int(api_level) <= api_levels[-1]
+      ),
       error_msg='Android-%s is not present in the NDK path.',
   )
 
