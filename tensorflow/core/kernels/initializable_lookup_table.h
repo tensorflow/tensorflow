@@ -44,30 +44,30 @@ class InitializableLookupTable : public LookupInterface {
   //   fails.
   // - In addition, other implementations may provide another non-OK status
   //   specific to their failure modes.
-  Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
-              const Tensor& default_value) final;
+  absl::Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
+                    const Tensor& default_value) final;
 
   // Returns errors::Unimplemented.
-  Status Insert(OpKernelContext* ctx, const Tensor& keys,
-                const Tensor& values) final {
+  absl::Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                      const Tensor& values) final {
     return errors::Unimplemented(
         "Insert not supported by InitializableLookupTable implementations");
   }
 
   // Returns errors::Unimplemented.
-  Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
+  absl::Status Remove(OpKernelContext* ctx, const Tensor& keys) final {
     return errors::Unimplemented(
         "Remove not supported by InitializableLookupTable implementations");
   }
 
-  Status ExportValues(OpKernelContext* context) override {
+  absl::Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "
         "implementations");
   }
 
-  Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) final;
+  absl::Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                            const Tensor& values) final;
 
   TensorShape key_shape() const final { return TensorShape(); }
 
@@ -91,14 +91,14 @@ class InitializableLookupTable : public LookupInterface {
   //   fail_if_initialized is set to true.
   // - In addition, other implementations may provide another non-OK status
   //   specific to their failure modes.
-  Status Initialize(InitTableIterator& iter);
+  absl::Status Initialize(InitTableIterator& iter);
 
   // Initializes the table from the given init table iterator. `serializer` may
   // specify how to serialize the table initializer, so that the table can be
   // serialized using its metadata (as opposed to serializing a handle to the
   // table).
-  Status Initialize(InitTableIterator& iter,
-                    std::unique_ptr<InitializerSerializer> serializer);
+  absl::Status Initialize(InitTableIterator& iter,
+                          std::unique_ptr<InitializerSerializer> serializer);
 
   // Basic iterator to initialize lookup tables.
   // It yields a sequence of pairs of `keys()` and `values()` Tensors, so that
@@ -127,7 +127,7 @@ class InitializableLookupTable : public LookupInterface {
     virtual const Tensor& values() const = 0;
 
     // Returns an error if one has occurred, otherwise returns Status::OK.
-    virtual Status status() const = 0;
+    virtual absl::Status status() const = 0;
 
     // Returns the total number of elements that the iterator will produce.
     // It might return -1 in case of error.
@@ -149,8 +149,8 @@ class InitializableLookupTable : public LookupInterface {
    public:
     // A function which builds a graph so that executing `*out` will initialize
     // `table`.
-    using SerializeFn = std::function<Status(GraphDefBuilder* builder,
-                                             Node* table, Node** out)>;
+    using SerializeFn = std::function<absl::Status(GraphDefBuilder* builder,
+                                                   Node* table, Node** out)>;
     // A function which performs any necessary cleanup for the serializer.
     using CleanupFn = std::function<void()>;
 
@@ -166,7 +166,7 @@ class InitializableLookupTable : public LookupInterface {
     ~InitializerSerializer() { cleanup_(); }
 
     // Builds a graph so that executing `*out` will initialize `table`.
-    Status AsGraphDef(GraphDefBuilder* builder, Node* table, Node** out) {
+    absl::Status AsGraphDef(GraphDefBuilder* builder, Node* table, Node** out) {
       return serialize_(builder, table, out);
     }
 
@@ -178,11 +178,11 @@ class InitializableLookupTable : public LookupInterface {
  protected:
   // Prepares and allocates the underlying data structure to store the given
   // number of expected elements.
-  virtual Status DoPrepare(size_t expected_num_elements) = 0;
+  virtual absl::Status DoPrepare(size_t expected_num_elements) = 0;
 
   // Same as DoPrepare() but derived implementations might choose to skip
   // calling get_expected_num_elements if size is not needed for DoPrepare.
-  virtual Status DoLazyPrepare(
+  virtual absl::Status DoLazyPrepare(
       std::function<int64_t(void)> get_expected_num_elements) {
     int64_t expected_num_elements = get_expected_num_elements();
     if (expected_num_elements < 0) {
@@ -193,13 +193,14 @@ class InitializableLookupTable : public LookupInterface {
 
   // Populates the table in batches given keys and values as tensors into the
   // underlying data structure.
-  virtual Status DoInsert(const Tensor& keys, const Tensor& values) = 0;
+  virtual absl::Status DoInsert(const Tensor& keys, const Tensor& values) = 0;
 
   // Performs the batch find operation on the underlying data structure.
-  virtual Status DoFind(const Tensor& keys, Tensor* values,
-                        const Tensor& default_value) = 0;
+  virtual absl::Status DoFind(const Tensor& keys, Tensor* values,
+                              const Tensor& default_value) = 0;
 
-  virtual Status AreEntriesSame(const InitTableIterator& iter, bool* result);
+  virtual absl::Status AreEntriesSame(const InitTableIterator& iter,
+                                      bool* result);
 
   mutex mu_;
 
@@ -248,7 +249,7 @@ class KeyValueTensorIterator
 
   const Tensor& values() const override { return *values_; }
 
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
 
   int64_t total_size() const override {
     return keys_ == nullptr ? -1 : keys_->NumElements();
@@ -261,7 +262,7 @@ class KeyValueTensorIterator
   const Tensor* keys_;    // Doesn't own it.
   const Tensor* values_;  // Doesn't own it.
   bool valid_;            // true if the iterator points to an existing range.
-  Status status_;
+  absl::Status status_;
 };
 
 }  // namespace lookup
