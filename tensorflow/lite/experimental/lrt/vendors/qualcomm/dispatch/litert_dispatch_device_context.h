@@ -32,8 +32,6 @@ class LiteRtDispatchDeviceContextT {
 
   static absl::StatusOr<Ptr> Create(litert::qnn::QnnManager& qnn_manager);
 
-  Qnn_BackendHandle_t BackendHandle() { return qnn_manager_.BackendHandle(); }
-
   absl::StatusOr<LiteRtTensorBufferHandle> RegisterTensorBuffer(
       LiteRtTensorBuffer tensor_buffer) {
     return tensor_buffer_registry_.Register(
@@ -51,6 +49,11 @@ class LiteRtDispatchDeviceContextT {
   absl::StatusOr<Qnn_MemHandle_t> GetMemHandle(
       LiteRtTensorBufferHandle tensor_buffer_handle,
       const Qnn_Tensor_t& tensor);
+
+  void SetInvocationContext(
+      LiteRtDispatchInvocationContextT* invocation_context) {
+    invocation_context_ = invocation_context;
+  }
 
  private:
   struct TensorBufferRegistryEntry {
@@ -71,6 +74,7 @@ class LiteRtDispatchDeviceContextT {
 
   litert::qnn::QnnManager& qnn_manager_;
   TensorBufferRegistry tensor_buffer_registry_;
+  LiteRtDispatchInvocationContextT* invocation_context_ = nullptr;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_

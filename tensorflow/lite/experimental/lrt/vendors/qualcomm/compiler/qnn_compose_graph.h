@@ -24,7 +24,8 @@ namespace litert::qnn {
 
 // Composes a new QNN Graph from given LiteRt Graph. Qnn Graph is written to
 // context behind "qnn". Uses given graph_name to name entry point.
-LiteRtStatus ComposeGraph(QnnManager& qnn, LiteRtSubgraph subgraph,
+LiteRtStatus ComposeGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
+                          LiteRtSubgraph subgraph,
                           absl::string_view qnn_graph_name);
 
 }  // namespace litert::qnn

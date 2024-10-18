@@ -21,7 +21,6 @@
 namespace {
 
 using ::litert::qnn::QnnManager;
-using ::litert::qnn::SetupAll;
 using ::litert::qnn::internal::Dump;
 using ::testing::HasSubstr;
 
@@ -29,29 +28,18 @@ using ::testing::HasSubstr;
 // the QNN SDK instance can be properly initialized and destroyed.
 
 TEST(QnnManagerTest, SetupQnnManager) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(SetupAll(/*soc_model=*/std::nullopt, qnn));
-}
-
-TEST(QnnManagerTest, SetupQnnManagerWithSystem) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(
-      SetupAll(/*soc_model=*/std::nullopt, qnn, /*load_system=*/true));
-}
-
-TEST(QnnManagerTest, SetupQnnManagerWithContext) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(SetupAll(/*soc_model=*/std::nullopt, qnn,
-                            /*load_system=*/false, /*load_context=*/true));
+  auto configs = QnnManager::DefaultBackendConfigs();
+  auto qnn = QnnManager::Create(configs);
+  ASSERT_TRUE(qnn.ok());
 }
 
 TEST(QnnManagerTest, Dump) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(
-      SetupAll(/*soc_model=*/std::nullopt, qnn, /*load_system=*/true))
+  auto configs = QnnManager::DefaultBackendConfigs();
+  auto qnn = QnnManager::Create(configs);
+  ASSERT_TRUE(qnn.ok());
 
   std::ostringstream dump;
-  Dump(qnn, dump);
+  Dump(**qnn, dump);
 
   EXPECT_THAT(dump.str(), HasSubstr("< QnnInterface_t >"));
   EXPECT_THAT(dump.str(), HasSubstr("< QnnSystemInterface_t >"));

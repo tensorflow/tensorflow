@@ -35,7 +35,7 @@ class LiteRtDispatchInvocationContextT {
  public:
   using Ptr = std::unique_ptr<LiteRtDispatchInvocationContextT>;
 
-  ~LiteRtDispatchInvocationContextT();
+  ~LiteRtDispatchInvocationContextT() = default;
 
   static absl::StatusOr<Ptr> Create(
       litert::qnn::QnnManager& qnn_manager,
@@ -56,11 +56,14 @@ class LiteRtDispatchInvocationContextT {
 
   absl::Status Execute();
 
+  Qnn_ContextHandle_t ContextHandle() { return context_handle_.get(); }
+
  private:
   LiteRtDispatchInvocationContextT(
       litert::qnn::QnnManager& qnn_manager,
       const litert::qnn::ContextBinaryInfo& context_binary_info,
       LiteRtDispatchDeviceContextT& device_context,
+      litert::qnn::QnnManager::ContextHandle&& context_handle,
       Qnn_ProfileHandle_t profile_handle, int graph_index,
       Qnn_GraphHandle_t graph_handle);
 
@@ -69,6 +72,7 @@ class LiteRtDispatchInvocationContextT {
 
   litert::qnn::QnnManager& qnn_manager_;
   LiteRtDispatchDeviceContextT& device_context_;
+  litert::qnn::QnnManager::ContextHandle context_handle_;
   Qnn_ProfileHandle_t profile_handle_;
   int graph_index_;
   Qnn_GraphHandle_t graph_handle_;
