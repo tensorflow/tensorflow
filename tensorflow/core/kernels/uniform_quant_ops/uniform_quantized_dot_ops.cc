@@ -23,8 +23,8 @@ namespace {
 using tensorflow::errors::InvalidArgument;
 
 // Given lhs and rhs shapes, returns if the shapes are valid for 2D X 2D dot.
-Status DotInputShapeValid(const TensorShape& lhs_shape,
-                          const TensorShape& rhs_shape) {
+absl::Status DotInputShapeValid(const TensorShape& lhs_shape,
+                                const TensorShape& rhs_shape) {
   if (lhs_shape.dims() != 2) {
     return InvalidArgument("lhs rank must be 2, but given lhs shape ",
                            lhs_shape.DebugString());
@@ -80,7 +80,7 @@ void DotWithAccFunctionAndOutputFunction(const Tensor& lhs, const Tensor& rhs,
 
 // Performs dot on per-tensor quantized lhs and per-tensor quantized rhs.
 template <typename Tin, typename Tout>
-Status EvalLhsPerTensorAndRhsPerTensorQuantizedDot(
+absl::Status EvalLhsPerTensorAndRhsPerTensorQuantizedDot(
     const Tensor& lhs, const Tensor& rhs, float lhs_scale,
     int32_t lhs_zero_point, float rhs_scale, int32_t rhs_zero_point,
     float output_scale, int32_t output_zero_point,
@@ -115,7 +115,7 @@ Status EvalLhsPerTensorAndRhsPerTensorQuantizedDot(
 // Performs dot on per-tensor quantized lhs and per-channel (dimension 1)
 // quantized rhs.
 template <typename Tin, typename Tout>
-Status EvalLhsPerTensorAndRhsPerChannelQuantizedDot(
+absl::Status EvalLhsPerTensorAndRhsPerChannelQuantizedDot(
     OpKernelContext* context, const Tensor& lhs, const Tensor& rhs,
     float lhs_scale, int32_t lhs_zero_point, const Tensor& rhs_scales,
     const Tensor& rhs_zero_points, const Tensor& output_scales,
@@ -232,14 +232,15 @@ void EvalLhsPerBatchAndRhsPerChannelQuantizedDot(
 // and produce quantized output. Assumes that output is already allocated with
 // correct size.
 template <typename Tin, typename Tout>
-Status EvalQuantizedDot(OpKernelContext* context, const Tensor& lhs,
-                        const Tensor& rhs, const Tensor& lhs_scales,
-                        const Tensor& lhs_zero_points, const Tensor& rhs_scales,
-                        const Tensor& rhs_zero_points,
-                        const Tensor& output_scales,
-                        const Tensor& output_zero_points,
-                        int output_quantization_min_val,
-                        int output_quantization_max_val, Tensor& output) {
+absl::Status EvalQuantizedDot(OpKernelContext* context, const Tensor& lhs,
+                              const Tensor& rhs, const Tensor& lhs_scales,
+                              const Tensor& lhs_zero_points,
+                              const Tensor& rhs_scales,
+                              const Tensor& rhs_zero_points,
+                              const Tensor& output_scales,
+                              const Tensor& output_zero_points,
+                              int output_quantization_min_val,
+                              int output_quantization_max_val, Tensor& output) {
   const float lhs_scale = lhs_scales.scalar<float>()();
   const int32_t lhs_zero_point = lhs_zero_points.scalar<int32_t>()();
   if (rhs_scales.dims() != 0) {
@@ -265,9 +266,9 @@ Status EvalQuantizedDot(OpKernelContext* context, const Tensor& lhs,
 // For more details on lhs quantization policy, refer to the comment of class
 // UniformQuantizedDotHybridOp below.
 template <typename Trhs>
-Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
-                     const Tensor& rhs, const Tensor& rhs_scales,
-                     const Tensor& rhs_zero_points, Tensor& output) {
+absl::Status EvalHybridDot(OpKernelContext* context, const Tensor& lhs,
+                           const Tensor& rhs, const Tensor& rhs_scales,
+                           const Tensor& rhs_zero_points, Tensor& output) {
   const int64_t batches = lhs.dim_size(0);
 
   Tensor lhs_quantized;
