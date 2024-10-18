@@ -29,6 +29,10 @@ message CoordinationServiceConfig {
   // Maximum wait time for all members in the cluster to be registered.
   int64 cluster_register_timeout_in_ms = 4;
 
+  // Denotes if we should synchronize the agents' register attempts by blocking
+  // on a barrier. This is useful for synchronized restarts.
+  bool cluster_register_with_barrier = 14;
+
   // Heartbeat timeout, if a task does not record heartbeat in this time
   // window, it will be considered disconnected.
   // Note: This is also used as a grace period to accept any heartbeats after
