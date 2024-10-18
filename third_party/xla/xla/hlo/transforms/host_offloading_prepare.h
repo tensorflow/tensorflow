@@ -28,20 +28,21 @@
 
 namespace xla {
 
-// This is a collection of rewrites that prepares HLO module for host
-// offloading, mainly to work around different limitation of the compilation
-// pipeline and runtime. These rewrites can be placed in a different parts of
+// This is a collection of rewrites that prepares an HLO module for host
+// offloading. These rewrites can be placed in a different parts of
 // the overall compilation pipeline to prepare HLO module for host offloading
-// for the given backend (different backends have different limitations).
+// for the given backend.
 class HostOffloadingPrepare : public HloModulePass {
  public:
   enum class Rewrite {
-    // Currently host compute offloading requires that all temporary inputs are
-    // in device memory. If they are streamed inputs (inputs to the entry
-    // computation), they can be in either device or host memory.
-    //
     // This rewrite removes `MoveToHost` custom calls that feed directly into
-    // the computation offloading to the host.
+    // the a host computation.
+    //
+    // In the HLO, it will look like HBM is directly fed into the host
+    // computation. The runtime will, once the async-call-start is executed,
+    // allocate a buffer on the host and copy the HBM buffer into it. This has
+    // the benefit that the device will never be blocking directly on the
+    // tranfser, since that's clumped together with the computation.
     kElideMoveToHost,
 
     // Currently host compute offloading does not support tiled layouts, and
