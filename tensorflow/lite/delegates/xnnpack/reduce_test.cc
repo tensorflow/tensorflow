@@ -17,17 +17,66 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <random>
+#include <sstream>
+#include <string>
+#include <tuple>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/delegates/xnnpack/quantized_reduce_tester.h"
+#include "tensorflow/lite/delegates/xnnpack/reduce_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceBatchSqueezeDims) {
+struct TestParam {
+  using Tuple = std::tuple<BuiltinOperator, enum ReduceTester::Quantization>;
+  explicit TestParam(const Tuple& t)
+      : op(std::get<0>(t)), quantization(std::get<1>(t)) {}
+  BuiltinOperator op;
+  enum ReduceTester::Quantization quantization;
+};
+
+class ReduceTest : public testing::TestWithParam<TestParam> {
+ public:
+  static std::string GetName(const testing::TestParamInfo<TestParam>& i) {
+    std::stringstream sstr;
+    switch (i.param.op) {
+      case BuiltinOperator_MEAN:
+        sstr << "mean";
+        break;
+      case BuiltinOperator_SUM:
+        sstr << "sum";
+        break;
+      default:
+        sstr << "unknown";
+        break;
+    }
+    switch (i.param.quantization) {
+      case ReduceTester::Quantization::None:
+        break;
+      case ReduceTester::Quantization::Signed:
+        sstr << "_signed_quantized";
+        break;
+      case ReduceTester::Quantization::Unsigned:
+        sstr << "_unsigned_quantized";
+        break;
+    }
+    return sstr.str();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    Reduce, ReduceTest,
+    testing::ConvertGenerator<TestParam::Tuple>(testing::Combine(
+        testing::Values(BuiltinOperator_MEAN, BuiltinOperator_SUM),
+        testing::Values(ReduceTester::Quantization::None,
+                        ReduceTester::Quantization::Signed,
+                        ReduceTester::Quantization::Unsigned))),
+    ReduceTest::GetName);
+
+TEST_P(ReduceTest, 4DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -41,14 +90,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceBatchSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({0})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceBatchKeepDims) {
+TEST_P(ReduceTest, 4DReduceBatchKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -62,14 +112,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceBatchKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({0})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceHeightSqueezeDims) {
+TEST_P(ReduceTest, 4DReduceHeightSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -83,14 +134,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceHeightSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({1})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceHeightKeepDims) {
+TEST_P(ReduceTest, 4DReduceHeightKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -104,14 +156,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceHeightKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({1})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, 4DReduceWidthSqueezeDims) {
+TEST_P(ReduceTest, 4DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -125,14 +178,15 @@ TEST(SignedQuantizedMean, 4DReduceWidthSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({2})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, 4DReduceWidthKeepDims) {
+TEST_P(ReduceTest, 4DReduceWidthKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -146,14 +200,15 @@ TEST(SignedQuantizedMean, 4DReduceWidthKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({2})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, 4DReduceHeightWidthSqueezeDims) {
+TEST_P(ReduceTest, 4DReduceHeightWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -167,20 +222,22 @@ TEST(SignedQuantizedMean, 4DReduceHeightWidthSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({1, 2})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({2, 1})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, 4DReduceHeightWidthKeepDims) {
+TEST_P(ReduceTest, 4DReduceHeightWidthKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -194,20 +251,22 @@ TEST(SignedQuantizedMean, 4DReduceHeightWidthKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({1, 2})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({2, 1})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceChannelsSqueezeDims) {
+TEST_P(ReduceTest, 4DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -221,14 +280,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceChannelsSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({3})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_4DReduceChannelsKeepDims) {
+TEST_P(ReduceTest, 4DReduceChannelsKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -242,14 +302,15 @@ TEST(SignedQuantizedMean, DISABLED_4DReduceChannelsKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({3})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceBatchSqueezeDims) {
+TEST_P(ReduceTest, 3DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -262,14 +323,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceBatchSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({0})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceBatchKeepDims) {
+TEST_P(ReduceTest, 3DReduceBatchKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -282,14 +344,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceBatchKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({0})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceWidthSqueezeDims) {
+TEST_P(ReduceTest, 3DReduceWidthSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -302,14 +365,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceWidthSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({1})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceWidthKeepDims) {
+TEST_P(ReduceTest, 3DReduceWidthKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -322,14 +386,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceWidthKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({1})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceChannelsSqueezeDims) {
+TEST_P(ReduceTest, 3DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -342,14 +407,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceChannelsSqueezeDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({2})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_3DReduceChannelsKeepDims) {
+TEST_P(ReduceTest, 3DReduceChannelsKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -362,14 +428,15 @@ TEST(SignedQuantizedMean, DISABLED_3DReduceChannelsKeepDims) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, width, channels})
       .Axes({2})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_2DReduceBatchSqueezeDims) {
+TEST_P(ReduceTest, 2DReduceBatchSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -381,14 +448,15 @@ TEST(SignedQuantizedMean, DISABLED_2DReduceBatchSqueezeDims) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, channels})
       .Axes({0})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_2DReduceBatchKeepDims) {
+TEST_P(ReduceTest, 2DReduceBatchKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -400,14 +468,15 @@ TEST(SignedQuantizedMean, DISABLED_2DReduceBatchKeepDims) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, channels})
       .Axes({0})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_2DReduceChannelsSqueezeDims) {
+TEST_P(ReduceTest, 2DReduceChannelsSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -419,14 +488,15 @@ TEST(SignedQuantizedMean, DISABLED_2DReduceChannelsSqueezeDims) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, channels})
       .Axes({1})
       .KeepDims(false)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_2DReduceChannelsKeepDims) {
+TEST_P(ReduceTest, 2DReduceChannelsKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -438,14 +508,15 @@ TEST(SignedQuantizedMean, DISABLED_2DReduceChannelsKeepDims) {
   const auto batch = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, channels})
       .Axes({1})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_1DSqueezeDims) {
+TEST_P(ReduceTest, 1DSqueezeDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -456,11 +527,15 @@ TEST(SignedQuantizedMean, DISABLED_1DSqueezeDims) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
 
-  QuantizedReduceTester().InputShape({batch}).Axes({0}).KeepDims(false).Test(
-      BuiltinOperator_MEAN, xnnpack_delegate.get());
+  ReduceTester()
+      .Quantization(GetParam().quantization)
+      .InputShape({batch})
+      .Axes({0})
+      .KeepDims(false)
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, DISABLED_1DKeepDims) {
+TEST_P(ReduceTest, 1DKeepDims) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -471,11 +546,15 @@ TEST(SignedQuantizedMean, DISABLED_1DKeepDims) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
 
-  QuantizedReduceTester().InputShape({batch}).Axes({0}).KeepDims(true).Test(
-      BuiltinOperator_MEAN, xnnpack_delegate.get());
+  ReduceTester()
+      .Quantization(GetParam().quantization)
+      .InputShape({batch})
+      .Axes({0})
+      .KeepDims(true)
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
-TEST(SignedQuantizedMean, MultiThreading) {
+TEST_P(ReduceTest, MultiThreading) {
   TfLiteXNNPackDelegateOptions delegate_options =
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.num_threads = 2;
@@ -492,11 +571,12 @@ TEST(SignedQuantizedMean, MultiThreading) {
   const auto width = shape_rng();
   const auto channels = shape_rng();
 
-  QuantizedReduceTester()
+  ReduceTester()
+      .Quantization(GetParam().quantization)
       .InputShape({batch, height, width, channels})
       .Axes({1, 2})
       .KeepDims(true)
-      .Test(BuiltinOperator_MEAN, xnnpack_delegate.get());
+      .Test(GetParam().op, xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack
