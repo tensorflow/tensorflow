@@ -2420,6 +2420,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   VLOG(6) << "Copy Insertion analyzing module with instruction count = "
           << module->instruction_count();
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
+  std::vector<HloInstruction*> to_be_removed_copies;
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
     changed = false;
@@ -2444,6 +2445,10 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
           TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
           TF_RETURN_IF_ERROR(
               instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+          CHECK(instruction->users().empty());
+          TF_RETURN_IF_ERROR(
+              instruction->parent()->RemoveInstruction(instruction));
+          to_be_removed_copies.push_back(instruction);
           VLOG(6) << "succeeded in eliminating copy.";
         }
         if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
@@ -2456,6 +2461,12 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
       }
     }
   }
+
+  // Remove copies.
+  for (HloInstruction* it : to_be_removed_copies) {
+    TF_RETURN_IF_ERROR(it->parent()->RemoveInstruction(it));
+  }
+
   return absl::OkStatus();
 }
 
