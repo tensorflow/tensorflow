@@ -100,9 +100,7 @@ void GetReachableNodesAndVariables(
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     std::unordered_set<string>* reachable_node_names,
     std::unordered_set<string>* variable_node_names) {
-  // TODO(suharshs): Add support for ResourceVariables.
-  static const std::unordered_set<string>* kVariableTypes =
-      new std::unordered_set<string>({"Variable", "VariableV2", "VarHandleOp"});
+  const std::unordered_set<string> kVariableTypes = {"Variable", "VariableV2", "VarHandleOp"};
 
   std::queue<string> nodes_to_visit;
   for (const string& output_tensor_name : outputs) {
@@ -116,8 +114,15 @@ void GetReachableNodesAndVariables(
       continue;
     }
     reachable_node_names->insert(node_name);
-    NodeDef* node = name_to_node_map.at(node_name);
-    if (kVariableTypes->find(node->op()) != kVariableTypes->end()) {
+
+    auto node_iter = name_to_node_map.find(node_name);
+    if (node_iter == name_to_node_map.end()) {
+      LOG(ERROR) << "Node " << node_name << " not found in the graph!";
+      continue;
+    }
+    NodeDef* node = node_iter->second;
+
+    if (kVariableTypes.find(node->op()) != kVariableTypes.end()) {
       variable_node_names->insert(node->name());
     }
     for (const string& input_tensor_name : node->input()) {
@@ -143,8 +148,6 @@ Status GetVariableNameToTensorMap(
     variable_names.push_back(node_name);
     NodeDef* node_def = name_to_node_map.at(node_name);
     if (node_def->op() == "VarHandleOp") {
-      // If this is a resource variable, we have to run the corresponding
-      // ReadVariableOp.
       tensor_names.push_back(node_name + "/Read/ReadVariableOp:0");
     } else {
       tensor_names.push_back(node_name + ":0");
@@ -182,8 +185,7 @@ void ConvertReadVariableOpToIdentity(const NodeDef& node,
 // Returns the name of the VarHandleOp that provides input (possibly indirectly)
 // to node with node_name. A typical indirect chain of nodes (that can occur due
 // to graph inlining) is the following: VarHandleOp -> Identity -> Identity ->
-// ReadVariableOp. Calling the function on any of these nodes would return the
-// name of the VarHandleOp.
+// ReadVariableOp.
 StatusOr<string> GetVarHandleName(
     const std::unordered_map<string, NodeDef*>& name_to_node_map,
     string node_name) {
@@ -197,98 +199,72 @@ StatusOr<string> GetVarHandleName(
       break;
     }
   }
-  if (node->op() == "VarHandleOp") {
-    return node->name();
+  if (node->op() != "VarHandleOp") {
+    return tsl::errors::InvalidArgument(
+        "Expected variable ", node_name, " to be a resource variable.");
   }
-  return absl::NotFoundError("No VarHandleOp ancestor found");
-}
-
-// Looks up the variable handle that provides input to node with node_name,
-// and returns the handle name if the handle corresponds to a variable that we
-// want to freeze (i.e. its name is contained in variable_node_names). If there
-// is no such handle in the graph (or we do not want to save that variable)
-// then NotFound error is returned.
-StatusOr<string> GetHandleNameIfNeedsToFreeze(
-    const std::unordered_map<string, NodeDef*>& name_to_node_map,
-    string node_name, const std::unordered_set<string>& variable_node_names) {
-  StatusOr<string> var_handle_name =
-      GetVarHandleName(name_to_node_map, node_name);
-  if (var_handle_name.ok() && variable_node_names.count(*var_handle_name)) {
-    return var_handle_name;
-  }
-  return absl::NotFoundError("No VarHandleOp ancestor found");
-}
-
-// Freezes the subgraph of all nodes needed by `outputs`.
-Status FreezeGraphDef(const SavedModelBundle& saved_model_bundle,
-                      const std::unordered_set<string>& outputs,
-                      GraphDef* frozen_graph_def) {
-  GraphDef graph_def = saved_model_bundle.meta_graph_def.graph_def();
-  // Copy versions and library as-is from original graph.
-  *frozen_graph_def->mutable_versions() = graph_def.versions();
-  *frozen_graph_def->mutable_library() = graph_def.library();
-  // If the graph is empty there is nothing left to do.
-  if (graph_def.node_size() == 0) {
-    return absl::OkStatus();
-  }
-  // name_to_node_map is needed to get the inputs from the NodeDef corresponding
-  // the a string node name. These inputs are used when doing our backwards
-  // traversal.
-  std::unordered_map<string, NodeDef*> name_to_node_map;
-  GetNodeNameToNodeDefMap(&graph_def, &name_to_node_map);
-  std::unordered_set<string> reachable_node_names;
-  std::unordered_set<string> variable_node_names;
-  GetReachableNodesAndVariables(&graph_def, outputs, name_to_node_map,
-                                &reachable_node_names, &variable_node_names);
-  std::unordered_map<string, Tensor> variable_to_value_map;
-  TF_RETURN_IF_ERROR(GetVariableNameToTensorMap(
-      saved_model_bundle.session.get(), name_to_node_map, variable_node_names,
-      &variable_to_value_map));
-  // We copy the nodes in the same order they were in the original graph_def.
-  for (const NodeDef& node : graph_def.node()) {
-    if (reachable_node_names.find(node.name()) == reachable_node_names.end()) {
-      continue;
-    }
-    if (variable_node_names.find(node.name()) != variable_node_names.end()) {
-      ConvertVariableToConstant(node, variable_to_value_map[node.name()],
-                                frozen_graph_def->add_node());
-      continue;
-    } else if (node.op() == "ReadVariableOp" &&
-               GetHandleNameIfNeedsToFreeze(name_to_node_map, node.name(),
-                                            variable_node_names)
-                   .ok()) {
-      // If the node is a ReadVariableOp, its input VarHandleOp will be
-      // converted to a Constant, so we will need to convert it to an Identity.
-      ConvertReadVariableOpToIdentity(node, frozen_graph_def->add_node());
-      continue;
-    } else if (node.op() == "Identity") {
-      StatusOr<string> handle_name = GetHandleNameIfNeedsToFreeze(
-          name_to_node_map, node.name(), variable_node_names);
-      if (handle_name.ok()) {
-        // Identity node that is forwarding the value of a frozen
-        // VarhandleOp. We ensure that the dtype matches of the variable dtype.
-        NodeDef* new_node = frozen_graph_def->add_node();
-        *new_node = node;
-        (*new_node->mutable_attr())["T"] =
-            name_to_node_map.at(*handle_name)->attr().at("dtype");
-        continue;
-      }
-    }
-    // If the node isn't a variable, just copy the node as-is.
-    *frozen_graph_def->add_node() = node;
-  }
-  return absl::OkStatus();
+  return node->name();
 }
 
 }  // namespace
 
-Status FreezeSavedModel(const SavedModelBundle& saved_model_bundle,
-                        GraphDef* frozen_graph_def,
-                        std::unordered_set<string>* inputs,
-                        std::unordered_set<string>* outputs) {
-  GetSignatureDefsInputsAndOutputs(saved_model_bundle, inputs, outputs);
-  TF_RETURN_IF_ERROR(
-      FreezeGraphDef(saved_model_bundle, *outputs, frozen_graph_def));
+absl::Status FreezeSavedModel(SavedModelBundle* saved_model_bundle,
+                              bool input_tensors_required,
+                              GraphDef* frozen_graph_def) {
+  const MetaGraphDef& meta_graph_def = saved_model_bundle->meta_graph_def;
+
+  // Step 1: Get all input and output nodes of the graph, as well as the list of
+  // all variable nodes.
+  const GraphDef& graph_def = meta_graph_def.graph_def();
+  std::unordered_set<string> inputs;
+  std::unordered_set<string> outputs;
+  GetSignatureDefsInputsAndOutputs(*saved_model_bundle, &inputs, &outputs);
+
+  if (inputs.empty() && input_tensors_required) {
+    LOG(ERROR) << "No input tensors found in graph.";
+    return absl::FailedPreconditionError("No input tensors found in graph.");
+  }
+  if (outputs.empty()) {
+    LOG(ERROR) << "No output tensors found in graph.";
+    return absl::FailedPreconditionError("No output tensors found in graph.");
+  }
+
+  *frozen_graph_def = meta_graph_def.graph_def();
+  std::unordered_map<string, NodeDef*> name_to_node_map;
+  GetNodeNameToNodeDefMap(frozen_graph_def, &name_to_node_map);
+
+  // Step 2: Get the set of reachable nodes and the set of variable nodes.
+  std::unordered_set<string> reachable_node_names;
+  std::unordered_set<string> variable_node_names;
+  GetReachableNodesAndVariables(frozen_graph_def, outputs, name_to_node_map,
+                                &reachable_node_names, &variable_node_names);
+
+  // Step 3: Evaluate the values of all variables that are required for the
+  // graph outputs.
+  std::unordered_map<string, Tensor> variable_name_to_value_map;
+  TF_RETURN_IF_ERROR(GetVariableNameToTensorMap(
+      saved_model_bundle->session.get(), name_to_node_map, variable_node_names,
+      &variable_name_to_value_map));
+
+  // Step 4: Add all constant nodes for the variable values.
+  for (const auto& variable : variable_name_to_value_map) {
+    NodeDef* node = name_to_node_map[variable.first];
+    NodeDef* const_node = frozen_graph_def->add_node();
+    ConvertVariableToConstant(*node, variable.second, const_node);
+  }
+
+  // Step 5: Convert ReadVariableOp nodes to Identity nodes.
+  for (size_t i = 0; i < frozen_graph_def->node_size(); i++) {
+    NodeDef* node = frozen_graph_def->mutable_node(i);
+    if (node->op() == "ReadVariableOp") {
+      NodeDef identity_node;
+      ConvertReadVariableOpToIdentity(*node, &identity_node);
+      *node = std::move(identity_node);
+    } else if (node->op() == "VarHandleOp") {
+      node->set_op("Const");
+    }
+  }
+
   return absl::OkStatus();
 }
 
