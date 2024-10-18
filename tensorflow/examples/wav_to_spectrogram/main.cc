@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/examples/wav_to_spectrogram/wav_to_spectrogram.h"
-
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/examples/wav_to_spectrogram/wav_to_spectrogram.h"
 
 int main(int argc, char* argv[]) {
   // These are the command-line flags the program can understand.
