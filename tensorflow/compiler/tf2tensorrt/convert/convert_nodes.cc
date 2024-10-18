@@ -26,54 +26,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/algorithm_selector.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/layer_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/quantization_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/ops/slice_ops.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/timing_cache.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_experimental_features.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/node_def.pb.h"      // NOLINT
+#include "tensorflow/core/framework/tensor.pb.h"        // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
-#include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/op_types.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/tensor_coding.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/annotated_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
