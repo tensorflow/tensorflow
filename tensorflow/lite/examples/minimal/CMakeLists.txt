@@ -19,6 +19,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(minimal C CXX)
 
+option(LINK_TFLITE_FLEX "Enable tensorflowlite_flex library linkage" OFF)
+
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
 )
@@ -39,6 +41,20 @@ set(CMAKE_CXX_STANDARD 17)
 add_executable(minimal
   minimal.cc
 )
-target_link_libraries(minimal
-  tensorflow-lite
-)
+
+if(LINK_TFLITE_FLEX)
+  find_library(TF_LIB_FLEX tensorflowlite_flex HINTS "${TENSORFLOW_SOURCE_DIR}/bazel-bin/tensorflow/lite/delegates/flex/")
+  if(NOT TF_LIB_FLEX)
+    message(FATAL_ERROR "tensorflowlite_flex library not found")
+  endif()
+
+  target_link_libraries(minimal
+    tensorflow-lite
+    -Wl,--no-as-needed # Add --no-as-needed since for some toolchains (e.g. Ubuntu) --as-needed is added by default.
+    ${TF_LIB_FLEX}
+  )
+else()
+  target_link_libraries(minimal
+    tensorflow-lite
+  )
+endif()
