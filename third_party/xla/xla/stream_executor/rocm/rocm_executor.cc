@@ -103,7 +103,6 @@ namespace {
 // GPU memory conversions to librocm functions which will honor constness.
 hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
   return const_cast<hipDeviceptr_t>(gpu_mem.opaque());
-}
 
 // See description on const version above.
 hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
