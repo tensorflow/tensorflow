@@ -37,8 +37,9 @@ class ToTFRecordOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "tf_data_to_tf_record") {}
 
   template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
+  absl::Status ParseScalarArgument(OpKernelContext* ctx,
+                                   const StringPiece& argument_name,
+                                   T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
@@ -58,7 +59,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
  private:
-  Status DoCompute(OpKernelContext* ctx) {
+  absl::Status DoCompute(OpKernelContext* ctx) {
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
     metrics::RecordTFDataFetchOp("ToTFRecordOp");

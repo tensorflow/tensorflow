@@ -103,17 +103,19 @@ class SqlDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override { return absl::OkStatus(); }
+    absl::Status CheckExternalState() const override {
+      return absl::OkStatus();
+    }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       Node* driver_name_node;
       TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));
       Node* data_source_name_node;
@@ -133,21 +135,21 @@ class SqlDatasetOp : public DatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
       ~Iterator() override {
         if (query_connection_initialized_) {
-          Status s = query_connection_->Close();
+          absl::Status s = query_connection_->Close();
           if (!s.ok()) {
             LOG(WARNING) << "Failed to close query connection: " << s;
           }
         }
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (!query_connection_initialized_) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
         }
-        Status status = absl::OkStatus();
+        absl::Status status = absl::OkStatus();
         if (!end_of_sequence_) {
           next_calls_++;
           status =
@@ -163,8 +165,8 @@ class SqlDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (query_connection_initialized_) {
           TF_RETURN_IF_ERROR(
@@ -173,8 +175,8 @@ class SqlDatasetOp : public DatasetOpKernel {
         return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("next_calls"))) {
           TF_RETURN_IF_ERROR(InitializeQueryConnection());
@@ -196,14 +198,15 @@ class SqlDatasetOp : public DatasetOpKernel {
       }
 
      private:
-      Status InitializeQueryConnection() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::Status InitializeQueryConnection()
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
-        Status s = query_connection_->Open(dataset()->data_source_name_,
-                                           dataset()->query_,
-                                           dataset()->output_types_);
+        absl::Status s = query_connection_->Open(dataset()->data_source_name_,
+                                                 dataset()->query_,
+                                                 dataset()->output_types_);
         next_calls_ = 0;
         if (!s.ok()) {
           LOG(WARNING) << "Failed to connect to database: " << s;
