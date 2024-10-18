@@ -41,13 +41,13 @@ class PartitionedCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  protected:
-  Status FillOutputDevices(const FunctionLibraryRuntime& lib,
-                           const Device& cpu_device, AttrSlice attrs,
-                           FunctionLibraryRuntime::InstantiateOptions* opts);
+  absl::Status FillOutputDevices(
+      const FunctionLibraryRuntime& lib, const Device& cpu_device,
+      AttrSlice attrs, FunctionLibraryRuntime::InstantiateOptions* opts);
 
-  Status Instantiate(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
-                     std::vector<Tensor>* inputs,
-                     FunctionLibraryRuntime::Handle* handle);
+  absl::Status Instantiate(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
+                           std::vector<Tensor>* inputs,
+                           FunctionLibraryRuntime::Handle* handle);
 
   void RunFunction(FunctionLibraryRuntime::Handle handle,
                    const std::vector<Tensor>& inputs,

@@ -30,7 +30,7 @@ namespace {
 
 /* Extracts the components of the variant-encoded tensor `encoded_variant`
  * into a flat vector of `RaggedTensorVariant` objects. */
-Status RaggedComponentsFromVariant(
+absl::Status RaggedComponentsFromVariant(
     const Tensor& encoded_variant, int input_ragged_rank,
     int output_ragged_rank, DataType value_dtype, DataType split_dtype,
     std::vector<RaggedTensorVariant>* decoded_ragged) {
@@ -92,7 +92,7 @@ Status RaggedComponentsFromVariant(
  * This should only be used when input_ragged_rank=0 and output_ragged_rank=0.
  */
 template <typename VALUE_TYPE>
-Status StackNonRaggedTensors(
+absl::Status StackNonRaggedTensors(
     const std::vector<RaggedTensorVariant>& ragged_components,
     RaggedTensorVariant* output_ragged) {
   if (ragged_components.empty()) {
@@ -125,7 +125,7 @@ Status StackNonRaggedTensors(
 }
 
 template <typename VALUE_TYPE, typename SPLIT_TYPE>
-Status NestedStackRaggedTensors(
+absl::Status NestedStackRaggedTensors(
     const std::vector<RaggedTensorVariant>& ragged_components,
     const std::vector<int>& nested_dim_sizes, const int input_ragged_rank,
     const int output_ragged_rank, RaggedTensorVariant* output_ragged) {

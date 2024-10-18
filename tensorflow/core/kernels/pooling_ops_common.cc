@@ -86,9 +86,9 @@ struct PadInputWithNegativeInf<qint8> {
 
 }  // namespace
 
-Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
-                        int64_t pad_top, int64_t pad_bottom, int64_t pad_left,
-                        int64_t pad_right) {
+absl::Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
+                              int64_t pad_top, int64_t pad_bottom,
+                              int64_t pad_left, int64_t pad_right) {
   if (!FastBoundsCheck(pad_top, window_rows)) {
     return errors::InvalidArgument("Top padding ", pad_top,
                                    " needs to be smaller than the "
@@ -210,7 +210,7 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   }
 }
 
-Status PoolParameters::forward_output_shape(TensorShape* shape) {
+absl::Status PoolParameters::forward_output_shape(TensorShape* shape) {
   if (depth_window == 1) {
     // Spatial pooling
     return ShapeFromFormatWithStatus(data_format, tensor_in_batch, out_height,
