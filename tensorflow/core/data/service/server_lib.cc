@@ -229,6 +229,8 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
     return;
   }
   alternative_transfer_server.set_compatibility_info(*compatibility_info);
+  alternative_transfer_server.set_fall_back_to_grpc(
+      transfer_server_->FallBackToGrpc());
   transfer_servers.push_back(alternative_transfer_server);
 }
 
