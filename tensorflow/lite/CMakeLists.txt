@@ -38,6 +38,7 @@ cmake_policy(SET CMP0028 NEW)
 # Enable MACOSX_RPATH (@rpath) for built dynamic libraries.
 cmake_policy(SET CMP0042 NEW)
 project(tensorflow-lite C CXX)
+set(BUILD_SHARED_LIBS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(TENSORFLOW_SOURCE_DIR "" CACHE PATH
   "Directory that contains the TensorFlow project"
@@ -742,6 +743,7 @@ target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )
+#add your project name
 add_library(${PROJECT_NAME}::tensorflowlite ALIAS tensorflow-lite)
 
 # The install targets.
