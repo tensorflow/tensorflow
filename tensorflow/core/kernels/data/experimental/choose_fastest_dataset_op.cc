@@ -160,7 +160,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return cardinality_;
     }
 
-    Status InputDatasets(
+    absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       for (const auto& input : inputs_) {
         inputs->push_back(input);
@@ -168,7 +168,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return absl::OkStatus();
     }
 
-    Status CheckExternalState() const override {
+    absl::Status CheckExternalState() const override {
       for (const auto& input : inputs_) {
         TF_RETURN_IF_ERROR(input->CheckExternalState());
       }
@@ -176,9 +176,9 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(SerializationContext* ctx,
-                              DatasetGraphDefBuilder* b,
-                              Node** output) const override {
+    absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                    DatasetGraphDefBuilder* b,
+                                    Node** output) const override {
       std::vector<Node*> input_nodes;
       input_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
@@ -201,7 +201,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
           : DatasetIterator<Dataset>(params),
             histograms_(dataset()->inputs_.size()) {}
 
-      Status Initialize(IteratorContext* ctx) override {
+      absl::Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         input_impls_.resize(dataset()->inputs_.size());
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
@@ -213,9 +213,9 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         return absl::OkStatus();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence) override {
+      absl::Status GetNextInternal(IteratorContext* ctx,
+                                   std::vector<Tensor>* out_tensors,
+                                   bool* end_of_sequence) override {
         mutex_lock l(mu_);
 
         // The first num_experiments_ iterations, we fire up a thread for
@@ -248,8 +248,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // TODO(rachelim): Save and restore histogram state as well. Currently,
       // if an iterator is saved and restored, the histograms start recording
       // from scratch.
-      Status SaveInternal(SerializationContext* ctx,
-                          IteratorStateWriter* writer) override {
+      absl::Status SaveInternal(SerializationContext* ctx,
+                                IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("experiment_counter"),
                                                experiment_counter_));
@@ -269,8 +269,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         return absl::OkStatus();
       }
 
-      Status RestoreInternal(IteratorContext* ctx,
-                             IteratorStateReader* reader) override {
+      absl::Status RestoreInternal(IteratorContext* ctx,
+                                   IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("experiment_counter"),
                                               &experiment_counter_));
@@ -295,7 +295,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
      private:
       struct InvocationResult {
         Notification notification;
-        Status status;
+        absl::Status status;
         bool end_of_sequence;
         std::vector<Tensor> out_tensors;
       };
@@ -332,8 +332,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         RecordStart(ctx);
         auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
         int64_t start = EnvTime::NowNanos();
-        Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
-                                            &result->end_of_sequence);
+        absl::Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
+                                                  &result->end_of_sequence);
         histograms_[i].Add(static_cast<double>(EnvTime::NowNanos() - start));
 
         result->status = s;

@@ -46,14 +46,14 @@ class SamplingDatasetParams : public DatasetParams {
     return {rate, seed_tensor, seed2_tensor};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {SamplingDatasetOp::kInputDataset, SamplingDatasetOp::kRate,
                     SamplingDatasetOp::kSeed, SamplingDatasetOp::kSeed2};
 
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{SamplingDatasetOp::kOutputTypes, output_dtypes_},
                     {SamplingDatasetOp::kOutputShapes, output_shapes_}};
     return absl::OkStatus();

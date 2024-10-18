@@ -135,20 +135,21 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     Node* batch_size_node;
@@ -216,7 +217,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
 
@@ -241,9 +242,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
@@ -290,8 +291,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/ctx->runner_threadpool_size())});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
@@ -316,8 +317,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
@@ -381,7 +382,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // (required to make the behavior is observably identical to a
       // sequential execution of map followed by batch), we must also keep
       // track of the offset into the batch that produced `s`.
-      void UpdateStatus(const Status& s, int64_t offset) {
+      void UpdateStatus(const absl::Status& s, int64_t offset) {
         if (TF_PREDICT_FALSE(!s.ok())) {
           mutex_lock l(mu);
           if (status.ok() || offset < status_offset) {
@@ -396,7 +397,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64_t num_elements TF_GUARDED_BY(mu);
       std::vector<Tensor> output;
       bool output_allocated TF_GUARDED_BY(mu);
-      Status status TF_GUARDED_BY(mu);
+      absl::Status status TF_GUARDED_BY(mu);
       int64_t status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
       int64_t num_calls TF_GUARDED_BY(&Iterator::mu_);
@@ -431,7 +432,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // Get the next input element.
       std::vector<Tensor> input_element;
       bool end_of_input = false;
-      Status status =
+      absl::Status status =
           input_impl_->GetNext(ctx.get(), &input_element, &end_of_input);
       bool return_early;
       {
@@ -448,7 +449,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
       std::shared_ptr<std::vector<Tensor>> return_values =
           std::make_shared<std::vector<Tensor>>();
-      auto done = [this, ctx, result, return_values, offset](Status status) {
+      auto done = [this, ctx, result, return_values,
+                   offset](absl::Status status) {
         if (dataset()->preserve_cardinality_ && errors::IsOutOfRange(status)) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
@@ -459,7 +461,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {
-          Status allocate_status =
+          absl::Status allocate_status =
               EnsureOutputAllocated(ctx, result, return_values);
           if (!allocate_status.ok()) {
             result->UpdateStatus(allocate_status, offset);
@@ -483,7 +485,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
               // TODO(mrry): Add a version of DoParallelConcat that allows us
               // to move `tensor` where possible, to speed up string tensor
               // batching.
-              Status copy_status = batch_util::CopyElementToSlice(
+              absl::Status copy_status = batch_util::CopyElementToSlice(
                   std::move(tensor), batch, offset);
               if (!copy_status.ok()) {
                 result->UpdateStatus(copy_status, offset);
@@ -527,7 +529,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status EnsureOutputAllocated(
+    absl::Status EnsureOutputAllocated(
         const std::shared_ptr<IteratorContext>& ctx,
         const std::shared_ptr<BatchResult>& result,
         const std::shared_ptr<std::vector<Tensor>>& return_values) {
@@ -620,8 +622,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
-                           size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    absl::Status ReadBatchResult(IteratorContext* ctx,
+                                 IteratorStateReader* reader, size_t index)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(
           std::make_shared<BatchResult>(dataset()->batch_size_, ctx));
       std::shared_ptr<BatchResult> result = batch_results_.back();
@@ -649,7 +652,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
+    absl::Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       std::shared_ptr<BatchResult> result = batch_results_[index];
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
