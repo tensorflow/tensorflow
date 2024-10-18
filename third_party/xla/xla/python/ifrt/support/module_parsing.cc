@@ -19,17 +19,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MLProgram/IR/MLProgram.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/InitAllDialects.h"
 #include "mlir/Parser/Parser.h"
 #include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/Register.h"
+#include "third_party/tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -39,18 +37,20 @@ namespace xla {
 namespace ifrt {
 namespace support {
 
-void RegisterMlirDialects(mlir::MLIRContext& context) {
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::arith::ArithDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  registry.insert<mlir::ml_program::MLProgramDialect>();
-  registry.insert<mlir::shape::ShapeDialect>();
+void InitializeMlirDialectRegistry(mlir::DialectRegistry& registry) {
   registry.insert<xla::ifrt::IfrtDialect>();
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
   mlir::func::registerAllExtensions(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::sdy::registerAllDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
   xla::ifrt::AttachBuiltInSpmdExpansions(registry);
+}
+
+void RegisterMlirDialects(mlir::MLIRContext& context) {
+  mlir::DialectRegistry registry;
+  InitializeMlirDialectRegistry(registry);
   context.appendDialectRegistry(registry);
 }
 

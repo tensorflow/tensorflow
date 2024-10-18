@@ -31,16 +31,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
 namespace gpu {
 
-class CudaStream : public GpuStream {
+class CudaStream : public StreamCommon {
  public:
   absl::Status WaitFor(Stream* other) override;
   absl::Status RecordEvent(Event* event) override;
@@ -82,7 +82,7 @@ class CudaStream : public GpuStream {
   CudaStream(StreamExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              CUstream stream_handle)
-      : GpuStream(executor, priority),
+      : StreamCommon(executor, priority),
         executor_(executor),
         completed_event_(std::move(completed_event)),
         stream_handle_(stream_handle) {}

@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
