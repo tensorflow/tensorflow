@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+
 namespace mlir {
 namespace TF {
 
