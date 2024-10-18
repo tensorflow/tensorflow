@@ -170,6 +170,7 @@ cc_library(
         ":signature_runner",
         ":subgraph",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        "//tensorflow/compiler/mlir/lite/core/api:flatbuffer_conversions",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",

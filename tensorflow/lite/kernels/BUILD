@@ -203,6 +203,7 @@ cc_library(
         ":acceleration_test_util",
         ":kernel_util",
         ":test_delegate_providers_lib",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:simple_planner",
@@ -225,7 +226,6 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/optimize:quantization_utils",
-        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
@@ -589,6 +589,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",

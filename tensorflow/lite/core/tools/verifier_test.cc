@@ -600,9 +600,8 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
         tensor_type == TensorType_RESOURCE || tensor_type == TensorType_VARIANT)
       continue;
     TfLiteType lite_type = kTfLiteNoType;
-    ASSERT_EQ(ConvertTensorType(static_cast<TensorType>(tensor_type),
-                                &lite_type, /*error_reporter=*/nullptr),
-              kTfLiteOk);
+    ASSERT_OK(tflite_migration::ConvertTensorType(
+        static_cast<TensorType>(tensor_type), &lite_type));
     size_t size_bytes = 0;
     ASSERT_EQ(GetSizeOfType(/*context=*/nullptr, lite_type, &size_bytes),
               kTfLiteOk);
