@@ -55,16 +55,16 @@ namespace {
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
   explicit TestEagerServiceImpl(WorkerEnv* env) : EagerServiceImpl(env) {}
-  Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
+  absl::Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
     *ctx = context->Context();
     return absl::OkStatus();
   }
-  Status GetTensorHandle(const uint64 context_id,
-                         const RemoteTensorHandleInternal& remote_handle,
-                         tensorflow::TensorHandle** handle) {
+  absl::Status GetTensorHandle(const uint64 context_id,
+                               const RemoteTensorHandleInternal& remote_handle,
+                               tensorflow::TensorHandle** handle) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
@@ -135,8 +135,8 @@ class FakeEagerClient : public EagerClient {
 class DummyEagerClientCache : public EagerClientCache {
  public:
   DummyEagerClientCache() : client_(new FakeEagerClient) {}
-  Status GetClient(const string& target,
-                   core::RefCountPtr<EagerClient>* client) override {
+  absl::Status GetClient(const string& target,
+                         core::RefCountPtr<EagerClient>* client) override {
     client->reset(client_.get());
     client_->Ref();
     return absl::OkStatus();
@@ -147,7 +147,7 @@ class DummyEagerClientCache : public EagerClientCache {
 };
 
 class FakeCache : public TestWorkerCache {
-  Status GetEagerClientCache(
+  absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     *eager_client_cache = std::make_unique<DummyEagerClientCache>();
     return absl::OkStatus();
@@ -586,7 +586,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
 
     CallOptions call_opts;
-    Status status;
+    absl::Status status;
     Notification n;
     Env::Default()->SchedClosure([&] {
       status = eager_service_impl.Enqueue(&call_opts, &remote_enqueue_request,
@@ -680,13 +680,13 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
 
     CallOptions call_opts;
     Notification n;
-    Status status;
-    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
-                                            &run_comp_func_response,
-                                            [&status, &n](const Status& s) {
-                                              status.Update(s);
-                                              n.Notify();
-                                            });
+    absl::Status status;
+    eager_service_impl.RunComponentFunction(
+        &call_opts, &run_comp_func_request, &run_comp_func_response,
+        [&status, &n](const absl::Status& s) {
+          status.Update(s);
+          n.Notify();
+        });
     if (test_cancel) {
       call_opts.StartCancel();
     }
@@ -846,13 +846,13 @@ TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionWithNameClashTest) {
 
     CallOptions call_opts;
     Notification n;
-    Status status;
-    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
-                                            &run_comp_func_response,
-                                            [&status, &n](const Status& s) {
-                                              status.Update(s);
-                                              n.Notify();
-                                            });
+    absl::Status status;
+    eager_service_impl.RunComponentFunction(
+        &call_opts, &run_comp_func_request, &run_comp_func_response,
+        [&status, &n](const absl::Status& s) {
+          status.Update(s);
+          n.Notify();
+        });
     n.WaitForNotification();
 
     TF_ASSERT_OK(status);
@@ -888,13 +888,13 @@ TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionWithNameClashTest) {
 
     CallOptions call_opts;
     Notification n;
-    Status status;
-    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
-                                            &run_comp_func_response,
-                                            [&status, &n](const Status& s) {
-                                              status.Update(s);
-                                              n.Notify();
-                                            });
+    absl::Status status;
+    eager_service_impl.RunComponentFunction(
+        &call_opts, &run_comp_func_request, &run_comp_func_response,
+        [&status, &n](const absl::Status& s) {
+          status.Update(s);
+          n.Notify();
+        });
     n.WaitForNotification();
 
     TF_ASSERT_OK(status);
@@ -935,20 +935,20 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
    public:
     TestExecuteNodeArgs(
         absl::InlinedVector<TensorValue, 4UL>&& tensor_args,
-        std::function<Status(const int, eager::RemoteTensorHandle*)>
+        std::function<absl::Status(const int, eager::RemoteTensorHandle*)>
             serialize_remote_handle)
         : EagerKernelArgs(std::move(tensor_args)),
           serialize_remote_handle_(std::move(serialize_remote_handle)) {}
 
     bool HasRemoteOrPackedInputs() const override { return true; }
 
-    Status GetRemoteArg(const FunctionArgIndex& index,
-                        eager::RemoteTensorHandle* val) const override {
+    absl::Status GetRemoteArg(const FunctionArgIndex& index,
+                              eager::RemoteTensorHandle* val) const override {
       return serialize_remote_handle_(index.index, val);
     }
 
    private:
-    std::function<Status(const int, eager::RemoteTensorHandle*)>
+    std::function<absl::Status(const int, eager::RemoteTensorHandle*)>
         serialize_remote_handle_;
   };
 
@@ -1087,7 +1087,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   const uint64 op_id = 2;
   opts.op_id = op_id;
   Notification done;
-  Status status;
+  absl::Status status;
   RemoteTensorHandle input;
   input.set_op_id(1);
   input.set_output_num(0);
@@ -1098,12 +1098,12 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   absl::InlinedVector<TensorValue, 4UL> tensor_args = {TensorValue()};
   TestExecuteNodeArgs args(
       std::move(tensor_args),
-      [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
+      [&inputs](const int i, RemoteTensorHandle* handle) -> absl::Status {
         *handle = inputs.at(i);
         return absl::OkStatus();
       });
   eager_pflr_->Run(opts, handle, args, &outputs,
-                   [&status, &done](const Status& s) {
+                   [&status, &done](const absl::Status& s) {
                      status = s;
                      done.Notify();
                    });
@@ -1119,12 +1119,12 @@ TEST_F(FunctionWithRemoteInputsTest,
   // Instantiate MatMulFunction on remote_device.
   FunctionLibraryRuntime::Handle handle;
   EXPECT_TRUE(MatMulHasAttrWithDefaultValue(fdef_));
-  Status status;
+  absl::Status status;
   Notification instantiate_done;
   eager_cluster_flr_->Instantiate(
       fdef_.signature().name(), func_lib_def_, AttrSlice(&fdef_.attr()),
       FunctionLibraryRuntime::InstantiateOptions(), &handle,
-      [&status, &instantiate_done](const Status& s) {
+      [&status, &instantiate_done](const absl::Status& s) {
         status = s;
         instantiate_done.Notify();
       });
@@ -1152,7 +1152,7 @@ TEST_F(FunctionWithRemoteInputsTest,
   std::vector<Tensor> inputs = {*input_tensor};
   std::vector<Tensor> outputs;
   eager_cluster_flr_->Run(opts, handle, inputs, &outputs,
-                          [&status, &execute_done](const Status& s) {
+                          [&status, &execute_done](const absl::Status& s) {
                             status = s;
                             execute_done.Notify();
                           });
@@ -1202,7 +1202,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   std::vector<RemoteTensorHandle> remote_handles = {input};
   TestExecuteNodeArgs inputs(
       std::move(input_tensors),
-      [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
+      [&remote_handles](const int index,
+                        RemoteTensorHandle* handle) -> absl::Status {
         *handle = remote_handles.at(index);
         return absl::OkStatus();
       });
@@ -1257,19 +1258,20 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   std::vector<RemoteTensorHandle> remote_handles = {input};
   TestExecuteNodeArgs inputs(
       std::move(input_tensors),
-      [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
+      [&remote_handles](const int index,
+                        RemoteTensorHandle* handle) -> absl::Status {
         *handle = remote_handles.at(index);
         return absl::OkStatus();
       });
   std::vector<FunctionRet> outputs;
 
-  Status status;
+  absl::Status status;
   Notification n;
   kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
                    /*cancellation_manager=*/nullptr,
                    /*eager_func_params=*/std::nullopt,
                    /*coordination_service_agent=*/nullptr,
-                   [&status, &n](const Status& s) {
+                   [&status, &n](const absl::Status& s) {
                      status = s;
                      n.Notify();
                    });
@@ -1483,8 +1485,8 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   SetTensorProto(send_tensor->add_tensors());
 
   // Unable to handle the request since there is no eager context.
-  Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
-                                             &remote_enqueue_response);
+  absl::Status status = eager_service_impl.Enqueue(
+      nullptr, &remote_enqueue_request, &remote_enqueue_response);
   EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.message(),
@@ -1519,7 +1521,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
 
   keep_alive_request.set_context_id(context_id);
 
-  Status status =
+  absl::Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
   EXPECT_EQ(status.code(), error::ABORTED);
