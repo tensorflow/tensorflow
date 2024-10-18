@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     audio_file_size -= num_samples_read;
 
     if (output.values != NULL) {
-      int i;
+      size_t i;
       for (i = 0; i < output.size; ++i) {
         printf("%d ", output.values[i]);
       }
