@@ -1005,7 +1005,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
-  next_original_execution_plan_index_to_prepare_ = 0;
+  next_propagation_execution_plan_index_to_prepare_ = 0;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
   }
@@ -1532,23 +1532,23 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   // If any of the delegates is immutable, this won't be triggered
   // post-delegation (since we undo/redo delegation). For all other cases, other
   // delegates that do shape propagation themselves would still be able to.
-  bool prepare_original_plan = false;
-  if (!pre_delegation_execution_plan_.empty()) {
+  bool prepare_propagation_plan = false;
+  if (!pre_propagation_execution_plan_.empty()) {
     for (int i = 0; i < delegates_applied_.size(); ++i) {
       if ((TfLiteDelegateGetFlagsInternal(delegates_applied_[i]) &
            kTfLiteDelegateFlagsRequirePropagatedShapes)) {
-        prepare_original_plan = true;
+        prepare_propagation_plan = true;
         break;
       }
     }
   }
-  if (prepare_original_plan) {
-    int last_original_exec_plan_index_prepared = 0;
+  if (prepare_propagation_plan) {
+    int last_propagation_exec_plan_index_prepared = 0;
     TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
-        next_execution_plan_index_to_prepare_, pre_delegation_execution_plan_,
-        &last_original_exec_plan_index_prepared));
-    next_original_execution_plan_index_to_prepare_ =
-        last_original_exec_plan_index_prepared + 1;
+        next_propagation_execution_plan_index_to_prepare_, pre_propagation_execution_plan_,
+        &last_propagation_exec_plan_index_prepared));
+    next_propagation_execution_plan_index_to_prepare_ =
+        last_propagation_exec_plan_index_prepared + 1;
   }
 
   int last_exec_plan_index_prepared = 0;
@@ -2137,6 +2137,7 @@ TfLiteStatus Subgraph::UndoAllDelegates() {
   // Reset execution plan.
   execution_plan_ = pre_delegation_execution_plan_;
   pre_delegation_execution_plan_.clear();
+  pre_propagation_execution_plan_.clear();
 
   // Handling FP16 delegation (if applies).
   //
@@ -2318,6 +2319,17 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
           dynamic_tensor_index_);
       return kTfLiteApplicationError;
     }
+  }
+
+  bool applied_delegates_dont_require_shape_propagation = true;
+  for ( TfLiteDelegate* delegate : delegates_applied_ )
+    if ( delegate->flags & kTfLiteDelegateFlagsRequirePropagatedShapes ) {
+      applied_delegates_dont_require_shape_propagation = false;
+      break;
+    }
+  if ( applied_delegates_dont_require_shape_propagation ) {
+    // Remember the last plan before shape propagation is required
+    pre_propagation_execution_plan_ = execution_plan_;
   }
 
   if (delegates_applied_.empty()) {
