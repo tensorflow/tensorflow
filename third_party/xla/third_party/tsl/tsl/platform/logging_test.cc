@@ -23,6 +23,7 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tsl/platform/stacktrace_handler.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/types.h"
 
 // Make sure popen and pclose are available on Windows.
 #ifdef PLATFORM_WINDOWS
