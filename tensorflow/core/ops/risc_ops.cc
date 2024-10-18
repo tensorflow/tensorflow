@@ -22,7 +22,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-Status RiscBinaryNonBroadcastOpShapeFn(shape_inference::InferenceContext* c) {
+absl::Status RiscBinaryNonBroadcastOpShapeFn(
+    shape_inference::InferenceContext* c) {
   const auto rank = c->Rank(c->input(0));
   if (rank != c->Rank(c->input(1))) {
     return errors::InvalidArgument("Mismatch rank for input.");

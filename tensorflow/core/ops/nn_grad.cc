@@ -22,7 +22,7 @@ namespace tensorflow {
 
 typedef FunctionDefHelper FDH;
 
-Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
       "SoftmaxGrad",
@@ -47,7 +47,7 @@ Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Softmax", SoftmaxGrad);
 
-Status LogSoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status LogSoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
       "LogSoftmaxGrad",
@@ -72,7 +72,7 @@ Status LogSoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("LogSoftmax", LogSoftmaxGrad);
 
-Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
       // Arg defs
@@ -90,7 +90,7 @@ Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Relu", ReluGrad);
 
-Status Relu6Grad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status Relu6Grad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
       // Arg defs
@@ -108,7 +108,7 @@ Status Relu6Grad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Relu6", Relu6Grad);
 
-Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
@@ -137,7 +137,7 @@ Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("CrossEntropy", CrossEntropyGrad);
 
-Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
@@ -173,7 +173,7 @@ Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Conv2D", Conv2DGrad);
 
-Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
@@ -204,7 +204,7 @@ Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("MaxPool", MaxPoolGrad);
 
-Status AvgPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status AvgPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
@@ -230,7 +230,7 @@ Status AvgPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("AvgPool", AvgPoolGrad);
 
-Status MaxPoolGradGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status MaxPoolGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs
@@ -261,7 +261,7 @@ Status MaxPoolGradGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("MaxPoolGrad", MaxPoolGradGrad);
 
-Status BiasAddGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status BiasAddGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
     // Arg defs

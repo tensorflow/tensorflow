@@ -42,9 +42,9 @@ namespace wav {
 //   // Use wav_string.
 // }
 template <typename T>
-Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
-                             size_t num_channels, size_t num_frames,
-                             T* wav_string);
+absl::Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
+                                   size_t num_channels, size_t num_frames,
+                                   T* wav_string);
 
 // Explicit instantiations defined in wav_io.cc.
 extern template Status EncodeAudioAsS16LEWav<std::string>(
@@ -63,23 +63,24 @@ extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
 // is read from the file header, and an error is returned if the format is not
 // supported.
 // The results are output as floats within the range -1 to 1,
-Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
-                                    std::vector<float>* float_values,
-                                    uint32* sample_count, uint16* channel_count,
-                                    uint32* sample_rate);
+absl::Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
+                                          std::vector<float>* float_values,
+                                          uint32* sample_count,
+                                          uint16* channel_count,
+                                          uint32* sample_rate);
 
 // Everything below here is only exposed publicly for testing purposes.
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
-                       int* new_offset);
+absl::Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
+                             int* new_offset);
 
 // This function is only exposed in the header for testing purposes, as a
 // template that needs to be instantiated. Reads a typed numeric value from a
 // stream of data.
 template <class T>
-Status ReadValue(const std::string& data, T* value, int* offset) {
+absl::Status ReadValue(const std::string& data, T* value, int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, sizeof(T), data.size(), &new_offset));

@@ -50,7 +50,7 @@ int ConvBackpropDimensions::SpatialPadding(const Padding& padding,
 
 namespace {
 
-Status ConvBackpropExtractAndVerifyDimension(
+absl::Status ConvBackpropExtractAndVerifyDimension(
     StringPiece label, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& output_shape,
     const absl::Span<const int32> dilations, const std::vector<int32>& strides,
@@ -92,7 +92,7 @@ Status ConvBackpropExtractAndVerifyDimension(
 
 }  // namespace
 
-Status ConvBackpropComputeDimensionsV2(
+absl::Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const absl::Span<const int32> dilations, const std::vector<int32>& strides,
@@ -157,13 +157,11 @@ Status ConvBackpropComputeDimensionsV2(
   return absl::OkStatus();
 }
 
-Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
-                                     const TensorShape& input_shape,
-                                     const TensorShape& filter_shape,
-                                     const TensorShape& out_backprop_shape,
-                                     const std::vector<int32>& strides,
-                                     Padding padding, TensorFormat data_format,
-                                     ConvBackpropDimensions* dims) {
+absl::Status ConvBackpropComputeDimensions(
+    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
+    const std::vector<int32>& strides, Padding padding,
+    TensorFormat data_format, ConvBackpropDimensions* dims) {
   static constexpr std::array<int32, 5> one_dilations = {{1, 1, 1, 1, 1}};
   return ConvBackpropComputeDimensionsV2(
       label, num_spatial_dims, input_shape, filter_shape, out_backprop_shape,
@@ -171,11 +169,10 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
       dims);
 }
 
-Status Conv2DBackpropComputeInputShape(const Tensor& input_sizes,
-                                       const TensorShape& filter_shape,
-                                       const TensorShape& out_backprop_shape,
-                                       const TensorFormat& data_format,
-                                       TensorShape* input_shape) {
+absl::Status Conv2DBackpropComputeInputShape(
+    const Tensor& input_sizes, const TensorShape& filter_shape,
+    const TensorShape& out_backprop_shape, const TensorFormat& data_format,
+    TensorShape* input_shape) {
   if (!TensorShapeUtils::IsVector(input_sizes.shape())) {
     return errors::InvalidArgument(
         "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",

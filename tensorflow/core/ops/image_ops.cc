@@ -29,8 +29,10 @@ namespace {
 
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
-Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
-                             int size_input_idx, DimensionHandle channel_dim) {
+absl::Status SetOutputToSizedImage(InferenceContext* c,
+                                   DimensionHandle batch_dim,
+                                   int size_input_idx,
+                                   DimensionHandle channel_dim) {
   // Verify shape of size input.
   ShapeHandle size;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(size_input_idx), 1, &size));
@@ -61,14 +63,14 @@ Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,
   return absl::OkStatus();
 }
 
-Status ResizeShapeFn(InferenceContext* c) {
+absl::Status ResizeShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
   return SetOutputToSizedImage(c, c->Dim(input, 0), 1 /* size_input_idx */,
                                c->Dim(input, 3));
 }
 
-Status DecodeImageShapeFn(InferenceContext* c) {
+absl::Status DecodeImageShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
   DimensionHandle channels_dim;
@@ -89,7 +91,7 @@ Status DecodeImageShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status DecodeImageV2ShapeFn(InferenceContext* c) {
+absl::Status DecodeImageV2ShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   int32_t channels;
   bool expand_animations;
@@ -123,7 +125,7 @@ Status DecodeImageV2ShapeFn(InferenceContext* c) {
   }
 }
 
-Status EncodeImageShapeFn(InferenceContext* c) {
+absl::Status EncodeImageShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 3, &unused));
   c->set_output(0, c->Scalar());
@@ -131,7 +133,7 @@ Status EncodeImageShapeFn(InferenceContext* c) {
 }
 
 // Allow encoding batches of images.
-Status BatchedEncodeImageShapeFn(InferenceContext* c) {
+absl::Status BatchedEncodeImageShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input));
   ShapeHandle s;
@@ -140,7 +142,7 @@ Status BatchedEncodeImageShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status ColorspaceShapeFn(InferenceContext* c) {
+absl::Status ColorspaceShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
 
@@ -154,7 +156,7 @@ Status ColorspaceShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status NMSShapeFn(InferenceContext* c) {
+absl::Status NMSShapeFn(InferenceContext* c) {
   // Get inputs and validate ranks.
   ShapeHandle boxes;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
@@ -177,7 +179,7 @@ Status NMSShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SoftNMSShapeFn(InferenceContext* c) {
+absl::Status SoftNMSShapeFn(InferenceContext* c) {
   // Get inputs and validate ranks.
   ShapeHandle boxes;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
@@ -203,7 +205,7 @@ Status SoftNMSShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status CombinedNMSShapeFn(InferenceContext* c) {
+absl::Status CombinedNMSShapeFn(InferenceContext* c) {
   // Get inputs and validate ranks
   ShapeHandle boxes;
   // boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
@@ -1133,7 +1135,7 @@ REGISTER_OP("GenerateBoundingBoxProposals")
     .Output("rois: float")
     .Output("roi_probabilities: float")
     .Attr("post_nms_topn: int = 300")
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       // make sure input tensors have are correct rank
       ShapeHandle scores, images, bounding_boxes, anchors, nms_threshold,
           n_pre_nms, min_box_size;
