@@ -173,7 +173,7 @@ Status PopulateConvMap(
 }  // namespace
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-Status SerializeAutotuneMaps(std::string *output) {
+absl::Status SerializeAutotuneMaps(std::string *output) {
   AutotuneMapsProto proto;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(*proto.mutable_conv_map(),
@@ -185,7 +185,7 @@ Status SerializeAutotuneMaps(std::string *output) {
   return absl::OkStatus();
 }
 
-Status LoadSerializedAutotuneMaps(absl::string_view s) {
+absl::Status LoadSerializedAutotuneMaps(absl::string_view s) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   AutotuneMapsProto proto;
   // The explicit string conversion here is a workaround for
