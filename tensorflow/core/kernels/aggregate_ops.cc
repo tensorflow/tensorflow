@@ -170,7 +170,7 @@ class AddNOp<Device, Variant> : public OpKernel {
   //                     : ctx->input(ix).scalar<Variant>()())
   // This reduces (possibly expensive) copying of Variants from
   // the inputs into temp at the lowest levels of the summation tree.
-  static inline Status AddVariantTo(
+  static inline absl::Status AddVariantTo(
       OpKernelContext* ctx, const int lhs_ix, const int rhs_ix,
       absl::InlinedVector<Variant, 4UL>* temp,
       absl::InlinedVector<bool, 4UL>* temp_filled) {

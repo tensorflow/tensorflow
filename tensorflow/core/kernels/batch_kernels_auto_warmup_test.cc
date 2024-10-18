@@ -53,7 +53,7 @@ class BatchFunctionKernelTest : public test_util::BatchFunctionKernelTestBase {
 class BatchFunctionKernelParallelWarmupTestState : public OpsTestBase {
  public:
   // Init test fixture with a batch kernel instance.
-  Status Init(bool enable_splitting, bool check_output_shape) {
+  absl::Status Init(bool enable_splitting, bool check_output_shape) {
     static auto *const cpu_device = []() {
       auto device =
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
