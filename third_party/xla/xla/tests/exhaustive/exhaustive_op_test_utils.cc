@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace exhaustive_op_test {
