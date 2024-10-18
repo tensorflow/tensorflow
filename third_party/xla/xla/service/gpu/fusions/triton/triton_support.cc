@@ -376,6 +376,7 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
