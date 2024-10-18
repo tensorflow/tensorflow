@@ -1,6 +1,3 @@
-# Description:
-# JavaScript/TypeScript code generation for TensorFlow.js
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -11,7 +8,7 @@ visibility = [
 ]
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara: uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -23,6 +20,8 @@ cc_library(
     ],
     hdrs = [
         "ops/ts_op_gen.h",
+        "path/to/loader.h",  # Adjust the path as needed
+        "path/to/session.h",  # Adjust the path as needed
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -38,7 +37,6 @@ tf_cc_test(
     name = "ts_op_gen_test",
     srcs = [
         "ops/ts_op_gen.cc",
-        "ops/ts_op_gen.h",
         "ops/ts_op_gen_test.cc",
     ],
     deps = [
