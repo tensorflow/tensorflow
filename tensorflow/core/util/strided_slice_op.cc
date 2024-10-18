@@ -79,7 +79,7 @@ struct StridedSliceDenseSpec {
 }  // namespace
 
 template <class T>
-static Status TF_MUST_USE_RESULT BuildDenseSpec(
+static absl::Status TF_MUST_USE_RESULT BuildDenseSpec(
     const StridedSliceSparseSpec& sparse, StridedSliceDenseSpec* dense) {
   if (dense->dims < 0) {
     return errors::InvalidArgument("Unexpected negative dense.dims: %d",
@@ -183,7 +183,7 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
   return absl::OkStatus();
 }
 
-Status ValidateStridedSliceOp(
+absl::Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
     int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
@@ -441,7 +441,7 @@ Status ValidateStridedSliceOp(
   return absl::OkStatus();
 }
 
-Status ValidateStridedSliceOp(
+absl::Status ValidateStridedSliceOp(
     const Tensor* begin_tensor, const Tensor* end_tensor,
     const Tensor& strides_tensor, const PartialTensorShape& input_shape,
     int32_t begin_mask_spec, int32_t end_mask_spec, const int32_t ellipsis_mask,
