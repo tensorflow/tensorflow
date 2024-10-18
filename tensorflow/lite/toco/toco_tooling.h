@@ -31,8 +31,7 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
 
 // Transforms a Model. The resulting Model is ready to be passed
 // to Export with the exact same toco_flags.
-tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
-                                       Model* model);
+absl::Status TransformWithStatus(const TocoFlags& toco_flags, Model* model);
 inline void Transform(const TocoFlags& toco_flags, Model* model) {
   auto s = TransformWithStatus(toco_flags, model);
   CHECK(s.ok()) << s.message();
@@ -41,9 +40,8 @@ inline void Transform(const TocoFlags& toco_flags, Model* model) {
 // Exports the Model, which must be of the 'lowered' form returned by
 // Transform, to a file of the format given by
 // toco_flags.output_format().
-tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
-                          bool allow_custom_ops,
-                          std::string* output_file_contents);
+absl::Status Export(const TocoFlags& toco_flags, const Model& model,
+                    bool allow_custom_ops, std::string* output_file_contents);
 
 // This if for backward-compatibility with internal tools.
 inline void Export(const TocoFlags& toco_flags, const Model& model,
