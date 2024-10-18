@@ -22,6 +22,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_STREAM_COMMON_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -31,7 +32,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/fft.h"
@@ -60,6 +60,9 @@ class StreamCommon : public Stream {
   // StreamExecutor's platform.
   explicit StreamCommon(StreamExecutor *parent);
 
+  StreamCommon(StreamExecutor *parent,
+               std::optional<std::variant<StreamPriority, int>> priority);
+
   PlatformSpecificHandle platform_specific_handle() const override;
   bool ok() const override { return !InErrorState(); }
   absl::StatusOr<Stream *> GetOrCreateSubStream() override
@@ -69,6 +72,9 @@ class StreamCommon : public Stream {
     CHECK(parent_ != nullptr);
     return parent_;
   }
+  std::variant<StreamPriority, int> priority() const override {
+    return stream_priority_;
+  }
 
   CudaComputeCapability GetCudaComputeCapability() const override {
     return parent()->GetDeviceDescription().cuda_compute_capability();
@@ -76,9 +82,6 @@ class StreamCommon : public Stream {
 
   RocmComputeCapability GetRocmComputeCapability() const override {
     return parent()->GetDeviceDescription().rocm_compute_capability();
-  }
-  std::variant<StreamPriority, int> priority() const override {
-    return StreamPriority::Default;
   }
 
   // Doesn't do anything interesting by default; GpuStream connects this to NVTX
@@ -117,8 +120,7 @@ class StreamCommon : public Stream {
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
       ABSL_GUARDED_BY(mu_);
 
-  StreamCommon(const StreamCommon &) = delete;
-  void operator=(const StreamCommon &) = delete;
+  std::variant<StreamPriority, int> stream_priority_;
 };
 
 }  // namespace stream_executor

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -271,20 +272,19 @@ class Stream {
   // Launches a data parallel kernel with the given thread/block
   // dimensionality and already-packed args/sizes to pass to the underlying
   // platform driver.
-  virtual absl::Status Launch(const ThreadDim &thread_dims,
-                              const BlockDim &block_dims, const Kernel &k,
-                              const KernelArgs &args) {
-    return absl::UnimplementedError("Not implemented");
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const Kernel &kernel, const KernelArgs &args) {
+    return Launch(thread_dims, block_dims, std::nullopt, kernel, args);
   }
 
   // Launches a data parallel kernel with the given thread/block
   // dimensionality and already-packed args/sizes to pass to the underlying
   // platform driver.
-  virtual absl::Status Launch(const ThreadDim &thread_dims,
-                              const BlockDim &block_dims,
-                              const ClusterDim &cluster_dims, const Kernel &k,
-                              const KernelArgs &args) {
-    return absl::UnimplementedError("Not implemented");
+  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
+                      const ClusterDim &cluster_dims, const Kernel &kernel,
+                      const KernelArgs &args) {
+    return Launch(thread_dims, block_dims, std::make_optional(cluster_dims),
+                  kernel, args);
   }
 
   // Get/set a name for a stream, which can be shown in profiling tools
@@ -304,6 +304,15 @@ class Stream {
   CreateEventBasedTimer(bool use_delay_kernel) {
     return absl::UnimplementedError(
         "This stream does not support EventBasedTimers.");
+  }
+
+ private:
+  // Helper method to launch a kernel with optional cluster dimensions.
+  virtual absl::Status Launch(const ThreadDim &thread_dims,
+                              const BlockDim &block_dims,
+                              const std::optional<ClusterDim> &cluster_dims,
+                              const Kernel &kernel, const KernelArgs &args) {
+    return absl::UnimplementedError("Not implemented");
   }
 };
 
