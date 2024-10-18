@@ -53,7 +53,7 @@ class DatasetIterator
 
   ~DatasetIterator() override {}
 
-  Status Init(OpKernelContext* ctx) {
+  absl::Status Init(OpKernelContext* ctx) {
     data::IteratorContext::Params params(ctx);
     function_handle_cache_ = std::make_unique<FunctionHandleCache>(params.flr);
     params.function_handle_cache = function_handle_cache_.get();
@@ -88,7 +88,7 @@ class DatasetIterator
 
   const Tensor& values() const override { return tensors_[1]; }
 
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
 
   int64_t total_size() const override {
     int64_t size = dataset_->Cardinality();
@@ -106,7 +106,7 @@ class DatasetIterator
   std::unique_ptr<CancellationManager> cancellation_manager_;
   std::unique_ptr<data::IteratorBase> iterator_;
   std::vector<Tensor> tensors_;
-  Status status_;
+  absl::Status status_;
 };
 
 std::unique_ptr<InitializerSerializer> MakeDatasetInitializerSerializer(
@@ -170,7 +170,7 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
                                       dataset_shapes[1].DebugString()));
   DatasetIterator iter(dataset);
   OP_REQUIRES_OK(ctx, iter.Init(ctx));
-  Status s =
+  absl::Status s =
       table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
