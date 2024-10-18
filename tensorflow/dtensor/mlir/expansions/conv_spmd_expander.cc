@@ -51,8 +51,8 @@ namespace dtensor {
 namespace {
 
 template <typename ConvOp>
-Status VerifyConvLayout(const Layout& input_layout, const Layout& filter_layout,
-                        ConvOp conv_op) {
+absl::Status VerifyConvLayout(const Layout& input_layout,
+                              const Layout& filter_layout, ConvOp conv_op) {
   if (!filter_layout.IsFullyReplicated())
     return errors::InvalidArgument(
         "Filter for convolution must have fully replicated layout.");
@@ -333,7 +333,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropInput(
   }
 
   llvm::SmallVector<int64_t, 4> global_shape;
-  Status extract_status =
+  absl::Status extract_status =
       ExtractConstVectorFromValue(conv_op.getInputSizes(), &global_shape);
 
   // If the input is dynamic size, we expect the output is all so dynamic size
