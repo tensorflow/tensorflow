@@ -83,10 +83,10 @@ cc_library(
 )
 
 cc_test(
-    name = "dispatch_delegate_pixel_test",
-    srcs = ["dispatch_delegate_pixel_test.cc"],
+    name = "dispatch_delegate_google_tensor_test",
+    srcs = ["dispatch_delegate_google_tensor_test.cc"],
     data = [
-        "//tensorflow/lite/experimental/lrt/vendors/pixel/dispatch:dispatch_api_shared",
+        "//tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch:dispatch_api_shared",
     ],
     linkopts = select({
         "//tensorflow:android": ["-landroid"],

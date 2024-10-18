@@ -25,9 +25,10 @@
 #include "tensorflow/lite/experimental/lrt/test/testdata/simple_model_test_vectors.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
-TEST(DispatchApi, Pixel) {
+TEST(DispatchApi, GoogleTensor) {
 #if !defined(__ANDROID__)
-  GTEST_SKIP() << "This test is specific to Android devices with a Pixel eTPU";
+  GTEST_SKIP()
+      << "This test is specific to Android devices with a GoogleTensor eTPU";
 #endif
 
   EXPECT_EQ(LiteRtDispatchInitialize(/*shared_lib_path=*/nullptr),
@@ -55,7 +56,7 @@ TEST(DispatchApi, Pixel) {
             kLiteRtStatusOk);
   ABSL_LOG(INFO) << "device_context: " << device_context;
 
-  auto model_file_name = kPixelModelFileName;
+  auto model_file_name = kGoogleTensorModelFileName;
   auto model = litert::testing::LoadBinaryFile(model_file_name);
   EXPECT_TRUE(model.ok());
   ABSL_LOG(INFO) << "Loaded model " << model_file_name << ", " << model->size()

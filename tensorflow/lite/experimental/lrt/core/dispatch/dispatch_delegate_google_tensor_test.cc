@@ -30,8 +30,8 @@
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/signature_runner.h"
 
-TEST(DispatchDelegate, Pixel) {
-  auto npu_model_file_name = kPixelModelFileName;
+TEST(DispatchDelegate, GoogleTensor) {
+  auto npu_model_file_name = kGoogleTensorModelFileName;
   auto npu_model = litert::testing::LoadBinaryFile(npu_model_file_name);
   ASSERT_TRUE(npu_model.ok());
   ABSL_LOG(INFO) << "Loaded model " << npu_model_file_name << ", "
@@ -64,7 +64,7 @@ TEST(DispatchDelegate, Pixel) {
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
-                  "Pixel eTPU";
+                  "GoogleTensor eTPU";
 #endif
 
   ASSERT_EQ(interpreter->ModifyGraphWithDelegate(dispatch_delegate.get()),

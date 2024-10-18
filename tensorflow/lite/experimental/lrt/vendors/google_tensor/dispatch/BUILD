@@ -59,9 +59,9 @@ cc_shared_library(
 )
 
 cc_test(
-    name = "dispatch_api_pixel_test",
+    name = "dispatch_api_google_tensor_test",
     srcs = [
-        "dispatch_api_pixel_test.cc",
+        "dispatch_api_google_tensor_test.cc",
     ],
     data = [
         ":dispatch_api_shared",

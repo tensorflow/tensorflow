@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/southbound.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/southbound.h"
 
 #include <dlfcn.h>
 
@@ -26,7 +26,7 @@
   }
 
 namespace litert {
-namespace pixel {
+namespace google_tensor {
 
 Southbound::Southbound() : thr_functions_(new ThrFunctions) {}
 
@@ -127,5 +127,5 @@ absl::Status Southbound::LoadSymbols() {
   return {};
 }
 
-}  // namespace pixel
+}  // namespace google_tensor
 }  // namespace litert

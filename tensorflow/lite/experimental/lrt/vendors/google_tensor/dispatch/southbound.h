@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_SOUTHBOUND_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_SOUTHBOUND_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_SOUTHBOUND_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_SOUTHBOUND_H_
 
 #include <memory>
 
@@ -23,7 +23,7 @@
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 
 namespace litert {
-namespace pixel {
+namespace google_tensor {
 
 class Southbound {
  public:
@@ -126,7 +126,7 @@ struct Southbound::ThrFunctions {
       thr_vendor_set_system_attribute_int64 = nullptr;
 };
 
-}  // namespace pixel
+}  // namespace google_tensor
 }  // namespace litert
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_SOUTHBOUND_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_SOUTHBOUND_H_

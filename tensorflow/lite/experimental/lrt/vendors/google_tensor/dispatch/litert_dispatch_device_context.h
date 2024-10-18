@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
 
 #include <memory>
 #include <set>
@@ -23,14 +23,14 @@
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/southbound.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/southbound.h"
 
 class LiteRtDispatchDeviceContextT {
  public:
   ~LiteRtDispatchDeviceContextT();
 
   static absl::StatusOr<std::unique_ptr<LiteRtDispatchDeviceContextT>> Create(
-      const litert::pixel::Southbound& southbound);
+      const litert::google_tensor::Southbound& southbound);
 
   ThrContext* thr_context() { return thr_context_; }
   void add_graph(ThrGraph* graph) { thr_graphs_.insert(graph); }
@@ -38,12 +38,12 @@ class LiteRtDispatchDeviceContextT {
 
  private:
   explicit LiteRtDispatchDeviceContextT(
-      const litert::pixel::Southbound& southbound)
+      const litert::google_tensor::Southbound& southbound)
       : southbound_(southbound) {}
 
-  const litert::pixel::Southbound& southbound_;
+  const litert::google_tensor::Southbound& southbound_;
   ThrContext* thr_context_ = nullptr;
   std::set<ThrGraph*> thr_graphs_;
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_DEVICE_CONTEXT_H_

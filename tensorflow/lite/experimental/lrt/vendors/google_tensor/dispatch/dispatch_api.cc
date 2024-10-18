@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/dispatch_api.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/dispatch_api.h"
 
 #include <dlfcn.h>
 #include <poll.h>
 
 #include <cerrno>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <set>
@@ -36,10 +37,10 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer_requirements.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch_api.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/litert_dispatch_device_context.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/litert_dispatch_graph.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/litert_dispatch_invocation_context.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/southbound.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/litert_dispatch_graph.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/litert_dispatch_invocation_context.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/southbound.h"
 
 namespace {
 
@@ -71,20 +72,20 @@ absl::string_view ThrEdgeIdStr(LiteRtDispatchEdgeId edge_id) {
   return *iter;
 }
 
-litert::pixel::Southbound* TheSouthbound;
+litert::google_tensor::Southbound* TheSouthbound;
 char BuildId[256];
 
 }  // namespace
 
 namespace litert {
-namespace pixel {
+namespace google_tensor {
 
 // /////////////////////////////////////////////////////////////////////////////
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
 LiteRtStatus Initialize() {
-  if (auto status = litert::pixel::Southbound::Create(); !status.ok()) {
+  if (auto status = litert::google_tensor::Southbound::Create(); !status.ok()) {
     ABSL_LOG(ERROR) << "Initialization failure: " << status;
     return kLiteRtStatusErrorRuntimeFailure;
   } else {
@@ -107,11 +108,12 @@ LiteRtStatus Initialize() {
       thr_get_vendor_api_version ? thr_get_vendor_api_version() : "N.A.";
   auto thr_get_vendor_id = TheSouthbound->thr_functions().thr_get_vendor_id;
   const char* sb_vendor_id = thr_get_vendor_id ? thr_get_vendor_id() : "N.A.";
-  snprintf(BuildId, sizeof(BuildId),
-           "Pixel Dispatch API version %d.%d.%d, Darwinn API version %s, "
-           "vendor id: %s",
-           VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, sb_api_version,
-           sb_vendor_id);
+  snprintf(
+      BuildId, sizeof(BuildId),
+      "GoogleTensor Dispatch API version %d.%d.%d, Darwinn API version %s, "
+      "vendor id: %s",
+      VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, sb_api_version,
+      sb_vendor_id);
   BuildId[sizeof(BuildId) - 1] = 0;
 
   return kLiteRtStatusOk;
@@ -231,7 +233,7 @@ LiteRtStatus RegisterTensorBuffer(
 
   auto* tensor_strides = tensor_type.layout.strides;
   if (tensor_strides != nullptr) {
-    ABSL_LOG(ERROR) << "Tensor strides are not supported by Pixel";
+    ABSL_LOG(ERROR) << "Tensor strides are not supported by GoogleTensor";
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
@@ -1108,7 +1110,7 @@ LiteRtStatus InvocationContextCreateFromGraph(
   return kLiteRtStatusOk;
 }
 
-}  // namespace pixel
+}  // namespace google_tensor
 }  // namespace litert
 
 // /////////////////////////////////////////////////////////////////////////////
@@ -1116,47 +1118,48 @@ LiteRtStatus InvocationContextCreateFromGraph(
 namespace {
 
 LiteRtDispatchInterface TheInterface = {
-    .initialize = litert::pixel::Initialize,
-    .get_vendor_id = litert::pixel::GetVendorId,
-    .get_build_id = litert::pixel::GetBuildId,
-    .get_capabilities = litert::pixel::GetCapabilities,
-    .device_context_create = litert::pixel::DeviceContextCreate,
-    .device_context_destroy = litert::pixel::DeviceContextDestroy,
-    .get_input_requirements = litert::pixel::GetInputRequirements,
-    .get_output_requirements = litert::pixel::GetOutputRequirements,
-    .register_tensor_buffer = litert::pixel::RegisterTensorBuffer,
-    .unregister_tensor_buffer = litert::pixel::UnregisterTensorBuffer,
-    .invocation_context_create = litert::pixel::InvocationContextCreate,
-    .invocation_context_destroy = litert::pixel::InvocationContextDestroy,
-    .attach_input = litert::pixel::AttachInput,
-    .attach_output = litert::pixel::AttachOutput,
-    .detach_input = litert::pixel::DetachInput,
-    .detach_output = litert::pixel::DetachOutput,
-    .invoke = litert::pixel::Invoke,
+    .initialize = litert::google_tensor::Initialize,
+    .get_vendor_id = litert::google_tensor::GetVendorId,
+    .get_build_id = litert::google_tensor::GetBuildId,
+    .get_capabilities = litert::google_tensor::GetCapabilities,
+    .device_context_create = litert::google_tensor::DeviceContextCreate,
+    .device_context_destroy = litert::google_tensor::DeviceContextDestroy,
+    .get_input_requirements = litert::google_tensor::GetInputRequirements,
+    .get_output_requirements = litert::google_tensor::GetOutputRequirements,
+    .register_tensor_buffer = litert::google_tensor::RegisterTensorBuffer,
+    .unregister_tensor_buffer = litert::google_tensor::UnregisterTensorBuffer,
+    .invocation_context_create = litert::google_tensor::InvocationContextCreate,
+    .invocation_context_destroy =
+        litert::google_tensor::InvocationContextDestroy,
+    .attach_input = litert::google_tensor::AttachInput,
+    .attach_output = litert::google_tensor::AttachOutput,
+    .detach_input = litert::google_tensor::DetachInput,
+    .detach_output = litert::google_tensor::DetachOutput,
+    .invoke = litert::google_tensor::Invoke,
 };
 
 LiteRtDispatchAsyncInterface TheAsyncInterface = {
-    .attach_input_event = litert::pixel::AttachInputEvent,
-    .invoke_async = litert::pixel::InvokeAsync,
+    .attach_input_event = litert::google_tensor::AttachInputEvent,
+    .invoke_async = litert::google_tensor::InvokeAsync,
 };
 
 LiteRtDispatchGraphInterface TheGraphInterface = {
-    .graph_create = litert::pixel::GraphCreate,
-    .graph_destroy = litert::pixel::GraphDestroy,
-    .add_node = litert::pixel::AddNode,
-    .add_edge = litert::pixel::AddEdge,
-    .connect_node_input = litert::pixel::ConnectNodeInput,
-    .connect_node_output = litert::pixel::ConnectNodeOutput,
-    .connect_graph_input = litert::pixel::ConnectGraphInput,
-    .connect_graph_output = litert::pixel::ConnectGraphOutput,
-    .load_executable = litert::pixel::LoadExecutable,
-    .unload_executable = litert::pixel::UnloadExecutable,
-    .assign_node_function = litert::pixel::AssignNodeFunction,
-    .annotate_graph = litert::pixel::AnnotateGraph,
-    .annotate_node = litert::pixel::AnnotateNode,
-    .annotate_edge = litert::pixel::AnnotateEdge,
+    .graph_create = litert::google_tensor::GraphCreate,
+    .graph_destroy = litert::google_tensor::GraphDestroy,
+    .add_node = litert::google_tensor::AddNode,
+    .add_edge = litert::google_tensor::AddEdge,
+    .connect_node_input = litert::google_tensor::ConnectNodeInput,
+    .connect_node_output = litert::google_tensor::ConnectNodeOutput,
+    .connect_graph_input = litert::google_tensor::ConnectGraphInput,
+    .connect_graph_output = litert::google_tensor::ConnectGraphOutput,
+    .load_executable = litert::google_tensor::LoadExecutable,
+    .unload_executable = litert::google_tensor::UnloadExecutable,
+    .assign_node_function = litert::google_tensor::AssignNodeFunction,
+    .annotate_graph = litert::google_tensor::AnnotateGraph,
+    .annotate_node = litert::google_tensor::AnnotateNode,
+    .annotate_edge = litert::google_tensor::AnnotateEdge,
     .invocation_context_create_from_graph =
-        litert::pixel::InvocationContextCreateFromGraph,
+        litert::google_tensor::InvocationContextCreateFromGraph,
 };
 
 LiteRtDispatchApi TheApi = {

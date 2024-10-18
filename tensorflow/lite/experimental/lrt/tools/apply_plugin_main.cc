@@ -39,8 +39,8 @@ static llvm::cl::opt<std::string> model(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> soc_manufacturer(
     "soc_man",
-    llvm::cl::desc(
-        "String identifier of SoC manufacturer (e.g., Pixel, Qualcomm)."),
+    llvm::cl::desc("String identifier of SoC manufacturer (e.g., GoogleTensor, "
+                   "Qualcomm)."),
     llvm::cl::init("ExampleSocManufacturer"));
 
 // TODO: Support multi target compilation.

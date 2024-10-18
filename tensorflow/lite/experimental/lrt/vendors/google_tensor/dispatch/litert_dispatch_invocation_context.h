@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
 
 #include <optional>
 
@@ -21,7 +21,7 @@
 #include "absl/status/statusor.h"
 #include "third_party/odml/infra/southbound/sb_api.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/dispatch_api.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/dispatch_api.h"
 
 class LiteRtDispatchInvocationContextT {
  public:
@@ -34,7 +34,7 @@ class LiteRtDispatchInvocationContextT {
 
   ~LiteRtDispatchInvocationContextT() {
     if (exec_handle_) {
-      litert::pixel::UnloadExecutable(device_context_, *exec_handle_);
+      litert::google_tensor::UnloadExecutable(device_context_, *exec_handle_);
     }
   }
 
@@ -62,4 +62,4 @@ class LiteRtDispatchInvocationContextT {
   std::optional<LiteRtDispatchExecutableHandle> exec_handle_;
 };
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_PIXEL_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_GOOGLE_TENSOR_DISPATCH_LITERT_DISPATCH_INVOCATION_CONTEXT_H_

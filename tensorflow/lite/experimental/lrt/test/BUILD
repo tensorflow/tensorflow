@@ -70,7 +70,7 @@ cc_library(
     ],
     data = [
         "testdata/simple_model.tflite",
-        "testdata/simple_model_pixel.bin",
+        "testdata/simple_model_google_tensor.bin",
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
@@ -86,8 +86,8 @@ cc_library(
         "testdata/simple_model_test_vectors.h",
     ],
     data = [
+        "testdata/simple_model_google_tensor.bin",
         "testdata/simple_model_npu.tflite",
-        "testdata/simple_model_pixel.bin",
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [

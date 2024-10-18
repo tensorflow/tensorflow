@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/litert_dispatch_invocation_context.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/litert_dispatch_invocation_context.h"
 
 #include <cstddef>
 
@@ -37,7 +37,8 @@ absl::StatusOr<LiteRtTensorBufferRequirements> GetTensorBufferRequirements(
     const LiteRtRankedTensorType& tensor_type) {
   auto* tensor_strides = tensor_type.layout.strides;
   if (tensor_strides != nullptr) {
-    return absl::InternalError("Tensor strides are not supported on Pixel");
+    return absl::InternalError(
+        "Tensor strides are not supported on GoogleTensor");
   }
 
   LiteRtTensorBufferType supported_tensor_buffer_types[] = {

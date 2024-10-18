@@ -22,7 +22,8 @@
 
 constexpr const char* kModelFileName = "simple_model.tflite";
 constexpr const char* kQualcommModelFileName = "simple_model_qualcomm.bin";
-constexpr const char* kPixelModelFileName = "simple_model_pixel.bin";
+constexpr const char* kGoogleTensorModelFileName =
+    "simple_model_google_tensor.bin";
 
 constexpr const int32_t kTestInput0Dimensions[] = {2};
 constexpr const int32_t kNumTestInput0Dimensions =

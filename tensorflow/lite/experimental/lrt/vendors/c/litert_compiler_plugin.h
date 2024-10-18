@@ -37,8 +37,8 @@ LiteRtStatus LiteRtPluginInit(LiteRtCompilerPlugin* compiler_plugin);
 
 void LiteRtPluginDestroy(LiteRtCompilerPlugin compiler_plugin);
 
-// Name associated with the manufacturer this plugin relates to (e.g, Pixel,
-// Qualcomm).
+// Name associated with the manufacturer this plugin relates to (e.g,
+// GoogleTensor, Qualcomm).
 const char* LiteRtPluginSocManufacturer();
 
 // Number of SoC models supported by this plugin.

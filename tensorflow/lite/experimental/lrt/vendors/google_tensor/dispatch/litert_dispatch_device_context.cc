@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/lrt/vendors/pixel/dispatch/litert_dispatch_device_context.h"
+#include "tensorflow/lite/experimental/lrt/vendors/google_tensor/dispatch/litert_dispatch_device_context.h"
 
 #include <dlfcn.h>
 
@@ -45,7 +45,7 @@ LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
 
 absl::StatusOr<std::unique_ptr<LiteRtDispatchDeviceContextT>>
 LiteRtDispatchDeviceContextT::Create(
-    const litert::pixel::Southbound& southbound) {
+    const litert::google_tensor::Southbound& southbound) {
   std::unique_ptr<LiteRtDispatchDeviceContextT> device_context(
       new LiteRtDispatchDeviceContextT(southbound));
 
