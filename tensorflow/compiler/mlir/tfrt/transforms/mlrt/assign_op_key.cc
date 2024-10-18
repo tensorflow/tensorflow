@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/util.h"
 
