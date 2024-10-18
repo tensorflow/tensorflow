@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/cpu/target_machine_features_fake.h"
 #include "xla/shape_layout.h"
