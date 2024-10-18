@@ -26,8 +26,8 @@ using errors::InvalidArgument;
 // Reference:
 // https://github.com/tensorflow/tensorflow/blob/57946ceb4b6119d6d0f49abbb2e3d1636a3b83a0/tensorflow/lite/kernels/internal/quantization_util.cc#L53
 // Where double_multiplier >= 0 and TFLITE_EMULATE_FLOAT is not defined.
-Status QuantizeMultiplier(double double_multiplier,
-                          int32_t& quantized_multiplier, int32_t& shift) {
+absl::Status QuantizeMultiplier(double double_multiplier,
+                                int32_t& quantized_multiplier, int32_t& shift) {
   if (!isfinite(double_multiplier) || double_multiplier <= 0) {
     return InvalidArgument(
         "double_multiplier must be a poisitive finite number. Given ",
