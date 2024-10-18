@@ -49,6 +49,18 @@ bool IsPotentialUnsupportedOp(Operation* op) {
   return true;
 }
 
+bool HasV1ControlFlow(GraphOp graph) {
+  for (Operation& op : graph.GetBody().without_terminator()) {
+    auto island_op = llvm::dyn_cast<mlir::tf_executor::IslandOp>(op);
+    if (!island_op) {
+      op.emitWarning() << " is v1 control flow op which is not supported in "
+                          "TF2XLA MLIR Bridge.";
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace internal
 }  // namespace tf2xla
 }  // namespace tensorflow
