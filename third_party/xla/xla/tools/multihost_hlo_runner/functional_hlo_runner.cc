@@ -72,7 +72,6 @@ limitations under the License.
 
 namespace xla {
 
-
 namespace {
 // Creates an HloModule from the given proto.
 absl::StatusOr<std::unique_ptr<HloModule>> HloTextToModule(
@@ -582,7 +581,8 @@ FunctionalHloRunner::ReadModuleFromHloTextFile(absl::string_view hlo_file) {
   std::string hlo_string;
   TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
                                            std::string(hlo_file), &hlo_string));
-  return ParseAndReturnUnverifiedModule(hlo_string);
+  return ParseAndReturnUnverifiedModule(
+      hlo_string, {}, HloParserOptions().set_fill_missing_layouts(false));
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>
