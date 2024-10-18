@@ -25,6 +25,11 @@
 extern "C" {
 #endif  // __cplusplus
 
+#define LITERT_RETURN_STATUS_IF_QNN_NOT_OK(expr) \
+  if (QNN_SUCCESS != (expr)) {                   \
+    return kLiteRtStatusErrorNotFound;           \
+  }
+
 // Pointers to functions of a dynamically loaded QNN library.
 typedef QNN_INTERFACE_VER_TYPE QnnApi;
 
