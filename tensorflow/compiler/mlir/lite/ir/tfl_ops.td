@@ -1695,6 +1695,8 @@ def TFL_EqualOp: TFL_Op<"equal", [
   let builders = [TFL_ComparisonBinaryBuilder];
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_ExpOp: TFL_Op<"exp", [
