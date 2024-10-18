@@ -4332,6 +4332,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleMaximum(
   HloInstruction *lhs, *rhs;
   CHECK(Match(maximum, m::Maximum(m::Op(&lhs), m::Op(&rhs))));
 
+  // max(x, x) -> x
+  if (lhs == rhs) {
+    return ReplaceInstruction(maximum, lhs);
+  }
+
   // max(x, -inf) -> x
   PrimitiveType ty = maximum->shape().element_type();
   if (primitive_util::IsIntegralType(ty) ||
@@ -4431,6 +4436,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleMinimum(
     HloInstruction* minimum) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(minimum, m::Minimum(m::Op(&lhs), m::Op(&rhs))));
+
+  // min(x, x) -> x
+  if (lhs == rhs) {
+    return ReplaceInstruction(minimum, lhs);
+  }
 
   // min(x, inf) -> x
   PrimitiveType ty = minimum->shape().element_type();
