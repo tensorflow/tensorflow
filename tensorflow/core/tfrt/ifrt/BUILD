@@ -643,7 +643,6 @@ cc_library(
     srcs = ["checkpoint_loader.cc"],
     hdrs = ["checkpoint_loader.h"],
     deps = [
-        ":ifrt_loaded_variable_registry",
         ":ifrt_loaded_variable_utils",
         ":ifrt_restore_tensor_registry",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
@@ -653,6 +652,8 @@ cc_library(
         "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/mlrt/kernel:context",
