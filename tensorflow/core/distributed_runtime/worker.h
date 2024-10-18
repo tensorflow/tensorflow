@@ -112,8 +112,8 @@ class Worker : public WorkerInterface {
   WorkerEnv* const env_;  // Not owned.
   RecentRequestIds recent_request_ids_;
 
-  Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
-                           Device** src_dev);
+  absl::Status PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
+                                 Device** src_dev);
 
   void AbortStep(int64_t);
 
@@ -122,9 +122,9 @@ class Worker : public WorkerInterface {
 
   CancellationManager cancellation_manager_;
 
-  Status PrepareRunGraph(RunGraphRequestWrapper* req,
-                         GraphMgr::NamedTensors* in,
-                         GraphMgr::NamedTensors* out);
+  absl::Status PrepareRunGraph(RunGraphRequestWrapper* req,
+                               GraphMgr::NamedTensors* in,
+                               GraphMgr::NamedTensors* out);
 
   void DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                   MutableRunGraphResponseWrapper* response,
