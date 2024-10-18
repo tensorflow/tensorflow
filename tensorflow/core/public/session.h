@@ -95,9 +95,9 @@ class Session {
   /// Returns an error if this session has already been created with a
   /// graph. To re-use the session with a different graph, the caller
   /// must Close() the session first.
-  virtual Status Create(const GraphDef& graph) = 0;
+  virtual absl::Status Create(const GraphDef& graph) = 0;
 #ifndef SWIG
-  virtual Status Create(GraphDef&& graph) { return Create(graph); }
+  virtual absl::Status Create(GraphDef&& graph) { return Create(graph); }
 #endif
 
   /// \brief Adds operations to the graph that is already registered with the
@@ -105,9 +105,9 @@ class Session {
   ///
   /// The names of new operations in "graph" must not exist in the
   /// graph that is already registered.
-  virtual Status Extend(const GraphDef& graph) = 0;
+  virtual absl::Status Extend(const GraphDef& graph) = 0;
 #ifndef SWIG
-  virtual Status Extend(GraphDef&& graph) { return Extend(graph); }
+  virtual absl::Status Extend(GraphDef&& graph) { return Extend(graph); }
 #endif
 
   /// \brief Runs the graph with the provided input tensors and fills
@@ -129,33 +129,36 @@ class Session {
   /// `target_tensor_names` must be non-empty.
   ///
   /// REQUIRES: outputs is not nullptr if `output_tensor_names` is non-empty.
-  virtual Status Run(const std::vector<std::pair<std::string, Tensor> >& inputs,
-                     const std::vector<std::string>& output_tensor_names,
-                     const std::vector<std::string>& target_tensor_names,
-                     std::vector<Tensor>* outputs) = 0;
+  virtual absl::Status Run(
+      const std::vector<std::pair<std::string, Tensor> >& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_tensor_names,
+      std::vector<Tensor>* outputs) = 0;
 
   /// \brief Implementations which support `RunOptions`.
   //
   /// NOTE: This API is still experimental and may change.
-  virtual Status Create(const RunOptions& run_options, const GraphDef& graph) {
+  virtual absl::Status Create(const RunOptions& run_options,
+                              const GraphDef& graph) {
     return absl::UnimplementedError(
         "Create(const RunOptions& run_options, const GraphDef& graph) is not "
         "supported for this session.");
   }
-  virtual Status Extend(const RunOptions& run_options, const GraphDef& graph) {
+  virtual absl::Status Extend(const RunOptions& run_options,
+                              const GraphDef& graph) {
     return absl::UnimplementedError(
         "Extend(const RunOptions& run_options, const GraphDef& graph) is not "
         "supported for this session.");
   }
 #ifndef SWIG
-  virtual Status Create(const RunOptions& run_options, GraphDef&& graph) {
+  virtual absl::Status Create(const RunOptions& run_options, GraphDef&& graph) {
     return Create(run_options, graph);
   }
-  virtual Status Extend(const RunOptions& run_options, GraphDef&& graph) {
+  virtual absl::Status Extend(const RunOptions& run_options, GraphDef&& graph) {
     return Extend(run_options, graph);
   }
 #endif
-  virtual Status Close(const RunOptions& run_options) {
+  virtual absl::Status Close(const RunOptions& run_options) {
     return absl::UnimplementedError(
         "Close(const RunOptions& run_options) is not supported for this "
         "session.");
@@ -166,21 +169,23 @@ class Session {
   /// step.  `run_metadata` may be nullptr, in which case any metadata output is
   /// discarded.
   /// NOTE: This API is still experimental and may change.
-  virtual Status Run(const RunOptions& run_options,
-                     const std::vector<std::pair<std::string, Tensor> >& inputs,
-                     const std::vector<std::string>& output_tensor_names,
-                     const std::vector<std::string>& target_tensor_names,
-                     std::vector<Tensor>* outputs, RunMetadata* run_metadata);
+  virtual absl::Status Run(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor> >& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_tensor_names,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
   /// \brief Like `Run` with `RunOptions` proto, but allows user to provide
   /// custom threadpool implementation via ThreadPoolOptions.
   /// NOTE: This API is still experimental and may change.
-  virtual Status Run(const RunOptions& run_options,
-                     const std::vector<std::pair<std::string, Tensor> >& inputs,
-                     const std::vector<std::string>& output_tensor_names,
-                     const std::vector<std::string>& target_tensor_names,
-                     std::vector<Tensor>* outputs, RunMetadata* run_metadata,
-                     const thread::ThreadPoolOptions& threadpool_options) {
+  virtual absl::Status Run(
+      const RunOptions& run_options,
+      const std::vector<std::pair<std::string, Tensor> >& inputs,
+      const std::vector<std::string>& output_tensor_names,
+      const std::vector<std::string>& target_tensor_names,
+      std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) {
     return absl::UnimplementedError(
         "Run with threadpool is not supported for this session.");
   }
@@ -190,16 +195,16 @@ class Session {
   /// `handle` that can be used to perform a sequence of partial feeds and
   /// fetches.
   /// NOTE: This API is still experimental and may change.
-  virtual Status PRunSetup(const std::vector<std::string>& input_names,
-                           const std::vector<std::string>& output_names,
-                           const std::vector<std::string>& target_nodes,
-                           std::string* handle);
+  virtual absl::Status PRunSetup(const std::vector<std::string>& input_names,
+                                 const std::vector<std::string>& output_names,
+                                 const std::vector<std::string>& target_nodes,
+                                 std::string* handle);
 
   /// \brief Continues the pending execution specified by `handle` with the
   /// provided input tensors and fills `outputs` for the endpoints specified
   /// in `output_names`.
   /// NOTE: This API is still experimental and may change.
-  virtual Status PRun(
+  virtual absl::Status PRun(
       const std::string& handle,
       const std::vector<std::pair<std::string, Tensor> >& inputs,
       const std::vector<std::string>& output_names,
@@ -210,21 +215,21 @@ class Session {
   /// Retrieves the list of available devices within the session, and populates
   /// *response. This API is optional. If it is unimplemented, Status will
   /// return a corresponding error message, and *response will be unmodified.
-  virtual Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
+  virtual absl::Status ListDevices(std::vector<DeviceAttributes>* response) = 0;
 
   /// \brief Closes this session.
   ///
   /// Closing a session releases the resources used by this session
   /// on the TensorFlow runtime (specified during session creation by
   /// the `SessionOptions::target` field).
-  virtual Status Close() = 0;
+  virtual absl::Status Close() = 0;
 
   // NOTE(ashankar): As of July 2017, this method was added to facilitate some
   // experimentation. Reconsider/re-evaluate after September 2017.
   //
   // Sets `*output` to the `DeviceMgr` that owns accessible devices in the
   // address-space of the caller.
-  virtual Status LocalDeviceManager(const DeviceMgr** output) {
+  virtual absl::Status LocalDeviceManager(const DeviceMgr** output) {
     return absl::UnimplementedError(
         "LocalDeviceManager is not supported for this session.");
   }
@@ -235,8 +240,8 @@ class Session {
   /// \brief Creates a `handle` for invoking the subgraph defined by
   /// `callable_options`.
   /// NOTE: This API is still experimental and may change.
-  virtual Status MakeCallable(const CallableOptions& callable_options,
-                              CallableHandle* out_handle) {
+  virtual absl::Status MakeCallable(const CallableOptions& callable_options,
+                                    CallableHandle* out_handle) {
     return absl::UnimplementedError(
         "MakeCallable is not supported for this session.");
   }
@@ -248,10 +253,10 @@ class Session {
   /// match the order of names in `CallableOptions::feed()` and
   /// `CallableOptions::fetch()` when this subgraph was created.
   /// NOTE: This API is still experimental and may change.
-  virtual Status RunCallable(CallableHandle handle,
-                             const std::vector<Tensor>& feed_tensors,
-                             std::vector<Tensor>* fetch_tensors,
-                             RunMetadata* run_metadata) {
+  virtual absl::Status RunCallable(CallableHandle handle,
+                                   const std::vector<Tensor>& feed_tensors,
+                                   std::vector<Tensor>* fetch_tensors,
+                                   RunMetadata* run_metadata) {
     return absl::UnimplementedError(
         "RunCallable is not supported for this session.");
   }
@@ -264,7 +269,7 @@ class Session {
   /// match the order of names in `CallableOptions::feed()` and
   /// `CallableOptions::fetch()` when this subgraph was created.
   /// NOTE: This API is still experimental and may change.
-  virtual Status RunCallable(
+  virtual absl::Status RunCallable(
       CallableHandle handle, const std::vector<Tensor>& feed_tensors,
       std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
       const thread::ThreadPoolOptions& threadpool_options) {
@@ -275,7 +280,7 @@ class Session {
   /// \brief Releases resources associated with the given `handle` in this
   /// session.
   /// NOTE: This API is still experimental and may change.
-  virtual Status ReleaseCallable(CallableHandle handle) {
+  virtual absl::Status ReleaseCallable(CallableHandle handle) {
     return absl::UnimplementedError(
         "ReleaseCallable is not supported for this session.");
   }
@@ -298,7 +303,7 @@ class Session {
   /// 4. Call `Session::RunCallable()` with the handle(s) created in step 2.
   ///
   /// NOTE: This API is still experimental and may change.
-  virtual Status Finalize() {
+  virtual absl::Status Finalize() {
     return absl::UnimplementedError(
         "Finalize is not supported for this session.");
   }
@@ -310,7 +315,7 @@ class Session {
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
 /// function will return an error status and set *out_session to nullptr.
-Status NewSession(const SessionOptions& options, Session** out_session);
+absl::Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
 ///
@@ -337,8 +342,8 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 ///
 /// If Reset succeeds, this function will return `OK()`. Otherwise, this
 /// function will return an error status.
-Status Reset(const SessionOptions& options,
-             const std::vector<std::string>& containers);
+absl::Status Reset(const SessionOptions& options,
+                   const std::vector<std::string>& containers);
 
 /// \brief Create a new session with the given options.
 ///

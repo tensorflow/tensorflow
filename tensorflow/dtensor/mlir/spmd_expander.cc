@@ -64,8 +64,9 @@ namespace {
 // descendent nodes.
 // User should not explicitly set a output parted layout and expect it to affect
 // the layout of ancestor nodes.
-Status AdjustPartedLayout(const llvm::DenseMap<int, Layout>& input_layouts,
-                          llvm::DenseMap<int, Layout>* computed_layouts) {
+absl::Status AdjustPartedLayout(
+    const llvm::DenseMap<int, Layout>& input_layouts,
+    llvm::DenseMap<int, Layout>* computed_layouts) {
   // If any input has parted layout, propagate the parted layout to the layout
   // of all the computed values.
   bool input_has_parted_layout = false;
@@ -149,8 +150,8 @@ InitOnStartupMarker SPMDExpanderRegistry::RegisterPropagateFn(
   return {};
 }
 
-Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
-                                              mlir::Operation** output) {
+absl::Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
+                                                    mlir::Operation** output) {
   TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> computed_layout,
                       ExtractLayoutFromOp(op));
 
@@ -298,7 +299,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SPMDExpanderBase::ComputeLayoutBackward(
   return ComputeLayoutBackward(op, output_layouts);
 }
 
-Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output) {
+absl::Status RunSPMDExpansion(mlir::Operation* op, mlir::Operation** output) {
   SPMDExpanderBase* expander =
       SPMDExpanderRegistry::Global()->GetPropagateFnForOp(op);
   if (expander != nullptr) {
