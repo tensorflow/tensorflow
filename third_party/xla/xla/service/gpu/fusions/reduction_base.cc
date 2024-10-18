@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <variant>
 #include <vector>
@@ -98,14 +99,6 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
 
 int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads) {
-  // If the minor dimension is not divisible by 2, we can't currently vectorize.
-  if (minor_dim % 2 != 0) {
-    return 1;
-  }
-  // Only enable vectorization if all threads will still have work.
-  if (num_threads * 2 > minor_dim) {
-    return 1;
-  }
   // MLIR's vectorization doesn't work with complex types. However, complex
   // load/stores are effectively always vectorized and have a size
   // of at least 8 bytes, which is sufficient.
@@ -116,19 +109,21 @@ int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
       }
     }
   }
-  // 16 byte vector loads are often slower than 8 byte loads.
-  if (analysis.input_output_info().smallest_input_dtype_bits >= 64) {
-    return 1;
+  int smallest_dtype_bits =
+      analysis.input_output_info().smallest_input_dtype_bits;
+  // If there are no inputs, take the smallest output dtype instead.
+  if (smallest_dtype_bits == std::numeric_limits<int>::max()) {
+    smallest_dtype_bits =
+        analysis.input_output_info().smallest_output_dtype_bits;
   }
-  if (analysis.input_output_info().smallest_input_dtype_bits >= 32) {
-    return 2;
+  int vector_size = 64 / smallest_dtype_bits;
+  // If the minor dimension is not divisible by 'vector_size', we can't
+  // currently vectorize. Also make sure that all threads will still have work.
+  while (vector_size > 1 && (minor_dim % vector_size != 0 ||
+                             num_threads * vector_size > minor_dim)) {
+    vector_size /= 2;
   }
-  // Like above, if the size of the minor dimension is not sufficiently large,
-  // the vectorization is not helpful.
-  if (num_threads * 4 > minor_dim) {
-    return 2;
-  }
-  return minor_dim % 4 == 0 ? 4 : 2;
+  return vector_size;
 }
 
 ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
