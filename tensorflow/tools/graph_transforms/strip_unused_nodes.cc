@@ -69,7 +69,7 @@ Status TypeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ShapeForPlaceholder(const TransformFuncContext& context,
@@ -108,7 +108,7 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -186,7 +186,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
       *(output_graph_def->mutable_node()->Add()) = node;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("strip_unused_nodes", StripUnusedNodes);
