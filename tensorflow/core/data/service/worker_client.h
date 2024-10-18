@@ -45,14 +45,15 @@ class DataServiceWorkerClient : public DataServiceClientBase {
         allocator_(allocator) {}
 
   // Fetches an element from the worker.
-  Status GetElement(const GetElementRequest& req, GetElementResult& result);
+  absl::Status GetElement(const GetElementRequest& req,
+                          GetElementResult& result);
 
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
   void TryCancel();
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `compatibility_info`.
-  Status CheckCompatibility(
+  absl::Status CheckCompatibility(
       const std::string& server_compatibility_info) const {
     return client_->CheckCompatibility(server_compatibility_info);
   }
@@ -61,7 +62,7 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   std::string GetDataTransferProtocol() const;
 
  protected:
-  Status EnsureInitialized() override;
+  absl::Status EnsureInitialized() override;
 
  private:
   std::string transfer_protocol_;
