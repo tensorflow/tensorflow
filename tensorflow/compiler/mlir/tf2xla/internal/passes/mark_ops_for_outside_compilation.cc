@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -40,7 +41,6 @@ limitations under the License.
 #include "mlir/Rewrite/PatternApplicator.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace tensorflow {
