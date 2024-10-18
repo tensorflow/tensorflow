@@ -38,19 +38,19 @@ class PaddingFIFOQueue : public FIFOQueue {
                    const std::vector<PartialTensorShape>& component_shapes,
                    const string& name);
 
-  Status Initialize() override;
+  absl::Status Initialize() override;
 
   // Implementations of QueueInterface methods --------------------------------
 
   void TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       bool allow_small_batch,
                       CallbackWithTuple callback) override;
-  Status MatchesNodeDef(const NodeDef& node_def) override;
+  absl::Status MatchesNodeDef(const NodeDef& node_def) override;
 
  protected:
-  Status ValidateManyTuple(const Tuple& tuple) override;
-  Status ValidateTuple(const Tuple& tuple) override;
-  Status CompatibleNodeDefShapes(const NodeDef& node_def) const;
+  absl::Status ValidateManyTuple(const Tuple& tuple) override;
+  absl::Status ValidateTuple(const Tuple& tuple) override;
+  absl::Status CompatibleNodeDefShapes(const NodeDef& node_def) const;
 
   // Convert a list of PartialTensorShape to a list of
   // TensorShape.
@@ -60,26 +60,26 @@ class PaddingFIFOQueue : public FIFOQueue {
       absl::Span<const PartialTensorShape> partial_shapes);
 
   // Sets the values in the given element to zero.
-  static Status SetElementZero(Tensor* element);
+  static absl::Status SetElementZero(Tensor* element);
 
   // Copies element into the index^th slice (in the first dimension)
   // of parent.  Allows for the parent's slice to have a larger size
   // than the element, and copies the element into the upper left hand
   // corner of the slice.
-  static Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
-                                         int index);
+  static absl::Status CopyElementToLargerSlice(const Tensor& element,
+                                               Tensor* parent, int index);
 
   std::vector<PartialTensorShape> partial_shapes_;
 
  private:
   ~PaddingFIFOQueue() override {}
 
-  static Status GetElementComponent(const PaddingFIFOQueue::Tuple& tuple,
-                                    int component, OpKernelContext* ctx,
-                                    Tensor* out_tensor);
+  static absl::Status GetElementComponent(const PaddingFIFOQueue::Tuple& tuple,
+                                          int component, OpKernelContext* ctx,
+                                          Tensor* out_tensor);
 
-  static Status IsSameSizeExceptZerosInFirst(const TensorShape& first,
-                                             const TensorShape& second);
+  static absl::Status IsSameSizeExceptZerosInFirst(const TensorShape& first,
+                                                   const TensorShape& second);
 
   PaddingFIFOQueue(const PaddingFIFOQueue&) = delete;
   void operator=(const PaddingFIFOQueue&) = delete;
