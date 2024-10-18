@@ -870,7 +870,6 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
   absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
-  LOG(ERROR) << "Coordination agent is set to ERROR: " << trimmed_error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = trimmed_error;
   error_fn_(trimmed_error);

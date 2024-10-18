@@ -75,29 +75,17 @@ class DistributedRuntimeClient {
     // is reported by the coordinator, or we have not heard from the coordinator
     // recently. `coordinator_reported_failure` is true in the former case.
     // Exposed so tests can override this behavior to something non-fatal.
-    std::function<void(absl::Status, bool coordinator_reported_failure)>
-        missed_heartbeat_callback =
-            [](absl::Status status, bool coordinator_reported_failure) {
-              if (coordinator_reported_failure) {
-                LOG(QFATAL)
-                    << "Terminating process because the coordinator detected "
-                       "missing heartbeats. This most likely indicates that "
-                       "another task died; see the other task logs for more "
-                       "details. Disable Python buffering, i.e. `python -u`, "
-                       "to be sure to see all the previous output. "
-                       "absl::Status: "
-                    << status;
-              } else {
-                LOG(QFATAL)
-                    << "Terminating process because of missing heartbeat "
-                       "response from the coordinator. This most likely "
-                       "indicates that the coordinator task died; see the "
-                       "coordinator's task logs for more details. "
-                       "Disable Python buffering, i.e. `python -u`, to be "
-                       "sure to see all the previous output. absl::Status: "
-                    << status;
-              }
-            };
+    std::function<void(absl::Status)> missed_heartbeat_callback =
+        [](const absl::Status& status) {
+          LOG(QFATAL) << "Terminating process because the JAX distributed "
+                         "service detected fatal errors. This most likely "
+                         "indicates that another task died; see the other task "
+                         "logs for more details. Disable Python buffering, "
+                         "i.e. `python -u`, to be sure to see all the "
+                         "previous output. "
+                         "absl::Status: "
+                      << status;
+        };
 
     // For testing. Should the client explicitly Shutdown() on destruction?
     bool shutdown_on_destruction = true;
