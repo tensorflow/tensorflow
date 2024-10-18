@@ -40,10 +40,11 @@ namespace functor {
 
 template <>
 struct ReshapeSparseTensorFunctor<CPUDevice> {
-  Status operator()(OpKernelContext *context, const TensorShape &input_shape,
-                    const TensorShape &output_shape,
-                    typename TTypes<int64_t>::ConstMatrix input_indices,
-                    typename TTypes<int64_t>::Matrix output_indices) const {
+  absl::Status operator()(
+      OpKernelContext *context, const TensorShape &input_shape,
+      const TensorShape &output_shape,
+      typename TTypes<int64_t>::ConstMatrix input_indices,
+      typename TTypes<int64_t>::Matrix output_indices) const {
     (void)context;  // Unused (only used in GPU implementation)
     const int64_t input_rank = input_shape.dims();
     const int64_t output_rank = output_shape.dims();

@@ -88,7 +88,7 @@ void SaveTensors(
   checkpoint::TensorSliceWriter writer(filename_t.flat<tstring>()(0),
                                        std::move(builder_func));
 
-  Status s;
+  absl::Status s;
   auto tensor_names_flat = tensor_names_t.flat<tstring>();
 
   // Process tensors in sorted name order.  This allows us to avoid seeking
@@ -294,7 +294,7 @@ struct RestoreOp {
     status = run(&reader);
   }
 
-  Status run(BundleReader* reader) {
+  absl::Status run(BundleReader* reader) {
     TensorShape restored_full_shape;
     TF_RETURN_IF_ERROR(
         reader->LookupTensorShape(tensor_name, &restored_full_shape));
@@ -357,15 +357,15 @@ struct RestoreOp {
   string reader_prefix;
   DataType dtype;
 
-  ::tensorflow::Status status;
+  absl::Status status;
 };
 
 }  // namespace
 
-Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
-                        const Tensor& tensor_names,
-                        const Tensor& shape_and_slices,
-                        absl::Span<const DataType> dtypes) {
+absl::Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
+                              const Tensor& tensor_names,
+                              const Tensor& shape_and_slices,
+                              absl::Span<const DataType> dtypes) {
   const string& prefix_string = prefix.scalar<tstring>()();
 
   const auto& tensor_names_flat = tensor_names.flat<tstring>();

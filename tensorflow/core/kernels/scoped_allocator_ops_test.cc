@@ -99,9 +99,9 @@ void PrepOp(DataType dtype, int32_t id,
 
   *backing_tensor = new Tensor(allocator, dtype, {num_elements});
   int64_t step_id = 10;
-  Status s = sam->AddScopedAllocator(**backing_tensor, step_id, id,
-                                     "sa_" + op_name + "_test", *fields,
-                                     fields_shapes.size());
+  absl::Status s = sam->AddScopedAllocator(**backing_tensor, step_id, id,
+                                           "sa_" + op_name + "_test", *fields,
+                                           fields_shapes.size());
   TF_ASSERT_OK(s);
 
   ScopedAllocatorContainer* sac = sam->GetContainer(step_id);
@@ -179,7 +179,7 @@ class ScopedAllocatorConcatOpTest : public OpsTestBase {
     // Check input and output are same tensor.
     const Tensor& input = context_->input(0);
     OpOutputList output_list;
-    Status s = context_->output_list("output", &output_list);
+    absl::Status s = context_->output_list("output", &output_list);
     TF_ASSERT_OK(s);
     const Tensor& output = *(output_list[0]);
     CHECK_EQ(DMAHelper::base(&input), DMAHelper::base(&output));
@@ -242,7 +242,7 @@ TEST_F(ScopedAllocatorConcatOpTest, FailNumElementsCheck) {
   AddInputFromArray<float>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<float>({4}, {0, 1, 2, 3});
   AddInputFromArray<float>({4}, {4, 5, 6, 7});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
 }
 
@@ -253,7 +253,7 @@ TEST_F(ScopedAllocatorConcatOpTest, FailBounds) {
   AddInputFromArray<double>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<double>({4}, {0, 1, 2, 3});
   AddInputFromArray<double>({4}, {4, 5, 6, 7});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
 }
 
@@ -301,7 +301,7 @@ class ScopedAllocatorSplitOpTest : public OpsTestBase {
     const char* lower_limit_c =
         static_cast<const char*>(lower_limit);  // for pointer arithmetic
     OpOutputList output_list;
-    Status s = context_->output_list("output", &output_list);
+    absl::Status s = context_->output_list("output", &output_list);
     TF_ASSERT_OK(s);
     for (int i = 0; i < output_list.size(); i++) {
       const Tensor& output = *(output_list[i]);
@@ -334,7 +334,7 @@ TEST_F(ScopedAllocatorSplitOpTest, Success3) {
 
 TEST_F(ScopedAllocatorSplitOpTest, FailNLessThan2) {
   BuildNodeDef({4, 4}, DT_FLOAT, "test", 120, 1, {{4, 4}});
-  Status s = InitOp();
+  absl::Status s = InitOp();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
 }
 
@@ -348,7 +348,7 @@ TEST_F(ScopedAllocatorSplitOpTest, FailBounds) {
   AddInputFromArray<double>({8}, {0, 1, 2, 3, 4, 5, 6, 7});
   AddInputFromArray<double>({4}, {0, 1, 2, 3});
   AddInputFromArray<double>({4}, {4, 5, 6, 7});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
 }
 

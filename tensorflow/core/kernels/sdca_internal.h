@@ -76,7 +76,7 @@ class Regularizations {
   Regularizations() {}
 
   // Initialize() must be called immediately after construction.
-  Status Initialize(OpKernelConstruction* const context) {
+  absl::Status Initialize(OpKernelConstruction* const context) {
     TF_RETURN_IF_ERROR(context->GetAttr("l1", &symmetric_l1_));
     TF_RETURN_IF_ERROR(context->GetAttr("l2", &symmetric_l2_));
     shrinkage_ = symmetric_l1_ / symmetric_l2_;
@@ -294,7 +294,7 @@ class ModelWeights {
       const Eigen::ThreadPoolDevice& device, const Example& example,
       const std::vector<double>& normalized_bounded_dual_delta);
 
-  Status Initialize(OpKernelContext* const context);
+  absl::Status Initialize(OpKernelContext* const context);
 
   const std::vector<FeatureWeightsSparseStorage>& sparse_weights() const {
     return sparse_weights_;
@@ -327,7 +327,7 @@ class Examples {
   // Adaptive SDCA in the current implementation only works for
   // binary classification, where the input argument for num_weight_vectors
   // is 1.
-  Status SampleAdaptiveProbabilities(
+  absl::Status SampleAdaptiveProbabilities(
       const int num_loss_partitions, const Regularizations& regularization,
       const ModelWeights& model_weights,
       const TTypes<float>::Matrix example_state_data,
@@ -341,16 +341,16 @@ class Examples {
   int num_features() const { return num_features_; }
 
   // Initialize() must be called immediately after construction.
-  Status Initialize(OpKernelContext* const context, const ModelWeights& weights,
-                    int num_sparse_features,
-                    int num_sparse_features_with_values,
-                    int num_dense_features);
+  absl::Status Initialize(OpKernelContext* const context,
+                          const ModelWeights& weights, int num_sparse_features,
+                          int num_sparse_features_with_values,
+                          int num_dense_features);
 
  private:
   // Reads the input tensors, and builds the internal representation for sparse
   // features per example. This function modifies the |examples| passed in
   // to build the sparse representations.
-  static Status CreateSparseFeatureRepresentation(
+  static absl::Status CreateSparseFeatureRepresentation(
       const DeviceBase::CpuWorkerThreads& worker_threads, int num_examples,
       int num_sparse_features, const ModelWeights& weights,
       const OpInputList& sparse_example_indices_inputs,
@@ -361,7 +361,7 @@ class Examples {
   // Reads the input tensors, and builds the internal representation for dense
   // features per example. This function modifies the |examples| passed in
   // to build the sparse representations.
-  static Status CreateDenseFeatureRepresentation(
+  static absl::Status CreateDenseFeatureRepresentation(
       const DeviceBase::CpuWorkerThreads& worker_threads, int num_examples,
       int num_dense_features, const ModelWeights& weights,
       const OpInputList& dense_features_inputs,
@@ -369,7 +369,7 @@ class Examples {
 
   // Computes squared example norm per example i.e |x|^2. This function modifies
   // the |examples| passed in and adds the squared norm per example.
-  static Status ComputeSquaredNormPerExample(
+  static absl::Status ComputeSquaredNormPerExample(
       const DeviceBase::CpuWorkerThreads& worker_threads, int num_examples,
       int num_sparse_features, int num_dense_features,
       std::vector<Example>* const examples);

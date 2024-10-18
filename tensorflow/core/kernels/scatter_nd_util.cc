@@ -19,9 +19,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
-                                    const TensorShape& indices_shape,
-                                    const TensorShape& updates_shape) {
+absl::Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
+                                          const TensorShape& indices_shape,
+                                          const TensorShape& updates_shape) {
   const int64_t slice_dim =
       (indices_shape.dims() > 1)
           ? indices_shape.dim_size(indices_shape.dims() - 1)
