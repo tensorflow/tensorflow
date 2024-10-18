@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "nanobind/nanobind.h"
-#include "nanobind/stl/pair.h"  // IWYU pragma: keep
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
@@ -115,6 +114,15 @@ tensorflow::ProfileOptions DefaultPythonProfileOptions() {
   options.set_enable_hlo_proto(true);
   return options;
 }
+
+// Represents a `tensorflow.profiler.ProfiledInstructionsProto` as an in-memory
+// object.
+struct ProfiledInstruction {
+  // Name of the profiled XLA HLO instruction.
+  const std::string instruction_name;
+  // Cost in microseconds.
+  const double cost_us;
+};
 
 }  // namespace
 
@@ -279,22 +287,28 @@ void BuildProfilerSubmodule(nb::module_& m) {
       },
       nb::arg("tensorboard_dir"));
 
-  profiler.def(
-      "get_instructions_profile",
-      [](const std::string& tensorboard_dir)
-          -> std::vector<std::pair<std::string, double>> {
-        tensorflow::profiler::ProfiledInstructionsProto profile_proto;
-        xla::ThrowIfError(
-            xla::ConvertXplaneUnderLogdirToProfiledInstructionsProto(
-                tensorboard_dir, &profile_proto));
-        std::vector<std::pair<std::string, double>> results;
-        results.reserve(profile_proto.costs().size());
-        for (const auto& c : profile_proto.costs()) {
-          results.emplace_back(c.name(), c.cost_us());
-        }
-        return results;
-      },
-      nb::arg("tensorboard_dir"));
+  // The difference between this API and `get_fdo_profile` is that this
+  // API parses the protos to in-memory Python objects so that they can be
+  // easily manipulated by the users.
+  nb::class_<ProfiledInstruction> profiled_instruction_class(
+      profiler, "ProfiledInstruction");
+  profiled_instruction_class
+      .def_ro("name", &ProfiledInstruction::instruction_name)
+      .def_ro("cost_us", &ProfiledInstruction::cost_us);
+
+  profiler.def("parse_profiled_instructions_proto",
+               [](nb::bytes profile) -> std::vector<ProfiledInstruction> {
+                 tensorflow::profiler::ProfiledInstructionsProto profile_proto;
+                 profile_proto.ParseFromString(
+                     std::string(profile.c_str(), profile.size()));
+
+                 std::vector<ProfiledInstruction> result;
+                 for (const auto& c : profile_proto.costs()) {
+                   result.push_back(ProfiledInstruction{
+                       .instruction_name = c.name(), .cost_us = c.cost_us()});
+                 }
+                 return result;
+               });
 
   profiler.def("get_fdo_profile",
                [](nb::bytes xspace, bool as_textproto = false) -> nb::object {
