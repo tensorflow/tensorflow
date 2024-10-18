@@ -69,11 +69,12 @@ using FDH = ::tensorflow::FunctionDefHelper;
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
-Status GetOpSig(const string& op, const OpDef** sig) {
+absl::Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, const error::Code code, StringPiece substr) {
+void HasError(const absl::Status& s, const error::Code code,
+              StringPiece substr) {
   EXPECT_EQ(s.code(), code) << s;
   EXPECT_TRUE(absl::StrContains(s.message(), substr))
       << s << ", expected substring " << substr;
@@ -187,9 +188,10 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     fdef_lib_ = lib_def_->ToProto();
   }
 
-  Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
-             FunctionLibraryRuntime::Options opts,
-             const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
+  absl::Status Run(FunctionLibraryRuntime* flr,
+                   FunctionLibraryRuntime::Handle handle,
+                   FunctionLibraryRuntime::Options opts,
+                   const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     std::function<void(std::function<void()>)> runner =
         [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
@@ -197,8 +199,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     opts.runner = &runner;
     Notification done;
     std::vector<Tensor> out;
-    Status status;
-    flr->Run(opts, handle, args, &out, [&status, &done](const Status& s) {
+    absl::Status status;
+    flr->Run(opts, handle, args, &out, [&status, &done](const absl::Status& s) {
       status = s;
       done.Notify();
     });
@@ -213,35 +215,37 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
-                     test::function::Attrs attrs,
-                     FunctionLibraryRuntime::Handle* handle) {
+  absl::Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+                           test::function::Attrs attrs,
+                           FunctionLibraryRuntime::Handle* handle) {
     return flr->Instantiate(name, attrs, handle);
   }
 
-  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
-                     test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::Handle* handle) {
+  absl::Status Instantiate(
+      FunctionLibraryRuntime* flr, const string& name,
+      test::function::Attrs attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::Handle* handle) {
     return flr->Instantiate(name, attrs, options, handle);
   }
 
-  Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
-                           test::function::Attrs attrs,
-                           const std::vector<Tensor>& args,
-                           std::vector<Tensor*> rets) {
+  absl::Status InstantiateAndRun(FunctionLibraryRuntime* flr,
+                                 const string& name,
+                                 test::function::Attrs attrs,
+                                 const std::vector<Tensor>& args,
+                                 std::vector<Tensor*> rets) {
     return InstantiateAndRun(flr, name, attrs,
                              FunctionLibraryRuntime::InstantiateOptions(), args,
                              std::move(rets));
   }
 
-  Status InstantiateAndRun(
+  absl::Status InstantiateAndRun(
       FunctionLibraryRuntime* flr, const string& name,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(name, attrs, options, &handle);
+    absl::Status status = flr->Instantiate(name, attrs, options, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -253,7 +257,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     status = flr->ReleaseHandle(handle);
     if (!status.ok()) return status;
 
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    absl::Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(absl::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
@@ -262,16 +266,18 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return status;
   }
 
-  Status Run(FunctionLibraryRuntime* flr, FunctionLibraryRuntime::Handle handle,
-             FunctionLibraryRuntime::Options opts, CallFrameInterface* frame) {
+  absl::Status Run(FunctionLibraryRuntime* flr,
+                   FunctionLibraryRuntime::Handle handle,
+                   FunctionLibraryRuntime::Options opts,
+                   CallFrameInterface* frame) {
     std::function<void(std::function<void()>)> runner =
         [](std::function<void()> fn) {
           test::function::FunctionTestSchedClosure(fn);
         };
     opts.runner = &runner;
     Notification done;
-    Status status;
-    flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
+    absl::Status status;
+    flr->Run(opts, handle, frame, [&status, &done](const absl::Status& s) {
       status = s;
       done.Notify();
     });
@@ -283,13 +289,12 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  Status InstantiateAndRunViaCallFrameInterface(FunctionLibraryRuntime* flr,
-                                                const string& name,
-                                                test::function::Attrs attrs,
-                                                const std::vector<Tensor>& args,
-                                                std::vector<Tensor*> rets) {
+  absl::Status InstantiateAndRunViaCallFrameInterface(
+      FunctionLibraryRuntime* flr, const string& name,
+      test::function::Attrs attrs, const std::vector<Tensor>& args,
+      std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(name, attrs, &handle);
+    absl::Status status = flr->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -312,7 +317,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     status = flr->ReleaseHandle(handle);
     if (!status.ok()) return status;
 
-    Status status2 = Run(flr, handle, opts, args, std::move(rets));
+    absl::Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(absl::IsNotFound(status2));
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
@@ -324,7 +329,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                                      const string& name,
                                      test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(name, attrs, &handle);
+    absl::Status status = flr->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return nullptr;
@@ -340,7 +345,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                                      const string& func,
                                      test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(func, attrs, &handle);
+    absl::Status status = flr->Instantiate(func, attrs, &handle);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return nullptr;
@@ -439,7 +444,7 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
   size_t num_args() const override { return 1; }
   size_t num_retvals() const override { return 1; }
 
-  Status GetArg(int index, const Tensor** val) override {
+  absl::Status GetArg(int index, const Tensor** val) override {
     LOG(FATAL) << "Should not be called.";
   }
 
@@ -447,7 +452,7 @@ class ConsumeArgumentCallFrame : public CallFrameInterface {
 
   void ConsumeArg(int index, Tensor* val) override { *val = std::move(*arg_); }
 
-  Status SetRetval(int index, const Tensor& val) override {
+  absl::Status SetRetval(int index, const Tensor& val) override {
     CHECK_EQ(index, 0);
     *retval_ = val;
     return absl::OkStatus();
@@ -731,8 +736,9 @@ class DummyExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
-                       std::unique_ptr<Executor>* out_executor) override {
+    absl::Status NewExecutor(const LocalExecutorParams& params,
+                             const Graph& graph,
+                             std::unique_ptr<Executor>* out_executor) override {
       return errors::Internal("This is a dummy.");
     }
   };
@@ -1123,7 +1129,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepCallerNode) {
   // Construct a graph:
   //   a = Arg[dtype=DT_FLOAT]
   //   b = FunctionWithControlOutputs(a)
-  auto construct_graph = [this](std::unique_ptr<Graph>* g) -> Status {
+  auto construct_graph = [this](std::unique_ptr<Graph>* g) -> absl::Status {
     Scope s = Scope::NewRootScope();
     TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
@@ -1208,7 +1214,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
   // Construct a graph:
   //   a = Arg[dtype=DT_FLOAT, _device=arg_device]
   //   b = AddFunc[_device=call_device](a)
-  auto construct_graph = [&](std::unique_ptr<Graph>* g) -> Status {
+  auto construct_graph = [&](std::unique_ptr<Graph>* g) -> absl::Status {
     Scope s = Scope::NewRootScope();
     TF_RETURN_IF_ERROR(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a").WithDevice(arg_device), DT_FLOAT, 0);
