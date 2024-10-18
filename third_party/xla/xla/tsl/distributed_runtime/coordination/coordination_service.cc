@@ -1108,7 +1108,7 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
     absl::Status barrier_error =
         MakeCoordinationError(absl::InternalError(absl::StrCat(
             "Barrier failed beacuse a task is in error. Barrier Id: ",
-            barrier_id, ", Task: ", task_name, "Error: ", error.message())));
+            barrier_id, ", Task: ", task_name, " Error: ", error.message())));
     PassBarrier(barrier_id, barrier_error, &barriers_[barrier_id]);
   }
 }
