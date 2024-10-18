@@ -2888,6 +2888,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "layout_canonicalizer",
+    srcs = ["layout_canonicalizer.cc"],
+    hdrs = ["layout_canonicalizer.h"],
+    deps = [
+        ":hlo_pass",
+        ":layout_assignment",
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "layout_canonicalizer_test",
+    srcs = ["layout_canonicalizer_test.cc"],
+    deps = [
+        ":layout_canonicalizer",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 xla_cc_test(
     name = "while_loop_simplifier_test",
     srcs = ["while_loop_simplifier_test.cc"],
