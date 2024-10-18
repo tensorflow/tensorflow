@@ -105,28 +105,29 @@ void NextPluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
-Status NextPluggableDevice::Sync() { return absl::OkStatus(); }
+absl::Status NextPluggableDevice::Sync() { return absl::OkStatus(); }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
 void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
 
-Status NextPluggableDevice::TryGetDeviceContext(DeviceContext** out_context) {
+absl::Status NextPluggableDevice::TryGetDeviceContext(
+    DeviceContext** out_context) {
   *out_context = device_context_.get();
   (*out_context)->Ref();
   return absl::OkStatus();
 }
 
-Status NextPluggableDevice::MakeTensorFromProto(
+absl::Status NextPluggableDevice::MakeTensorFromProto(
     const TensorProto& tensor_proto, const AllocatorAttributes alloc_attrs,
     Tensor* tensor) {
   Tensor parsed(tensor_proto.dtype());
   if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-    return Status(absl::StatusCode::kInvalidArgument,
-                  absl::StrCat("Cannot parse tensor from proto: ",
-                               tensor_proto.DebugString()));
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        absl::StrCat("Cannot parse tensor from proto: ",
+                                     tensor_proto.DebugString()));
   }
 
-  Status status;
+  absl::Status status;
   if (alloc_attrs.on_host()) {
     *tensor = parsed;
     VLOG(2) << "Allocated tensor at " << DMAHelper::base(tensor);
@@ -154,17 +155,17 @@ Status NextPluggableDevice::MakeTensorFromProto(
     notifications.emplace_back();
     Notification& n = *notifications.rbegin();
 
-    StatusCallback done = [&n, &status](const Status& s) {
+    StatusCallback done = [&n, &status](const absl::Status& s) {
       if (status.ok()) {
         status.Update(s);
       }
       n.Notify();
     };
     if (!DMAHelper::CanUseDMA(&from)) {
-      Status err =
-          Status(absl::StatusCode::kInternal,
-                 absl::StrCat("NextPluggableDevice copy from non-DMA ",
-                              DataTypeString(from.dtype()), " tensor"));
+      absl::Status err =
+          absl::Status(absl::StatusCode::kInternal,
+                       absl::StrCat("NextPluggableDevice copy from non-DMA ",
+                                    DataTypeString(from.dtype()), " tensor"));
       done(err);
       return err;
     }
@@ -175,16 +176,17 @@ Status NextPluggableDevice::MakeTensorFromProto(
     // If the tensor is not initialized, we likely ran out of memory.
     if (!copy_dst->IsInitialized()) {
       delete copy_dst;
-      Status err = Status(absl::StatusCode::kResourceExhausted,
-                          absl::StrCat("OOM when allocating tensor of shape ",
-                                       from.shape().DebugString(), " and type ",
-                                       DataTypeString(from.dtype())));
+      absl::Status err =
+          absl::Status(absl::StatusCode::kResourceExhausted,
+                       absl::StrCat("OOM when allocating tensor of shape ",
+                                    from.shape().DebugString(), " and type ",
+                                    DataTypeString(from.dtype())));
       done(err);
       return err;
     }
 
     auto wrapped_done = [to, copy_dst,
-                         done = std::move(done)](const Status& s) {
+                         done = std::move(done)](const absl::Status& s) {
       if (s.ok()) {
         *to = std::move(*copy_dst);
       }
@@ -198,7 +200,7 @@ Status NextPluggableDevice::MakeTensorFromProto(
     return absl::OkStatus();
   };
 
-  Status s;
+  absl::Status s;
   for (int64_t ix = 0; ix < parsed.NumElements(); ++ix) {
     s = VariantDeviceCopy(VariantDeviceCopyDirection::HOST_TO_DEVICE, from[ix],
                           &copy_variant[ix], copier);
