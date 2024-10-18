@@ -135,6 +135,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_ordering",
         "//xla/service:logical_buffer",
