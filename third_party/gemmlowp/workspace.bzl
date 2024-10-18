@@ -8,7 +8,7 @@ def repo():
     # Attention: tools parse and update these lines.
     # LINT.IfChange
     GEMMLOWP_COMMIT = "16e8662c34917be0065110bfcd9cc27d30f52fdf"
-    GEMMLOWP_SHA256 = "7dc418717c8456473fac4ff2288b71057e3dcb72894524c734a4362cdb51fa8b"
+    GEMMLOWP_SHA256 = "c3feb896a1b42595cf9a508ed64ed0dc3cd84fffdb8eed790d02d0534ab322ce"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/gemmlowp.cmake)
 
     tf_http_archive(
