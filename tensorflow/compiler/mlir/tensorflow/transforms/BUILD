@@ -613,6 +613,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:stablehlo_custom_call_utils",
         "//tensorflow/compiler/mlir/tensorflow:string_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_side_effects",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
