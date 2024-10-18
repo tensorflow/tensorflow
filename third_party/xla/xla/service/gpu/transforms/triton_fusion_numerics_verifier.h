@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_NUMERICS_VERIFIER_H_
 
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -49,8 +52,17 @@ class TritonFusionNumericsVerifier : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  using FusionCacheKey = std::string;
+
+  int CacheHitsForTestingOnly() const { return cache_hits_; }
+
  private:
   AutotuneConfig config_;
+
+  // In some models there are many identical fusions. These are cached to avoid
+  // expensive recomputations.
+  absl::flat_hash_map<FusionCacheKey, absl::Status> fusion_result_cache_;
+  int cache_hits_ = 0;  // used for testing only.
 };
 
 namespace triton_fusion_numerics_pass_internal {
