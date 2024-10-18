@@ -12,8 +12,8 @@ module attributes {"triton_gpu.target" = "cuda:80", "triton_gpu.num-warps" = 4 :
     // CHECK-DAG: %[[RHS:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x64xf16, #triton_gpu.dot_op<{opIdx = 1, parent = #[[$MMA]], kWidth = 2}>>
     // CHECK-DAG: %[[ACC:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x64xf32, #[[$MMA]]>
     // CHECK-DAG: %[[META:.+]] = triton_gpu.convert_layout {{.+}} : {{.+}} -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[$MMA]]}>>
-    // CHECK: %[[OUT:.+]] = triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[$MMA]]>
-    %D = triton_gpu.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16, #lhs> meta tensor<64x4xi16, #blocked> * tensor<64x64xf16, #rhs> -> tensor<64x64xf32, #blocked>
+    // CHECK: %[[OUT:.+]] = triton_xla.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[$MMA]]>
+    %D = triton_xla.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16, #lhs> meta tensor<64x4xi16, #blocked> * tensor<64x64xf16, #rhs> -> tensor<64x64xf32, #blocked>
     // CHECK: triton_gpu.convert_layout %[[OUT]] : tensor<64x64xf32, #[[$MMA]]> -> tensor<64x64xf32, #blocked>
     tt.return %D : tensor<64x64xf32, #blocked>
   }
@@ -35,8 +35,8 @@ module attributes {"triton_gpu.target" = "cuda:90", "triton_gpu.num-warps" = 4 :
     // CHECK-DAG: %[[RHS:.+]] = triton_gpu.local_alloc %[[RHS_TEMP]] : (tensor<64x64xf16, #blocked>) -> !tt.memdesc<64x64xf16, #{{.+}}>
     // CHECK-DAG: %[[ACC:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x64xf32, #blocked> -> tensor<64x64xf32, #[[$MMA]]>
     // CHECK-DAG: %[[META:.+]] = triton_gpu.convert_layout {{.+}} : tensor<64x4xi16, #blocked> -> tensor<64x4xi16, #triton_gpu.sparse_dot_meta<{parent = #[[$MMA]]}>>
-    // CHECK: %[[OUT:.+]] = triton_gpu.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[$MMA]]>
-    %D = triton_gpu.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16, #lhs> meta tensor<64x4xi16, #blocked> * tensor<64x64xf16, #rhs> -> tensor<64x64xf32, #blocked>
+    // CHECK: %[[OUT:.+]] = triton_xla.sparse_dot %[[LHS]], %[[RHS]], %[[ACC]], %[[META]] : {{.+}} -> tensor<64x64xf32, #[[$MMA]]>
+    %D = triton_xla.sparse_dot %A, %B, %C, %meta : tensor<64x32xf16, #lhs> meta tensor<64x4xi16, #blocked> * tensor<64x64xf16, #rhs> -> tensor<64x64xf32, #blocked>
     // CHECK: triton_gpu.convert_layout %[[OUT]] : tensor<64x64xf32, #[[$MMA]]> -> tensor<64x64xf32, #blocked>
     tt.return %D : tensor<64x64xf32, #blocked>
   }
