@@ -69,11 +69,11 @@ bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
 }
 
 // Find KernelDef for `node`, greedily return first found from `devices`.
-Status TryFindKernelDef(const std::vector<DeviceType>& devices,
-                        const NodeDef& node, const KernelDef** kdef) {
+absl::Status TryFindKernelDef(const std::vector<DeviceType>& devices,
+                              const NodeDef& node, const KernelDef** kdef) {
   for (const DeviceType& device : devices) {
     const KernelDef* kernel = nullptr;
-    Status s = FindKernelDef(device, node, &kernel, nullptr);
+    absl::Status s = FindKernelDef(device, node, &kernel, nullptr);
     if (s.ok()) {
       if (kdef) {
         *kdef = kernel;
@@ -87,10 +87,10 @@ Status TryFindKernelDef(const std::vector<DeviceType>& devices,
 
 // Checks if a node's output port is host friendly.
 // Roughly this means checking if the output port is on Host memory.
-Status IsNodeOutputPortHostFriendly(const GraphView& graph,
-                                    GraphProperties* properties,
-                                    const NodeDef& node, int port_id,
-                                    bool* is_candidate) {
+absl::Status IsNodeOutputPortHostFriendly(const GraphView& graph,
+                                          GraphProperties* properties,
+                                          const NodeDef& node, int port_id,
+                                          bool* is_candidate) {
   *is_candidate = false;
 
   // Make sure we are not a denylisted op.
@@ -141,7 +141,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
 
   // Check if op's output port is pinned to HostMemory.
   const OpDef* op = nullptr;
-  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op);
+  absl::Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op);
   if (!s.ok()) {
     LOG(WARNING) << "Could not find OpDef for : " << node.op();
     return absl::OkStatus();
@@ -186,7 +186,7 @@ bool IsNodeInputPortHostFriendly(const NodeDef& node, int port_id) {
 
   // Check if op's input port is pinned to HostMemory.
   const OpDef* op = nullptr;
-  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op);
+  absl::Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op);
   if (!s.ok()) {
     LOG(WARNING) << "Could not find OpDef for : " << node.op();
     return false;
@@ -218,8 +218,9 @@ bool IsNodeInputPortHostFriendly(const NodeDef& node, int port_id) {
 // 2] Check if node can run on Host.
 // 3] Check all input/outputs are Host "friendly" (atm, friendly means small,
 //    ints, and pinned to Host).
-Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
-                           const NodeDef& node, bool* is_candidate) {
+absl::Status IsNodeHostCandidate(const GraphView& graph,
+                                 GraphProperties* properties,
+                                 const NodeDef& node, bool* is_candidate) {
   *is_candidate = false;
 
   // Check if node already on CPU.
@@ -234,7 +235,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   }
 
   // Check the node can be run on CPU.
-  Status s = TryFindKernelDef({DEVICE_CPU}, node, nullptr);
+  absl::Status s = TryFindKernelDef({DEVICE_CPU}, node, nullptr);
   if (!s.ok()) {
     return absl::OkStatus();
   }
@@ -295,8 +296,9 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
 }
 }  // end namespace internal
 
-Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                    GraphDef* optimized_graph) {
+absl::Status PinToHostOptimizer::Optimize(Cluster* cluster,
+                                          const GrapplerItem& item,
+                                          GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
   // Skip Legacy TPU bridge graphs.

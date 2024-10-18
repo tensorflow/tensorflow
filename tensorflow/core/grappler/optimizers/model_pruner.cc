@@ -90,7 +90,7 @@ bool RemovalIncreasesEdgeCount(const NodeDef& node,
 bool IsOutputPortRefValue(const NodeDef& node, int port_id,
                           const OpRegistryInterface& op_registry) {
   const OpRegistrationData* op_reg_data = nullptr;
-  Status s = op_registry.LookUp(node.op(), &op_reg_data);
+  absl::Status s = op_registry.LookUp(node.op(), &op_reg_data);
   if (s.ok()) {
     DataType output_type;
     s = OutputTypeForNode(node, op_reg_data->op_def, port_id, &output_type);
@@ -282,11 +282,11 @@ string NewIdentityFromIdentityN(int pos, const NodeDef& identity_n,
     return "";
   }
   NodeDef* new_node = graph->add_node();
-  Status status = NodeDefBuilder(new_node_name, "Identity")
-                      .Input(identity_n.input(pos), 0,
-                             identity_n.attr().at("T").list().type(pos))
-                      .Device(identity_n.device())
-                      .Finalize(new_node);
+  absl::Status status = NodeDefBuilder(new_node_name, "Identity")
+                            .Input(identity_n.input(pos), 0,
+                                   identity_n.attr().at("T").list().type(pos))
+                            .Device(identity_n.device())
+                            .Finalize(new_node);
   if (!status.ok()) {
     return "";
   }
@@ -295,7 +295,7 @@ string NewIdentityFromIdentityN(int pos, const NodeDef& identity_n,
   return new_node->name();
 }
 
-Status RewriteIdentityNAndInputsOutputs(
+absl::Status RewriteIdentityNAndInputsOutputs(
     NodeDef* node, int num_non_control_inputs,
     const absl::flat_hash_set<int>& terminal_ports, GraphDef* graph,
     NodeMap* node_map) {
@@ -384,9 +384,9 @@ Status RewriteIdentityNAndInputsOutputs(
   return absl::OkStatus();
 }
 
-Status SplitIdentityNInputs(GraphDef* graph,
-                            const std::vector<string>& terminal_nodes,
-                            bool* updated_graph) {
+absl::Status SplitIdentityNInputs(GraphDef* graph,
+                                  const std::vector<string>& terminal_nodes,
+                                  bool* updated_graph) {
   // For inputs of IdentityN nodes that do not lead to a terminal node, remove
   // them from IdentityN and create new individual Identity nodes. This will
   // allow ModelPruner to possibly remove nodes in the transitive fanin of the
@@ -418,8 +418,8 @@ Status SplitIdentityNInputs(GraphDef* graph,
 
 }  // namespace
 
-Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
-                             GraphDef* optimized_graph) {
+absl::Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
+                                   GraphDef* optimized_graph) {
   const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
 
   // Prune all the nodes that won't be executed, ie all the nodes that aren't in
