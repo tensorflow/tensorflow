@@ -55,11 +55,11 @@ class LightOutsideCompilationOp : public XlaOpKernel {
   }
 
  private:
-  Status CompileToCustomCallCallingTfKernel(int graph_def_version,
-                                            const NodeDef& node_def,
-                                            XlaOpKernelContext* ctx);
-  static Status CallTfKernel(void* stream_handle, void** buffers,
-                             const char* opaque, int opaque_len);
+  absl::Status CompileToCustomCallCallingTfKernel(int graph_def_version,
+                                                  const NodeDef& node_def,
+                                                  XlaOpKernelContext* ctx);
+  static absl::Status CallTfKernel(void* stream_handle, void** buffers,
+                                   const char* opaque, int opaque_len);
 
   NodeDef def_;
   int graph_def_version_;

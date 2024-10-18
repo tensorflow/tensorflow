@@ -64,7 +64,8 @@ class LoggingHooksTest : public ::testing::Test {
 
     test_group_name_ = "TestGroup";
     test_dir_ = testing::TmpDir();
-    setenv("TF_DUMP_GRAPH_PREFIX", test_dir_.c_str(), 1);
+    setenv(/*name=*/"TF_DUMP_GRAPH_PREFIX", /*value=*/test_dir_.c_str(),
+           /*overwrite=*/1);
   }
 
   absl::Status CreateMlirModule(std::string mlir_module_filename) {

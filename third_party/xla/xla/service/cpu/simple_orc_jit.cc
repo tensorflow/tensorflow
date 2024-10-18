@@ -24,11 +24,13 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <system_error>  // NOLINT
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -81,6 +83,7 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/logging.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
@@ -97,15 +100,6 @@ extern "C" uint16_t __truncsfbf2(float);
 extern "C" uint16_t __truncdfbf2(double);
 
 namespace xla::cpu {
-
-std::vector<std::string> DetectMachineAttributes() {
-  std::vector<std::string> result;
-  for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
-    result.push_back((enabled ? '+' : '-') + std::string(feature));
-  }
-  return result;
-}
-
 namespace {
 
 class DefaultMemoryMapper final
@@ -302,30 +296,166 @@ bool ContiguousSectionMemoryManager::finalizeMemory(std::string* err_msg) {
   return false;
 }
 
+using tsl::port::CPUFeature;
+
+// Returns the earliest CPU generation that supports the instruction set.
+llvm::StringRef CPUTargetFromMaxFeature(CPUFeature max_feature) {
+  switch (max_feature) {
+    case CPUFeature::SSE4_2:
+      return "nehalem";
+    case CPUFeature::AVX:
+      return "sandybridge";
+    case CPUFeature::AVX2:
+      return "haswell";
+    case CPUFeature::AVX512F:
+      return "skylake-avx512";
+    case CPUFeature::AVX512_VNNI:
+      return "cascadelake";
+    case CPUFeature::AVX512_BF16:
+      return "cooperlake";
+    case CPUFeature::AMX_BF16:
+    case CPUFeature::AMX_INT8:
+      return "sapphirerapids";
+    case CPUFeature::AMX_FP16:
+      return "graniterapids";
+    default:
+      LOG(FATAL) << "Unsupported max feature: " << max_feature;
+  }
+}
+
 }  // namespace
+
+std::optional<CPUFeature> ISAStringToFeature(
+    const absl::string_view feature_string) {
+  if (feature_string.empty()) return std::nullopt;
+
+  // Non-exhaustive list of CPU features. (Only the ones we care about.)
+  // TODO(penporn): Handle ARM
+  static auto* x86 = [] {
+    return new absl::flat_hash_map<std::string, CPUFeature>(
+        {{"SSE4_2", CPUFeature::SSE4_2},
+         {"AVX", CPUFeature::AVX},
+         {"AVX2", CPUFeature::AVX2},
+         {"AVX512", CPUFeature::AVX512F},
+         {"AVX512_VNNI", CPUFeature::AVX512_VNNI},
+         {"AVX512_BF16", CPUFeature::AVX512_BF16},
+         {"AMX", CPUFeature::AMX_BF16},  // Includes AMX_INT8.
+         {"AMX_FP16", CPUFeature::AMX_FP16}});
+  }();
+
+  // Assume that `feature_string` always contains all uppercase letters.
+  if (auto it = x86->find(feature_string); it != x86->end()) return it->second;
+  LOG(WARNING) << "Unknown CPU ISA: " << feature_string;
+  return std::nullopt;
+}
+
+// Disable any feature that is newer than `max_feature`.
+bool ShouldEnableCPUFeature(const llvm::StringRef feature,
+                            const CPUFeature& max_feature) {
+  // x86 CPUs have backward compatibility so newer CPUs have all features of
+  // older CPUs. We go through switch cases from oldest features to newest.
+  //   - Each case looks for features that are introduced in the next
+  //     generation, i.e., features that should be disabled if `max_feature` is
+  //     older or equal to the case's ISA.
+  //   - We combine all features that needs to be disabled from all ISAs newer
+  //     than `max_feature` by falling through cases.
+  //
+  // For example, if `max_feature` is AVX2, we start by disabling
+  // AVX512-generation features in the AVX2 case, then fall through to the
+  // AVX512 case to disable next-gen features (AVX512_VNNI), etc, all the way
+  // down to the newest one.
+  //
+  // TODO(https://github.com/openxla/xla/issues/17758): Figure out if we need to
+  // support AVX10 and where to put it.
+  switch (max_feature) {
+    case CPUFeature::SSE4_2:
+      if (feature.starts_with("avx") || feature == "f16c" ||
+          feature == "vpclmulqdq" || feature == "vaes") {
+        return false;
+      }
+      [[fallthrough]];
+    case CPUFeature::AVX:
+      if (feature.starts_with("avx2") || feature.starts_with("fma")) {
+        return false;
+      }
+      [[fallthrough]];
+    case CPUFeature::AVX2:
+      if (feature.starts_with("avx512") || feature == "evex512") return false;
+      [[fallthrough]];
+    case CPUFeature::AVX512F:
+      if (feature == "avx512vnni") return false;
+      [[fallthrough]];
+    case CPUFeature::AVX512_VNNI:
+      if (feature == "avx512bf16") return false;
+      [[fallthrough]];
+    case CPUFeature::AVX512_BF16:
+      if (feature.starts_with("amx")) return false;
+      [[fallthrough]];
+    case CPUFeature::AMX_INT8:
+    case CPUFeature::AMX_BF16:
+      if (feature == "amx-fp16") return false;
+      [[fallthrough]];
+    default:
+      // Leave all other features enabled.
+      return true;
+  }
+}
+
+DetectedMachineAttributes DetectMachineAttributes(
+    std::optional<CPUFeature> max_feature) {
+  DetectedMachineAttributes result;
+  result.features_filtered = false;
+  // We only have x86 constraints. Skip the check if we are on non-x86 CPUs.
+  bool no_feature_constraint =
+      !max_feature.has_value() || !tsl::port::IsX86CPU();
+  for (const auto& [feature, enabled] : llvm::sys::getHostCPUFeatures()) {
+    bool should_enable =
+        enabled && (no_feature_constraint ||
+                    ShouldEnableCPUFeature(feature, *max_feature));
+    result.features.push_back(
+        absl::StrCat(should_enable ? "+" : "-", std::string(feature)));
+    result.features_filtered |= (should_enable != enabled);
+  }
+  std::sort(result.features.begin(), result.features.end());
+  return result;
+}
+
+std::vector<std::string> DetectMachineAttributes() {
+  return DetectMachineAttributes(std::nullopt).features;
+}
 
 /*static*/ std::unique_ptr<llvm::TargetMachine>
 SimpleOrcJIT::InferTargetMachineForJIT(
-    const llvm::TargetOptions& target_options,
-    llvm::CodeGenOptLevel opt_level) {
-  std::vector<std::string> attrs = DetectMachineAttributes();
-  llvm::SmallVector<std::string, 0> llvm_attrs(attrs.begin(), attrs.end());
+    const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
+    absl::string_view max_cpu_isa) {
+  std::optional<CPUFeature> max_feature = ISAStringToFeature(max_cpu_isa);
+  auto result = DetectMachineAttributes(max_feature);
+  llvm::SmallVector<std::string, 0> llvm_attrs(result.features.begin(),
+                                               result.features.end());
+  // If `max_feature` is newer than the host CPU, we should keep the host CPU
+  // name, e.g., we don't want to set the target CPU to Skylake when we are on
+  // a Broadwell host.
+  llvm::StringRef target_cpu = result.features_filtered
+                                   ? CPUTargetFromMaxFeature(*max_feature)
+                                   : llvm::sys::getHostCPUName();
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
           .setOptLevel(opt_level)
           .selectTarget(
               /*TargetTriple=*/llvm::Triple(), /*MArch=*/"",
-              /*MCPU=*/llvm::sys::getHostCPUName(),
+              /*MCPU=*/target_cpu,
               /*MAttrs=*/llvm_attrs));
   CHECK(target_machine != nullptr);
   return target_machine;
 }
 
 static CompilerFunctor::TargetMachineBuilder CreateTargetMachineBuilder(
-    llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level) {
-  return [target_options, opt_level]() {
-    return SimpleOrcJIT::InferTargetMachineForJIT(target_options, opt_level);
+    llvm::TargetOptions target_options, llvm::CodeGenOptLevel opt_level,
+    absl::string_view max_cpu_isa) {
+  return [target_options, opt_level, max_cpu_isa]() {
+    return SimpleOrcJIT::InferTargetMachineForJIT(target_options, opt_level,
+                                                  max_cpu_isa);
   };
 }
 
@@ -338,9 +468,9 @@ SimpleOrcJIT::SimpleOrcJIT(
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
-    size_t num_jit_dylibs)
+    size_t num_jit_dylibs, absl::string_view max_cpu_isa)
     : target_machine_builder_(
-          CreateTargetMachineBuilder(target_options, opt_level)),
+          CreateTargetMachineBuilder(target_options, opt_level, max_cpu_isa)),
       target_machine_(target_machine_builder_()),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
@@ -426,7 +556,7 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook,
-    size_t num_jit_dylibs) {
+    size_t num_jit_dylibs, absl::string_view max_cpu_isa) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
       llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
@@ -441,7 +571,7 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
       target_options, opt_level, optimize_for_size, disable_expensive_passes,
       disable_slp_vectorizer, fast_math_flags, std::move(pre_optimization_hook),
       std::move(post_optimization_hook), std::move(post_codegen_hook),
-      num_jit_dylibs);
+      num_jit_dylibs, std::move(max_cpu_isa));
 }
 
 llvm::orc::ExecutorSymbolDef SimpleOrcJIT::ResolveRuntimeSymbol(

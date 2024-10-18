@@ -23,39 +23,14 @@ namespace port {
 
 class Initializer {
  public:
-  typedef void (*InitializerFunc)();
-  explicit Initializer(InitializerFunc func) { func(); }
-
-  struct Dependency {
-    Dependency(const char *n, Initializer *i) : name(n), initializer(i) {}
-    const char *const name;
-    Initializer *const initializer;
-  };
-
-  struct DependencyRegisterer {
-    DependencyRegisterer(const char *type, const char *name,
-                         Initializer *initializer,
-                         const Dependency &dependency);
-  };
+  explicit Initializer(void (*func)()) { func(); }
 };
 
 }  // namespace port
 }  // namespace stream_executor
 
-#define STREAM_EXECUTOR_REGISTER_INITIALIZER(type, name, body)             \
-  static void google_init_##type##_##name() { body; }                      \
-  ::stream_executor::port::Initializer google_initializer_##type##_##name( \
-      google_init_##type##_##name)
-
-#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(name, body) \
-  STREAM_EXECUTOR_REGISTER_INITIALIZER(module, name, body)
-
-#define STREAM_EXECUTOR_DECLARE_INITIALIZER(type, name) \
-  extern ::stream_executor::port::Initializer google_initializer_##type##_##name
-
-#define STREAM_EXECUTOR_DECLARE_MODULE_INITIALIZER(name) \
-  STREAM_EXECUTOR_DECLARE_INITIALIZER(module, name)
-
-#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER_SEQUENCE(name1, name2)
+#define STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(name, body)            \
+  ::stream_executor::port::Initializer google_initializer_module##_##name( \
+      []() { body; })
 
 #endif  // XLA_STREAM_EXECUTOR_PLATFORM_DEFAULT_INITIALIZE_H_

@@ -575,7 +575,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1570,6 +1570,7 @@ tf_proto_library(
         ":types_proto",
         ":versions_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -1802,6 +1803,9 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ] + default_visibility,
 )
 
 # copybara:uncomment_begin(google-only)

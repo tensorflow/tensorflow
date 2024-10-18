@@ -1224,7 +1224,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  std::vector<DimVar> dimension_ranges = DimVarsFromGPUGrid(
+  std::vector<IndexingMap::Variable> dimension_ranges = DimVarsFromGPUGrid(
       {tiling_.GetNumThreadsPerBlock(), 1, 1, tiling_.GetNumBlocks(),
        static_cast<int64_t>(groups_.grouped_roots.size()), 1});
 
@@ -1260,7 +1260,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     mlir::SmallVector<mlir::AffineExpr> projected_dims{
         block_offsets.getResult(kColMajorKept),
         block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]};
-    std::vector<RangeVar> range_vars;
+    std::vector<IndexingMap::Variable> range_vars;
     if (thread_ids.size() == 4) {
       int vector_size = tiling_.GetThreadTileSize().back();
       range_vars.push_back({0, vector_size - 1});

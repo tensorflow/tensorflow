@@ -23,14 +23,15 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "xla/client/lib/comparators.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/comparators.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -40,20 +41,6 @@ limitations under the License.
 namespace xla {
 
 namespace m = match;
-
-// TODO(cheshire): Avoid duplication w/ cudnn_vectorize_convolutions.
-static absl::StatusOr<HloComputation*> BuilderToHloComputation(
-    XlaComputation& comp, HloComputation* sibling_computation) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module,
-                      HloModule::CreateFromProto(comp.proto(), config));
-
-  HloModule* dest_module = sibling_computation->parent();
-  HloCloneContext context(dest_module);
-  return dest_module->DeepCloneComputation(new_module->entry_computation(),
-                                           &context);
-}
 
 static bool IsNanSafeGt(HloComputation* comp) {
   namespace m = match;
@@ -500,9 +487,9 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     XlaComputation comparison = topk->largest()
                                     ? CreateScalarGtComputation(ptypes, &b)
                                     : CreateScalarLtComputation(ptypes, &b);
-
-    TF_ASSIGN_OR_RETURN(HloComputation * comparator,
-                        BuilderToHloComputation(comparison, topk->parent()));
+    TF_ASSIGN_OR_RETURN(
+        HloComputation * comparator,
+        XlaComputationToHloComputation(comparison, topk->parent()->parent()));
     return comparator;
   }
 

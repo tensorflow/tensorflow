@@ -22,14 +22,19 @@ namespace xla {
 namespace sdy {
 
 // Adds the common import passes for both the SDY and MHLO import
-// pipelines that need to be called before each pass converts an HLO sharding/
-// SDY sharding string into an `sdy.sharding` attribute.
+// pipelines that need to be called before each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
 void addCommonPreImportPasses(mlir::OpPassManager& pm);
 
 // Adds the common import passes for both the SDY and MHLO import
-// pipelines that need to be called after each pass converts an HLO sharding/
-// SDY sharding string into an `sdy.sharding` attribute.
+// pipelines that need to be called after each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
 void addCommonPostImportPasses(mlir::OpPassManager& pm);
+
+// Adds the common export passes for both the SDY and MHLO import
+// pipelines that need to be called before each pipeline converts an HLO
+// sharding/SDY sharding string into an `sdy.sharding` attribute.
+void addCommonPreExportPasses(mlir::OpPassManager& pm);
 
 }  // namespace sdy
 }  // namespace xla

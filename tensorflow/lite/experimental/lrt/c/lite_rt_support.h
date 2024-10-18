@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_C_LITE_RT_SUPPORT_H_
 
+#include <alloca.h>
 #include <stdio.h>
 
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
@@ -33,12 +34,8 @@ extern "C" {
     LRT_ABORT;                      \
   }
 
-#define LRT_RETURN_STATUS_IF_NOT_OK(expr)                 \
-  {                                                       \
-    LrtStatus stat = expr;                                \
-    if (GetStatusCode(stat) != kLrtStatusOk) return stat; \
-    StatusDestroy(stat);                                  \
-  }
+#define LRT_RETURN_STATUS_IF_NOT_OK(expr) \
+  if (LrtStatus status = expr; status != kLrtStatusOk) return status;
 
 // TODO: b/365295276 - Add optional debug only print messages support
 // to all macros.
@@ -46,13 +43,13 @@ extern "C" {
   LRT_RETURN_STATUS_IF_NOT_OK(expr)
 
 #define LRT_RETURN_VAL_IF_NOT_OK(expr, ret_val) \
-  {                                             \
-    LrtStatus stat = expr;                      \
-    LrtStatusCode code_ = GetStatusCode(stat);  \
-    StatusDestroy(stat);                        \
-    if (code_ != kLrtStatusOk) return ret_val;  \
-  }
+  if (LrtStatus status = expr; status != kLrtStatusOk) return ret_val;
 
+#define LRT_STACK_ARRAY(ty, var, size, init) \
+  ty* var = (ty*)alloca(sizeof(ty) * size);  \
+  for (ty* e = var; e < var + size; ++e) {   \
+    *e = init;                               \
+  }
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -15,16 +15,17 @@ limitations under the License.
 
 // Tests that constants in program memory round trip as expected.
 
-#include "xla/client/lib/constants.h"
+#include "xla/hlo/builder/lib/constants.h"
 
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/test.h"
 
@@ -46,10 +48,11 @@ class ConstantsTest : public ClientLibraryTestBase {
 template <typename T>
 class ConstantsFloatTest : public ConstantsTest {};
 
-typedef ::testing::Types<float, half, tsl::float8_e4m3fn,
-                         tsl::float8_e4m3b11fnuz, tsl::float8_e4m3fnuz,
-                         tsl::float8_e5m2, tsl::float8_e5m2fnuz>
-    FloatTypes;
+using FloatTypes =
+    ::testing::Types<float, half, tsl::float8_e3m4, tsl::float8_e4m3,
+                     tsl::float8_e4m3fn, tsl::float8_e4m3b11fnuz,
+                     tsl::float8_e4m3fnuz, tsl::float8_e5m2,
+                     tsl::float8_e5m2fnuz>;
 
 TYPED_TEST_SUITE(ConstantsFloatTest, FloatTypes);
 

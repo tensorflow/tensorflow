@@ -28,6 +28,7 @@ class MockContext : public Context {
   MOCK_METHOD(void, SetActive, (), (override));
   MOCK_METHOD(bool, IsActive, (), (const, override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
+  MOCK_METHOD(absl::Status, Synchronize, (), (override));
 };
 }  // namespace stream_executor::gpu
 

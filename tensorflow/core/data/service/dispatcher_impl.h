@@ -140,7 +140,7 @@ class DataServiceDispatcherImpl {
 
   // Starts the dispatcher. If there is a journal, this will read from the
   // journal to restore the dispatcher's state.
-  Status Start();
+  absl::Status Start();
 
   // Stops the dispatcher. After stopping, RPCs should return without blocking.
   void Stop();
@@ -151,41 +151,45 @@ class DataServiceDispatcherImpl {
   // See dispatcher.proto for API documentation.
 
   /// Worker-facing API.
-  Status WorkerHeartbeat(const WorkerHeartbeatRequest* request,
-                         WorkerHeartbeatResponse* response);
-  Status WorkerUpdate(const WorkerUpdateRequest* request,
-                      WorkerUpdateResponse* response);
-  Status GetDatasetDef(const GetDatasetDefRequest* request,
-                       GetDatasetDefResponse* response);
-  Status GetSplit(const GetSplitRequest* request, GetSplitResponse* response);
+  absl::Status WorkerHeartbeat(const WorkerHeartbeatRequest* request,
+                               WorkerHeartbeatResponse* response);
+  absl::Status WorkerUpdate(const WorkerUpdateRequest* request,
+                            WorkerUpdateResponse* response);
+  absl::Status GetDatasetDef(const GetDatasetDefRequest* request,
+                             GetDatasetDefResponse* response);
+  absl::Status GetSplit(const GetSplitRequest* request,
+                        GetSplitResponse* response);
 
   /// Client-facing API.
-  Status GetVersion(const GetVersionRequest* request,
-                    GetVersionResponse* response);
-  Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
-                              GetOrRegisterDatasetResponse* response);
-  Status GetDataServiceMetadata(const GetDataServiceMetadataRequest* request,
-                                GetDataServiceMetadataResponse* response);
-  Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
-                              GetDataServiceConfigResponse* response);
-  Status GetOrCreateJob(const GetOrCreateJobRequest* request,
-                        GetOrCreateJobResponse* response);
-  Status GetOrCreateIteration(const GetOrCreateIterationRequest* request,
-                              GetOrCreateIterationResponse* response);
-  Status ReleaseIterationClient(const ReleaseIterationClientRequest* request,
-                                ReleaseIterationClientResponse* response);
-  Status MaybeRemoveTask(const MaybeRemoveTaskRequest* request,
-                         MaybeRemoveTaskResponse* response);
-  Status ClientHeartbeat(const ClientHeartbeatRequest* request,
-                         ClientHeartbeatResponse* response);
-  Status GetWorkers(const GetWorkersRequest* request,
-                    GetWorkersResponse* response);
-  Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
-  Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
-                          GetSnapshotSplitResponse* response);
-  Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
-                            GetSnapshotStreamsResponse* response);
-  Status DisableCompressionAtRuntime(
+  absl::Status GetVersion(const GetVersionRequest* request,
+                          GetVersionResponse* response);
+  absl::Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
+                                    GetOrRegisterDatasetResponse* response);
+  absl::Status GetDataServiceMetadata(
+      const GetDataServiceMetadataRequest* request,
+      GetDataServiceMetadataResponse* response);
+  absl::Status GetDataServiceConfig(const GetDataServiceConfigRequest* request,
+                                    GetDataServiceConfigResponse* response);
+  absl::Status GetOrCreateJob(const GetOrCreateJobRequest* request,
+                              GetOrCreateJobResponse* response);
+  absl::Status GetOrCreateIteration(const GetOrCreateIterationRequest* request,
+                                    GetOrCreateIterationResponse* response);
+  absl::Status ReleaseIterationClient(
+      const ReleaseIterationClientRequest* request,
+      ReleaseIterationClientResponse* response);
+  absl::Status MaybeRemoveTask(const MaybeRemoveTaskRequest* request,
+                               MaybeRemoveTaskResponse* response);
+  absl::Status ClientHeartbeat(const ClientHeartbeatRequest* request,
+                               ClientHeartbeatResponse* response);
+  absl::Status GetWorkers(const GetWorkersRequest* request,
+                          GetWorkersResponse* response);
+  absl::Status Snapshot(const SnapshotRequest* request,
+                        SnapshotResponse* response);
+  absl::Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
+                                GetSnapshotSplitResponse* response);
+  absl::Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
+                                  GetSnapshotStreamsResponse* response);
+  absl::Status DisableCompressionAtRuntime(
       const DisableCompressionAtRuntimeRequest* request,
       DisableCompressionAtRuntimeResponse* response);
 
@@ -199,21 +203,21 @@ class DataServiceDispatcherImpl {
 
   // Restores split providers from the state in `iteration` and stores them in
   // `restored`.
-  Status RestoreSplitProviders(
+  absl::Status RestoreSplitProviders(
       const DispatcherState::Iteration& iteration,
       std::vector<std::unique_ptr<SplitProvider>>& restored)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Makes split providers for the specified `dataset_id`, and stores them in
   // `split_providers`.
-  Status MakeSplitProviders(
+  absl::Status MakeSplitProviders(
       const std::string& dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Registers a dataset, storing the new dataset's id in `dataset_id`.
-  Status RegisterDataset(const DatasetDef& dataset,
-                         const DataServiceMetadata& metadata,
-                         const std::string& requested_dataset_id,
-                         std::string& dataset_id)
+  absl::Status RegisterDataset(const DatasetDef& dataset,
+                               const DataServiceMetadata& metadata,
+                               const std::string& requested_dataset_id,
+                               std::string& dataset_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Finds the dataset ID with the requested dataset ID.
   // Returns nullptr if no such dataset exists.
@@ -222,34 +226,34 @@ class DataServiceDispatcherImpl {
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
-  Status GetOrCreateWorkerStub(const std::string& worker_address,
-                               WorkerService::Stub*& out_stub)
+  absl::Status GetOrCreateWorkerStub(const std::string& worker_address,
+                                     WorkerService::Stub*& out_stub)
       TF_LOCKS_EXCLUDED(mu_);
   // Creates a job and stores it in `job`.
-  Status CreateJob(const std::string& job_name,
-                   const GetOrCreateJobRequest& request,
-                   std::shared_ptr<const DispatcherState::Job>& job)
+  absl::Status CreateJob(const std::string& job_name,
+                         const GetOrCreateJobRequest& request,
+                         std::shared_ptr<const DispatcherState::Job>& job)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates an iteration and stores it in `iteration`. This method updates the
   // dispatcher state with the new iteration, but does not assign tasks to
   // workers.
-  Status CreateIteration(
+  absl::Status CreateIteration(
       const GetOrCreateIterationRequest& request,
       std::shared_ptr<const DispatcherState::Iteration>& iteration)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates tasks for the specified worker, one task for every unfinished
   // iteration.
-  Status CreateTasksForWorker(const std::string& worker_address);
+  absl::Status CreateTasksForWorker(const std::string& worker_address);
   // Finds tasks that should be deleted from a worker, updating the heartbeat
   // response.
-  Status FindTasksToDelete(
+  absl::Status FindTasksToDelete(
       const absl::flat_hash_set<int64_t>& current_tasks,
       const std::vector<std::shared_ptr<const DispatcherState::Task>>&
           assigned_tasks,
       WorkerHeartbeatResponse* response);
   // Finds new tasks that should be assigned to a worker and adds them to
   // the heartbeat response.
-  Status FindNewTasks(
+  absl::Status FindNewTasks(
       const std::string& worker_address,
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
@@ -260,71 +264,72 @@ class DataServiceDispatcherImpl {
       const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
-  Status AcquireIterationClientId(
+  absl::Status AcquireIterationClientId(
       const std::shared_ptr<const DispatcherState::Iteration>& iteration,
       int64_t& iteration_client_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given iteration. The created
   // tasks are stored in `tasks`. This method only updates dispatcher metadata
   // with the new tasks, but doesn't assign the tasks to the workers.
-  Status CreateTasksForIteration(
+  absl::Status CreateTasksForIteration(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Creates a new task for an iteration. The created task may be either
   // pending or active.
-  Status CreateTask(std::shared_ptr<const DispatcherState::Iteration> iteration,
-                    const std::string& worker_address,
-                    std::shared_ptr<const DispatcherState::Task>& task)
+  absl::Status CreateTask(
+      std::shared_ptr<const DispatcherState::Iteration> iteration,
+      const std::string& worker_address,
+      std::shared_ptr<const DispatcherState::Task>& task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates a pending task for a round robin iteration. All consumers need to
   // agree on which round to add the task in before the pending task can be
   // promoted to a regular task.
-  Status CreatePendingTask(
+  absl::Status CreatePendingTask(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
       const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates a new active task for an iteration, storing the created task in
   // `task`.
-  Status CreateActiveTask(
+  absl::Status CreateActiveTask(
       std::shared_ptr<const DispatcherState::Iteration> iteration,
       const std::string& worker_address,
       std::shared_ptr<const DispatcherState::Task>& task);
   // Assigns the list of tasks to the workers indicated by their
   // `worker_address` fields.
-  Status AssignTasks(
+  absl::Status AssignTasks(
       std::vector<std::shared_ptr<const DispatcherState::Task>> tasks)
       TF_LOCKS_EXCLUDED(mu_);
   // Assigns a task to the worker indicated by its `worker_address` field.
-  Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
+  absl::Status AssignTask(std::shared_ptr<const DispatcherState::Task> task)
       TF_LOCKS_EXCLUDED(mu_);
   // Validates that an existing job matches a given request.
   // Returns an error status describing any difference.
-  Status ValidateMatchingJob(std::shared_ptr<const DispatcherState::Job> job,
-                             const GetOrCreateJobRequest& request)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status ValidateMatchingJob(
+      std::shared_ptr<const DispatcherState::Job> job,
+      const GetOrCreateJobRequest& request) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Fills out a TaskDef with information about a task.
-  Status PopulateTaskDef(std::shared_ptr<const DispatcherState::Task> task,
-                         TaskDef* task_def) const
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status PopulateTaskDef(
+      std::shared_ptr<const DispatcherState::Task> task,
+      TaskDef* task_def) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
-  Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
+  absl::Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
   // Restores ongoing tf.data snapshots.
   absl::Status RestoreSnapshots();
   // Records that a split was produced by a call to `GetSplit`.
-  Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
-                             int64_t split_provider_index, bool finished)
+  absl::Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
+                                   int64_t split_provider_index, bool finished)
       TF_LOCKS_EXCLUDED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
-  Status Apply(const Update& update) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status Apply(const Update& update) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
   // used when recovering state when the dispatcher starts.
-  Status ApplyWithoutJournaling(const Update& update)
+  absl::Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Removes the client with `client_id` from `auto_scaler_`
   void RemoveClientFromAutoScaler(int64_t client_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
-  Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Removes the worker with `worker_address` from `auto_scaler_`, which is
   // potentially associated with multiple iterations.
   void RemoveWorkerFromAutoScaler(const std::string& worker_address)
@@ -333,19 +338,19 @@ class DataServiceDispatcherImpl {
   // snapshot managers.
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
-  Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Returns true if an iteration should be garbage collected.
   bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
                          int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
-  Status GetDatasetDef(const std::string& dataset_id,
-                       std::shared_ptr<const DatasetDef>& dataset_def)
+  absl::Status GetDatasetDef(const std::string& dataset_id,
+                             std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset, and
   // stores it in `dataset_def`.
-  Status GetDatasetDef(const DispatcherState::Dataset& dataset,
-                       std::shared_ptr<const DatasetDef>& dataset_def)
+  absl::Status GetDatasetDef(const DispatcherState::Dataset& dataset,
+                             std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig config_;

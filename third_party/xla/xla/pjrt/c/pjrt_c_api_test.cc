@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -46,7 +48,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -312,8 +313,6 @@ TEST_F(PjrtCApiTest, LookupDeviceOutOfRangeId) {
   ASSERT_EQ(status, expected);
 }
 
-static constexpr std::string_view kExecutableName = "operation";
-
 void destroy_executable(PJRT_LoadedExecutable* executable,
                         const PJRT_Api* api) {
   PJRT_LoadedExecutable_Destroy_Args args{
@@ -482,6 +481,22 @@ TEST_F(PjrtCApiTest, CompileInvalidProgramFormat) {
   EXPECT_EQ(status.message(), "Unknown program format 'invalid'.");
   destroy_executable(args.executable, api_);
   ::pjrt::MakeErrorDeleter(api_)(error);
+}
+
+TEST_F(PjrtCApiTest, PluginAttributes) {
+  PJRT_Plugin_Attributes_Args args;
+  args.struct_size = PJRT_Plugin_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  PJRT_Error* error = api_->PJRT_Plugin_Attributes(&args);
+  ASSERT_EQ(error, nullptr);
+  std::set<std::string> names;
+  for (int i = 0; i < args.num_attributes; i++) {
+    auto [_, did_not_exist_yet] = names.insert(args.attributes[i].name);
+    EXPECT_TRUE(did_not_exist_yet);
+  }
+  EXPECT_TRUE(names.find("xla_version") != names.end());
+  EXPECT_TRUE(names.find("stablehlo_current_version") != names.end());
+  EXPECT_TRUE(names.find("stablehlo_minimum_version") != names.end());
 }
 
 // --------------------------------- Devices -----------------------------------

@@ -1,0 +1,6 @@
+# For wheel verification, and uploading
+auditwheel ~= 6.1.0
+twine ~= 5.1.1
+
+# For JAX
+build ~= 1.2.2

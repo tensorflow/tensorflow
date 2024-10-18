@@ -1053,9 +1053,27 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       if (d == lhs_dnums.index_vector_dim()) {
         continue;
       }
+      // Skip the dimensions that are in the update window before we subtract 1
+      // from `update_dim` for the next iteration.
       while (
           absl::c_linear_search(lhs_dnums.update_window_dims(), update_dim)) {
         --update_dim;
+      }
+      if (absl::c_linear_search(lhs_dnums.scatter_indices_batching_dims(), d)) {
+        // Corresponding batch dimensions in updates, scatter_indices and inputs
+        // have the same sizes. So we can't concatenate a batch dim in updates
+        // and scatter_indices without changing inputs. Instead, we ensure the
+        // two scatter instructions have the same batch dimensions to support
+        // the transformation.
+        if (lhs_scatter_index->shape().dimensions(d) !=
+            rhs_scatter_index->shape().dimensions(d)) {
+          // This shouldn't be reachable as we currently only combine two
+          // scatter instructions feeding into the same add straightforwardly,
+          // which should have the same result shapes.
+          return absl::OkStatus();
+        }
+        update_dim--;
+        continue;
       }
       if (lhs_scatter_index->shape().dimensions(d) ==
           rhs_scatter_index->shape().dimensions(d)) {
@@ -1094,7 +1112,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
         absl::c_equal(lhs_dnums.inserted_window_dims(),
                       rhs_dnums.inserted_window_dims()) &&
         absl::c_equal(lhs_dnums.update_window_dims(),
-                      rhs_dnums.update_window_dims());
+                      rhs_dnums.update_window_dims()) &&
+        absl::c_equal(lhs_dnums.scatter_indices_batching_dims(),
+                      rhs_dnums.scatter_indices_batching_dims()) &&
+        absl::c_equal(lhs_dnums.input_batching_dims(),
+                      rhs_dnums.input_batching_dims());
     const bool index_concat_is_safe =
         !lhs->unique_indices() && !rhs->unique_indices() &&
         !DynCast<HloScatterInstruction>(lhs)->indices_are_sorted() &&
@@ -2073,6 +2095,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleConstant(
 absl::Status AlgebraicSimplifierVisitor::HandleSubtract(HloInstruction* sub) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(sub, m::Subtract(m::Op(&lhs), m::Op(&rhs))));
+  // A - A => 0
+  if (options_.enable_fast_math() ||
+      ShapeUtil::ElementIsIntegral(sub->shape())) {
+    if (lhs == rhs) {
+      return ReplaceInstruction(sub, MakeScalarLike(sub, 0));
+    }
+  }
   // A - 0 => A
   VLOG(10) << "trying transform [A - 0 => A]: " << sub->ToString();
   if (IsAll(rhs, 0) && ReplaceInstructionIfCompatible(sub, lhs)) {
@@ -4488,6 +4517,51 @@ absl::Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::TryToReorderConvAddMultiply(
+    HloInstruction* multiply) {
+  if (!options_.enable_conv_add_multiply_reorder()) return absl::OkStatus();
+  HloInstruction *input, *filter, *bias, *constant, *convolution, *broadcast,
+      *add;
+  // We conservatively only consider the case where the multiplier is a
+  // broadcast of a 1D constant to the output feature dimension and the filter
+  // is a constant so that they can be constant-folded.
+  if (!Match(multiply,
+             m::MultiplyAnyOrder(
+                 m::AddAnyOrder(&add,
+                                m::Convolution(&convolution, m::Op(&input),
+                                               m::Constant(&filter))
+                                    .WithOneUser(),
+                                m::Op(&bias).WithOneUser()),
+                 m::Broadcast(&broadcast, m::Constant(&constant).WithShape(
+                                              m::Shape().WithRank(1)))
+                     .WithOneUser()))) {
+    return absl::OkStatus();
+  }
+  const ConvolutionDimensionNumbers& dnums =
+      convolution->convolution_dimension_numbers();
+  if (broadcast->dimensions().size() != 1 ||
+      broadcast->dimensions()[0] != dnums.output_feature_dimension()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* bcast_to_filter_dim =
+      multiply->AddInstruction(HloInstruction::CreateBroadcast(
+          filter->shape(), constant,
+          {dnums.kernel_output_feature_dimension()}));
+  HloInstruction* filter_multiply =
+      multiply->AddInstruction(HloInstruction::CreateBinary(
+          filter->shape(), HloOpcode::kMultiply, filter, bcast_to_filter_dim));
+  HloInstruction* new_conv =
+      multiply->AddInstruction(convolution->CloneWithNewOperands(
+          convolution->shape(), {input, filter_multiply}));
+  HloInstruction* bias_multiply =
+      multiply->AddInstruction(HloInstruction::CreateBinary(
+          bias->shape(), HloOpcode::kMultiply, bias, broadcast));
+  std::unique_ptr<HloInstruction> new_add =
+      add->CloneWithNewOperands(add->shape(), {new_conv, bias_multiply});
+  return ReplaceWithNewInstruction(multiply, std::move(new_add));
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction* multiply) {
   HloInstruction *lhs, *rhs;
@@ -4694,7 +4768,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
                                      MakeScalarLike(lhs, 1), lhs));
   }
 
-  return absl::OkStatus();
+  return TryToReorderConvAddMultiply(multiply);
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleNegate(HloInstruction* negate) {
@@ -5285,6 +5359,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleCustomCall(
         custom_call,
         HloInstruction::CreateUnary(custom_call->shape(), HloOpcode::kCopy,
                                     custom_call->mutable_operand(0)));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleExp(
+    HloInstruction* exponential) {
+  // Exp(0) => 1
+  if (Match(exponential, m::Exp(m::ConstantScalar(0))) ||
+      Match(exponential, m::Exp(m::Broadcast(m::ConstantScalar(0))))) {
+    return ReplaceInstruction(exponential, MakeScalarLike(exponential, 1.0));
   }
   return absl::OkStatus();
 }

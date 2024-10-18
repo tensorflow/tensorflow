@@ -769,9 +769,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_xla//xla:status_macros",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:sharding_builder",
+        "@local_xla//xla/hlo/builder:sharding_builder",
         "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/hlo/parser:hlo_parser",
     ],
 )
 
@@ -1293,10 +1293,14 @@ tf_cc_test(
         ":serialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -1331,6 +1335,8 @@ cc_library(
     ],
     deps = [
         ":dump_mlir_util",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -1396,7 +1402,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/hlo/parser:hlo_parser",
         "@local_xla//xla/tsl/lib/math:math_util",
     ],
 )

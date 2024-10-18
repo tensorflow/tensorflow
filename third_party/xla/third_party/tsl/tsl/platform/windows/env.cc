@@ -28,12 +28,12 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/ram_file_system.h"
 #include "tsl/platform/windows/wide_char.h"
 #include "tsl/platform/windows/windows_file_system.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 #pragma comment(lib, "shlwapi.lib")
 

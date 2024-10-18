@@ -28,7 +28,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -66,7 +65,7 @@ class CUDAFftPlan : public fft::Plan {
   // Initialize function for batched plan
   absl::Status Initialize(GpuExecutor* parent, Stream* stream, int rank,
                           uint64_t* elem_count, uint64_t* input_embed,
-                          uint64_t input_stride, uint64 input_distance,
+                          uint64_t input_stride, uint64_t input_distance,
                           uint64_t* output_embed, uint64_t output_stride,
                           uint64_t output_distance, fft::Type type,
                           int batch_count, ScratchAllocator* scratch_allocator);

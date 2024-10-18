@@ -132,7 +132,7 @@ llvm::CallInst* EmitCallToIntrinsic(
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b,
     absl::string_view name) {
   llvm::Module* module = ModuleFromIRBuilder(b);
-  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+  llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
   return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
 }
@@ -200,9 +200,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt16Ty(module->getContext());
     case F8E5M2:
     case F8E5M2FNUZ:
+    case F8E4M3:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
+    case F8E3M4:
       // We represent F8 as an int since there is no LLVM F8 dtype.
       return llvm::Type::getInt8Ty(module->getContext());
     case BF16:

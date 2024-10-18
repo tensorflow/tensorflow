@@ -16,9 +16,11 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/status.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 
@@ -32,6 +34,12 @@ tensorflow::StatusProto StatusToProto(const absl::Status& s) {
   if (!s.message().empty()) {
     status_proto.set_message(std::string(s.message()));
   }
+
+  s.ForEachPayload(
+      [&status_proto](absl::string_view type_url, absl::Cord value) {
+        status_proto.mutable_payload()->insert(
+            {std::string(type_url), std::string(value)});
+      });
   return status_proto;
 }
 
@@ -41,15 +49,23 @@ absl::Status StatusFromProto(const tensorflow::StatusProto& proto,
   if (proto.code() == tensorflow::error::OK) {
     return absl::OkStatus();
   }
-  return absl::Status(static_cast<absl::StatusCode>(proto.code()),
-                      proto.message(), loc);
+  absl::Status s(static_cast<absl::StatusCode>(proto.code()), proto.message(),
+                 loc);
+  for (const auto& [key, payload] : proto.payload()) {
+    s.SetPayload(key, absl::Cord(payload));
+  }
+  return s;
 }
 #else
 Status StatusFromProto(const tensorflow::StatusProto& proto) {
   if (proto.code() == tensorflow::error::OK) {
     return OkStatus();
   }
-  return Status(static_cast<absl::StatusCode>(proto.code()), proto.message());
+  Status s(static_cast<absl::StatusCode>(proto.code()), proto.message());
+  for (const auto& [key, payload] : proto.payload()) {
+    s.SetPayload(key, absl::Cord(payload));
+  }
+  return s;
 }
 #endif
 

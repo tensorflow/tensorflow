@@ -143,7 +143,7 @@ class LookupInterface : public ResourceBase {
   }
 
  protected:
-  virtual ~LookupInterface() = default;
+  ~LookupInterface() override = default;
 
   // Makes sure that the key and value tensor DataType's match the table
   // key_dtype and value_dtype.

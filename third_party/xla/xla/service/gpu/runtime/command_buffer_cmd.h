@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
@@ -78,9 +79,10 @@ namespace xla::gpu {
   V(kCollectiveCmd, "CollectiveCmd")                     \
   V(kAllReduceCmd, "AllReduceCmd")                       \
   V(kReduceScatter, "ReduceScatterCmd")                  \
-  V(kAllToAll, "AllToAllCmd")                  \
+  V(kAllToAll, "AllToAllCmd")                            \
   V(kAllGatherCmd, "AllGatherCmd")                       \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")   \
+  V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")     \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
 
@@ -1144,6 +1146,62 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
 
  private:
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
+//===----------------------------------------------------------------------===//
+// DynamicSliceFusionCmd
+//===----------------------------------------------------------------------===//
+
+class DynamicSliceFusionCmd : public CommandBufferCmd {
+ public:
+  DynamicSliceFusionCmd(
+      ExecutionStreamId execution_stream_id,
+      std::unique_ptr<CommandBufferCmdSequence> embedded_commands,
+      std::vector<std::optional<BufferAllocation::Slice>> arguments,
+      std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_,
+      std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
+          offsets,
+      std::vector<std::optional<Shape>> orig_shapes,
+      std::vector<std::optional<Shape>> sliced_shapes,
+      std::vector<std::optional<uint64_t>> offset_byte_sizes);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state);
+
+  absl::Status Prepare(const Thunk::PrepareParams& params,
+                       Thunk::ResourceRequests& resource_requests) final;
+
+  absl::Status Record(const Thunk::ExecuteParams& execute_params,
+                      const RecordParams& record_params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool force_update() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  std::unique_ptr<CommandBufferCmdSequence> embedded_commands_;
+  std::vector<DynamicSliceThunk::SliceDef> slices_;
+  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations_;
+
+  // Pinned host memory for transferring offset values from device to host.
+  absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<se::MemoryAllocation>>
+      offsets_allocs_ ABSL_GUARDED_BY(mutex_);
+
+  // Pre-computed size requirement for `offsets_allocs_`.
+  int64_t offsets_allocs_size_ = 0;
+
+  // A mapping from argument index to the base offset in the `offsets_allocs_`.
+  std::vector<int64_t> offsets_allocs_base_;
+
+  // mapping from original allocation index to allocation index of embedded
+  // command sequences.
+  absl::flat_hash_map<int64_t, std::optional<BufferAllocation::Slice>>
+      embeded_to_origin_slice_map_;
 };
 
 }  // namespace xla::gpu

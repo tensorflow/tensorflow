@@ -466,7 +466,7 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
 
       for (int64_t val : {static_cast<int64_t>(-1), test_shape.dim_size(dim)}) {
         indices_mat(row, dim) = val;
-        Status indices_valid = ValidateSparseTensor<int64_t>(
+        absl::Status indices_valid = ValidateSparseTensor<int64_t>(
             indices, values, shape, index_validation);
         if (index_validation == IndexValidation::kNone) {
           TF_EXPECT_OK(indices_valid);
@@ -511,7 +511,7 @@ TEST_P(ValidateSparseTensorTest, IndexOutOfOrderFailsForOrderedValidation) {
         std::swap(indices_mat(row1, dim), indices_mat(row2, dim));
       }
 
-      Status indices_valid = ValidateSparseTensor<int64_t>(
+      absl::Status indices_valid = ValidateSparseTensor<int64_t>(
           indices, values, shape, index_validation);
       if (ordered) {
         EXPECT_THAT(

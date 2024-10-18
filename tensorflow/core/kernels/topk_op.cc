@@ -117,7 +117,7 @@ class TopK : public OpKernel {
 
     auto values = values_out->flat_inner_dims<T>();
     auto indices = indices_out->flat_inner_dims<Tidx>();
-    Status s = functor::TopKFunctor<Device, T, Tidx>::Compute(
+    absl::Status s = functor::TopKFunctor<Device, T, Tidx>::Compute(
         context, sorted_, k, input, num_rows, num_cols, values, indices);
     OP_REQUIRES_OK(context, s);
   }
@@ -131,7 +131,7 @@ namespace functor {
 
 template <typename T, typename Tidx>
 struct TopKFunctor<CPUDevice, T, Tidx> {
-  static EIGEN_ALWAYS_INLINE Status Compute(
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
       OpKernelContext* context, bool sorted, int k,
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,

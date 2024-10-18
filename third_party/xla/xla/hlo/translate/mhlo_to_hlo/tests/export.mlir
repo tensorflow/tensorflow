@@ -600,6 +600,12 @@ func.func @main() {
   // CHECK: f8e5m2fnuz[4] constant({1, 2, 3, 4})
   %cst_15 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2FNUZ>
 
+  // CHECK: f8e4m3[4] constant({1, 2, 3, 4})
+  %cst_16 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3>
+
+  // CHECK: f8e3m4[4] constant({1, 2, 3, 4})
+  %cst_17 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E3M4>
+
   func.return
 }
 
@@ -729,7 +735,11 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   %5 = "mhlo.convert"(%4) : (tensor<2xf8E4M3FNUZ>) -> tensor<2xf32>
   %6 = "mhlo.convert"(%5) : (tensor<2xf32>) -> tensor<2xf8E5M2FNUZ>
   %7 = "mhlo.convert"(%6) : (tensor<2xf8E5M2FNUZ>) -> tensor<2xf32>
-  func.return %7 : tensor<2xf32>
+  %8 = "mhlo.convert"(%7) : (tensor<2xf32>) -> tensor<2xf8E4M3>
+  %9 = "mhlo.convert"(%8) : (tensor<2xf8E4M3>) -> tensor<2xf32>
+  %10 = "mhlo.convert"(%9) : (tensor<2xf32>) -> tensor<2xf8E3M4>
+  %11 = "mhlo.convert"(%10) : (tensor<2xf8E3M4>) -> tensor<2xf32>
+  func.return %11 : tensor<2xf32>
 }
 
 // CHECK:  ENTRY
@@ -741,7 +751,11 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK:  %[[E4M3FNUZ_VAL:.*]] = f8e4m3fnuz[2] convert(f32[2] %[[F32_VAL2]])
 // CHECK:  %[[F32_VAL3:.*]] = f32[2] convert(f8e4m3fnuz[2] %[[E4M3FNUZ_VAL]])
 // CHECK:  %[[E5M2FNUZ_VAL:.*]] = f8e5m2fnuz[2] convert(f32[2] %[[F32_VAL3]])
-// CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(f8e5m2fnuz[2] %[[E5M2FNUZ_VAL]])
+// CHECK:  %[[F32_VAL4:.*]] = f32[2] convert(f8e5m2fnuz[2] %[[E5M2FNUZ_VAL]])
+// CHECK:  %[[E4M3_VAL:.*]] = f8e4m3[2] convert(f32[2] %[[F32_VAL4]])
+// CHECK:  %[[F32_VAL5:.*]] = f32[2] convert(f8e4m3[2] %[[E4M3_VAL]])
+// CHECK:  %[[E3M4_VAL:.*]] = f8e3m4[2] convert(f32[2] %[[F32_VAL5]])
+// CHECK:  ROOT %[[F32_VAL6:.*]] = f32[2] convert(f8e3m4[2] %[[E3M4_VAL]])
 
 // -----
 

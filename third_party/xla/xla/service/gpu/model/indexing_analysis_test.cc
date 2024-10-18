@@ -674,14 +674,8 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
                   d1 in [0, 1],
                   d2 in [0, 31],
                   rt0 in [0, 1],
-                    hlo: %of1 = s32[] parameter(1),
-                    (d0, d1, d2)  -> (),
                   rt1 in [0, 0],
-                    hlo: %of2 = s32[] parameter(2),
-                    (d0, d1, d2)  -> (),
-                  rt2 in [0, 226],
-                    hlo: %of3 = s32[] parameter(3),
-                    (d0, d1, d2) -> ()
+                  rt2 in [0, 226]
                 operand id = 1
                   (d0, d1, d2)  -> (),
                   domain:
@@ -727,11 +721,7 @@ TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
                   d0 in [0, 19],
                   d1 in [0, 29],
                   rt0 in [0, 15],
-                    hlo: %of1 = s32[] parameter(2),
-                    (d0, d1)  -> (),
-                  rt1 in [0, 20],
-                    hlo: %of2 = s32[] parameter(3),
-                    (d0, d1)  -> ()
+                  rt1 in [0, 20]
                 operand id = 2
                   (d0, d1)  -> (),
                   domain:
@@ -1060,11 +1050,7 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
                 d2 in [0, 7],
                 d3 in [0, 3],
                 rt0 in [0, 26],
-                  hlo: %indices = s32[1806,2]{1,0} parameter(1),
-                  (d0, d1, d2, d3) -> (d0, 0),
-                rt1 in [0, 68],
-                  hlo: %indices = s32[1806,2]{1,0} parameter(1),
-                  (d0, d1, d2, d3) -> (d0, 1)
+                rt1 in [0, 68]
               operand id = 1
                 (d0, d1, d2, d3)[s0] -> (d0, s0),
                 domain:
@@ -1345,17 +1331,9 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
                 d0 in [0, 24],
                 d1 in [0, 15],
                 rt0 in [0, 100],
-                  hlo: %of11 = s32[] parameter(1),
-                  (d0, d1) -> (),
                 rt1 in [0, 32],
-                  hlo: %of12 = s32[] parameter(2),
-                  (d0, d1) -> (),
                 rt2 in [0, 25],
-                  hlo: %of21 = s32[] parameter(3),
-                  (d0, d1) -> (),
-                rt3 in [0, 16],
-                  hlo: %of22 = s32[] parameter(4),
-                  (d0, d1) -> ()
+                rt3 in [0, 16]
               operand id = 1
                   (d0, d1) -> (),
                   domain:
@@ -2747,9 +2725,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Add) {
     operand id = 0 (d0)[rt0] -> (d0 + rt0 + 42),
       domain:
       d0 in [0, 9],
-      rt0 in [0, 4086],
-        hlo: %p1 = s64[] parameter(1),
-        (d0) -> ()
+      rt0 in [0, 4086]
     operand id = 1
       (d0) -> (),
       domain:
@@ -2779,9 +2755,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Multiply) {
     operand id = 0 (d0)[rt0] -> (d0 + rt0 * 42),
       domain:
       d0 in [0, 9],
-      rt0 in [0, 4086],
-        hlo: %p1 = s64[] parameter(1),
-        (d0) -> ()
+      rt0 in [0, 4086]
     operand id = 1
       (d0) -> (),
       domain:
@@ -2812,9 +2786,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_ChainedOps) {
    operand id = 0
      (d0)[rt0] -> (d0 + rt0 * 2 + 84),
      domain: d0 in [0, 9],
-     rt0 in [0, 4086],
-       hlo: %p1 = s64[] parameter(1),
-       (d0) -> ()
+     rt0 in [0, 4086]
    operand id = 1
      (d0) -> (),
      domain:
@@ -2848,8 +2820,6 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDUS) {
                               d0 in [0, 0],
                               d1 in [0, 4095],
                               rt0 in [0, 4096],
-                                hlo: %slice = s32[1]{0} parameter(1),
-                                (d0, d1) -> (0),
                               d1 + rt0 in [4096, 8191]
                             operand id = 1
                               (d0, d1) -> (0),

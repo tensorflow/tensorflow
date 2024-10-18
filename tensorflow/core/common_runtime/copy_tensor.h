@@ -63,9 +63,10 @@ class CopyTensor {
   // Register a function for copying between two specific DeviceTypes.
   // Note: This should only be called via the constructor of
   // CopyTensor::Registration or from PluggableDevice implementation.
-  static Status Register(DeviceType sender_device_type,
-                         DeviceType receiver_device_type,
-                         CopyFunction copy_function, bool is_pluggable_device);
+  static absl::Status Register(DeviceType sender_device_type,
+                               DeviceType receiver_device_type,
+                               CopyFunction copy_function,
+                               bool is_pluggable_device);
 };
 
 void CopyDeviceToHost(const Tensor* input, Allocator* cpu_allocator,

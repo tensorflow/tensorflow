@@ -255,7 +255,7 @@ class NcclCommunicatorInterface;
 // instances and various distributed resolution capabilities.
 class CollectiveExecutorMgrInterface : public StepSequenceInterface {
  public:
-  virtual ~CollectiveExecutorMgrInterface() {}
+  ~CollectiveExecutorMgrInterface() override {}
 
   // Returns the step-specific CollectiveExecutor, creating if one does not
   // already exist.  The caller assumes ownership of one Ref on the object.
@@ -437,7 +437,7 @@ class NcclCommunicatorInterface {
 // common_runtime/hierarchical_tree_broadcaster for examples.
 class CollectiveImplementationInterface : public core::RefCounted {
  public:
-  virtual ~CollectiveImplementationInterface() = default;
+  ~CollectiveImplementationInterface() override = default;
 
   // Initializes the portions of `col_params` specific to this
   // implementation.  Called exactly once for every Collective instance during

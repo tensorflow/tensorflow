@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_blas.h"
 
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/rocm/rocblas_wrapper.h"
-
 #define EIGEN_USE_GPU
 #define EIGEN_USE_HIP
 #include <assert.h>
 
 #include <complex>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "rocm/rocm_config.h"
@@ -34,10 +33,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/platform/dso_loader.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -154,26 +154,25 @@ ROCMBlas::~ROCMBlas() {
 }
 
 bool ROCMBlas::SetStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
-  ScopedActivateContext sac{parent_};
-
-  rocblas_status ret =
-      wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
-  if (ret != rocblas_status_success) {
+  auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : nullptr;
+  if (auto ret = wrap::rocblas_set_stream(blas_, handle);
+      ret != rocblas_status_success) {
     LOG(ERROR) << "failed to set stream for rocBLAS calls: " << ToString(ret);
     return false;
   }
-
   return true;
 }
 
-hipStream_t ROCMBlas::ROCMStream(Stream *stream) {
-  CHECK(stream != nullptr);
-  CHECK(AsGpuStreamValue(stream) != nullptr);
-  ScopedActivateContext sac{parent_};
-  return AsGpuStreamValue(stream);
+absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
+  absl::MutexLock lock{&mu_};
+  CHECK(blas_ != nullptr);
+  GpuStreamHandle handle{};
+  if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
+      ret != rocblas_status_success) {
+    return absl::InternalError("failed to get the current stream value");
+  }
+  return (handle == nullptr);
 }
 
 namespace {
@@ -351,11 +350,11 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
+  ScopedActivateContext sac{parent_};
   if (!SetStream(stream)) {
     return absl::InternalError("Setting stream failed");
   }
 
-  ScopedActivateContext sac{parent_};
   rocblas_status ret;
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
@@ -383,6 +382,8 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
 #endif
 
   ret = rocblas_func(blas_, std::forward<Args>(args)...);
+  SetStream(nullptr);  // Resetting stream after the function call
+
   if (ret != rocblas_status_success) {
     auto err_str =
         absl::StrFormat("%s failed with: %s", FuncT::kName, ToString(ret));
@@ -897,7 +898,7 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8> batch_matrix_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> batch_matrix_bytes,
                       scratch_allocator->AllocateBytes(matrix_batch_byte_size));
   res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
@@ -1111,9 +1112,9 @@ bool ROCMBlas::DoBlasGemmBatched(
 #define IMPL_DoBlasGemmBatched(T, Fun)                                         \
   bool ROCMBlas::DoBlasGemmBatched(                                            \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
-      uint64_t m, uint64_t n, uint64 k, T alpha, DeviceMemorySlice<T> a_array, \
-      int lda, DeviceMemorySlice<T> b_array, int ldb, T beta,                  \
-      DeviceMemorySlice<T> c_array, int ldc, int batch_count,                  \
+      uint64_t m, uint64_t n, uint64_t k, T alpha,                             \
+      DeviceMemorySlice<T> a_array, int lda, DeviceMemorySlice<T> b_array,     \
+      int ldb, T beta, DeviceMemorySlice<T> c_array, int ldc, int batch_count, \
       const NumericOptions &numeric_options,                                   \
       ScratchAllocator *scratch_allocator, blas::CallContext context) {        \
     MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
@@ -1136,7 +1137,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 #define IMPL_DoBlasTrsm(T, Fun, Fun2)                                        \
   bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,                 \
                             blas::UpperLower uplo, blas::Transpose transa,   \
-                            blas::Diagonal diag, uint64_t m, uint64 n,       \
+                            blas::Diagonal diag, uint64_t m, uint64_t n,     \
                             T alpha, const DeviceMemory<T> &a, int lda,      \
                             DeviceMemory<T> *b, int ldb) {                   \
     return DoBlasInternal(Fun, stream, /* pointer_mode_host = */ true,       \
@@ -1148,7 +1149,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
                                                                              \
   bool ROCMBlas::DoBlasTrsmBatched(                                          \
       Stream *stream, blas::Side side, blas::UpperLower uplo,                \
-      blas::Transpose transa, blas::Diagonal diag, uint64_t m, uint64 n,     \
+      blas::Transpose transa, blas::Diagonal diag, uint64_t m, uint64_t n,   \
       T alpha, const DeviceMemory<T *> &as, int lda, DeviceMemory<T *> *bs,  \
       int ldb, int batch_count) {                                            \
     return DoBlasInternal(Fun2, stream, true /* = pointer_mode_host */,      \
@@ -1241,8 +1242,6 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-
-#if TF_ROCM_VERSION >= 60200  // Not available in ROCM-6.1
   absl::MutexLock lock{&mu_};
   size_t len = 0;
   if (auto res = wrap::rocblas_get_version_string_size(&len);
@@ -1258,9 +1257,6 @@ absl::Status ROCMBlas::GetVersion(std::string *version) {
   }
   *version = std::string(buf.begin(), buf.end());
   return absl::OkStatus();
-#else
-  return absl::UnimplementedError("");
-#endif
 }
 
 }  // namespace gpu

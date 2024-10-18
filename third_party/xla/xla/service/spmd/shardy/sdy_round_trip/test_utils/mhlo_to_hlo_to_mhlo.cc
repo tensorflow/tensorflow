@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Quant/QuantOps.h"
+#include "mlir/Dialect/Quant/IR/Quant.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -121,7 +121,7 @@ class SdyRoundTripMhloToHloToMhloPass
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<mlir::sdy::SdyDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::mhlo::MhloDialect, mlir::quant::QuantizationDialect,
+                    mlir::mhlo::MhloDialect, mlir::quant::QuantDialect,
                     mlir::sparse_tensor::SparseTensorDialect>();
   }
 };

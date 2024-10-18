@@ -423,7 +423,7 @@ TEST(TestFastParseExample, Empty) {
   Result result;
   FastParseExampleConfig config;
   config.sparse.push_back({"test", DT_STRING});
-  Status status =
+  absl::Status status =
       FastParseExample(config, absl::Span<const tstring>(),
                        absl::Span<const tstring>(), nullptr, &result);
   EXPECT_TRUE(status.ok()) << status;

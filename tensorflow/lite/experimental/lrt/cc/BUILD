@@ -21,11 +21,58 @@ cc_library(
     name = "lite_rt_cc_api",
     hdrs = [
         "lite_rt_support.h",
+        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "@com_google_absl//absl/log:absl_check",
+    ],
+)
+
+cc_library(
+    name = "lite_rt_tensor",
+    srcs = ["lite_rt_tensor.cc"],
+    hdrs = ["lite_rt_tensor.h"],
+    deps = [
+        ":lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "lite_rt_tensor_test",
+    srcs = ["lite_rt_tensor_test.cc"],
+    deps = [
+        ":lite_rt_tensor",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "lite_rt_op",
+    srcs = ["lite_rt_op.cc"],
+    hdrs = ["lite_rt_op.h"],
+    deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
+)
+
+cc_test(
+    name = "lite_rt_op_test",
+    srcs = ["lite_rt_op_test.cc"],
+    deps = [
+        ":lite_rt_op",
+        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

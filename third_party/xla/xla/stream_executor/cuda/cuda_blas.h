@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/numeric_options.h"
-#include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/scratch_allocator.h"
 
 namespace stream_executor {
 
@@ -74,9 +74,6 @@ class CUDABlas : public blas::BlasSupport {
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Returns the underlying CUDA stream.
-  cudaStream_t CUDAStream(Stream *stream);
-
   // A helper function that calls the real cuBLAS function together with error
   // handling.
   //
@@ -106,7 +103,7 @@ class CUDABlas : public blas::BlasSupport {
   template <typename T, typename Scalar, typename FuncT>
   absl::Status DoBlasGemmBatchedInternal(
       FuncT cublas_func, Stream *stream, blas::Transpose transa,
-      blas::Transpose transb, uint64_t m, uint64 n, uint64 k, Scalar alpha,
+      blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, Scalar alpha,
       const DeviceMemorySlice<T> &a_array, int lda,
       const DeviceMemorySlice<T> &b_array, int ldb, Scalar beta,
       const DeviceMemorySlice<T> &c_array, int ldc, int batch_count,
@@ -114,7 +111,7 @@ class CUDABlas : public blas::BlasSupport {
       ScratchAllocator *scratch_allocator);
 
   // Guards the cuBLAS handle for this device.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   // GpuExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.

@@ -21,6 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -251,6 +254,37 @@ TEST_F(FloatSupportTest, ShouldKeepBf16OnHopper) {
   TestDotConversion(BF16, BF16, F32, se::CudaComputeCapability::Hopper(),
                     /*should_convert_lhs=*/false,
                     /*should_convert_rhs=*/false, BF16);
+}
+
+TEST_F(FloatSupportTest,
+       BF16ReductionOnHopperIsOnlyNormalizedIfReducerIsUnsupported) {
+  auto cc = se::CudaComputeCapability::Hopper();
+  constexpr absl::string_view kHloModuleTemplate = R"(
+HloModule m
+
+reducer {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT reducer = bf16[] $0(p0, p1)
+}
+
+ENTRY main {
+  p0 = bf16[1024] parameter(0)
+  init = bf16[] constant(1337)
+  ROOT r = bf16[] reduce(p0, init), dimensions={0}, to_apply=reducer
+})";
+
+  // add.bf16 was added in Hopper.
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_supported_reducer,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(kHloModuleTemplate, "add")));
+  EXPECT_FALSE(Normalize(module_with_supported_reducer.get(), cc, BF16, F32));
+
+  // There is no bf16 instruction for divide, however.
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_unsupported_reducer,
+                          ParseAndReturnVerifiedModule(
+                              absl::Substitute(kHloModuleTemplate, "divide")));
+  EXPECT_TRUE(Normalize(module_with_unsupported_reducer.get(), cc, BF16, F32));
 }
 
 }  // namespace

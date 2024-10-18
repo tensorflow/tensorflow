@@ -32,6 +32,7 @@ void ImportCrossProgramPrefetches(const HloModule& hlo_module,
 
 void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           mlir::ModuleOp module,
+                                          bool flatten_computation_args_result,
                                           mlir::Builder builder);
 
 void ImportFrontendAttributes(const HloModule& hlo_module,

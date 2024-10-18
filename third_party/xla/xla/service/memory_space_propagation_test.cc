@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/memory_space_propagation.h"
 
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 

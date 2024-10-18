@@ -1007,6 +1007,31 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
   return UpdateMemorySpaceForHostOffloadedOutputs(call_start, host_instrs_tree);
 }
 
+absl::StatusOr<bool> HostOffloader::ProcessNextMoveToHostInstr(
+    HloComputation* computation) {
+  for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
+    if (instruction->IsCustomCall(
+            host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+      TF_ASSIGN_OR_RETURN(bool removed_move_to_host,
+                          HandleMoveToHostCustomCall(instruction));
+      if (removed_move_to_host) {
+        return true;
+      }
+    }
+
+    if (instruction->has_called_computations()) {
+      for (HloComputation* called_comp : instruction->called_computations()) {
+        TF_ASSIGN_OR_RETURN(bool removed_move_to_host,
+                            ProcessNextMoveToHostInstr(called_comp));
+        if (removed_move_to_host) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1038,26 +1063,10 @@ absl::StatusOr<bool> HostOffloader::Run(
     // Iterate over the computations in the order that they are executed. This
     // ensures we process "MoveToHost" instructions that are at the beginning of
     // a host memory offload instruction chain.
-    std::vector<HloComputation*> post_order_computations =
-        module->MakeComputationPostOrder(execution_threads);
-    for (auto it = post_order_computations.rbegin();
-         it != post_order_computations.rend(); ++it) {
-      HloComputation* computation = *it;
-      for (HloInstruction* instruction :
-           computation->MakeInstructionPostOrder()) {
-        if (instruction->IsCustomCall(
-                host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
-          TF_ASSIGN_OR_RETURN(changed_in_loop,
-                              HandleMoveToHostCustomCall(instruction));
-          if (changed_in_loop) {
-            changed = true;
-            break;
-          }
-        }
-      }
-      if (changed_in_loop) {
-        break;
-      }
+    TF_ASSIGN_OR_RETURN(changed_in_loop, ProcessNextMoveToHostInstr(
+                                             module->entry_computation()));
+    if (changed_in_loop) {
+      changed = true;
     }
   } while (changed_in_loop);
 

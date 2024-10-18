@@ -197,11 +197,17 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 
 // Generates the HLO instructions that represent the dimension offsets on any
 // device. The size of the returned vector is the rank of the given shape.
-// If `dims` is non-empty, the generated offsets will only be non-zero for those
-// dimensions.
+// If `dims` is non-empty, the dimensions not in `dims` are constant zero.
 std::vector<HloInstruction*> MakePartitionOffsets(
     const Shape& shape, const HloSharding& sharding,
     HloInstruction* partition_id, SpmdBuilder* b,
+    absl::Span<const int64_t> dims = {});
+
+// Generates the diff between offsets related to two shardings. It is equivalent
+// to `MakePartitionOffsets(sharding_1) - MakePartitionOffsets(sharding_2)`.
+std::vector<HloInstruction*> MakePartitionOffsetsDiff(
+    const Shape& shape, const HloSharding& sharding_1,
+    const HloSharding& sharding_2, HloInstruction* partition_id, SpmdBuilder* b,
     absl::Span<const int64_t> dims = {});
 
 // Returns the offsets of the partition in the tile assignment.

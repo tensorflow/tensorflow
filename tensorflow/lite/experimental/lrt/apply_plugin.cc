@@ -22,13 +22,13 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/experimental/lrt/core/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> model_path(
@@ -39,14 +39,14 @@ static llvm::cl::opt<std::string> model_path(
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> soc_manufacturer(
     "soc_man",
-    llvm::cl::desc("String identifier of SoC backend (pixel, qcc, darwinn)."),
+    llvm::cl::desc(
+        "String identifier of SoC manufacturer (e.g., Pixel, Qualcomm)."),
     llvm::cl::init("ExampleSocManufacturer"));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<std::string> soc_model(
-    "soc_model",
-    llvm::cl::desc("Compilation configuration identifier (chip type)."),
-    llvm::cl::init("DummyMulOp"));
+static llvm::cl::opt<std::string> soc_model("soc_model",
+                                            llvm::cl::desc("Target SoC model."),
+                                            llvm::cl::init("ExampleSocModel"));
 
 // TODO swap "dry_run" for optional "don't delete partitioned subgraphs".
 // NOLINTNEXTLINE
@@ -82,10 +82,10 @@ bool IsSocModelSupported(LrtCompilerPlugin plugin,
                          std::string_view requested_soc_model) {
   const auto num_supported_configs = LrtPluginNumSupportedSocModels(plugin);
   for (int i = 0; i < num_supported_configs; ++i) {
-    const char* config;
+    const char* soc_model;
     LRT_RETURN_VAL_IF_NOT_OK(
-        LrtPluginGetSupportedSocModelId(plugin, i, &config), false);
-    if (requested_soc_model == config) {
+        LrtPluginGetSupportedSocModel(plugin, i, &soc_model), false);
+    if (requested_soc_model == soc_model) {
       return true;
     }
   }
@@ -96,7 +96,7 @@ bool IsSocModelSupported(LrtCompilerPlugin plugin,
 // TODO: b/366821557 - Replace loading pre-compiled plugin.
 UniqueLrtCompilerPlugin LoadPlugin() {
   if (soc_manufacturer != LrtPluginSocManufacturer()) {
-    std::cerr << "Only ExampleSocManufacturer currently supported";
+    std::cerr << "Only Test currently supported";
     return nullptr;
   }
 
@@ -105,7 +105,7 @@ UniqueLrtCompilerPlugin LoadPlugin() {
   auto result = UniqueLrtCompilerPlugin(plugin);
 
   if (!IsSocModelSupported(result.get(), soc_model)) {
-    std::cerr << "Only DummyMulOp currently supported\n";
+    std::cerr << "Only ExampleSocModel currently supported\n";
     return nullptr;
   }
 
@@ -118,7 +118,8 @@ UniqueLrtModel LoadModel(std::string_view filename) {
   return UniqueLrtModel(model);
 }
 
-LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
+LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin,
+                      std::string_view soc_model) {
   LRT_RETURN_STATUS_IF_NOT_OK(
       RegisterCustomOpCode(model, LrtPluginSocManufacturer()));
 
@@ -152,12 +153,13 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   DumpSubgraph(main_subgraph, "Main subgraph after partioning.");
 
   if (dry_run) {
-    return StatusOk();
+    return kLrtStatusOk;
   }
 
   LrtCompiledResult compiled_result;
-  LRT_RETURN_STATUS_IF_NOT_OK(
-      LrtPluginCompile(plugin, slices.data(), slices.size(), &compiled_result));
+  LRT_RETURN_STATUS_IF_NOT_OK(LrtPluginCompile(plugin, soc_model.data(),
+                                               slices.data(), slices.size(),
+                                               &compiled_result));
 
   lrt_param_index_t num_calls_compiled;
   LRT_RETURN_STATUS_IF_NOT_OK(
@@ -166,7 +168,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   if (num_calls_compiled != slices.size()) {
     std::cerr
         << "Plugin must provide and entry point for each compiled partition\n";
-    return StatusCreate(kLrtStatusErrorNotFound);
+    return kLrtStatusErrorNotFound;
   }
 
   for (int i = 0; i < num_calls_compiled; ++i) {
@@ -190,7 +192,7 @@ LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   LRT_RETURN_STATUS_IF_NOT_OK(AppendMetadata(model, byte_code, byte_code_size,
                                              LrtPluginSocManufacturer()));
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 int main(int argc, char** argv) {
@@ -202,7 +204,8 @@ int main(int argc, char** argv) {
   auto plugin = LoadPlugin();
   EXIT_IF_NULL(plugin, "Failed to load plugin.");
 
-  LRT_RETURN_VAL_IF_NOT_OK(ApplyPlugin(model.get(), plugin.get()), 1);
+  LRT_RETURN_VAL_IF_NOT_OK(ApplyPlugin(model.get(), plugin.get(), soc_model),
+                           1);
 
   uint8_t* buf;
   size_t buf_size;

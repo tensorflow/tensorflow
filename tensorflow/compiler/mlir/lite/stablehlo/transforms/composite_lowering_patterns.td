@@ -120,3 +120,12 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         [(HasRank<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $_, $indices, $table),
+          ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
+        (TFL_EmbeddingLookupOp $indices, $table),
+        [(HasRank<1> $indices),
+        (I32ElementsVal $indices),
+        (HasRankAtLeast<2> $table)]>;

@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -244,7 +244,7 @@ class TFXlaCallModuleOpToStablehloPass
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<stablehlo::StablehloDialect, vhlo::VhloDialect,
-                    quant::QuantizationDialect, shape::ShapeDialect>();
+                    quant::QuantDialect, shape::ShapeDialect>();
   }
 
   void runOnOperation() override {

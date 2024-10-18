@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,9 +39,20 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
       : AlgebraicSimplifierVisitor(options, simplifier),
         compute_capability_(std::move(compute_capability)) {}
 
+  absl::Status HandleAdd(HloInstruction* add) override;
+
   bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
 
  private:
+  // Try to convert add(broadcast(const_0), add(broadcast(const_1), conv(...)))
+  // into add(broadcast(add(const_0, const_1)), conv(...)) and return true if
+  // successful. The particular sink happens only when enable_sink_broadcast is
+  // true and the broadcast shapes and dimensions match. The sink only happens
+  // when following a convolution to avoid having a side input when the
+  // instructions are fused to cudnnConvolutionBiasActivationForward later.
+  absl::StatusOr<bool> TryToSinkBroadcastOperandsOfChainedAdds(
+      HloInstruction* add);
+
   se::GpuComputeCapability compute_capability_;
 };
 

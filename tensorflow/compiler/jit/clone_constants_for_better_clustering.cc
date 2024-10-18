@@ -32,11 +32,11 @@ class CloneConstantsForBetterClusteringPassImpl {
  public:
   explicit CloneConstantsForBetterClusteringPassImpl(Graph* graph)
       : graph_(graph), unique_name_counter_(0) {}
-  Status Run();
+  absl::Status Run();
 
  private:
-  Status CloneSmallConstantInputs(const absl::flat_hash_set<string>& name_set,
-                                  Node* n);
+  absl::Status CloneSmallConstantInputs(
+      const absl::flat_hash_set<string>& name_set, Node* n);
   string GenerateUniqueName(const absl::flat_hash_set<string>& name_set,
                             absl::string_view prefix);
   absl::StatusOr<Node*> CloneNode(const absl::flat_hash_set<string>& name_set,
@@ -110,7 +110,8 @@ bool IsInPlaceOp(absl::string_view op_name) {
 }
 }  // namespace
 
-Status CloneConstantsForBetterClusteringPassImpl::CloneSmallConstantInputs(
+absl::Status
+CloneConstantsForBetterClusteringPassImpl::CloneSmallConstantInputs(
     const absl::flat_hash_set<string>& name_set, Node* n) {
   std::vector<const Edge*> in_edges;
   // Get the edges and sort them so we clone in a deterministic order.
@@ -140,7 +141,7 @@ Status CloneConstantsForBetterClusteringPassImpl::CloneSmallConstantInputs(
   return absl::OkStatus();
 }
 
-Status CloneConstantsForBetterClusteringPassImpl::Run() {
+absl::Status CloneConstantsForBetterClusteringPassImpl::Run() {
   absl::flat_hash_set<string> name_set;
   absl::c_transform(graph_->nodes(), std::inserter(name_set, name_set.begin()),
                     [](Node* n) { return n->name(); });
@@ -198,7 +199,7 @@ Status CloneConstantsForBetterClusteringPassImpl::Run() {
   return absl::OkStatus();
 }
 
-Status CloneConstantsForBetterClusteringPass::Run(
+absl::Status CloneConstantsForBetterClusteringPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (GetGlobalJitLevelForGraph(options) == OptimizerOptions::OFF) {
     return absl::OkStatus();

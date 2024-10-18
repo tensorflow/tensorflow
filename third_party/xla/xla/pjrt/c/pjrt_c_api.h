@@ -79,7 +79,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 54
+#define PJRT_API_MINOR 55
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -644,6 +644,10 @@ typedef enum {
   // 2-bit integer types
   PJRT_Buffer_Type_S2,
   PJRT_Buffer_Type_U2,
+
+  // More truncated 8 bit floating-point formats.
+  PJRT_Buffer_Type_F8E4M3,
+  PJRT_Buffer_Type_F8E3M4,
 } PJRT_Buffer_Type;
 
 typedef enum {

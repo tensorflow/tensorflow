@@ -33,8 +33,8 @@ namespace tensorflow {
 // REQUIRES: in.dims() == perm.size()
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
-Status DoTranspose(const Device& device, const Tensor& in,
-                   const absl::Span<const int32> perm, Tensor* out);
+absl::Status DoTranspose(const Device& device, const Tensor& in,
+                         const absl::Span<const int32> perm, Tensor* out);
 
 // Conjugate and transpose tensor 'in' into tensor 'out' according to dimension
 // permutation 'perm'.
@@ -44,19 +44,21 @@ Status DoTranspose(const Device& device, const Tensor& in,
 // REQUIRES: in.dims() == perm.size()
 // REQUIRES: in.dim_size(perm[i]) == out->dim_size(i)
 template <typename Device>
-Status DoConjugateTranspose(const Device& device, const Tensor& in,
-                            const absl::Span<const int32> perm, Tensor* out);
+absl::Status DoConjugateTranspose(const Device& device, const Tensor& in,
+                                  const absl::Span<const int32> perm,
+                                  Tensor* out);
 
 // Convenience versions of DoTranspose that only swap the last (inner) two
 // dimensions.
 template <typename Device>
-Status DoMatrixTranspose(const Device& device, const Tensor& in, Tensor* out);
+absl::Status DoMatrixTranspose(const Device& device, const Tensor& in,
+                               Tensor* out);
 
 // Convenience versions of DoConjugateTranspose that only swap the last (inner)
 // two dimensions.
 template <typename Device>
-Status DoConjugateMatrixTranspose(const Device& device, const Tensor& in,
-                                  Tensor* out);
+absl::Status DoConjugateMatrixTranspose(const Device& device, const Tensor& in,
+                                        Tensor* out);
 
 // Primary device specific functor to be specialized for each device and type.
 template <typename Device, typename T, bool conjugate = false>
@@ -164,9 +166,9 @@ void TransposeUsingEigen(const Device& d, const Tensor& in,
 }
 
 template <typename Device>
-Status DoTransposeImpl(const Device& d, const Tensor& in,
-                       const absl::Span<const int32> perm, bool conjugate,
-                       Tensor* out) {
+absl::Status DoTransposeImpl(const Device& d, const Tensor& in,
+                             const absl::Span<const int32> perm, bool conjugate,
+                             Tensor* out) {
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
@@ -239,8 +241,9 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
 }
 
 template <typename Device>
-inline Status DoMatrixTransposeImpl(const Device& device, const Tensor& in,
-                                    bool conjugate, Tensor* out) {
+inline absl::Status DoMatrixTransposeImpl(const Device& device,
+                                          const Tensor& in, bool conjugate,
+                                          Tensor* out) {
   const int ndims = in.dims();
   if (ndims == 0) return absl::OkStatus();
   TransposePermsVec perm(ndims);

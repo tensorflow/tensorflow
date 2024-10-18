@@ -29,6 +29,7 @@ limitations under the License.
 #include <time.h>
 #include <unistd.h>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/default/posix_file_system.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 

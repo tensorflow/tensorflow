@@ -99,6 +99,7 @@ This release contains contributions from many people at Google, as well as:
     * Add support for `stablehlo.composite`.
     * `EmbeddingLookup` op supports per-channel quantization and `TensorType_INT4` values.
     * `FullyConnected` op supports `TensorType_INT16` activation and `TensorType_Int4` weight per-channel quantization.
+    * Enable per-tensor quantization support in dynamic range quantization of `TRANSPOSE_CONV` layer. Fixes TFLite converter [bug](https://github.com/tensorflow/tensorflow/issues/76624).
 
 * `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
     * Support `bad_indices_policy`.

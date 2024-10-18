@@ -94,7 +94,7 @@ void DeviceCompilationProfiler::RegisterExecution(
   RegisterExecutionForCluster(function, &it->second);
 }
 
-Status DeviceCompilationProfiler::RegisterCompilation(
+absl::Status DeviceCompilationProfiler::RegisterCompilation(
     const NameAttrList& function, int64_t compile_time_us,
     bool used_persistent_cache) {
   metrics::UpdateXlaCompilationTime(compile_time_us);

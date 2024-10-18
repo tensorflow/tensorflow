@@ -172,6 +172,9 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, process_index).WillByDefault([this]() {
     return delegated_->process_index();
   });
+  ON_CALL(*this, GetAllDevices).WillByDefault([this]() {
+    return delegated_->GetAllDevices();
+  });
   ON_CALL(*this, GetDefaultDeviceAssignment)
       .WillByDefault([this](int num_replicas, int num_partitions) {
         return delegated_->GetDefaultDeviceAssignment(num_replicas,

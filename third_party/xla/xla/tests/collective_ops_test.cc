@@ -2221,6 +2221,10 @@ body {
       }
     recv-data.1 = u32[2] get-tuple-element(recv-done.1), index=0
 
+    send-done.1 = token[] send-done(send.1), channel_id=0,
+    frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
     replica = u32[] replica-id()
     constant0 = u32[] constant(0)
     compare0 = pred[] compare(replica, constant0), direction=EQ
@@ -2233,10 +2237,6 @@ body {
     r = u32[2] broadcast(c1), dimensions={}
     s = u32[2] add(r, recv-data)
 
-    send-done.1 = token[] send-done(send.1), channel_id=0,
-    frontend_attributes={
-        _xla_send_recv_pipeline="0"
-      }
     ROOT result = (u32[], u32[2]) tuple(new_count, s)
   }
 

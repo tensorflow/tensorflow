@@ -129,7 +129,7 @@ inline void CloneTensorData(const LrtTensorT& old_tensor,
                             LrtTensorT& new_tensor) {
   new_tensor.type_id = old_tensor.type_id;
   new_tensor.type_detail = old_tensor.type_detail;
-  new_tensor.buffer.fb_buffer = std::make_unique<tflite::BufferT>();
+  new_tensor.weights.fb_buffer = std::make_unique<tflite::BufferT>();
 }
 
 inline std::optional<lrt_param_index_t> FindUseInd(LrtTensor tensor,

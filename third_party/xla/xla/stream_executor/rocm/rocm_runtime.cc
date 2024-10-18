@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/rocm/rocm_driver.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
+#include "xla/stream_executor/rocm/rocm_status.h"
 
 #define RETURN_IF_ROCM_ERROR(expr, ...)                             \
   if (auto res = (expr); TF_PREDICT_FALSE(res != hipSuccess)) {     \

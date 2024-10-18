@@ -83,6 +83,7 @@ HloPassPipeline FusionPipeline(
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
   fusion.AddPass<HloDCE>();
+
   return std::move(fusion);
 }
 

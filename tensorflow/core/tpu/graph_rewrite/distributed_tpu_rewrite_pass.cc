@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/sharding_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"

@@ -153,6 +153,8 @@ filegroup(
         ":minimal_logging_android.cc",
         ":mutable_op_resolver.cc",
         ":mutable_op_resolver.h",
+        ":mutable_op_resolver_utils.cc",
+        ":mutable_op_resolver_utils.h",
         ":op_resolver.h",
         ":portable_type_to_tflitetype.h",
         ":stderr_reporter.cc",

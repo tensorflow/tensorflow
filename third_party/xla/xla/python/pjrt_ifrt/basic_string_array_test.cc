@@ -649,8 +649,8 @@ TEST(DisassembleArrayIntoSingleDeviceArrays,
 
   TF_ASSERT_OK_AND_ASSIGN(auto new_buffers,
                           basic_string_array->buffers().Await());
-  ASSERT_EQ(buffers.size(), 1);
-  EXPECT_THAT(buffers[0], testing::ElementsAre("abc"));
+  ASSERT_EQ(new_buffers.size(), 1);
+  EXPECT_THAT(new_buffers[0], testing::ElementsAre("abc"));
 }
 
 TEST(DisassembleArrayIntoSingleDeviceArrays, ShardedArrayDisassembleSuccess) {
@@ -833,7 +833,6 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
   ASSERT_GE(devices.size(), 2);
 
   auto buf_and_on_done_with_buffer = MakeBuffersAndOnDoneWithBuffer({"abc"});
-  auto buffers = buf_and_on_done_with_buffer.first;
   auto on_done_with_buffer = buf_and_on_done_with_buffer.second;
   TF_ASSERT_OK_AND_ASSIGN(
       auto ret, CreateNonReadyTestArray(client.get(), devices[0],

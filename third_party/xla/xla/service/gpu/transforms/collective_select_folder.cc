@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/collective_ops_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -41,21 +42,20 @@ namespace {
 using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
-struct SelectPredInfo {
+struct FoldableSelect {
   int64_t constant;
   Comparison::Direction direction;
-  HloOpcode device_id_type;  // kReplicaId or kPartitionId
+  CollectiveOpGroupMode collective_mode;
   HloInstruction* true_operand;
   HloInstruction* false_operand;
 };
 
 // Returns handy references to %constant, %true_operand, %false_operand of the
-// select(broadcast(compare(current_device_id, constant)), true_operand,
-// false_operand)
+//   `select(broadcast(compare(current_id, constant)), true_operand,
+//       false_operand)`
 // or
-// select(compare(current_device_id, constant), true_operand,
-// false_operand)
-std::optional<SelectPredInfo> GetPredSelectInfo(HloInstruction* select) {
+//    select(compare(current_id, constant), true_operand, false_operand)`
+std::optional<FoldableSelect> MatchFoldableSelect(HloInstruction* select) {
   if (select->opcode() != HloOpcode::kSelect) {
     return std::nullopt;
   }
@@ -72,28 +72,35 @@ std::optional<SelectPredInfo> GetPredSelectInfo(HloInstruction* select) {
   const HloCompareInstruction* compare =
       DynCast<HloCompareInstruction>(compare_candidate);
 
-  if ((compare->operand(0)->opcode() != HloOpcode::kReplicaId &&
-       compare->operand(0)->opcode() != HloOpcode::kPartitionId) ||
-      compare->operand(1)->opcode() != HloOpcode::kConstant) {
+  const HloInstruction* id_op = compare->operand(0);
+  CollectiveOpGroupMode mode;
+  if (id_op->opcode() == HloOpcode::kReplicaId) {
+    mode = CollectiveOpGroupMode::kCrossReplica;
+  } else if (id_op->opcode() == HloOpcode::kPartitionId) {
+    mode = CollectiveOpGroupMode::kCrossPartition;
+  } else {
+    return std::nullopt;
+  }
+
+  if (compare->operand(1)->opcode() != HloOpcode::kConstant) {
     return std::nullopt;
   }
 
   int64_t id_value =
       compare->operand(1)->literal().GetFirstInteger().value_or(-1);
 
-  return SelectPredInfo{id_value, compare->direction(),
-                        compare->operand(0)->opcode(),
+  return FoldableSelect{id_value, compare->direction(), mode,
                         select->mutable_operand(1), select->mutable_operand(2)};
 }
 
-bool IsUniqueSource(int64_t device_id, const SourceTargetPairs& pairs) {
-  if (pairs.size() == 1 && pairs[0].first == device_id) return true;
+bool IsUniqueSource(int64_t id, const SourceTargetPairs& pairs) {
+  if (pairs.size() == 1 && pairs[0].first == id) return true;
   return false;
 }
 
-bool IsNotPresentInSource(int64_t device_id, const SourceTargetPairs& pairs) {
+bool IsNotPresentInSource(int64_t id, const SourceTargetPairs& pairs) {
   return absl::c_none_of(
-      pairs, [device_id](const auto& pair) { return pair.first == device_id; });
+      pairs, [id](const SourceTargetPair& pair) { return pair.first == id; });
 }
 
 inline absl::StatusOr<bool> update(HloInstruction* cp, HloInstruction* data) {
@@ -102,45 +109,46 @@ inline absl::StatusOr<bool> update(HloInstruction* cp, HloInstruction* data) {
 }
 
 // We have to maintain integrity of relationship between partition/replica
-// and collective-permute's channel_id.
-// That is we can only fold select when
-// 1. cp has channel_id and condition is based on partition_id
-// 2. cp has no channel_id and condition is based on replica_id
+// and collective-permute's channel_id. That is we can only fold select when
+//   1. cp has channel_id and condition is based on partition_id
+//   2. cp has no channel_id and condition is based on replica_id
 // See enum class CollectiveOpGroupMode for details.
 bool IsShardingConsistent(HloCollectivePermuteInstruction* cp,
-                          HloOpcode device_id_type) {
-  auto id = cp->channel_id();
-  return (device_id_type == HloOpcode::kPartitionId && id.has_value()) ||
-         (device_id_type == HloOpcode::kReplicaId && !id.has_value());
+                          CollectiveOpGroupMode mode) {
+  std::optional<int64_t> id = cp->channel_id();
+
+  return (mode == CollectiveOpGroupMode::kCrossPartition && id.has_value()) ||
+         (mode == CollectiveOpGroupMode::kCrossReplica && !id.has_value());
 }
 
 // Recognizes the pattern and update if applicable.
-absl::StatusOr<bool> TryFoldSelect(HloInstruction* in) {
-  if (in->opcode() != HloOpcode::kCollectivePermute) return false;
-  auto select_info_opt = GetPredSelectInfo(in->mutable_operand(0));
-  if (!select_info_opt.has_value()) return false;
-  auto select_info = select_info_opt.value();
-
+absl::StatusOr<bool> TryFoldColectivePermuteOfSelect(HloInstruction* inst) {
   HloCollectivePermuteInstruction* cp =
-      Cast<HloCollectivePermuteInstruction>(in);
-  if (!IsShardingConsistent(cp, select_info.device_id_type)) return false;
+      DynCast<HloCollectivePermuteInstruction>(inst);
+  if (cp == nullptr) return false;
 
-  int64_t device_id = select_info.constant;
+  std::optional<FoldableSelect> select_info =
+      MatchFoldableSelect(inst->mutable_operand(0));
+  if (!select_info.has_value()) return false;
+
+  if (!IsShardingConsistent(cp, select_info->collective_mode)) return false;
+
+  int64_t id = select_info->constant;
   SourceTargetPairs pairs = cp->source_target_pairs();
 
-  if (select_info.direction == Comparison::Direction::kEq) {
-    if (IsUniqueSource(device_id, pairs)) {
-      return update(cp, select_info.true_operand);
-    } else if (IsNotPresentInSource(device_id, pairs)) {
-      return update(cp, select_info.false_operand);
+  if (select_info->direction == Comparison::Direction::kEq) {
+    if (IsUniqueSource(id, pairs)) {
+      return update(cp, select_info->true_operand);
+    } else if (IsNotPresentInSource(id, pairs)) {
+      return update(cp, select_info->false_operand);
     }
   }
 
-  if (select_info.direction == Comparison::Direction::kNe) {
-    if (IsNotPresentInSource(device_id, pairs)) {
-      return update(cp, select_info.true_operand);
-    } else if (IsUniqueSource(device_id, pairs)) {
-      return update(cp, select_info.false_operand);
+  if (select_info->direction == Comparison::Direction::kNe) {
+    if (IsNotPresentInSource(id, pairs)) {
+      return update(cp, select_info->true_operand);
+    } else if (IsUniqueSource(id, pairs)) {
+      return update(cp, select_info->false_operand);
     }
   }
   return false;
@@ -152,9 +160,10 @@ absl::StatusOr<bool> CollectiveSelectFolder::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool local_changed, TryFoldSelect(instruction));
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      TF_ASSIGN_OR_RETURN(bool local_changed,
+                          TryFoldColectivePermuteOfSelect(inst));
       changed |= local_changed;
     }
   }

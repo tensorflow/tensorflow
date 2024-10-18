@@ -12,24 +12,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/platform/status.h"
 
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_format.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/stack_frame.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::IsEmpty;
+using ::testing::Pair;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
@@ -188,16 +191,18 @@ TEST(Status, SaveOKStatusToProto) {
 }
 
 TEST(Status, SaveErrorStatusToProto) {
-  tensorflow::StatusProto status_proto =
-      StatusToProto(errors::NotFound("Not found"));
+  tensorflow::StatusProto status_proto = StatusToProto(errors::Create(
+      absl::StatusCode::kNotFound, "Not found", {{"foo", "bar"}}));
   EXPECT_EQ(status_proto.code(), error::NOT_FOUND);
   EXPECT_EQ(status_proto.message(), "Not found");
+  EXPECT_THAT(status_proto.payload(), ElementsAre(Pair("foo", "bar")));
 }
 
 TEST(Status, SaveEmptyStatusToProto) {
   tensorflow::StatusProto status_proto = StatusToProto(absl::Status());
   EXPECT_EQ(status_proto.code(), error::OK);
   EXPECT_THAT(status_proto.message(), IsEmpty());
+  EXPECT_THAT(status_proto.payload(), IsEmpty());
 }
 
 TEST(Status, MakeOKStatusFromProto) {
@@ -210,8 +215,10 @@ TEST(Status, MakeErrorStatusFromProto) {
   tensorflow::StatusProto status_proto;
   status_proto.set_code(error::INVALID_ARGUMENT);
   status_proto.set_message("Invalid argument");
-  EXPECT_THAT(StatusFromProto(status_proto),
-              StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+  status_proto.mutable_payload()->insert({"foo", "bar"});
+  absl::Status s = StatusFromProto(status_proto);
+  EXPECT_THAT(s, StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+  EXPECT_EQ(s.GetPayload("foo"), "bar");
 }
 
 TEST(Status, MakeStatusFromEmptyProto) {

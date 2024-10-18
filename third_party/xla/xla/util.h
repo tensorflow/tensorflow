@@ -420,6 +420,9 @@ std::string VectorString(const std::initializer_list<T>& c) {
 std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FN.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3B11.
@@ -430,6 +433,9 @@ std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
 std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E3M4.
+std::string RoundTripFpToString(tsl::float8_e3m4 value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);

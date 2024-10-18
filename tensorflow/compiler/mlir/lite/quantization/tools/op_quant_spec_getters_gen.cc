@@ -41,7 +41,7 @@ using mlir::tblgen::Operator;
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
-static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
+static bool OpQuantSpecWriter(raw_ostream &os, const RecordKeeper &records) {
   llvm::Regex acc_uniform_trait_regex{"AccumulatorUniformScale<([0-9]*),"};
   llvm::Regex coeff_index_trait_regex{"AffineOpCoefficient<(-?[0-9]*),"};
   llvm::Regex fixed_uniform_trait_regex{
@@ -50,7 +50,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 
   // Retrieve all the definitions derived from Op definition and sort by record
   // name.
-  std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
+  std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
   OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "

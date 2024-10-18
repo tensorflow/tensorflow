@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -61,6 +62,21 @@ limitations under the License.
 namespace xla {
 namespace memory_space_assignment {
 namespace {
+
+struct LoopOptimizerChunkInterval {
+  int64_t begin_idx_in_loop;
+  int64_t end_idx_in_loop;
+  EvenOddChunkPair chunks;
+
+  std::string ToString() const {
+    CHECK(chunks.HasValues());
+    return absl::StrFormat(
+        "begin_idx_in_loop: %d, end_idx_in_loop: %d, even chunk: %s, odd "
+        "chunk: %s",
+        begin_idx_in_loop, end_idx_in_loop, chunks.even_chunk->ToString(),
+        chunks.odd_chunk->ToString());
+  }
+};
 
 std::optional<int64_t> GetInstructionIndex(
     const HloInstruction* instruction,
@@ -137,7 +153,7 @@ void LoopOptimizerBestFitHeap::RemoveEvenOddChunkPair(
     EvenOddChunkPair& chunks) {
   CheckAllocationIntervalValid(begin_idx_in_loop, end_idx_in_loop);
   ShiftAllocationIntervalIfRequired(begin_idx_in_loop, end_idx_in_loop);
-  auto [even_chunk, odd_chunk] = chunks;
+  auto& [even_chunk, odd_chunk] = chunks;
   RemoveEvenChunks(begin_idx_in_loop, end_idx_in_loop, even_chunk);
   RemoveOddChunks(begin_idx_in_loop, end_idx_in_loop, odd_chunk);
 }
@@ -325,18 +341,17 @@ int64_t LoopOptimizerBestFitHeap::LastMemoryOffsetOccupied() const {
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<MemoryBoundLoopOptimizer>>
-MemoryBoundLoopOptimizer::Create(
-    int loop_start, int loop_end, uint64_t alternate_memory_size,
-    const MemoryBoundLoopOptimizerOptions& options,
-    const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
-    const CostAnalysis& cost_analysis,
-    const BufferValue::SizeFunction& size_function,
-    const ReservedScopedMemoryFunction& reserved_scoped_memory_fn) {
+MemoryBoundLoopOptimizer::Create(int loop_start, int loop_end,
+                                 const HloLiveRange& hlo_live_range,
+                                 const HloAliasAnalysis& alias_analysis,
+                                 const Options& options) {
+  CHECK(options.cost_analysis != nullptr);
   std::unique_ptr<MemoryBoundLoopOptimizer> optimizer =
       absl::WrapUnique(new MemoryBoundLoopOptimizer(
-          loop_start, loop_end, alternate_memory_size, options, hlo_live_range,
-          alias_analysis, cost_analysis, size_function,
-          reserved_scoped_memory_fn));
+          loop_start, loop_end, options.max_size_in_bytes,
+          options.memory_bound_loop_optimizer_options, hlo_live_range,
+          alias_analysis, *options.cost_analysis, options.size_fn,
+          options.reserved_scoped_memory_fn, options.alignment_in_bytes));
   TF_RETURN_IF_ERROR(optimizer->Initialize());
   return std::move(optimizer);
 }
@@ -347,7 +362,8 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
     const HloLiveRange& hlo_live_range, const HloAliasAnalysis& alias_analysis,
     const CostAnalysis& cost_analysis,
     const BufferValue::SizeFunction& size_function,
-    const ReservedScopedMemoryFunction& reserved_scoped_memory_fn)
+    const ReservedScopedMemoryFunction& reserved_scoped_memory_fn,
+    int64_t alignment_in_bytes)
     : loop_start_(loop_start),
       loop_end_(loop_end),
       loop_size_(loop_end - loop_start),
@@ -357,13 +373,17 @@ MemoryBoundLoopOptimizer::MemoryBoundLoopOptimizer(
       alias_analysis_(alias_analysis),
       cost_analysis_(cost_analysis),
       size_function_(size_function),
-      reserved_scoped_memory_fn_(reserved_scoped_memory_fn) {}
+      reserved_scoped_memory_fn_(reserved_scoped_memory_fn),
+      heap_(LoopOptimizerBestFitHeap(alternate_memory_size,
+                                     /*loop_size=*/loop_end - loop_start,
+                                     alignment_in_bytes)) {}
 
 absl::Status MemoryBoundLoopOptimizer::Initialize() {
   const auto& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   VLOG(3) << "MemoryBoundLoopOptimizer::Initialize, loop start: " << loop_start_
-          << ", loop end: " << loop_end_ << ", loop size: " << loop_size_;
+          << ", loop end: " << loop_end_ << ", loop size: " << loop_size_
+          << ", alternate memory size: " << alternate_memory_size_;
   const HloComputation* loop_computation = nullptr;
   // Initialize the remaining memory array with the size of the alternate
   // memory. Also populate instructions_in_loop_ and
@@ -387,11 +407,20 @@ absl::Status MemoryBoundLoopOptimizer::Initialize() {
     } else {
       TF_RET_CHECK(loop_computation == loop_inst->parent());
     }
-    remaining_memory_.push_back(
-        alternate_memory_size_ -
+    int64_t reserved_memory =
         reserved_scoped_memory_fn_(loop_inst,
                                    /*operands_in_alternate_memory=*/{},
-                                   /*outputs_in_alternate_memory=*/{}));
+                                   /*outputs_in_alternate_memory=*/{});
+    if (reserved_memory == 0) {
+      continue;
+    }
+    // Chunks for reserved scoped memory should always be found at offset 0.
+    EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+        i, i, reserved_memory, /*preferred_offsets=*/{0, 0});
+    CHECK(chunks.HasValues());
+    CHECK(chunks.even_chunk->size == reserved_memory);
+    VLOG(3) << "Reserved chunk: " << chunks.even_chunk->ToString()
+            << " loop index: " << i;
   }
 
   // Create a tree set to keep track of all the values that the loop
@@ -572,7 +601,7 @@ void MemoryBoundLoopOptimizer::MaybeCreateLoopValue(
     VLOG(3) << "Savings: " << loop_value.savings;
     VLOG(3) << "Savings per byte: " << loop_value.savings_per_byte;
     for (const HloValue* value : buffer.values()) {
-      VLOG(3) << value->ToString();
+      VLOG(6) << value->ToString();
     }
     loop_value.hlo_values = buffer.values();
   } else {
@@ -809,17 +838,36 @@ std::string MemoryBoundLoopOptimizer::LoopValue::ToString() const {
   for (const auto& allocation : allocations) {
     absl::StrAppend(&allocations_str, "\n  - ", allocation->ToString());
   }
+  std::string chunk_str;
+  if (chunks.HasValues()) {
+    absl::StrAppend(&chunk_str, "\n",
+                    "even chunk: ", chunks.even_chunk->ToString());
+    absl::StrAppend(&chunk_str, "\n",
+                    "odd chunk: ", chunks.odd_chunk->ToString());
+    absl::StrAppend(&chunk_str, "\n", "alternate memory begin idx in loop: ",
+                    alternate_memory_begin_idx_in_loop.value());
+    absl::StrAppend(&chunk_str, "\n", "alternate memory end idx in loop: ",
+                    alternate_memory_end_idx_in_loop.value());
+  }
   return absl::StrCat(
       "Size: ", size, " savings: ", savings,
       " savings per byte: ", savings_per_byte,
-      " allocation type: ", AllocationTypeToString(allocation_type), "\n",
-      values_str, "\n", allocations_str);
+      " allocation type: ", AllocationTypeToString(allocation_type), chunk_str,
+      "\n", values_str, "\n", allocations_str);
 }
 
 bool MemoryBoundLoopOptimizer::LoopValue::IsAllocationTypeSupported() const {
   return allocation_type == AllocationType::kTemporary ||
          allocation_type == AllocationType::kPinned ||
          allocation_type == AllocationType::kPrefetch;
+}
+
+void MemoryBoundLoopOptimizer::LoopValue::SetChunkPairAndInterval(
+    EvenOddChunkPair chunk_pair, int64_t begin_idx_in_loop,
+    int64_t end_idx_in_loop) {
+  chunks = chunk_pair;
+  alternate_memory_begin_idx_in_loop = begin_idx_in_loop;
+  alternate_memory_end_idx_in_loop = end_idx_in_loop;
 }
 
 void MemoryBoundLoopOptimizer::SortLoopValues() {
@@ -850,9 +898,13 @@ void MemoryBoundLoopOptimizer::AllocateLoopValues() {
         VLOG(1) << "Unsupported allocation: " << value.ToString();
     }
   }
+  VLOG(6) << "Heap after allocating temporaries:\n"
+          << heap_.MemoryUsageToAsciiArt();
   VLOG(3) << "Execution time after allocating temporaries: "
           << CalculateExecutionTime();
   AllocatePrefetches(absl::MakeSpan(prefetch_values));
+  VLOG(6) << "Heap after allocating prefetches:\n"
+          << heap_.MemoryUsageToAsciiArt();
   VLOG(3) << "Execution time after allocating prefetches:  "
           << CalculateExecutionTime();
 }
@@ -897,24 +949,8 @@ void MemoryBoundLoopOptimizer::PostProcess() {
         value.allocations.back()->AddUse(use);
       }
     }
+    VLOG(3) << "LoopValue: " << value.ToString();
   }
-}
-
-bool MemoryBoundLoopOptimizer::AllocateBetween(int64_t begin_idx,
-                                               int64_t end_idx, int64_t size) {
-  int64_t end_idx_sentinel = end_idx;
-  if (end_idx < begin_idx) {
-    end_idx_sentinel += loop_size_;
-  }
-  for (int64_t i = begin_idx; i <= end_idx_sentinel; ++i) {
-    if (remaining_memory_[i % loop_size_] < size) {
-      return false;
-    }
-  }
-  for (int64_t i = begin_idx; i <= end_idx_sentinel; ++i) {
-    remaining_memory_[i % loop_size_] -= size;
-  }
-  return true;
 }
 
 bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
@@ -925,37 +961,59 @@ bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
   }
   int64_t definition_idx = value.loop_positions.front().first;
   int64_t max_use_idx;
+  int64_t begin_idx_in_loop = definition_idx;
+  int64_t end_idx_in_loop;
   if (!value.next_iteration_uses.empty()) {
     max_use_idx = value.next_iteration_uses.back().first;
     // If max_use_idx >= definition_idx, then this is a loop carried dependence
     // and we should not have called this function.
     CHECK_LT(max_use_idx, definition_idx);
+    end_idx_in_loop = max_use_idx + loop_size_;
   } else {
     max_use_idx = value.loop_uses.back().first;
+    end_idx_in_loop = max_use_idx;
   }
-  bool success = AllocateBetween(definition_idx, max_use_idx, value.size);
-  if (success) {
-    VLOG(3) << "Pos: " << value.loop_positions[0].second;
-    value.allocations.push_back(std::make_unique<PinnedAllocation>(
-        value.loop_positions[0].second, MemorySpace::kAlternate, std::nullopt,
-        definition_idx, max_use_idx,
-        /*is_scoped_allocation=*/false));
-    AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/true);
+  EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
+      begin_idx_in_loop, end_idx_in_loop, value.size);
+  if (!chunks.HasValues()) {
+    VLOG(3) << "Could not find Allocation for temporary value: "
+            << value.ToString();
+    return false;
   }
-  return success;
+  value.SetChunkPairAndInterval(chunks, begin_idx_in_loop, end_idx_in_loop);
+  VLOG(3) << "Pos: " << value.loop_positions[0].second;
+  VLOG(3) << "Allocation found for temporary value: " << value.ToString();
+  VLOG(6) << "Heap after allocating temporary value: "
+          << heap_.MemoryUsageToAsciiArt();
+  value.allocations.push_back(std::make_unique<PinnedAllocation>(
+      value.loop_positions[0].second, MemorySpace::kAlternate, std::nullopt,
+      definition_idx, max_use_idx,
+      /*is_scoped_allocation=*/false));
+  AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/true);
+  return true;
 }
 
 bool MemoryBoundLoopOptimizer::AllocatePinned(LoopValue& value) {
-  bool success = AllocateBetween(0, loop_size_ - 1, value.size);
-  if (success) {
-    CHECK(value.header_position);
-    value.allocations.push_back(std::make_unique<PinnedAllocation>(
-        *value.header_position, MemorySpace::kAlternate, std::nullopt, 0,
-        loop_size_,
-        /*is_scoped_allocation=*/false));
-    AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/false);
+  int64_t begin_idx_in_loop = 0;
+  int64_t end_idx_in_loop = loop_size_ - 1;
+  EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
+      begin_idx_in_loop, end_idx_in_loop, value.size);
+  if (!chunks.HasValues()) {
+    VLOG(3) << "Could not find Allocation for pinned value: "
+            << value.ToString();
+    return false;
   }
-  return success;
+  value.SetChunkPairAndInterval(chunks, begin_idx_in_loop, end_idx_in_loop);
+  CHECK(value.header_position);
+  VLOG(3) << "Allocation found for pinned value: " << value.ToString();
+  VLOG(6) << "Heap after allocating pinned value: "
+          << heap_.MemoryUsageToAsciiArt();
+  value.allocations.push_back(std::make_unique<PinnedAllocation>(
+      *value.header_position, MemorySpace::kAlternate, std::nullopt, 0,
+      loop_size_,
+      /*is_scoped_allocation=*/false));
+  AddAllLoopPositionsAndUses(value, /*allocate_next_iteration_uses=*/false);
+  return true;
 }
 
 bool MemoryBoundLoopOptimizer::AllocatePrefetches(
@@ -1005,8 +1063,6 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetches(
             << *context.bandwidth_idle_times.rbegin();
   }
 
-  context.additional_memory_used.resize(loop_size_, 0);
-
   // Allocate prefetches by traversing the loop values in reverse order of
   // the first uses.
   for (int value_index : context.value_indices) {
@@ -1014,10 +1070,6 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetches(
   }
 
   for (int i = 0; i < loop_size_; ++i) {
-    remaining_memory_[i] -= context.additional_memory_used[i];
-    VLOG(3) << "Additional memory [" << i
-            << "]: " << context.additional_memory_used[i];
-    VLOG(3) << "Remaining memory [" << i << "]: " << remaining_memory_[i];
     VLOG(3) << "Remaining bandwidth [" << i
             << "] : " << context.bandwidth_idle_times[i];
   }
@@ -1026,7 +1078,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetches(
 
 bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     int value_index, AllocatePrefetchesContext& context) {
-  LoopValue* value = context.values.at(value_index);
+  LoopValue* value = context.values[value_index];
   VLOG(3) << "Allocating value: " << value->ToString();
   int first_use_idx = value->loop_uses.front().first;
   int last_use_idx = value->loop_uses.back().first;
@@ -1036,24 +1088,23 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     last_use_idx_sentinel = last_use_idx + loop_size_;
     CHECK_LT(last_use_idx, first_use_idx);
   }
-  bool out_of_memory = false;
-  for (int i = first_use_idx; i <= last_use_idx_sentinel; ++i) {
-    int loop_idx = i % loop_size_;
-    if (context.additional_memory_used[loop_idx] + value->size >
-        remaining_memory_[loop_idx]) {
-      VLOG(3) << "Ran out of memory allocating for uses.";
-      out_of_memory = true;
-    }
-  }
-  if (out_of_memory) {
-    return false;
-  }
   float copy_resource =
       cost_analysis_.GetAsyncCopyElapsed(value->hlo_values.front()->shape());
   VLOG(3) << "First use: " << value->loop_uses.begin()->second
           << " use idx: " << first_use_idx
           << " copy resource: " << copy_resource;
-  std::optional<int> copy_start_time;
+  const auto& [even_chunk, odd_chunk] = heap_.FindEvenAndOddAllocationBetween(
+      first_use_idx, last_use_idx_sentinel, value->size);
+  if (!even_chunk.has_value() || !odd_chunk.has_value()) {
+    // Not enough memory to even fit the value in the alternate memory for the
+    // duration of its live range.
+    VLOG(3) << "Could not find Allocation for prefetch value: "
+            << value->ToString();
+    return false;
+  }
+
+  std::optional<int> copy_start_loop_idx;
+  int committed_early_forced_prefetches_count = 0;
   // The general allocation algorithm for prefetches is to first calculate the
   // default-memory bandwidth idle times at each point (assuming all prefetches
   // succeeded).  We show this pictorially below. We also show the previous
@@ -1160,23 +1211,31 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
   float accumulated_copy_resource = 0;
   std::vector<int> early_forced_prefetch_value_indices;
   int early_forced_prefetch_value_search_index = 0;
-  float early_forced_prefetch_additional_memory = 0;
-  for (int i = first_use_idx - 1; i >= last_use_idx_sentinel - loop_size_;
-       --i) {
-    int loop_idx = (i + loop_size_) % loop_size_;
+  VLOG(6) << "Memory usage before allocating prefetch value: "
+          << value->ToString() << "\n"
+          << heap_.MemoryUsageToAsciiArt();
+  // NOTE: We can, in practice, run the following loop for loop_size
+  // iterations(one full loop), till first_use_idx - loop_size, as opposed to
+  // limiting it till last_use_idx_sentinel - loop_size. This will allow a
+  // prefetch to use all the idle bandwidth available during one full loop
+  // iteration.
+  for (int current_idx = first_use_idx - 1;
+       current_idx >= last_use_idx_sentinel - loop_size_; --current_idx) {
+    int loop_idx = (current_idx + loop_size_) % loop_size_;
     // Check if this prefetch rolls over to the previous iteration, check if any
     // already-scheduled prefetches would violate the FIFO order, and if so,
     // "early-force" them to be co-scheduled with this prefetch to maintain the
     // FIFO order. This of course increases the required memory, so also keep
     // track of additional memory that would be consumed.
-    if (i < 0) {
+    if (current_idx < 0) {
       for (; context.value_indices[early_forced_prefetch_value_search_index] !=
              value_index;
            ++early_forced_prefetch_value_search_index) {
         VLOG(3) << "Searching for early forced: "
                 << early_forced_prefetch_value_search_index;
-        LoopValue* early_forced_value = context.values.at(
-            context.value_indices[early_forced_prefetch_value_search_index]);
+        LoopValue* early_forced_value =
+            context.values[context.value_indices
+                               [early_forced_prefetch_value_search_index]];
         if (early_forced_value->allocations.empty()) {
           continue;
         }
@@ -1199,31 +1258,85 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
         }
         early_forced_prefetch_value_indices.push_back(
             early_forced_prefetch_value_search_index);
-        early_forced_prefetch_additional_memory += early_forced_value->size;
-        VLOG(3) << "Found early-forced prefetch value: "
-                << early_forced_value->ToString();
-        VLOG(3) << "Early forced prefetch additional memory: "
-                << early_forced_prefetch_additional_memory;
+        VLOG(6)
+            << "Memory usage before removing prefetch value for early force: "
+            << early_forced_value->ToString() << "\n"
+            << heap_.MemoryUsageToAsciiArt();
+        // Remove the original chunk from the heap.
+        heap_.RemoveEvenOddChunkPair(
+            early_forced_value->alternate_memory_begin_idx_in_loop.value(),
+            early_forced_value->alternate_memory_end_idx_in_loop.value(),
+            early_forced_value->chunks);
       }
     }
 
-    // Overlap memory overhead only happens if the copy start overlaps with the
-    // first use (i.e. fully pipelined), so we'd need to account for 2X the
-    // buffer at this time.
-    int64_t overlap_memory_overhead = 0;
-    if (loop_idx == last_use_idx) {
-      overlap_memory_overhead = value->size;
-      VLOG(3) << "Loop idx == last use idx (" << loop_idx
-              << "), overlap memory overhead = " << overlap_memory_overhead;
+    VLOG(3) << "Loop idx:" << loop_idx << " Early force prefetch values: "
+            << early_forced_prefetch_value_indices.size();
+    VLOG(6) << "Memory usage before adding pending chunks: \n"
+            << heap_.MemoryUsageToAsciiArt();
+    std::vector<LoopOptimizerChunkInterval> pending_chunk_intervals;
+    for (int early_forced_prefetch_value_index :
+         early_forced_prefetch_value_indices) {
+      LoopValue* early_forced_value =
+          context
+              .values[context.value_indices[early_forced_prefetch_value_index]];
+      int64_t begin_idx_in_loop = loop_idx;
+      int64_t end_idx_in_loop =
+          early_forced_value->alternate_memory_end_idx_in_loop.value();
+      EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+          begin_idx_in_loop, end_idx_in_loop, early_forced_value->size);
+      if (!chunks.HasValues()) {
+        VLOG(3) << "Could not allocate between " << begin_idx_in_loop << " and "
+                << end_idx_in_loop << " for early forced value: "
+                << early_forced_value->ToString();
+        VLOG(6) << "Memory usage after failed allocation: \n"
+                << heap_.MemoryUsageToAsciiArt();
+        break;
+      }
+      pending_chunk_intervals.push_back(
+          {begin_idx_in_loop, end_idx_in_loop, chunks});
+      VLOG(3) << "Added pending chunk: "
+              << pending_chunk_intervals.back().ToString()
+              << " for value: " << early_forced_value->ToString();
     }
 
-    // OOM; give up prefetch.
-    if (context.additional_memory_used[loop_idx] + value->size +
-            overlap_memory_overhead + early_forced_prefetch_additional_memory >
-        remaining_memory_[loop_idx]) {
-      VLOG(3) << "Ran out of memory. Accumulated copy resource "
-              << accumulated_copy_resource << " out of " << copy_resource
-              << " at " << loop_idx;
+    if (pending_chunk_intervals.size() ==
+        early_forced_prefetch_value_indices.size()) {
+      int64_t begin_idx_in_loop = current_idx;
+      int64_t end_idx_in_loop = last_use_idx_sentinel;
+      EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+          begin_idx_in_loop, end_idx_in_loop, value->size);
+      if (chunks.HasValues()) {
+        pending_chunk_intervals.push_back(
+            {begin_idx_in_loop, end_idx_in_loop, chunks});
+        VLOG(3) << "Added pending chunk: "
+                << pending_chunk_intervals.back().ToString()
+                << " for current value: " << value->ToString();
+      } else {
+        VLOG(3) << "Could not allocate between " << begin_idx_in_loop << " and "
+                << end_idx_in_loop << " for value: " << value->ToString();
+        VLOG(6) << "Memory usage after failed allocation: \n"
+                << heap_.MemoryUsageToAsciiArt();
+      }
+    }
+
+    bool out_of_memory = pending_chunk_intervals.size() <
+                         early_forced_prefetch_value_indices.size() + 1;
+
+    // Remove the pending chunks from the heap.
+    for (auto& pending_chunk_interval : pending_chunk_intervals) {
+      VLOG(3) << "Removing pending chunk: "
+              << pending_chunk_interval.ToString();
+      heap_.RemoveEvenOddChunkPair(pending_chunk_interval.begin_idx_in_loop,
+                                   pending_chunk_interval.end_idx_in_loop,
+                                   pending_chunk_interval.chunks);
+    }
+
+    VLOG(6) << "Memory usage after removing pending chunks: "
+            << heap_.MemoryUsageToAsciiArt();
+
+    if (out_of_memory) {
+      VLOG(3) << "Ran out of memory for value: " << value->ToString();
       break;
     }
 
@@ -1243,16 +1356,20 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
                 (copy_resource - accumulated_copy_resource));
     if (bandwidth_idle_time >= copy_resource - accumulated_copy_resource) {
       accumulated_copy_resource = copy_resource;
-      copy_start_time = loop_idx;
+      copy_start_loop_idx = current_idx;
+      committed_early_forced_prefetches_count =
+          early_forced_prefetch_value_indices.size();
       VLOG(3) << "Found the complete copy ratio and updated accumulated copy "
                  "resource: "
               << accumulated_copy_resource;
       break;
-    } else if (!copy_start_time &&
+    } else if (!copy_start_loop_idx.has_value() &&
                accumulated_copy_resource + bandwidth_idle_time >=
                    copy_resource * options_.desired_copy_ratio()) {
       accumulated_copy_resource += bandwidth_idle_time;
-      copy_start_time = loop_idx;
+      copy_start_loop_idx = current_idx;
+      committed_early_forced_prefetches_count =
+          early_forced_prefetch_value_indices.size();
       VLOG(3) << "Found the desired copy ratio and updated accumulated copy "
                  "resource: "
               << accumulated_copy_resource;
@@ -1261,7 +1378,9 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
       // Even if desired resource isn't reached, and if the options allow it,
       // allow a fully pipelined prefetch.
       accumulated_copy_resource += bandwidth_idle_time;
-      copy_start_time = loop_idx;
+      copy_start_loop_idx = current_idx;
+      committed_early_forced_prefetches_count =
+          early_forced_prefetch_value_indices.size();
       VLOG(3) << "Could not reach the desired copy ratio but scheduling "
                  "fully pipelined prefetch anyway: "
               << accumulated_copy_resource;
@@ -1273,27 +1392,52 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
     }
   }
 
-  // Could not find a suitable copy start time.
-  if (!copy_start_time) {
+  // Restore original heap state as is for values that are not being early
+  // forced. This is to ensure that the memory usage is the same as before early
+  // forcing. If no copy start time was found, all the prefetches will be
+  // restored to their original state. If a copy start time was found, the
+  // prefetches that will not be early forced will be restored to their original
+  // state.
+  VLOG(6) << "Memory usage before restoring original state: "
+          << heap_.MemoryUsageToAsciiArt();
+  for (int i = committed_early_forced_prefetches_count;
+       i < early_forced_prefetch_value_indices.size(); ++i) {
+    int early_forced_prefetch_value_index =
+        early_forced_prefetch_value_indices[i];
+    LoopValue* early_forced_value =
+        context
+            .values[context.value_indices[early_forced_prefetch_value_index]];
+    // Allocate a chunk in at the same offset as the original prefetch.
+    EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+        early_forced_value->alternate_memory_begin_idx_in_loop.value(),
+        early_forced_value->alternate_memory_end_idx_in_loop.value(),
+        early_forced_value->size,
+        {early_forced_value->chunks.even_chunk->offset,
+         early_forced_value->chunks.odd_chunk->offset});
+    // The chunk should always be present as we are allocating at the same
+    // offset.
+    CHECK(chunks.HasValues());
+    CHECK_EQ(chunks.even_chunk->offset,
+             early_forced_value->chunks.even_chunk->offset);
+    CHECK_EQ(chunks.odd_chunk->offset,
+             early_forced_value->chunks.odd_chunk->offset);
+  }
+  VLOG(6) << "Memory usage after restoring original state: "
+          << heap_.MemoryUsageToAsciiArt();
+
+  if (!copy_start_loop_idx.has_value()) {
+    VLOG(3) << "Could not find a suitable copy start time for value: "
+            << value->ToString();
     return false;
   }
 
-  VLOG(3) << "Success: copy_start_time: " << *copy_start_time
+  VLOG(3) << "Success: copy_start_loop_idx: " << copy_start_loop_idx.value()
           << " leftover copy resource: "
           << (copy_resource - accumulated_copy_resource);
-  auto update_additional_memory_used = [&](int loop_idx, int64_t addition) {
-    VLOG(4) << "Updating additional memory used at " << loop_idx << ". "
-            << context.additional_memory_used[loop_idx] << " + " << addition
-            << " => " << (context.additional_memory_used[loop_idx] + addition)
-            << " (remaining: " << remaining_memory_[loop_idx] << ")";
-    context.additional_memory_used[loop_idx] += addition;
-    CHECK_LE(context.additional_memory_used[loop_idx],
-             remaining_memory_[loop_idx]);
-  };
-  for (int i = first_use_idx; i <= last_use_idx_sentinel; ++i) {
-    int loop_idx = i % loop_size_;
-    update_additional_memory_used(loop_idx, value->size);
-  }
+  // We are early forcing the prefetches of the previous iteration. This is the
+  // corresponding copy start index in the previous iteration.
+  int early_prefetch_copy_start_loop_idx =
+      (copy_start_loop_idx.value() + loop_size_) % loop_size_;
   // We reset accumulated copy resource and then reuse it to accumulate copy
   // resource time in order to replay the previous for loop. It is important
   // that we use the same arithmetic operations (as opposed to subtracting from
@@ -1303,25 +1447,55 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
        --i) {
     int loop_idx = (i + loop_size_) % loop_size_;
     float& bandwidth_idle_time = context.bandwidth_idle_times[loop_idx];
-    // Overlap memory overhead only happens if the copy start overlaps with the
-    // first use (i.e. fully pipelined), so we'd need to account for 2X the
-    // buffer at this time.
-    int64_t overlap_memory_overhead = 0;
-    update_additional_memory_used(loop_idx,
-                                  value->size + overlap_memory_overhead);
     if (bandwidth_idle_time < copy_resource - accumulated_copy_resource) {
       accumulated_copy_resource += bandwidth_idle_time;
       bandwidth_idle_time = 0;
-      if (loop_idx == *copy_start_time) {
+      if (loop_idx == early_prefetch_copy_start_loop_idx) {
         VLOG(3) << "Remaining copy resource: "
                 << (copy_resource - accumulated_copy_resource);
         break;
       }
     } else {
       bandwidth_idle_time -= copy_resource - accumulated_copy_resource;
-      CHECK_EQ(loop_idx, *copy_start_time);
+      CHECK_EQ(loop_idx, early_prefetch_copy_start_loop_idx);
       break;
     }
+  }
+
+  // Account for the additional memory used by early forcing the already
+  // scheduled prefetches. Also modify the start times of these to this
+  // prefetch's copy start time.
+  // Allocate the force-early prefetches first, and allocate them in the same
+  // order as we did to check for out-of-memory, so we can reproduce the same
+  // allocation pattern.
+  // TODO(subhankarshah): Instead of depending on the order of allocation, store
+  // the offsets of the early forced prefetches and use that to allocate them.
+  for (int i = 0; i < committed_early_forced_prefetches_count; ++i) {
+    int early_forced_prefetch_value_index =
+        early_forced_prefetch_value_indices[i];
+    LoopValue* early_forced_value =
+        context
+            .values[context.value_indices[early_forced_prefetch_value_index]];
+    CHECK(!early_forced_value->allocations.empty());
+    CopyAllocation* early_forced_prefetch = static_cast<CopyAllocation*>(
+        early_forced_value->allocations.back().get());
+    int64_t begin_idx_in_loop = early_prefetch_copy_start_loop_idx;
+    int64_t end_idx_in_loop =
+        early_forced_value->alternate_memory_end_idx_in_loop.value();
+    EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+        begin_idx_in_loop, end_idx_in_loop, early_forced_value->size);
+    // The chunk should always be present as we reproducing the same allocation
+    // pattern as the out-of-memory check.
+    CHECK(chunks.HasValues());
+    CHECK_LT(begin_idx_in_loop,
+             early_forced_value->alternate_memory_begin_idx_in_loop.value());
+    early_forced_value->SetChunkPairAndInterval(chunks, begin_idx_in_loop,
+                                                end_idx_in_loop);
+    early_forced_prefetch->set_copy_start_schedule_after(
+        ((early_prefetch_copy_start_loop_idx - 1) + loop_size_) % loop_size_);
+    VLOG(3) << "Early forced prefetch: " << early_forced_value->ToString();
+    VLOG(6) << "Memory usage after allocating early forced prefetch: "
+            << heap_.MemoryUsageToAsciiArt();
   }
 
   // Create the Allocation objects that correspond to the scheduled prefetch.
@@ -1329,32 +1503,23 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
   value->allocations.push_back(std::make_unique<PinnedAllocation>(
       *value->header_position, MemorySpace::kDefault, std::nullopt, 0,
       loop_size_, /*is_scoped_allocation=*/false));
+  int64_t begin_idx_in_loop = copy_start_loop_idx.value();
+  int64_t end_idx_in_loop = last_use_idx_sentinel;
+  // The chunk should always be present as we reproducing the same allocation
+  // pattern as the out-of-memory check.
+  EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+      begin_idx_in_loop, end_idx_in_loop, value->size);
+  CHECK(chunks.HasValues());
+  value->SetChunkPairAndInterval(chunks, begin_idx_in_loop, end_idx_in_loop);
   value->allocations.push_back(std::make_unique<CopyAllocation>(
       *value->allocations.back(), MemorySpace::kAlternate, std::nullopt,
-      ((*copy_start_time - 1) + loop_size_) % loop_size_, first_use_idx,
-      last_use_idx_sentinel));
+      ((early_prefetch_copy_start_loop_idx - 1) + loop_size_) % loop_size_,
+      first_use_idx, last_use_idx_sentinel));
+  VLOG(3) << "Allocation found for prefetch: " << value->ToString();
+  VLOG(6) << "Memory usage after allocating prefetch: " << value->ToString()
+          << "\n"
+          << heap_.MemoryUsageToAsciiArt();
   AddAllLoopPositionsAndUses(*value, /*allocate_next_iteration_uses=*/true);
-
-  // Account for the additional memory used by early forcing the already
-  // scheduled prefetches. Also modify the start times of these to this
-  // prefetch's copy start time.
-  for (int early_forced_prefetch_value_index :
-       early_forced_prefetch_value_indices) {
-    LoopValue* early_forced_value = context.values.at(
-        context.value_indices[early_forced_prefetch_value_index]);
-    CHECK(!early_forced_value->allocations.empty());
-    CopyAllocation* early_forced_prefetch = static_cast<CopyAllocation*>(
-        early_forced_value->allocations.back().get());
-    for (int index = early_forced_prefetch->copy_start_schedule_after();
-         index >= *copy_start_time; --index) {
-      update_additional_memory_used(index, early_forced_value->size);
-      VLOG(3) << "Additional memory used: " << index << " "
-              << context.additional_memory_used[index];
-    }
-    early_forced_prefetch->set_copy_start_schedule_after(
-        ((*copy_start_time - 1) + loop_size_) % loop_size_);
-    VLOG(3) << "Updated prefetch: " << early_forced_prefetch->ToString();
-  }
   return true;
 }
 

@@ -16,13 +16,14 @@ limitations under the License.
 #include "xla/service/rng_bit_generator_expander.h"
 
 #include "absl/status/statusor.h"
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -86,15 +87,8 @@ RngBitGeneratorExpander::GetGeneratorComputation(const Shape& data_shape,
       ConcatInDim(&builder, {Reshape(key_op, {1}), output.state}, 0);
   Tuple(&builder, {final_state, output.value});
   TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      xla_computation.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                           xla_computation.proto(), config));
-  HloCloneContext context(module);
-  HloComputation* new_computation =
-      module->DeepCloneComputation(new_module->entry_computation(), &context);
+  TF_ASSIGN_OR_RETURN(HloComputation * new_computation,
+                      XlaComputationToHloComputation(xla_computation, module));
   computation_cache_.emplace(cache_key, new_computation);
   return new_computation;
 }

@@ -20,8 +20,7 @@ namespace tsl {
 using ::tensorflow::core::platform::ErrorSourceProto;
 
 void OkOrSetErrorCounterPayload(
-    const ErrorSourceProto::ErrorSource& error_source,
-    tensorflow::Status& status) {
+    const ErrorSourceProto::ErrorSource& error_source, absl::Status& status) {
   if (!status.ok() &&
       !status.GetPayload(tensorflow::kErrorSource).has_value()) {
     ErrorSourceProto error_source_proto;

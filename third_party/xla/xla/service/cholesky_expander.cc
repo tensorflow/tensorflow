@@ -19,15 +19,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "xla/client/lib/arithmetic.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/loops.h"
-#include "xla/client/lib/math.h"
-#include "xla/client/lib/matrix.h"
-#include "xla/client/lib/slicing.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/loops.h"
+#include "xla/hlo/builder/lib/math.h"
+#include "xla/hlo/builder/lib/matrix.h"
+#include "xla/hlo/builder/lib/slicing.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -248,15 +249,8 @@ absl::StatusOr<HloInstruction*> CholeskyExpander::ExpandInstruction(
     MaybeTransposeInMinorDims(l, !options.lower());
 
     TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        xla_computation.GetProgramShape());
-    HloModuleConfig config(program_shape);
-    TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                             xla_computation.proto(), config));
-    HloCloneContext context(module);
-    computation =
-        module->DeepCloneComputation(new_module->entry_computation(), &context);
+    TF_ASSIGN_OR_RETURN(
+        computation, XlaComputationToHloComputation(xla_computation, module));
   }
 
   return instruction->parent()->AddInstruction(HloInstruction::CreateCall(

@@ -35,7 +35,7 @@ LrtStatus RegisterCustomOpCode(LrtModel model, const char* new_op_code);
 // Destroy model and any associated storage.
 void ModelDestroy(LrtModel model);
 
-// Adds given metadata buffer to be serialized with the flatbuffer. Buffer can
+// Adds given metadata buffer to be serialized with the flatbuffer. Weights can
 // be retrieved at runtime under `metadata_name`.
 LrtStatus AppendMetadata(LrtModel model, const void* metadata,
                          size_t metadata_size, const char* metadata_name);

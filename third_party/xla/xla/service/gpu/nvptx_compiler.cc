@@ -94,7 +94,6 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"  // IWYU pragma : keep - Needed for GpuContext
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -228,6 +227,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_supports_non_canonical_dots(false);
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_conv_add_multiply_reorder(true);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
@@ -296,6 +296,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     alg_sim_options.set_supports_non_canonical_dots(false);
     alg_sim_options.set_is_layout_sensitive(true);
     alg_sim_options.set_enable_conv_operand_swap(false);
+    alg_sim_options.set_enable_conv_add_multiply_reorder(true);
     // "slow" minmax means we propagate nan.
     alg_sim_options.set_minmax_propagate_nan(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());

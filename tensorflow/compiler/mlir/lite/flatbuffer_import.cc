@@ -49,8 +49,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -83,7 +83,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -1504,7 +1504,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const bool disable_vhlo_to_stablehlo) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::quant::QuantizationDialect,
+                  mlir::quant::QuantDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
                   mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
@@ -1513,7 +1513,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   context->loadDialect<
       mlir::arith::ArithDialect, mlir::func::FuncDialect,
-      mlir::quant::QuantizationDialect,
+      mlir::quant::QuantDialect,
       mlir::quantfork::QuantizationForkDialect,
       mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
       mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();

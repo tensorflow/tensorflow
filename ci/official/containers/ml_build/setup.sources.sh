@@ -24,11 +24,18 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y gnupg ca-certificates
 
+# Deadsnakes: https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa
+apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F23C5A6CF475977595C89F51BA6932366A755776
+
 # LLVM/Clang: https://apt.llvm.org/
 apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key
 
 # Set up custom sources
 cat >/etc/apt/sources.list.d/custom.list <<SOURCES
+# More Python versions: Deadsnakes
+deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
+deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main
+
 # LLVM/Clang repository
 deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main
 deb-src http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main

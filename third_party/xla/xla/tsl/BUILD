@@ -3,7 +3,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:package_groups.bzl", "tsl_package_groups")
-load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load(
     "//xla/tsl:tsl.default.bzl",
     "tsl_extra_config_settings",
@@ -39,7 +39,7 @@ alias(
     name = "is_cuda_enabled",
     actual = if_oss(
         "@local_config_cuda//:is_cuda_enabled",
-        "@local_config_cuda//cuda:using_clang",
+        "@local_config_cuda//cuda:using_config_cuda",
     ),
     visibility = ["//visibility:public"],
 )
@@ -51,6 +51,24 @@ selects.config_setting_group(
         ":oss",
     ],
     visibility = ["//visibility:public"],
+)
+
+# Config setting that is satisfied when CUDA device code should be compiled
+# with nvcc. It does not imply that CUDA support has been enabled.
+alias(
+    name = "is_cuda_compiler_nvcc",
+    actual = if_oss(
+        "@local_config_cuda//:is_cuda_compiler_nvcc",
+        "@local_config_cuda//cuda:FALSE",
+    ),
+)
+
+selects.config_setting_group(
+    name = "is_cuda_nvcc",
+    match_all = [
+        ":is_cuda_enabled",
+        ":is_cuda_compiler_nvcc",
+    ],
 )
 
 # Crosses between framework_shared_object and a bunch of other configurations
@@ -500,11 +518,20 @@ config_setting(
 )
 
 config_setting(
-    name = "no_nccl_support",
+    name = "using_no_nccl_support_define",
     define_values = dict(
-        if_google({"GOOGLE_CUDA_COMPILER": "clang"}),
         no_nccl_support = "true",
     ),
+    visibility = internal_visibility(["//visibility:private"]),
+)
+
+selects.config_setting_group(
+    name = "no_nccl_support",
+    match_all = [
+        ":using_no_nccl_support_define",
+    ] + if_google([
+        "@local_config_cuda//cuda:using_config_cuda",
+    ]),
     visibility = ["//visibility:public"],
 )
 
@@ -519,6 +546,7 @@ bzl_library(
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
     ],
 )

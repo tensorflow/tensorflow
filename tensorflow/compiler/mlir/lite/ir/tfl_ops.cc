@@ -52,7 +52,7 @@ limitations under the License.
 #include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -5255,13 +5255,12 @@ Attribute ConstBytesAttr::parse(AsmParser& parser, Type type) {
   if (parser.parseString(&data)) {
     return nullptr;
   }
-  if (data.size() < 2 || data.substr(0, 2) != "0x") {
-    parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
-    return nullptr;
+  if (data.size() >= 2 && data.substr(0, 2) == "0x") {
+    std::string bytes_data = absl::HexStringToBytes(data.substr(2));
+    return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
   }
 
-  std::string bytes_data = absl::HexStringToBytes(data.substr(2));
-  return ConstBytesAttr::get(parser.getBuilder().getContext(), bytes_data);
+  return ConstBytesAttr::get(parser.getBuilder().getContext(), data);
 }
 
 void ConstBytesAttr::print(mlir::AsmPrinter& printer) const {

@@ -5,7 +5,7 @@ load("//xla:xla.bzl", "xla_cc_test")
 
 # Libraries for performance modeling of HLO.
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -86,7 +86,7 @@ xla_cc_test(
     srcs = ["fusion_analysis_cache_test.cc"],
     deps = [
         ":fusion_analysis_cache",
-        "//xla/service:hlo_parser",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/stream_executor:device_description",
@@ -483,12 +483,10 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/hash:hash_testing",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -798,6 +796,7 @@ cc_library(
         ":indexing_analysis",
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
@@ -806,8 +805,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -966,6 +963,13 @@ cc_library(
 xla_test(
     name = "hlo_op_profiler_test",
     srcs = ["hlo_op_profiler_test.cc"],
+    # TODO(b/372714955): Fix the memory leak!
+    backend_args = if_google(
+        {
+            "gpu_h100": ["--heap_check="],
+        },
+        {},
+    ),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [

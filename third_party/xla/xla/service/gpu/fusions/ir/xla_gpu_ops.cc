@@ -141,8 +141,8 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
 
 void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
                             ValueRange operands, AffineMap affine_map,
-                            ArrayRef<DimVar> dim_vars,
-                            ArrayRef<RangeVar> range_vars) {
+                            ArrayRef<IndexingMap::Variable> dim_vars,
+                            ArrayRef<IndexingMap::Variable> range_vars) {
   IndexingMap indexing_map(affine_map, dim_vars, range_vars, {});
   build(builder, result, operands, indexing_map);
 }
@@ -465,9 +465,9 @@ struct FoldApplyIndexingOperands
     unsigned new_num_operands = indexing_op->getNumOperands() - num_constants;
     SmallVector<Value, 4> new_operands;
     new_operands.reserve(new_num_operands);
-    SmallVector<DimVar, 2> new_dim_vars;
+    SmallVector<IndexingMap::Variable, 2> new_dim_vars;
     new_dim_vars.reserve(num_dims);
-    SmallVector<RangeVar, 2> new_range_vars;
+    SmallVector<IndexingMap::Variable, 2> new_range_vars;
     new_range_vars.reserve(num_symbols);
 
     unsigned new_num_dims = 0;
@@ -1000,7 +1000,7 @@ LogicalResult MaterializeOp::verify() {
   }
   for (auto const& [range_in, range_out] :
        llvm::zip(map_in.GetRangeVars(), map_out.GetRangeVars())) {
-    if (range_in.range != range_out.range) {
+    if (range_in.bounds != range_out.bounds) {
       return emitOpError() << "domain of symbols of indexing_maps must match";
     }
   }

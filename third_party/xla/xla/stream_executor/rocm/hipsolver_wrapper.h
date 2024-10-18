@@ -29,8 +29,7 @@ limitations under the License.
 
 #include "rocm/include/hipsolver.h"
 #endif
-#include "xla/stream_executor/platform/dso_loader.h"
-#include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
 
 namespace stream_executor {
@@ -49,22 +48,21 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define HIPSOLVER_API_WRAPPER(api_name)                                       \
-  template <typename... Args>                                                 \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) {              \
-    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;            \
-    static FuncPtrT loaded = []() -> FuncPtrT {                               \
-      static const char* kName = TO_STR(api_name);                            \
-      void* f;                                                                \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
-          stream_executor::internal::CachedDsoLoader::GetHipsolverDsoHandle() \
-              .value(),                                                       \
-          kName, &f);                                                         \
-      CHECK(s.ok()) << "could not find " << kName                             \
-                    << " in hipsolver lib; dlerror: " << s.message();         \
-      return reinterpret_cast<FuncPtrT>(f);                                   \
-    }();                                                                      \
-    return loaded(args...);                                                   \
+#define HIPSOLVER_API_WRAPPER(api_name)                                    \
+  template <typename... Args>                                              \
+  auto api_name(Args... args) -> decltype(::api_name(args...)) {           \
+    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;         \
+    static FuncPtrT loaded = []() -> FuncPtrT {                            \
+      static const char* kName = TO_STR(api_name);                         \
+      void* f;                                                             \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
+          tsl::internal::CachedDsoLoader::GetHipsolverDsoHandle().value(), \
+          kName, &f);                                                      \
+      CHECK(s.ok()) << "could not find " << kName                          \
+                    << " in hipsolver lib; dlerror: " << s.message();      \
+      return reinterpret_cast<FuncPtrT>(f);                                \
+    }();                                                                   \
+    return loaded(args...);                                                \
   }
 
 #endif

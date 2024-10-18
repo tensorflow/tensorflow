@@ -34,45 +34,48 @@ class SessionRef : public Session {
   explicit SessionRef(Session* session);
   ~SessionRef() override;
 
-  Status Create(const GraphDef& graph) override;
-  Status Extend(const GraphDef& graph) override;
-  Status Create(const RunOptions& run_options, const GraphDef& graph) override;
-  Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
-  Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
-             const std::vector<string>& output_tensor_names,
-             const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs) override;
+  absl::Status Create(const GraphDef& graph) override;
+  absl::Status Extend(const GraphDef& graph) override;
+  absl::Status Create(const RunOptions& run_options,
+                      const GraphDef& graph) override;
+  absl::Status Extend(const RunOptions& run_options,
+                      const GraphDef& graph) override;
+  absl::Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs) override;
 
-  Status ListDevices(std::vector<DeviceAttributes>* response) override;
+  absl::Status ListDevices(std::vector<DeviceAttributes>* response) override;
 
-  Status Close() override;
-  Status Close(const RunOptions& run_options) override;
+  absl::Status Close() override;
+  absl::Status Close(const RunOptions& run_options) override;
 
-  Status Run(const RunOptions& run_options,
-             const std::vector<std::pair<string, Tensor> >& inputs,
-             const std::vector<string>& output_tensor_names,
-             const std::vector<string>& target_node_names,
-             std::vector<Tensor>* outputs, RunMetadata* run_metadata) override;
+  absl::Status Run(const RunOptions& run_options,
+                   const std::vector<std::pair<string, Tensor> >& inputs,
+                   const std::vector<string>& output_tensor_names,
+                   const std::vector<string>& target_node_names,
+                   std::vector<Tensor>* outputs,
+                   RunMetadata* run_metadata) override;
 
-  Status PRunSetup(const std::vector<string>& input_names,
-                   const std::vector<string>& output_names,
-                   const std::vector<string>& target_nodes,
-                   string* handle) override;
+  absl::Status PRunSetup(const std::vector<string>& input_names,
+                         const std::vector<string>& output_names,
+                         const std::vector<string>& target_nodes,
+                         string* handle) override;
 
-  Status PRun(const string& handle,
-              const std::vector<std::pair<string, Tensor> >& inputs,
-              const std::vector<string>& output_names,
-              std::vector<Tensor>* outputs) override;
+  absl::Status PRun(const string& handle,
+                    const std::vector<std::pair<string, Tensor> >& inputs,
+                    const std::vector<string>& output_names,
+                    std::vector<Tensor>* outputs) override;
 
-  Status MakeCallable(const CallableOptions& callable_options,
-                      CallableHandle* out_handle) override;
+  absl::Status MakeCallable(const CallableOptions& callable_options,
+                            CallableHandle* out_handle) override;
 
-  Status RunCallable(CallableHandle handle,
-                     const std::vector<Tensor>& feed_tensors,
-                     std::vector<Tensor>* fetch_tensors,
-                     RunMetadata* run_metadata) override;
+  absl::Status RunCallable(CallableHandle handle,
+                           const std::vector<Tensor>& feed_tensors,
+                           std::vector<Tensor>* fetch_tensors,
+                           RunMetadata* run_metadata) override;
 
-  Status ReleaseCallable(CallableHandle handle) override;
+  absl::Status ReleaseCallable(CallableHandle handle) override;
 
  private:
   mutex run_lock_;
@@ -83,7 +86,7 @@ class SessionRef : public Session {
   // Borrowed reference to global session logger.
   SessionLogger* logger_;
 
-  Status CheckNotClosed();
+  absl::Status CheckNotClosed();
 };
 
 }  // namespace tensorflow

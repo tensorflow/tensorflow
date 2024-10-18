@@ -37,9 +37,19 @@ void CheckValidTfDeviceId(const DeviceType& type, int visible_device_count,
                           TfDeviceId tf_device_id);
 
 // Parse `visible_device_list` into a list of platform Device ids.
+// When parsing non-PluggableDevices, the `device_type` parameter is
+// optional (can be empty) and ignored. When using this function to
+// parse the `visible_device_list` for PluggableDevices, the pluggable
+// device type will be included in the `visible_device_list`, e.g.
+// "PluggableDeviceA:0,PluggableDeviceA:1,PluggableDeviceB:0".
+// In this case, the `device_type` parameter should be set to the
+// corresponding pluggable device type to be parsed, e.g.
+// "PluggableDeviceA". And the other types of PluggableDevices
+// in the `visible_device_list` will be ignored.
 absl::Status ParseVisibleDeviceList(
     const std::string& visible_device_list, int visible_device_count,
-    std::vector<PlatformDeviceId>* visible_device_order);
+    std::vector<PlatformDeviceId>* visible_device_order,
+    absl::string_view device_type = "");
 
 // Returns how many TF devices should be created, and generates the mapping
 // between TfDeviceId and PlatformDeviceId. The number of TF devices is the

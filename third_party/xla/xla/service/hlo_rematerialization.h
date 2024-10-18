@@ -15,6 +15,9 @@
 #ifndef XLA_SERVICE_HLO_REMATERIALIZATION_H_
 #define XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
+#include <cstdint>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -62,8 +65,8 @@ class HloRematerialization : public HloModulePass {
         : recompute(recompute),
           compress(compress),
           host_offload(host_offload) {}
-    bool recompute;     // Enables the kCompress RematStrategy.
-    bool compress;      // Enables the kRecompute RematStrategy.
+    bool recompute;     // Enables the kRecompute RematStrategy.
+    bool compress;      // Enables the kCompress RematStrategy.
     bool host_offload;  // Enables the kHostOffload RematStrategy.
   };
 
@@ -180,9 +183,9 @@ class HloRematerialization : public HloModulePass {
 
  protected:
   // Rematerializes instructions within the given computation. 'schedule'
-  // constains the order in which the computation's instructions will be emitted
-  // in the backend. Rematerialized instructions will be added to the HLO
-  // computation and inserted into 'schedule'.
+  // constrains the order in which the computation's instructions will be
+  // emitted in the backend. Rematerialized instructions will be added to the
+  // HLO computation and inserted into 'schedule'.
   virtual absl::StatusOr<bool> RematerializeComputation(
       HloComputation* computation, HloSchedule* schedule,
       int64_t memory_limit_bytes, int64_t min_remat_size,
@@ -212,9 +215,8 @@ class HloRematerialization : public HloModulePass {
   std::unique_ptr<CallGraph> call_graph_;
 
   // The peak memory usage of each computation. The map contains only those
-  // computations called from sequential context
-  // (CallContext::kSequential). These values are updated as rematerialization
-  // occurs.
+  // computations called from sequential context (CallContext::kSequential).
+  // These values are updated as rematerialization occurs.
   absl::flat_hash_map<const HloComputation*, int64_t> computation_peak_memory_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;

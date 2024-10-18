@@ -50,18 +50,12 @@ limitations under the License.
 
 namespace xla {
 
-enum class AutoShardingResult {
-  kModuleUnchanged,
-  kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerformed
-};
-
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  absl::StatusOr<AutoShardingResult> RunAutoSharding(
+  absl::StatusOr<bool> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -213,21 +207,9 @@ bool HasReduceScatterOpportunity(const HloInstruction* inst,
                                  const ConstInstructionSet& modified);
 
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
+                                   const InputShardings& input_shardings,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
-// The high-level "recipe" for solving an Auto Sharding problem.
-AutoShardingSolverResult Solve(
-    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
-    const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
-    const std::vector<absl::btree_set<int64_t>>& node_groups,
-    const std::vector<absl::btree_set<int64_t>>& edge_groups,
-    const AutoShardingOption& option, absl::string_view request_prefix,
-    const absl::flat_hash_map<std::string, HloSharding>&
-        sharding_propagation_solution = {});
 
 // Populates temporal distance values.
 void PopulateTemporalValues(const CostGraph& cost_graph,

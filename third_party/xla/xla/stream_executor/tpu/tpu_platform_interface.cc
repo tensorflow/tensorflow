@@ -18,9 +18,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace tpu {

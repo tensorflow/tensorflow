@@ -518,6 +518,80 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
 #endif
 }
 
+TEST(XPlaneUtilsTest, TestAggregateXPlaneWithCycleStats) {
+  XPlane xplane;
+  XPlaneBuilder builder(&xplane);
+  const XStatMetadata& device_offset_stat = *builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceOffsetPs));
+  const XStatMetadata& device_duration_stat = *builder.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kDeviceDurationPs));
+
+  const XEventMetadata& event_metadata1 =
+      *builder.GetOrCreateEventMetadata("EventMetadata1");
+  const XEventMetadata& event_metadata2 =
+      *builder.GetOrCreateEventMetadata("EventMetadata2");
+  const XEventMetadata& event_metadata3 =
+      *builder.GetOrCreateEventMetadata("EventMetadata3");
+
+  XLineBuilder line = builder.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  XEventBuilder event1 = line.AddEvent(event_metadata1);
+  event1.SetOffsetNs(0);
+  event1.SetDurationNs(5);
+  event1.AddStatValue(device_offset_stat, 50);
+  event1.AddStatValue(device_duration_stat, 4950);
+  XEventBuilder event2 = line.AddEvent(event_metadata2);
+  event2.SetOffsetNs(2);
+  event2.SetDurationNs(1);
+  event2.AddStatValue(device_offset_stat, 1950);
+  event2.AddStatValue(device_duration_stat, 890);
+  XEventBuilder event3 = line.AddEvent(event_metadata3);
+  event3.SetOffsetNs(3);
+  event3.SetDurationNs(2);
+  event3.AddStatValue(device_offset_stat, 2950);
+  event3.AddStatValue(device_duration_stat, 2050);
+  XEventBuilder event4 = line.AddEvent(event_metadata1);
+  event4.SetOffsetNs(5);
+  event4.SetDurationNs(5);
+  event4.AddStatValue(device_offset_stat, 5000);
+  event4.AddStatValue(device_duration_stat, 4950);
+  XEventBuilder event5 = line.AddEvent(event_metadata2);
+  event5.SetOffsetNs(7);
+  event5.SetDurationNs(1);
+  event5.AddStatValue(device_offset_stat, 7050);
+  event5.AddStatValue(device_duration_stat, 900);
+  XEventBuilder event6 = line.AddEvent(event_metadata3);
+  event6.SetOffsetNs(8);
+  event6.SetDurationNs(2);
+  event6.AddStatValue(device_offset_stat, 8050);
+  event6.AddStatValue(device_duration_stat, 1900);
+
+  XPlane aggregated_xplane;
+  AggregateXPlane(xplane, aggregated_xplane);
+
+  XPlaneVisitor visitor = CreateTfXPlaneVisitor(&aggregated_xplane);
+  visitor.ForEachLine([&](const XLineVisitor& line) {
+    EXPECT_EQ(line.Name(), kXlaOpLineName);
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      EXPECT_EQ(event.OffsetPs(), 0);
+      if (event.Metadata().Name() == "EventMetadata1") {
+        EXPECT_EQ(event.NumOccurrences(), 2);
+        EXPECT_EQ(event.DurationPs(), 9900);
+        EXPECT_EQ((*event.GetStat(StatType::kSelfDurationPs)).IntOrUintValue(),
+                  4160);
+      }
+      if (event.Metadata().Name() == "EventMetadata2") {
+        EXPECT_EQ(event.NumOccurrences(), 2);
+        EXPECT_EQ(event.DurationPs(), 1790);
+      }
+      if (event.Metadata().Name() == "EventMetadata3") {
+        EXPECT_EQ(event.NumOccurrences(), 2);
+        EXPECT_EQ(event.DurationPs(), 3950);
+      }
+    });
+  });
+}
+
 TEST(XPlanuUtilsTest, TestInstantEventDoesNotFail) {
   XPlane xplane;
   XPlaneBuilder xplane_builder(&xplane);

@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <random>
 
-#include "xla/client/lib/prng.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/lib/prng.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -111,16 +111,7 @@ absl::StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
   }
 
   TF_ASSIGN_OR_RETURN(XlaComputation xla_computation, builder.Build());
-
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      xla_computation.GetProgramShape());
-  HloModuleConfig config(program_shape);
-  TF_ASSIGN_OR_RETURN(auto new_module, HloModule::CreateFromProto(
-                                           xla_computation.proto(), config));
-  HloModule* module = rng->GetModule();
-  HloCloneContext context(module);
-  return module->DeepCloneComputation(new_module->entry_computation(),
-                                      &context);
+  return XlaComputationToHloComputation(xla_computation, rng->GetModule());
 }
 
 }  // namespace

@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/test.h"

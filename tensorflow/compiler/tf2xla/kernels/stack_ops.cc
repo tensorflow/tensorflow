@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -41,8 +41,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
-                     TensorShape* stack_shape) {
+absl::Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
+                           TensorShape* stack_shape) {
   auto shape_or_status = builder->GetShape(resource->value());
   if (!shape_or_status.ok()) {
     return shape_or_status.status();
@@ -63,8 +63,9 @@ Status GetStackShape(xla::XlaBuilder* builder, XlaResource* resource,
 //
 // TODO(phawkins): consider changing the API of the stack operators to
 // allow an optional element shape at stack construction time.
-Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
-                            DataType dtype, const TensorShape& elem_shape) {
+absl::Status MaybeInitializeStack(xla::XlaBuilder* builder,
+                                  XlaResource* resource, DataType dtype,
+                                  const TensorShape& elem_shape) {
   if (resource->type() != dtype) {
     return errors::InvalidArgument(
         "Stack dtype is ", DataTypeString(resource->type()),

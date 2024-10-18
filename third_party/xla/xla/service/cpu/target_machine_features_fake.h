@@ -52,6 +52,10 @@ class TargetMachineFeaturesWithFakeAlignmentLogic
     return fake_alignment_logic_(size_bytes);
   }
 
+  std::string get_target_feature_string() const override {
+    LOG(FATAL) << "Unexpected call to " << __func__;
+  }
+
  private:
   std::function<int64_t(int64_t)> fake_alignment_logic_;
 };

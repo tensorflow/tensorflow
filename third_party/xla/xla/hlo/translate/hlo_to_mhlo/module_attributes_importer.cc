@@ -100,14 +100,34 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 
 void ImportEntryComputationParameterLayoutAndTiles(
     const HloModule& hlo_module, mlir::ModuleOp module,
-    const ComputationLayout& computation_layout, mlir::Builder builder) {
+    const ComputationLayout& computation_layout,
+    bool flatten_computation_args_result, mlir::Builder builder) {
   llvm::SmallVector<mlir::Attribute> parameter_layouts;
   llvm::SmallVector<mlir::Attribute> parameter_tiles;
-  for (auto& layout : computation_layout.parameter_layouts()) {
-    if (layout.shape().IsTuple()) {
+  if (flatten_computation_args_result) {
+    for (auto& parameter_layout : computation_layout.parameter_layouts()) {
+      xla::ShapeUtil::ForEachLeafShape(
+          parameter_layout.shape(),
+          [&](const xla::Shape& subshape, const xla::ShapeIndex& index) {
+            std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+                GetLayoutAttribute(builder, subshape);
+            parameter_layouts.push_back(layout_attrs.first);
+            parameter_tiles.push_back(layout_attrs.second);
+          });
+    }
+    module->setAttr(kEntryComputationParameterLayouts,
+                    builder.getArrayAttr({parameter_layouts}));
+    module->setAttr(kEntryComputationParameterTiles,
+                    builder.getArrayAttr({parameter_tiles}));
+    return;
+  }
+
+  for (auto& parameter_layout : computation_layout.parameter_layouts()) {
+    if (parameter_layout.shape().IsTuple()) {
       llvm::SmallVector<mlir::Attribute> tuple_element_parameter_layouts;
       llvm::SmallVector<mlir::Attribute> tuple_element_parameter_tiles;
-      for (auto& tuple_element_shape : layout.shape().tuple_shapes()) {
+      for (auto& tuple_element_shape :
+           parameter_layout.shape().tuple_shapes()) {
         std::pair<mlir::Attribute, mlir::Attribute> layout_attrs =
             GetLayoutAttribute(builder, tuple_element_shape);
         tuple_element_parameter_layouts.push_back(layout_attrs.first);
@@ -119,7 +139,7 @@ void ImportEntryComputationParameterLayoutAndTiles(
           builder.getArrayAttr({tuple_element_parameter_tiles}));
     } else {
       std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-          GetLayoutAttribute(builder, layout.shape());
+          GetLayoutAttribute(builder, parameter_layout.shape());
       parameter_layouts.push_back(layout_attrs.first);
       parameter_tiles.push_back(layout_attrs.second);
     }
@@ -132,10 +152,23 @@ void ImportEntryComputationParameterLayoutAndTiles(
 
 void ImportEntryComputationResultLayoutAndTiles(
     const HloModule& hlo_module, mlir::ModuleOp module,
-    const ComputationLayout& computation_layout, mlir::Builder builder) {
+    const ComputationLayout& computation_layout,
+    bool flatten_computation_args_result, mlir::Builder builder) {
+  llvm::SmallVector<mlir::Attribute> result_layouts;
+  llvm::SmallVector<mlir::Attribute> result_tiles;
+  if (flatten_computation_args_result) {
+    xla::ShapeUtil::ForEachLeafShape(
+        computation_layout.result_layout().shape(),
+        [&](const xla::Shape& subshape, const xla::ShapeIndex& index) {
+          std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+              GetLayoutAttribute(builder, subshape);
+          result_layouts.push_back(layout_attrs.first);
+          result_tiles.push_back(layout_attrs.second);
+        });
+    return;
+  }
+
   if (computation_layout.result_layout().shape().IsTuple()) {
-    llvm::SmallVector<mlir::Attribute> result_layouts;
-    llvm::SmallVector<mlir::Attribute> result_tiles;
     for (auto& tuple_element_layout :
          computation_layout.result_layout().shape().tuple_shapes()) {
       std::pair<mlir::Attribute, mlir::Attribute> layout_attrs =
@@ -148,15 +181,16 @@ void ImportEntryComputationResultLayoutAndTiles(
         builder.getArrayAttr({builder.getArrayAttr(result_layouts)}));
     module->setAttr(kEntryComputationResultTiles,
                     builder.getArrayAttr({builder.getArrayAttr(result_tiles)}));
-  } else {
-    std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-        GetLayoutAttribute(builder, computation_layout.result_layout().shape(),
-                           computation_layout.result_layout().layout());
-    module->setAttr(kEntryComputationResultLayout,
-                    builder.getArrayAttr({layout_attrs.first}));
-    module->setAttr(kEntryComputationResultTiles,
-                    builder.getArrayAttr({layout_attrs.second}));
+    return;
   }
+
+  std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+      GetLayoutAttribute(builder, computation_layout.result_layout().shape(),
+                         computation_layout.result_layout().layout());
+  module->setAttr(kEntryComputationResultLayout,
+                  builder.getArrayAttr({layout_attrs.first}));
+  module->setAttr(kEntryComputationResultTiles,
+                  builder.getArrayAttr({layout_attrs.second}));
 }
 
 }  // namespace
@@ -174,6 +208,7 @@ void ImportCrossProgramPrefetches(const HloModule& hlo_module,
 
 void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           mlir::ModuleOp module,
+                                          bool flatten_computation_args_result,
                                           mlir::Builder builder) {
   const auto& computation_layout = hlo_module.entry_computation_layout();
   if (!computation_layout.LayoutIsSet()) return;
@@ -185,12 +220,14 @@ void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                    [](const ShapeLayout& shape) {
                      return HasCustomLayout(shape.shape());
                    })) {
-    ImportEntryComputationParameterLayoutAndTiles(hlo_module, module,
-                                                  computation_layout, builder);
+    ImportEntryComputationParameterLayoutAndTiles(
+        hlo_module, module, computation_layout, flatten_computation_args_result,
+        builder);
   }
   if (HasCustomLayout(computation_layout.result_layout().shape())) {
-    ImportEntryComputationResultLayoutAndTiles(hlo_module, module,
-                                               computation_layout, builder);
+    ImportEntryComputationResultLayoutAndTiles(
+        hlo_module, module, computation_layout, flatten_computation_args_result,
+        builder);
   }
 }
 

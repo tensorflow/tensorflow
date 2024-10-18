@@ -97,8 +97,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -2230,7 +2230,7 @@ absl::Status CheckCompatibleShapes(bool strict_shape_checking,
 }
 
 // Makes a tuple from the arguments to an execution.
-absl::StatusOr<TupleHandle> MakeTupleHelper(
+absl::StatusOr<std::unique_ptr<TupleHandle>> MakeTupleHelper(
     PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
     bool strict_shape_checking, const Shape& tupled_parameter_shape,
     absl::Span<PjRtBuffer* const> py_buffers,
@@ -2296,7 +2296,8 @@ absl::StatusOr<TupleHandle> MakeTupleHelper(
   auto transfer_event =
       std::make_shared<BufferSequencingEvent>(client->thread_pool());
   transfer_event->SetSequencingEvent(std::move(event_or).value(), stream);
-  return TupleHandle({std::move(execution_input), std::move(transfer_event)});
+  return std::make_unique<TupleHandle>(
+      TupleHandle({std::move(execution_input), std::move(transfer_event)}));
 }
 
 // Converts a ScopedShapedBuffer returned from an execution into a
@@ -2465,7 +2466,7 @@ PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
       client_->client()->backend().transfer_manager();
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  std::optional<TupleHandle> tuple_handle;
+  std::unique_ptr<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(
         tuple_handle,

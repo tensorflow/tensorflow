@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -57,7 +57,7 @@ class ListDiffOp : public XlaOpKernel {
     DataType val_type = context->expected_output_dtype(0);
     DataType idx_type = context->expected_output_dtype(1);
 
-    Status status;
+    absl::Status status;
     switch (val_type) {
       case DT_INT32:
         status = ListDiffWithIndexType<int32>(context, idx_type);
@@ -77,7 +77,7 @@ class ListDiffOp : public XlaOpKernel {
 
  private:
   template <typename Tval, typename Tidx>
-  Status ListDiff(XlaOpKernelContext* context) {
+  absl::Status ListDiff(XlaOpKernelContext* context) {
     std::vector<int64_t> x_input, y_input;
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(0, &x_input));
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntVector(1, &y_input));
@@ -107,7 +107,8 @@ class ListDiffOp : public XlaOpKernel {
   }
 
   template <typename Tval>
-  Status ListDiffWithIndexType(XlaOpKernelContext* context, DataType idx_type) {
+  absl::Status ListDiffWithIndexType(XlaOpKernelContext* context,
+                                     DataType idx_type) {
     switch (idx_type) {
       case DT_INT32:
         return ListDiff<Tval, int32>(context);

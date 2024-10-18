@@ -85,11 +85,10 @@ bool InstructionDefinesValue(const HloInstruction* instruction,
   }
   // Also check if the instruction is a call to a computation that defines the
   // value. This is needed in cases, e.g., where we wrap a value-defining
-  // instruction in a async call for offloading, and the async call itself will
+  // instruction in a async call for offloading, and the async start itself will
   // effectively define the value in the current scope that the scheduler is
   // running in.
-  if (instruction->opcode() == HloOpcode::kAsyncStart ||
-      instruction->opcode() == HloOpcode::kAsyncDone) {
+  if (instruction->opcode() == HloOpcode::kAsyncStart) {
     if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
       return instruction->async_wrapped_instruction()
                  ->called_computations()[0]
@@ -114,8 +113,7 @@ bool InstructionFirstDefinesBuffer(
   }
   // Similar to logic above, also check if the instruction is a call to a
   // computation that defines the value.
-  if (instruction->opcode() == HloOpcode::kAsyncStart ||
-      instruction->opcode() == HloOpcode::kAsyncDone) {
+  if (instruction->opcode() == HloOpcode::kAsyncStart) {
     if (instruction->async_wrapped_opcode() == HloOpcode::kCall) {
       return instruction->async_wrapped_instruction()
                  ->called_computations()[0]

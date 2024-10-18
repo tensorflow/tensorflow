@@ -151,7 +151,7 @@ static bool CopyDataFromTensorSliceToTensorSlice(const TensorShape& shape,
     // We need to compute the applied shapes after applying slice_s and
     // slice_d.
     TensorShape shp_s, shp_d;
-    Status s;
+    absl::Status s;
     s = slice_s.SliceTensorShape(shape, &shp_s);
     if (!s.ok()) {
       LOG(WARNING) << s;

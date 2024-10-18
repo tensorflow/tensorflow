@@ -89,7 +89,6 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt:pjrt_c_api_client",
@@ -98,5 +97,6 @@ tf_cc_test(
         "@local_xla//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "@local_xla//xla/pjrt/cpu:cpu_client",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

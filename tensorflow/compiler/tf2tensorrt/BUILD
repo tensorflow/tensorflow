@@ -76,7 +76,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_tsl//tsl/platform:dso_loader",
     ]),
 )
 
@@ -1044,7 +1044,6 @@ tf_cuda_library(
         ":common_utils",
         ":tensorrt_lib",
         ":op_converter_registry",
-        "@local_xla//xla/stream_executor/platform:dso_loader",
     ]),
 )
 

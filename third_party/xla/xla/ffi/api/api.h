@@ -133,6 +133,10 @@ inline std::ostream& operator<<(std::ostream& os,
       return os << "TOKEN";
     case XLA_FFI_DataType_F8E5M2:
       return os << "F8E5M2";
+    case XLA_FFI_DataType_F8E3M4:
+      return os << "F8E3M4";
+    case XLA_FFI_DataType_F8E4M3:
+      return os << "F8E4M3";
     case XLA_FFI_DataType_F8E4M3FN:
       return os << "F8E4M3FN";
     case XLA_FFI_DataType_F8E4M3B11FNUZ:
@@ -1439,10 +1443,21 @@ class Handler : public Ffi {
     // handler (or a struct decoding) should be responsible for it.
     if (XLA_FFI_PREDICT_FALSE(kNumDictAttrs == 0 &&
                               call_frame->attrs.size != kNumAttrs)) {
-      return InvalidArgument(
-          call_frame->api,
-          StrCat("Wrong number of attributes: expected ", kNumAttrs,
-                 " but got ", call_frame->attrs.size));
+      std::stringstream msg;
+      msg << "Wrong number of attributes: expected " << kNumAttrs << " but got "
+          << call_frame->attrs.size;
+      if (call_frame->attrs.size > 0) {
+        msg << " with name(s): ";
+        for (int64_t n = 0; n < call_frame->attrs.size - 1; ++n) {
+          msg << std::string_view(call_frame->attrs.names[n]->ptr,
+                                  call_frame->attrs.names[n]->len)
+              << ", ";
+        }
+        msg << std::string_view(
+            call_frame->attrs.names[call_frame->attrs.size - 1]->ptr,
+            call_frame->attrs.names[call_frame->attrs.size - 1]->len);
+      }
+      return InvalidArgument(call_frame->api, msg.str());
     }
 
     // Define index sequences to access custom call operands.

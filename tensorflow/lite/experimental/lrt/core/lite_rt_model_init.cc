@@ -54,9 +54,9 @@ LrtStatus VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
   flatbuffers::Verifier verifier(buf, buf_size, options);
   if (!tflite::VerifyModelBuffer(verifier)) {
     _LRT_D_MSG("Failed to verify fb");
-    return StatusCreate(kLrtStatusFlatbufferFailedVerify);
+    return kLrtStatusFlatbufferFailedVerify;
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus IsOpSupported(const tflite::OperatorT& op) {
@@ -65,80 +65,82 @@ LrtStatus IsOpSupported(const tflite::OperatorT& op) {
   if (!op.custom_options.empty()) {
     // TODO: b/365299994 - Support custom options.
     _LRT_D_MSG("Custom options not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (!op.intermediates.empty()) {
     // TODO: b/365299994 - Support intermediates.
     _LRT_D_MSG("Intermediate tensors not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (op.large_custom_options_size != 0) {
     // TODO: b/365299994 - Support large custom options.
     _LRT_D_MSG("Large custom options not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   for (auto m_input : op.mutating_variable_inputs) {
     if (m_input) {
       // TODO: b/365299994 - Support mutating variable inputs.
       _LRT_D_MSG("Mutating variable inputs not supported.");
-      return StatusCreate(kLrtStatusErrorUnsupported);
+      return kLrtStatusErrorUnsupported;
     }
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus IsBufferSupported(const tflite::BufferT& buffer) {
   if (buffer.offset != 0) {
     // TODO: b/365299994 - Support buffer with offset.
     _LRT_D_MSG("Buffers with offset not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus IsTensorSupported(const tflite::TensorT& tensor) {
   if (!tensor.has_rank) {
     // TODO: b/365299994 - Support unranked tensors.
     _LRT_D_MSG("Unranked tensors not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (tensor.is_variable) {
     // TODO: b/365299994 - Support variable tensors.
     _LRT_D_MSG("Variable tensors not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (!tensor.variant_tensors.empty()) {
     // TODO: b/365299994 - Support variant tensors.
     _LRT_D_MSG("Variant tensors not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (!tensor.shape_signature.empty()) {
     // TODO: b/365299994 - Support shape signature.
     _LRT_D_MSG("Shape signature not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   if (tensor.sparsity) {
     // TODO: b/365299994 - Support sparsity tensors.
     _LRT_D_MSG("Sparsity tensors not supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
-  if (tensor.type != tflite::TensorType_FLOAT32) {
+  if (tensor.type != tflite::TensorType_FLOAT32 &&
+      tensor.type != tflite::TensorType_INT32 &&
+      tensor.type != tflite::TensorType_BOOL) {
     // TODO: b/365299994 - Support all element types.
     _LRT_D_MSG("Only f32 supported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts, LrtOpCode code) {
@@ -150,11 +152,11 @@ LrtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts, LrtOpCode code) {
       opts.Set(tflite::AddOptionsT());
       break;
     case kLrtOpCodeTflCustom:
-      return StatusOk();
+      return kLrtStatusOk;
     default:
-      return StatusCreate(kLrtStatusErrorUnsupported);
+      return kLrtStatusErrorUnsupported;
   }
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 void SetCustomOptions(tflite::OperatorT& op, std::string_view options_data) {
@@ -201,20 +203,21 @@ LrtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
   const auto buffer_ind = tensor.buffer;
 
   if (buffer_ind != 0) {
-    target->buffer.fb_buffer = GetBuffer(buffer_ind);
-    LRT_RETURN_STATUS_IF_NOT_OK(IsBufferSupported(*target->buffer.fb_buffer));
+    target->weights.fb_buffer = GetBuffer(buffer_ind);
+    LRT_RETURN_STATUS_IF_NOT_OK(IsBufferSupported(*target->weights.fb_buffer));
   }
 
   target->type_id = kLrtRankedTensorType;
 
   auto& ranked_tensor = target->type_detail.ranked_tensor_type;
 
-  ranked_tensor.layout.dimensions = tensor.shape.data();
-  ranked_tensor.layout.rank = tensor.shape.size();
-
   ranked_tensor.element_type = kLrtElementTypeFloat32;
+  ranked_tensor.layout.rank = tensor.shape.size();
+  ranked_tensor.layout.dimensions = tensor.shape.data();
+  ranked_tensor.layout.strides =
+      nullptr;  // TFL tensors don't support strides yet.
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
@@ -223,6 +226,10 @@ LrtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
   target->op_code = GetOpCode(op.opcode_index);
 
   for (auto input : op.inputs) {
+    // Skipping optional input tensor.
+    if (input == -1) {
+      continue;
+    }
     auto& input_tensor = tensors[input];
 
     input_tensor->users.push_back(target);
@@ -240,7 +247,7 @@ LrtStatus ModelUnpacker::ConvertOp(const tflite::OperatorT& op,
     target->outputs.push_back(output_tensor);
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelUnpacker::UnpackSubgraph(LrtSubgraph target) {
@@ -273,7 +280,7 @@ LrtStatus ModelUnpacker::UnpackSubgraph(LrtSubgraph target) {
     target->outputs.push_back(target->tensors[output]);
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelUnpacker::Unpack(LrtModel model) {
@@ -282,19 +289,19 @@ LrtStatus ModelUnpacker::Unpack(LrtModel model) {
   if (unpacker.Fb().subgraphs.size() != 1) {
     // TODO: b/365299994 - Support multi subgraph.
     _LRT_D_MSG("Only single subgraph models suported.");
-    return StatusCreate(kLrtStatusErrorUnsupported);
+    return kLrtStatusErrorUnsupported;
   }
 
   auto& subgraph = model->subgraphs.emplace_back();
   subgraph.flatbuffer_subgraph = std::move(unpacker.Fb().subgraphs[0]);
   LRT_RETURN_STATUS_IF_NOT_OK(unpacker.UnpackSubgraph(&subgraph));
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus RegisterCustomOpCode(LrtModel model, const char* new_op_code) {
   model->custom_op_code.assign(new_op_code);
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
@@ -312,7 +319,7 @@ LrtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
 
   *model = lrt_model.release();
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus LoadModel(const uint8_t* buf, size_t buf_size, LrtModel* model) {
@@ -324,7 +331,7 @@ LrtStatus LoadModelFromFile(const char* path, LrtModel* model) {
   std::unique_ptr<tflite::Allocation> alloc =
       tflite::GetAllocationFromFile(path, tflite::DefaultErrorReporter());
   if (!alloc->valid()) {
-    return StatusCreate(kLrtStatusBadFileOp);
+    return kLrtStatusBadFileOp;
   }
 
   return LoadModel(reinterpret_cast<const uint8_t*>(alloc->base()),
@@ -396,10 +403,13 @@ LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
     target.shape.push_back(type.layout.dimensions[i]);
   }
 
-  DCHECK(tensor->buffer.fb_buffer != nullptr) << "Submitting a null buffer";
-  target.buffer = SubmitBuffer(std::move(tensor->buffer.fb_buffer));
+  // TFL tensors don't support strides yet.
+  DCHECK(type.layout.strides == nullptr);
 
-  return StatusOk();
+  DCHECK(tensor->weights.fb_buffer != nullptr) << "Submitting a null buffer";
+  target.buffer = SubmitBuffer(std::move(tensor->weights.fb_buffer));
+
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelRepacker::SerializeOp(
@@ -425,7 +435,7 @@ LrtStatus ModelRepacker::SerializeOp(
   }
   // TODO: b/365299994 - Support exotic op fields in serialize.
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelRepacker::SerializeSubgraph(LrtSubgraph subgraph,
@@ -452,7 +462,7 @@ LrtStatus ModelRepacker::SerializeSubgraph(LrtSubgraph subgraph,
     target.outputs.push_back(tensor_map.at(out));
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus ModelRepacker::Repack(LrtModel model) {
@@ -491,7 +501,7 @@ LrtStatus ModelRepacker::Repack(LrtModel model) {
     target.buffers.emplace_back(std::move(buf));
   }
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus AppendMetadata(LrtModel model, const void* metadata,
@@ -509,7 +519,7 @@ LrtStatus AppendMetadata(LrtModel model, const void* metadata,
   fb_metadata->name.assign(metadata_name);
   fb_metadata->buffer = metadata_buffer_ind;
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 LrtStatus SerializeModel(LrtModel model, uint8_t** buf, size_t* size,
@@ -537,7 +547,7 @@ LrtStatus SerializeModel(LrtModel model, uint8_t** buf, size_t* size,
   *size = new_buf_size;
   *offset = new_buf_offset;
 
-  return StatusOk();
+  return kLrtStatusOk;
 }
 
 // NOLINTEND

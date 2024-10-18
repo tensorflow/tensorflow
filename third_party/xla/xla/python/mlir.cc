@@ -40,7 +40,7 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -49,8 +49,6 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -148,12 +146,8 @@ absl::StatusOr<XlaComputation> PyMlirModuleToXlaComputation(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
   XlaComputation computation;
-  mlir::PassManager pm(&context);
-  // SDY dialect may be part of the module which XLA doesn't know about. Export
-  // it.
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
-  TF_RETURN_IF_ERROR(tsl::StatusScopedDiagnosticHandler(&context).consumeStatus(
-      pm.run(*module)));
+  // SDY dialect may be part of the module which XLA doesn't know about.
+  TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
   TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation, use_tuple_args,
                                           return_tuple,
                                           /*use_shardy=*/false));

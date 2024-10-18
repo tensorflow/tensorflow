@@ -185,6 +185,17 @@ class AlgebraicSimplifierOptions {
   }
   bool enable_conv_operand_swap() const { return enable_conv_operand_swap_; }
 
+  // Enable rewrite of convolution + add + multiply -> multiply + convolution +
+  // add.
+  void set_enable_conv_add_multiply_reorder(
+      bool enable_conv_add_multiply_reorder) {
+    enable_conv_add_multiply_reorder_ = enable_conv_add_multiply_reorder;
+  }
+
+  bool enable_conv_add_multiply_reorder() const {
+    return enable_conv_add_multiply_reorder_;
+  }
+
   // Move constant scalar multiply to one operand or output of convolutions with
   // the smallest tensor size, to reduce the number of scalar multiply.
   void set_enable_scalar_multiply_reduction(
@@ -296,6 +307,12 @@ class AlgebraicSimplifierOptions {
     return disable_dynamic_slice_to_slice_conversion_;
   }
 
+  // Option to set finite math.
+  void set_enable_fast_math(bool enable_fast_math) {
+    enable_fast_math_ = enable_fast_math;
+  }
+  bool enable_fast_math() const { return enable_fast_math_; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -318,6 +335,7 @@ class AlgebraicSimplifierOptions {
   bool enable_move_dot_param_to_rhs_{false};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
+  bool enable_conv_add_multiply_reorder_{false};
   bool enable_scalar_multiply_reduction_{false};
   bool enable_floats_are_real_{false};
   bool enable_window_reduce_to_reduce_replacement_{true};
@@ -335,6 +353,7 @@ class AlgebraicSimplifierOptions {
   double raise_slice_and_reduce_through_dot_threshold_{2.0};
   bool use_convert_constant_folding_{false};
   bool disable_dynamic_slice_to_slice_conversion_{false};
+  bool enable_fast_math_{false};
   Metadata metadata_;
 };
 
@@ -405,6 +424,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleComplex(HloInstruction* complex) override;
 
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+
+  absl::Status HandleExp(HloInstruction* exp) override;
 
   absl::Status HandleReal(HloInstruction* real) override;
 
@@ -661,6 +682,12 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
   // Tries to use a multiplication in place of the given convolution.
   absl::StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
+
+  // Tries to reorder mul(add(conv(input, filter), bias), multiplier) ->
+  // add(conv(input, mul(filter, multiplier)), mul(bias, multiplier)). It only
+  // does that when the multiplier is a 1D constant of the size equal to the
+  // convolution output feature dimension.
+  absl::Status TryToReorderConvAddMultiply(HloInstruction* multiply);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   absl::StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);

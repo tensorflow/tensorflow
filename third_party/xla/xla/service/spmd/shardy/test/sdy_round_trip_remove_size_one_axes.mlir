@@ -1,12 +1,14 @@
 // RUN: sdy_opt %s -xla-sdy-round-trip-remove-size-one-axes 2>&1 | FileCheck %s
 
-sdy.mesh @mesh1 = <["a"=1, "b"=2, "c"=1, "d"=4, "e"=1]>
+sdy.mesh @mesh1 = <["a"=1, "b"=2, "c"=1, "d"=4, "e"=1], device_ids=[0, 2, 1, 3, 4, 6, 5, 7]>
 sdy.mesh @mesh2 = <["a"=4, "b"=2]>
 sdy.mesh @mesh3 = <["x"=1, "y"=1]>
+sdy.mesh @mesh4 = <["a"=1, "b"=2, "c"=1]>
 
-// CHECK: sdy.mesh @mesh1 = <["b"=2, "d"=4]>
+// CHECK: sdy.mesh @mesh1 = <["b"=2, "d"=4], device_ids=[0, 2, 1, 3, 4, 6, 5, 7]>
 // CHECK: sdy.mesh @mesh2 = <["a"=4, "b"=2]>
 // CHECK: sdy.mesh @mesh3 = <[]>
+// CHECK: sdy.mesh @mesh4 = <["b"=2]>
 
 // CHECK-LABEL: func @func_and_op_shardings
 // CHECK-SAME:    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"b"}, {?}]>},
@@ -31,6 +33,18 @@ func.func @func_and_op_shardings(
   %1 = mhlo.add %arg2, %arg2 : tensor<8x8xf32>
   %2 = mhlo.add %1, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh1, [{"c"}, {}], replicated={"d"}>]>} : tensor<8x8xf32>
   return %0, %2 : tensor<8x8xf32>, tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @inlined_mesh
+// CHECK-SAME:    %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["b"=2, "d"=2], device_ids=[3, 1, 2, 0]>, [{"b"}, {?}]>}
+// CHECK-SAME:  ) -> (
+// CHECK-SAME:    tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a", "b"}, {}]>}) {
+func.func @inlined_mesh(
+  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["a"=1, "b"=2, "c"=1, "d"=2], device_ids=[3, 1, 2, 0]>, [{"a", "b"}, {"c", ?}]>}
+) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a", "b"}, {}]>}) {
+  // CHECK-NEXT: mhlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<[]>, [{?}, {?}]>]>}
+  %0 = mhlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<mesh<["a"=1, "b"=1]>, [{"a", ?}, {"b", ?}]>]>} : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }
 
 // CHECK-LABEL: func @shardings_with_priorities
@@ -78,4 +92,20 @@ func.func @manual_computation(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>)
     sdy.return %3 : tensor<2x32xf32>
   } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
   return %0 : tensor<8x32xf32>
+}
+
+// CHECK-LABEL: func @manual_computation_inlined_mesh
+func.func @manual_computation_inlined_mesh(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-NEXT:          %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
+  // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh4, [{"b"}, {}]>, <mesh<["b"=2]>, [{"b"}, {}]>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<mesh<["b"=2]>, [{"b"}, {}]>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"b"}
+  %0 = sdy.manual_computation(%arg0, %arg1)
+      in_shardings=[<@mesh4, [{"b", "a"}, {}]>, <mesh<["a"=1, "b"=2, "c"=1]>, [{"b"}, {}], replicated={"a"}>]
+      out_shardings=[<mesh<["a"=1, "b"=2, "c"=1]>, [{"a", "b"}, {}]>]
+      manual_axes={"a", "b"} (%arg2: tensor<4x16xf32>, %arg3: tensor<4x16xf32>) {
+    %1 = stablehlo.add %arg2, %arg2 : tensor<4x16xf32>
+    sdy.return %1 : tensor<4x16xf32>
+  } : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
 }
