@@ -1670,6 +1670,24 @@ std::unordered_set<string> GetAllOperatorOutputs(ModelT* model) {
   }
   return operator_names;
 }
+
+std::unordered_set<string> GetSelectedOperatorOutputs(
+    ModelT* model, std::unordered_set<string>& selected_op_names) {
+  std::unordered_set<string> operator_names;
+  for (int32_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (int32_t tensor_idx = 0; tensor_idx < subgraph->tensors.size();
+         tensor_idx++) {
+      if (selected_op_names.find(subgraph->tensors[tensor_idx]->name) !=
+          selected_op_names.end()) {
+        operator_names.insert(subgraph->tensors[tensor_idx]->name);
+      }
+    }
+  }
+  return operator_names;
+}
+
 // Populate the quantization parameters max and min for input tensors.
 // Assumes that dynamic tensors already have stored min, max values and throw
 // an error if a tensor does not have min, max quantization parameter or a
@@ -1779,8 +1797,8 @@ TfLiteStatus FillQuantizationParams(
           return kTfLiteError;
         }
       }  // loop over op inputs
-    }    // loop over ops
-  }      // loop over subgraphs
+    }  // loop over ops
+  }  // loop over subgraphs
   return kTfLiteOk;
 }
 
@@ -2014,6 +2032,20 @@ TfLiteStatus QuantizeModelAllOperators(
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
                        GetAllOperatorOutputs(model), activations_type,
                        bias_type, disable_per_channel, error_reporter);
+}
+
+TfLiteStatus QuantizeModelSelectedOperators(
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model,
+    const TensorType& input_type, const TensorType& output_type,
+    bool allow_float, const TensorType& activations_type,
+    const TensorType& bias_type, bool disable_per_channel,
+    ErrorReporter* error_reporter,
+    std::unordered_set<string>& selected_operator_names) {
+  return QuantizeModel(
+      builder, model, input_type, output_type, allow_float,
+      GetSelectedOperatorOutputs(model, selected_operator_names),
+      activations_type, bias_type,
+      /*disable_per_channel=*/false, error_reporter);
 }
 
 TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
