@@ -18,9 +18,12 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "absl/strings/match.h"
-#include "tensorflow/c/c_api_internal.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -30,9 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 using tensorflow::errors::InvalidArgument;
 
