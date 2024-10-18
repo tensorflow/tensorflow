@@ -48,7 +48,6 @@ namespace jax {
 // `NoSharding` (`None` in Python) means no sharding.
 struct NoSharding {
   bool operator==(const NoSharding& other) const { return true; }
-  bool operator!=(const NoSharding& other) const { return false; }
 };
 
 template <typename H>
@@ -71,7 +70,6 @@ struct Chunked {
   std::vector<int> chunks;
 
   bool operator==(const Chunked& other) const { return chunks == other.chunks; }
-  bool operator!=(const Chunked& other) const { return chunks != other.chunks; }
 };
 
 template <typename H>
@@ -90,7 +88,6 @@ struct Unstacked {
   int size;
 
   bool operator==(const Unstacked& other) const { return size == other.size; }
-  bool operator!=(const Unstacked& other) const { return size != other.size; }
 };
 
 template <typename H>
@@ -114,7 +111,6 @@ using AvalDimSharding = std::variant<NoSharding, Chunked, Unstacked>;
 struct ShardedAxis {
   int axis;
   bool operator==(const ShardedAxis& other) const { return axis == other.axis; }
-  bool operator!=(const ShardedAxis& other) const { return axis != other.axis; }
 };
 
 template <typename H>
@@ -127,9 +123,6 @@ struct Replicated {
   int replicas;
   bool operator==(const Replicated& other) const {
     return replicas == other.replicas;
-  }
-  bool operator!=(const Replicated& other) const {
-    return replicas != other.replicas;
   }
 };
 
@@ -186,8 +179,6 @@ class ShardingSpec {
   bool operator==(const ShardingSpec& other) const {
     return sharding_ == other.sharding_ && mesh_mapping_ == other.mesh_mapping_;
   }
-
-  bool operator!=(const ShardingSpec& other) const { return !(*this == other); }
 
   template <typename H>
   friend H AbslHashValue(H h, const ShardingSpec& key);
