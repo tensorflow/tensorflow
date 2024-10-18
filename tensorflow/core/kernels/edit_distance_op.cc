@@ -35,11 +35,13 @@ namespace tensorflow {
 
 namespace {
 
-Status ValidateShapes(OpKernelContext* ctx, const Tensor& hypothesis_indices,
-                      const Tensor& hypothesis_values,
-                      const Tensor& hypothesis_shape,
-                      const Tensor& truth_indices, const Tensor& truth_values,
-                      const Tensor& truth_shape) {
+absl::Status ValidateShapes(OpKernelContext* ctx,
+                            const Tensor& hypothesis_indices,
+                            const Tensor& hypothesis_values,
+                            const Tensor& hypothesis_shape,
+                            const Tensor& truth_indices,
+                            const Tensor& truth_values,
+                            const Tensor& truth_shape) {
   if (!TensorShapeUtils::IsMatrix(hypothesis_indices.shape()))
     return errors::InvalidArgument(
         "hypothesis_indices should be a matrix, but got shape: ",
