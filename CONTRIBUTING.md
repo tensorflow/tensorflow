@@ -234,7 +234,7 @@ There are two ways to run TensorFlow unit tests.
     for the required packages. Alternatively, use the said
     [tensorflow/build Docker images](https://hub.docker.com/r/tensorflow/build)
     (`tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` are no
-    longer supported for) development. Use TF SIG Build Dockerfiles in
+    longer supported for development). Use TF SIG Build Dockerfiles in
     development to avoid installing the packages directly on your system (in
     which case remember to change the directory from `/root` to `/tensorflow`
     once you get into the running container so `bazel` can find the `tensorflow`
