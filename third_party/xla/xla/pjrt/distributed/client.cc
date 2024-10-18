@@ -95,10 +95,7 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_poll_for_error_from_service_at_startup(
       options.poll_for_error_from_service_at_startup);
   auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
-                      const absl::Status& status) {
-    LOG(ERROR) << "Coordination service agent in error status: " << status;
-    timeout_fn(status, /*coordinator_reported_failure=*/true);
-  };
+                      const absl::Status& status) { timeout_fn(status); };
 
   std::unique_ptr<tsl::CoordinationClient> leader_client;
   leader_client.reset(tsl::NewGrpcCoordinationClient(channel));

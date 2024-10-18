@@ -777,8 +777,7 @@ NB_MODULE(xla_extension, m_nb) {
          std::optional<int> init_timeout, std::optional<int> shutdown_timeout,
          std::optional<int> heartbeat_interval,
          std::optional<int> max_missing_heartbeats,
-         std::optional<std::function<void(absl::Status,
-                                          bool coordinator_reported_failure)>>
+         std::optional<std::function<void(absl::Status)>>
              missed_heartbeat_callback,
          std::optional<bool> shutdown_on_destruction,
          std::optional<bool> use_compression)
