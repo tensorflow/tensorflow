@@ -565,10 +565,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "upb",
-        sha256 = "61d0417abd60e65ed589c9deee7c124fe76a4106831f6ad39464e1525cef1454",
-        strip_prefix = "upb-9effcbcb27f0a665f9f345030188c0b291e32482",
+        sha256 = "fb9340cb312d6c67d0de3b46f3d495c8836e4cca68ab1df9fffb008743d721e8",
+        strip_prefix = "upb-014cdfba690973b21cd5a1147bf51cac6cfb89c2",
         patch_file = ["//third_party/grpc:upb_platform_fix.patch"],
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/upb/archive/9effcbcb27f0a665f9f345030188c0b291e32482.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/upb/archive/014cdfba690973b21cd5a1147bf51cac6cfb89c2.tar.gz"),
     )
 
     tf_http_archive(
