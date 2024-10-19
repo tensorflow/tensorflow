@@ -35,9 +35,9 @@ StatusOr<llvm::ArrayRef<int64_t>> ExtractGlobalOutputShape(
 
 // If result is a resource, the shape of the result should be adjusted to
 // local value of the resource, based on the layout for output.
-Status InferSPMDExpandedLocalShapeForResourceOutput(mlir::OpResult* op_result,
-                                                    const Layout& output_layout,
-                                                    mlir::MLIRContext* context);
+absl::Status InferSPMDExpandedLocalShapeForResourceOutput(
+    mlir::OpResult* op_result, const Layout& output_layout,
+    mlir::MLIRContext* context);
 
 // Returns op with recalculated local shape of `op` given all it's operands.
 mlir::Operation* InferSPMDExpandedLocalShape(mlir::Operation* op);
