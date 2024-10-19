@@ -29,17 +29,17 @@ namespace tensorflow {
 // Graph to FunctionDef conversion. This code is closely modeled on the Python
 // function graph_to_function_def(), which is located in
 // tensorflow/python/framework/graph_to_function_def.py.
-Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
-                          bool append_hash_to_fn_name,
-                          bool set_stateful_from_nodes,
-                          bool copy_placeholder_attrs_from_nodes,
-                          const std::vector<const Node*>& body_nodes,
-                          const std::vector<OutputTensor>& inputs,
-                          const std::vector<OutputTensor>& outputs,
-                          const std::vector<string>& output_names,
-                          const std::vector<const Node*>& control_outputs,
-                          const std::vector<string>& control_output_names,
-                          const char* description, FunctionDef* fdef);
+absl::Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
+                                bool append_hash_to_fn_name,
+                                bool set_stateful_from_nodes,
+                                bool copy_placeholder_attrs_from_nodes,
+                                const std::vector<const Node*>& body_nodes,
+                                const std::vector<OutputTensor>& inputs,
+                                const std::vector<OutputTensor>& outputs,
+                                const std::vector<string>& output_names,
+                                const std::vector<const Node*>& control_outputs,
+                                const std::vector<string>& control_output_names,
+                                const char* description, FunctionDef* fdef);
 
 // Converts 'graph' to a FunctionDef 'fdef', with name 'name':
 //
@@ -49,19 +49,19 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
 //     be added to the function `control_ret` map (see FunctionDef) and
 //     `control_output` in Op definition (see OpDef). Control output name must
 //     be unique for all control output nodes.
-Status GraphToFunctionDef(
+absl::Status GraphToFunctionDef(
     const Graph& graph, const string& name,
     const std::function<absl::optional<string>(const Node*)>& control_ret,
     FunctionDef* fdef);
 
-Status GraphToFunctionDef(const Graph& graph, const string& name,
-                          FunctionDef* fdef);
+absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+                                FunctionDef* fdef);
 
-Status GraphToFunctionDef(const Graph& graph, const string& name,
-                          const std::vector<std::string>& output_names,
-                          FunctionDef* fdef);
+absl::Status GraphToFunctionDef(const Graph& graph, const string& name,
+                                const std::vector<std::string>& output_names,
+                                FunctionDef* fdef);
 
-Status GraphToFunctionDef(
+absl::Status GraphToFunctionDef(
     std::unique_ptr<Graph> graph, const string& name,
     const std::function<std::optional<string>(const Node*)>& control_ret,
     FunctionDef* fdef);

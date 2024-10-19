@@ -43,7 +43,7 @@ class OpDefBuilderTest : public ::testing::Test {
   void ExpectSuccess(const OpDefBuilder& builder, StringPiece proto,
                      OpShapeInferenceFn* shape_fn_out = nullptr) {
     OpRegistrationData op_reg_data;
-    Status status = builder.Finalize(&op_reg_data);
+    absl::Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
     OpDef& op_def = op_reg_data.op_def;
     if (status.ok()) {
@@ -63,7 +63,7 @@ class OpDefBuilderTest : public ::testing::Test {
 
   void ExpectOrdered(const OpDefBuilder& builder, StringPiece proto) {
     OpRegistrationData op_reg_data;
-    Status status = builder.Finalize(&op_reg_data);
+    absl::Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
     OpDef& op_def = op_reg_data.op_def;
     if (status.ok()) {
@@ -76,7 +76,7 @@ class OpDefBuilderTest : public ::testing::Test {
 
   void ExpectFailure(const OpDefBuilder& builder, const string& error) {
     OpRegistrationData op_reg_data;
-    Status status = builder.Finalize(&op_reg_data);
+    absl::Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
       EXPECT_EQ(status.message(), error);

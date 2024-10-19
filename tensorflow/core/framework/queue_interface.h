@@ -34,8 +34,8 @@ class QueueInterface : public ResourceBase {
   typedef AsyncOpKernel::DoneCallback DoneCallback;
   typedef std::function<void(const Tuple&)> CallbackWithTuple;
 
-  virtual Status ValidateTuple(const Tuple& tuple) = 0;
-  virtual Status ValidateManyTuple(const Tuple& tuple) = 0;
+  virtual absl::Status ValidateTuple(const Tuple& tuple) = 0;
+  virtual absl::Status ValidateManyTuple(const Tuple& tuple) = 0;
 
   // Stashes a function object for future execution, that will eventually
   // enqueue the tuple of tensors into the queue, and returns immediately. The
@@ -82,7 +82,7 @@ class QueueInterface : public ResourceBase {
 
   // Assuming *this represents a shared queue, verify that it matches
   // another instantiation indicated by node_def.
-  virtual Status MatchesNodeDef(const NodeDef& node_def) = 0;
+  virtual absl::Status MatchesNodeDef(const NodeDef& node_def) = 0;
 
   // Returns the number of elements in the queue.
   virtual int32 size() const = 0;
