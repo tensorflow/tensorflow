@@ -33,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 // TODO(b/62899350): Refactor without proto dependencies.
-typedef std::function<Status(OpDef* c)> OpTypeConstructor;
+typedef std::function<absl::Status(OpDef* c)> OpTypeConstructor;
 
 typedef std::vector<std::reference_wrapper<const FullTypeDef>> TypeRefVector;
 
@@ -61,7 +61,7 @@ class FunctionDefHelper;
 namespace shape_inference {
 class InferenceContext;
 }
-typedef std::function<Status(shape_inference::InferenceContext* c)>
+typedef std::function<absl::Status(shape_inference::InferenceContext* c)>
     OpShapeInferenceFn;
 
 struct OpRegistrationData {
@@ -253,7 +253,7 @@ class OpDefBuilder {
   //
   // Note that OpDefBuilder only reports parsing errors.  You should also
   // call ValidateOpDef() to detect other problems.
-  Status Finalize(OpRegistrationData* op_reg_data) const;
+  absl::Status Finalize(OpRegistrationData* op_reg_data) const;
 
  private:
   friend class FunctionDefHelper;

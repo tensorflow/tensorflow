@@ -34,14 +34,13 @@ DeviceBase::~DeviceBase() {
   eigen_cpu_devices_.clear();
 }
 
-Status DeviceContext::CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
-                                                StringPiece tensor_name,
-                                                Device* device,
-                                                Tensor* cpu_tensor) {
+absl::Status DeviceContext::CopyDeviceTensorToCPUSync(
+    const Tensor* device_tensor, StringPiece tensor_name, Device* device,
+    Tensor* cpu_tensor) {
   absl::Notification n;
-  Status status;
+  absl::Status status;
   CopyDeviceTensorToCPU(device_tensor, tensor_name, device, cpu_tensor,
-                        [&](const Status& s) {
+                        [&](const absl::Status& s) {
                           status = s;
                           n.Notify();
                         });
@@ -49,13 +48,12 @@ Status DeviceContext::CopyDeviceTensorToCPUSync(const Tensor* device_tensor,
   return status;
 }
 
-Status DeviceContext::CopyCPUTensorToDeviceSync(const Tensor* cpu_tensor,
-                                                Device* device,
-                                                Tensor* device_tensor) const {
+absl::Status DeviceContext::CopyCPUTensorToDeviceSync(
+    const Tensor* cpu_tensor, Device* device, Tensor* device_tensor) const {
   absl::Notification n;
-  Status status;
+  absl::Status status;
   CopyCPUTensorToDevice(cpu_tensor, device, device_tensor,
-                        [&](const Status& s) {
+                        [&](const absl::Status& s) {
                           status = s;
                           n.Notify();
                         });

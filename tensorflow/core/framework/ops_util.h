@@ -34,9 +34,9 @@ namespace tensorflow {
 // index and size for broadcast for that dimension are different from the
 // current index and kernel size.
 // This is mainly used by gradient algorithms for pooling operations.
-Status GetBroadcastSize(const int index, const int in_size, const int ksize,
-                        const int stride, const int pad_size, int* bindex,
-                        int* bsize);
+absl::Status GetBroadcastSize(const int index, const int in_size,
+                              const int ksize, const int stride,
+                              const int pad_size, int* bindex, int* bsize);
 
 // Converts Brain's Padding to Eigen's PaddingType.
 Eigen::PaddingType BrainPadding2EigenPadding(Padding padding);

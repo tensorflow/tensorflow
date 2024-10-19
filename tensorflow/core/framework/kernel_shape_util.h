@@ -72,10 +72,10 @@ namespace tensorflow {
 // size and padding of each spatial dimension can be computed by calling
 // GetWindowedOutputSize separately for each dimension.
 //
-Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
-                             int dilation_rate, int64_t stride,
-                             Padding padding_type, int64_t* output_size,
-                             int64_t* padding_size);
+absl::Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
+                                   int dilation_rate, int64_t stride,
+                                   Padding padding_type, int64_t* output_size,
+                                   int64_t* padding_size);
 
 // Returns the same output dimensions as in GetWindowedOutputSize, but returns
 // verbose padding dimensions (before/after), and EXPLICIT padding is supported.
@@ -84,12 +84,10 @@ Status GetWindowedOutputSize(int64_t input_size, int64_t filter_size,
 // *padding_before and *padding_after are set by this function, and any
 // excess padding (caused by an odd padding size value) is added to the
 // 'padding_after' dimension.
-Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
-                                      int64_t dilation_rate, int64_t stride,
-                                      Padding padding_type,
-                                      int64_t* output_size,
-                                      int64_t* padding_before,
-                                      int64_t* padding_after);
+absl::Status GetWindowedOutputSizeVerbose(
+    int64_t input_size, int64_t filter_size, int64_t dilation_rate,
+    int64_t stride, Padding padding_type, int64_t* output_size,
+    int64_t* padding_before, int64_t* padding_after);
 
 // Given an input tensor, kernel, stride and padding type, populates the 3D size
 // of the output tensor and padding to be applied to the input tensor at the
@@ -99,13 +97,13 @@ Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,
 // padding is not supported.
 // The V2 version computes the same outputs with arbitrary dilation_rate. For
 // detailed equations, refer to the comments for GetWindowedOutputSize().
-Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
-                         const std::array<int64_t, 3>& window,
-                         const std::array<int64_t, 3>& dilations,
-                         const std::array<int64_t, 3>& strides,
-                         Padding padding_type,
-                         std::array<int64_t, 3>* output_ptr,
-                         std::array<int64_t, 3>* padding_ptr);
+absl::Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,
+                               const std::array<int64_t, 3>& window,
+                               const std::array<int64_t, 3>& dilations,
+                               const std::array<int64_t, 3>& strides,
+                               Padding padding_type,
+                               std::array<int64_t, 3>* output_ptr,
+                               std::array<int64_t, 3>* padding_ptr);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_FRAMEWORK_KERNEL_SHAPE_UTIL_H_

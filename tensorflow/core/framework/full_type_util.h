@@ -75,8 +75,8 @@ OpTypeConstructor VariadicTensorContainer(FullTypeId t, const string& var_name);
 // specified in an op definition. Such types are usually generic and dependent
 // on input types. This function resolves the output types based on the input
 // types specified in a given node def.
-Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
-                      FullTypeDef& target);
+absl::Status SpecializeType(const AttrSlice& attrs, const OpDef& op_def,
+                            FullTypeDef& target);
 
 const FullTypeDef& GetArgDefaultUnset(const FullTypeDef& t, int i);
 const FullTypeDef& GetArgDefaultAny(const FullTypeDef& t, int i);
