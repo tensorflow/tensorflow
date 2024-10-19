@@ -34,9 +34,9 @@ namespace tensorflow {
 using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
-Status RewriteFunctionCallNode(Node* n, Graph* g,
-                               const FunctionLibraryDefinition& flib_def,
-                               bool keep_caller_fetchable) {
+absl::Status RewriteFunctionCallNode(Node* n, Graph* g,
+                                     const FunctionLibraryDefinition& flib_def,
+                                     bool keep_caller_fetchable) {
   VLOG(2) << "Lower function call node: " << SummarizeNode(*n);
 
   // We support lowering of two types of functions that could be invoked by the
@@ -103,7 +103,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     VLOG(2) << "Pruning disabled before inlining";
   }
 
-  Status can_inline_function_call =
+  absl::Status can_inline_function_call =
       ValidateInlining(n, fbody.get(), inline_options);
   if (can_inline_function_call.ok()) {
     TF_RETURN_IF_ERROR(

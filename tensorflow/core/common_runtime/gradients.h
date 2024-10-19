@@ -47,11 +47,11 @@ struct NodeOut {
 // implementation only supports gradients for functions). In particular,
 // the nodes in 'x_nodes' are currently restricted to have one output.
 
-Status AddSymbolicGradients(absl::Span<const NodeOut> y_node_outputs,
-                            absl::Span<const NodeOut> x_node_outputs,
-                            absl::Span<const NodeOut> y_grad_node_outputs,
-                            std::vector<NodeOut>* x_grad_node_outputs,
-                            Graph* graph);
+absl::Status AddSymbolicGradients(absl::Span<const NodeOut> y_node_outputs,
+                                  absl::Span<const NodeOut> x_node_outputs,
+                                  absl::Span<const NodeOut> y_grad_node_outputs,
+                                  std::vector<NodeOut>* x_grad_node_outputs,
+                                  Graph* graph);
 
 }  // namespace tensorflow
 
