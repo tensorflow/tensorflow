@@ -15,10 +15,8 @@
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/ops/math_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"

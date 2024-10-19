@@ -48,40 +48,42 @@ void EagerOperation::Clear() {
   ClearInferenceState();
 }
 
-Status EagerOperation::SetAttrValue(const char* attr_name,
-                                    const AttrValue& value) {
+absl::Status EagerOperation::SetAttrValue(const char* attr_name,
+                                          const AttrValue& value) {
   MutableAttrs()->Set(attr_name, value);
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
-                                     size_t length) {
+absl::Status EagerOperation::SetAttrString(const char* attr_name,
+                                           const char* data, size_t length) {
   MutableAttrs()->Set(attr_name, StringPiece(data, length));
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrInt(const char* attr_name, int64_t value) {
+absl::Status EagerOperation::SetAttrInt(const char* attr_name, int64_t value) {
   MutableAttrs()->Set(attr_name, static_cast<int64_t>(value));
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrFloat(const char* attr_name, float value) {
+absl::Status EagerOperation::SetAttrFloat(const char* attr_name, float value) {
   MutableAttrs()->Set(attr_name, value);
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrBool(const char* attr_name, bool value) {
+absl::Status EagerOperation::SetAttrBool(const char* attr_name, bool value) {
   MutableAttrs()->Set(attr_name, value);
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrType(const char* attr_name, DataType value) {
+absl::Status EagerOperation::SetAttrType(const char* attr_name,
+                                         DataType value) {
   MutableAttrs()->Set(attr_name, value);
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
-                                    const int num_dims) {
+absl::Status EagerOperation::SetAttrShape(const char* attr_name,
+                                          const int64_t* dims,
+                                          const int num_dims) {
   if (num_dims > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
                                    num_dims,
@@ -103,8 +105,8 @@ Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrFunction(const char* attr_name,
-                                       const AbstractOperation* value) {
+absl::Status EagerOperation::SetAttrFunction(const char* attr_name,
+                                             const AbstractOperation* value) {
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
@@ -114,8 +116,9 @@ Status EagerOperation::SetAttrFunction(const char* attr_name,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrFunctionName(const char* attr_name,
-                                           const char* data, size_t length) {
+absl::Status EagerOperation::SetAttrFunctionName(const char* attr_name,
+                                                 const char* data,
+                                                 size_t length) {
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(data, length);
@@ -123,17 +126,17 @@ Status EagerOperation::SetAttrFunctionName(const char* attr_name,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrTensor(const char* attr_name,
-                                     AbstractTensorInterface* tensor) {
+absl::Status EagerOperation::SetAttrTensor(const char* attr_name,
+                                           AbstractTensorInterface* tensor) {
   Tensor t = TensorFromInterface(tensor);
   MutableAttrs()->Set(attr_name, t);
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrStringList(const char* attr_name,
-                                         const void* const* values,
-                                         const size_t* lengths,
-                                         int num_values) {
+absl::Status EagerOperation::SetAttrStringList(const char* attr_name,
+                                               const void* const* values,
+                                               const size_t* lengths,
+                                               int num_values) {
   std::vector<StringPiece> v(num_values);
   for (int i = 0; i < num_values; ++i) {
     v[i] = StringPiece(static_cast<const char*>(values[i]), lengths[i]);
@@ -143,31 +146,34 @@ Status EagerOperation::SetAttrStringList(const char* attr_name,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrFloatList(const char* attr_name,
-                                        const float* values, int num_values) {
+absl::Status EagerOperation::SetAttrFloatList(const char* attr_name,
+                                              const float* values,
+                                              int num_values) {
   MutableAttrs()->Set(attr_name,
                       gtl::ArraySlice<const float>(values, num_values));
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrIntList(const char* attr_name,
-                                      const int64_t* values, int num_values) {
+absl::Status EagerOperation::SetAttrIntList(const char* attr_name,
+                                            const int64_t* values,
+                                            int num_values) {
   MutableAttrs()->Set(
       attr_name, gtl::ArraySlice<const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrTypeList(const char* attr_name,
-                                       const DataType* values, int num_values) {
+absl::Status EagerOperation::SetAttrTypeList(const char* attr_name,
+                                             const DataType* values,
+                                             int num_values) {
   MutableAttrs()->Set(attr_name,
                       gtl::ArraySlice<const DataType>(values, num_values));
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrBoolList(const char* attr_name,
-                                       const unsigned char* values,
-                                       int num_values) {
+absl::Status EagerOperation::SetAttrBoolList(const char* attr_name,
+                                             const unsigned char* values,
+                                             int num_values) {
   std::unique_ptr<bool[]> b(new bool[num_values]);
   for (int i = 0; i < num_values; ++i) {
     b[i] = values[i];
@@ -177,9 +183,10 @@ Status EagerOperation::SetAttrBoolList(const char* attr_name,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrShapeList(const char* attr_name,
-                                        const int64_t** dims,
-                                        const int* num_dims, int num_values) {
+absl::Status EagerOperation::SetAttrShapeList(const char* attr_name,
+                                              const int64_t** dims,
+                                              const int* num_dims,
+                                              int num_values) {
   std::unique_ptr<TensorShapeProto[]> proto(new TensorShapeProto[num_values]);
   for (int i = 0; i < num_values; ++i) {
     const auto num_dims_i = num_dims[i];
@@ -205,7 +212,7 @@ Status EagerOperation::SetAttrShapeList(const char* attr_name,
   return absl::OkStatus();
 }
 
-Status EagerOperation::SetAttrFunctionList(
+absl::Status EagerOperation::SetAttrFunctionList(
     const char* attr_name, absl::Span<const AbstractOperation*> values) {
   size_t num_values = values.size();
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
@@ -219,15 +226,15 @@ Status EagerOperation::SetAttrFunctionList(
   return absl::OkStatus();
 }
 
-const OpDef* EagerOperation::GetOpDef(Status* status) {
+const OpDef* EagerOperation::GetOpDef(absl::Status* status) {
   const tensorflow::OpDef* op_def = OpDef();
   if (op_def) return op_def;
   *status = OpDefForOp(Name(), &op_def);
   return op_def;
 }
 
-Status EagerOperation::InputLength(const char* input_name, int* length) {
-  Status status;
+absl::Status EagerOperation::InputLength(const char* input_name, int* length) {
+  absl::Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);
   if (!status.ok()) {
     return status;
@@ -253,8 +260,9 @@ absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
       inputs_.size());
 }
 
-Status EagerOperation::OutputLength(const char* output_name, int* length) {
-  Status status;
+absl::Status EagerOperation::OutputLength(const char* output_name,
+                                          int* length) {
+  absl::Status status;
   const tensorflow::OpDef* op_def = GetOpDef(&status);
   if (!status.ok()) {
     return status;
@@ -272,7 +280,7 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
   return absl::OkStatus();
 }
 
-Status EagerOperation::AddInput(AbstractTensorHandle* input) {
+absl::Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   ImmediateExecutionTensorHandle* h =
       down_cast<ImmediateExecutionTensorHandle*>(input);
   // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
@@ -283,7 +291,7 @@ Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   return MaybeInferSingleInputAttrs(h);
 }
 
-Status EagerOperation::AddInputList(
+absl::Status EagerOperation::AddInputList(
     absl::Span<AbstractTensorHandle* const> inputs) {
   for (auto& input : inputs) {
     // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
@@ -298,8 +306,8 @@ Status EagerOperation::AddInputList(
   return InferInputListAttrs(inputs.size());
 }
 
-Status EagerOperation::SetInput(size_t index,
-                                ImmediateExecutionTensorHandle* input) {
+absl::Status EagerOperation::SetInput(size_t index,
+                                      ImmediateExecutionTensorHandle* input) {
   if (index >= inputs_.size()) {
     return errors::InvalidArgument("Index >= inputs.size: %d >= %d", index,
                                    inputs_.size());
@@ -317,7 +325,7 @@ Status EagerOperation::SetInput(size_t index,
   return absl::OkStatus();
 }
 
-Status EagerOperation::Reset(
+absl::Status EagerOperation::Reset(
     const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
     const absl::optional<EagerFunctionParams> eager_func_params) {
@@ -367,7 +375,7 @@ Status EagerOperation::Reset(
   return SetDeviceName(device_name);
 }
 
-Status EagerOperation::MaybeInferSingleInputAttrs(
+absl::Status EagerOperation::MaybeInferSingleInputAttrs(
     ImmediateExecutionTensorHandle* handle) {
   if (!op_def_) return absl::OkStatus();
 
@@ -415,7 +423,7 @@ void EagerOperation::InferMixedTypeInputListAttrs(
   }
 }
 
-Status EagerOperation::InferInputListAttrs(int num_inputs) {
+absl::Status EagerOperation::InferInputListAttrs(int num_inputs) {
   if (!op_def_) return absl::OkStatus();
 
   int start = inference_arg_idx_;
@@ -442,7 +450,7 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   return absl::OkStatus();
 }
 
-Status EagerOperation::TensorHandleInputs(
+absl::Status EagerOperation::TensorHandleInputs(
     const absl::InlinedVector<TensorHandle*, 4>** inputs) const {
   if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
     *inputs = reinterpret_cast<const absl::InlinedVector<TensorHandle*, 4>*>(
@@ -453,7 +461,7 @@ Status EagerOperation::TensorHandleInputs(
   }
 }
 
-Status EagerOperation::MutableTensorHandleInputs(
+absl::Status EagerOperation::MutableTensorHandleInputs(
     absl::InlinedVector<TensorHandle*, 4>** inputs) {
   if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
     *inputs =
@@ -464,7 +472,7 @@ Status EagerOperation::MutableTensorHandleInputs(
   }
 }
 
-Status EagerOperation::SetDeviceName(const char* c_name) {
+absl::Status EagerOperation::SetDeviceName(const char* c_name) {
   string name(c_name != nullptr ? c_name : "");
   if (name != last_set_device_name_) {
     if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {

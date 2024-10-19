@@ -80,7 +80,7 @@ class DataServiceClient {
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Initializes the client.
-  Status Initialize(
+  absl::Status Initialize(
       const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
       Allocator* allocator);
 
@@ -152,7 +152,7 @@ class DataServiceClient {
   void TaskThreadManager();
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
-  Status AddTask(const TaskInfo& task_info);
+  absl::Status AddTask(const TaskInfo& task_info);
   absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const TaskInfo& task_info);
   absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
@@ -176,17 +176,19 @@ class DataServiceClient {
   // task a chance to proceed.
   std::shared_ptr<Task> GetTaskToProcess();
   void AdvanceTaskIndex();
-  Status TryGetElement(const Task& task, bool allow_skip,
-                       GetElementResult& result);
+  absl::Status TryGetElement(const Task& task, bool allow_skip,
+                             GetElementResult& result);
   void ProcessGetElementResponse(bool enqueue_result,
                                  GetElementResult& get_element_result,
                                  std::shared_ptr<Result> result, Task& task);
-  Status GetElementTraced(Task* task, int64_t deadline_micros,
+  absl::Status GetElementTraced(Task* task, int64_t deadline_micros,
+                                bool enqueue_result, bool allow_skip,
+                                std::shared_ptr<Result> result);
+  absl::Status MaybeRemoveTask(Task& task, int64_t deadline_micros,
+                               Result& result);
+  absl::Status GetElement(Task* task, int64_t deadline_micros,
                           bool enqueue_result, bool allow_skip,
                           std::shared_ptr<Result> result);
-  Status MaybeRemoveTask(Task& task, int64_t deadline_micros, Result& result);
-  Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
-                    bool allow_skip, std::shared_ptr<Result> result);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;
@@ -233,7 +235,7 @@ class DataServiceClient {
 
   // A status to be returned from the next call to `GetNext`. This is set by
   // asynchronous threads when they encounter errors.
-  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
+  absl::Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
   // A queue of results for `GetElement` requests to read from. When doing
   // strict round robin reads, the queue will contain placeholder results with
   // their `Result::ready` field false until their data has been retrieved

@@ -332,8 +332,9 @@ Device* SelectBestMatchingDevice(const DeviceNameUtils::ParsedName& pattern,
 
 }  // namespace
 
-Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
-                                  const NodeDef& ndef, Device** out) const {
+absl::Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
+                                        const NodeDef& ndef,
+                                        Device** out) const {
   DCHECK(out != nullptr);
 
   PrioritizedDeviceTypeVector supported_devs;
@@ -554,11 +555,11 @@ void EagerContext::CloseRemoteContexts(
   int i = 0;
   for (const auto& worker : remote_contexts) {
     core::RefCountPtr<eager::EagerClient> client;
-    Status s = GetClient(worker, &client);
+    absl::Status s = GetClient(worker, &client);
 
     client->CloseContextAsync(
         &request, &responses[i],
-        [&worker, &counter, context_id](const Status& s) {
+        [&worker, &counter, context_id](const absl::Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Unable to close remote context with ID "
                        << context_id << " for worker: " << worker << " due to "
@@ -649,7 +650,7 @@ EagerContext::~EagerContext() {
     // shutdown is supported.
     if (server_->worker_env()->session_mgr != nullptr) {
       // Tear down coordination service.
-      Status s = server_->StopCoordinationService();
+      absl::Status s = server_->StopCoordinationService();
       if (!s.ok()) {
         LOG(ERROR) << "Failed to stop coordination service: " << s;
       }
@@ -692,7 +693,7 @@ bool EagerContext::FindFunctionByName(const string& name) const {
   return func_lib_def_.Find(name) != nullptr;
 }
 
-Status EagerContext::FindFunctionOpData(
+absl::Status EagerContext::FindFunctionOpData(
     const string& name, const tensorflow::OpRegistrationData** op_data) {
   return func_lib_def_.LookUp(name, op_data);
 }
@@ -718,7 +719,7 @@ ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
   return handle;
 }
 
-Status EagerContext::RegisterFunction(AbstractFunction* f) {
+absl::Status EagerContext::RegisterFunction(AbstractFunction* f) {
   TF_ASSIGN_OR_RETURN(core::RefCountPtr<FunctionRecord> record,
                       f->GetFunctionRecord());
   if (!record) {
@@ -788,7 +789,8 @@ std::vector<Device*> EagerContext::ListAllTfDevices() {
   return devices;
 }
 
-Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
+absl::Status EagerContext::AddDevices(
+    std::vector<std::unique_ptr<Device>> devices) {
   std::vector<std::unique_ptr<Device>> local_devices, remote_devices;
   while (!devices.empty()) {
     if (devices.front()->IsLocal()) {
@@ -839,7 +841,8 @@ ScopedStepContainer* EagerContext::StepContainer() {
   return step_container_.get();
 }
 
-Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
+absl::Status EagerContext::MaybeRegisterFunctionRemotely(
+    const FunctionDef& fdef) {
   // Only client context can register function on remote worker context.
   if (!remote_device_manager_.Owned()) return absl::OkStatus();
 #if !defined(IS_MOBILE_PLATFORM)
@@ -862,7 +865,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
     eager_client->StreamingEnqueueAsync(
         this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response,
-        [request, response](const Status& status) {
+        [request, response](const absl::Status& status) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to register function remotely due to "
                        << status.message()
@@ -876,7 +879,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   return absl::OkStatus();
 }
 
-Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+absl::Status EagerContext::MaybeRemoveFunctionRemotely(
+    const string& function_name) {
   // Only client context can remove function on remote worker context.
   if (!remote_device_manager_.Owned()) {
     return absl::OkStatus();
@@ -899,7 +903,7 @@ Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
     eager_client->StreamingEnqueueAsync(
         this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response.get(),
-        [request, response](const Status& status) {
+        [request, response](const absl::Status& status) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to remove function remotely due to "
                        << status.message()
@@ -912,7 +916,7 @@ Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
   return absl::OkStatus();
 }
 
-Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
+absl::Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
   // Register multiple functions on selected remote workers.
@@ -934,7 +938,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
 
   for (auto& remote_worker : remote_workers) {
     core::RefCountPtr<eager::EagerClient> eager_client;
-    Status s = GetClient(remote_worker, &eager_client);
+    absl::Status s = GetClient(remote_worker, &eager_client);
     if (!s.ok()) {
       continue;
     }
@@ -943,7 +947,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
       eager_client->StreamingEnqueueAsync(
           this->Executor().StreamingEnqueue(),
           /*call_opts=*/nullptr, requests[i].get(), response.get(),
-          [request = requests[i], response](const Status& s) {
+          [request = requests[i], response](const absl::Status& s) {
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
                          << s.message()
@@ -957,27 +961,27 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   return absl::OkStatus();
 }
 
-Status EagerContext::AddFunctionDefWithStackTraces(
+absl::Status EagerContext::AddFunctionDefWithStackTraces(
     const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   return AddFunctionDef(fdef, FunctionDefLibrary(),
                         /* add_to_local_only=*/false, stack_traces);
 }
 
-Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
+absl::Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   return AddFunctionDef(fdef, FunctionDefLibrary(),
                         /* add_to_local_only=*/false);
 }
 
-Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
-                                    const FunctionDefLibrary& library,
-                                    const bool add_to_local_only,
-                                    const StackTracesMap& stack_traces) {
+absl::Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
+                                          const FunctionDefLibrary& library,
+                                          const bool add_to_local_only,
+                                          const StackTracesMap& stack_traces) {
   core::RefCountPtr<FunctionRecord> func_record(
       new FunctionRecord(fdef, stack_traces, true));
   return AddFunctionRecord(std::move(func_record), library, add_to_local_only);
 }
 
-Status EagerContext::AddFunctionRecord(
+absl::Status EagerContext::AddFunctionRecord(
     core::RefCountPtr<FunctionRecord> func_record,
     const FunctionDefLibrary& library, bool add_to_local_only) {
   const FunctionDef& fdef = func_record->fdef();
@@ -1039,8 +1043,8 @@ Status EagerContext::AddFunctionRecord(
   return absl::OkStatus();
 }
 
-Status EagerContext::AddComponentFunction(const FunctionDef& fdef,
-                                          const FunctionDefLibrary& library) {
+absl::Status EagerContext::AddComponentFunction(
+    const FunctionDef& fdef, const FunctionDefLibrary& library) {
   {
     mutex_lock l(cache_mu_);
     auto iter = component_function_libraries_.find(fdef.signature().name());
@@ -1083,8 +1087,8 @@ std::vector<string> EagerContext::ListFunctionNames() {
   return func_lib_def_.ListFunctionNames();
 }
 
-Status EagerContext::AddRemoveFunctionNotifier(const string& func,
-                                               std::function<void()> notifier) {
+absl::Status EagerContext::AddRemoveFunctionNotifier(
+    const string& func, std::function<void()> notifier) {
   mutex_lock l(remove_function_notifiers_mu_);
   auto iter = remove_function_notifiers_.find(func);
   if (iter != remove_function_notifiers_.end()) {
@@ -1118,7 +1122,7 @@ EagerContext::GetCacheStats() {
   return stats;
 }
 
-Status EagerContext::RemoveFunction(const string& func) {
+absl::Status EagerContext::RemoveFunction(const string& func) {
   // TODO(mdan): The context owns these functions. Why check refcount then?
   std::vector<std::function<void()>> notifiers;
   bool is_last_ref = false;
@@ -1159,7 +1163,7 @@ Status EagerContext::RemoveFunction(const string& func) {
   return absl::OkStatus();
 }
 
-Status EagerContext::SyncExecutors() {
+absl::Status EagerContext::SyncExecutors() {
   VLOG(6) << "Calling SyncExecutors";
   StatusGroup sg;
   // Synchronize on context default executor
@@ -1184,7 +1188,7 @@ Status EagerContext::SyncExecutors() {
   request.set_context_id(GetContextId());
   request.add_queue()->mutable_sync_remote_executor_for_stream();
   BlockingCounter counter(static_cast<int>(remote_contexts.size()));
-  std::vector<Status> statuses(remote_contexts.size());
+  std::vector<absl::Status> statuses(remote_contexts.size());
 
   for (int i = 0; i < remote_contexts.size(); i++) {
     const auto& target = remote_contexts[i];
@@ -1195,14 +1199,15 @@ Status EagerContext::SyncExecutors() {
     eager_client->StreamingEnqueueAsync(
         this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
-        [response, target, &counter, &s = statuses[i]](const Status& status) {
+        [response, target, &counter,
+         &s = statuses[i]](const absl::Status& status) {
           s = status;
           delete response;
           counter.DecrementCount();
         });
   }
   counter.Wait();
-  for (const Status& s : statuses) {
+  for (const absl::Status& s : statuses) {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
@@ -1272,8 +1277,8 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   }
 }
 
-Status EagerContext::FindDeviceFromName(const char* device_name,
-                                        Device** device) const {
+absl::Status EagerContext::FindDeviceFromName(const char* device_name,
+                                              Device** device) const {
   *device = HostCPU();
   if (device_name == nullptr || strlen(device_name) == 0) {
     return absl::OkStatus();
@@ -1291,7 +1296,7 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   return status;
 }
 
-Status EagerContext::FindCompositeDeviceFromName(
+absl::Status EagerContext::FindCompositeDeviceFromName(
     StringPiece device_name, CompositeDevice** device) const {
   tf_shared_lock l(composite_devices_mu_);
   for (const auto& d : composite_devices_) {
@@ -1309,7 +1314,7 @@ bool EagerContext::IsCustomDevice(const string& device_name) {
                                                             &device);
 }
 
-Status EagerContext::RegisterCustomDevice(
+absl::Status EagerContext::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
   Device* existing_physical_device = nullptr;
   if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
@@ -1320,7 +1325,7 @@ Status EagerContext::RegisterCustomDevice(
                                                         std::move(device));
 }
 
-Status EagerContext::FindOrCreateCompositeDevice(
+absl::Status EagerContext::FindOrCreateCompositeDevice(
     const std::vector<string>& underlying_devices, const string& device_name,
     CompositeDevice** composite_device) {
   if (!device_name.empty() &&
@@ -1337,7 +1342,7 @@ Status EagerContext::FindOrCreateCompositeDevice(
     return absl::OkStatus();
   }
 
-  Status s;
+  absl::Status s;
   std::unique_ptr<CompositeDevice> device;
   if (device_name.empty()) {
     // Create a CompositeDevice on the same task as the host CPU, in order to
@@ -1364,8 +1369,8 @@ bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
 }
 
 // Gets the CPU device on the task of device.
-Status EagerContext::CPUDeviceOnTask(const Device* device,
-                                     Device** cpu_device) const {
+absl::Status EagerContext::CPUDeviceOnTask(const Device* device,
+                                           Device** cpu_device) const {
   string cpu_device_name;
   TF_RETURN_IF_ERROR(DeviceNameUtils::DeviceNameToCpuDeviceName(
       device->name(), &cpu_device_name));
@@ -1382,7 +1387,8 @@ void EagerContext::ClearResourceContainer(const string& name) {
   }
 }
 
-Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
+absl::Status
+EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
   mutex_lock l(global_rendezvous_mu_);
   tsl::core::RefCountPtr<IntraProcessRendezvous> rendezvous =
       local_rendezvous_cache_.Find(kGlobalRendezvousId);
@@ -1400,7 +1406,7 @@ void EagerContext::UpdateGlobalRendezvousDeviceManager(
 }
 
 namespace {
-Status GetTaskName(Device* d, string* task_name) {
+absl::Status GetTaskName(Device* d, string* task_name) {
   string ignored;
   if (!DeviceNameUtils::SplitDeviceName(d->name(), task_name, &ignored)) {
     return errors::InvalidArgument("Unable to parse device name: ", d->name());
@@ -1411,13 +1417,14 @@ Status GetTaskName(Device* d, string* task_name) {
 }  // namespace
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status EagerContext::GetClient(Device* device,
-                               core::RefCountPtr<eager::EagerClient>* client) {
+absl::Status EagerContext::GetClient(
+    Device* device, core::RefCountPtr<eager::EagerClient>* client) {
   return GetClient(device->parsed_name(), client);
 }
 
-Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
-                               core::RefCountPtr<eager::EagerClient>* client) {
+absl::Status EagerContext::GetClient(
+    const DeviceNameUtils::ParsedName& device_name,
+    core::RefCountPtr<eager::EagerClient>* client) {
   string device_task_name;
   if (!DeviceNameUtils::GetTaskName(device_name, &device_task_name)) {
     return errors::InvalidArgument(
@@ -1449,8 +1456,8 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
   return absl::OkStatus();
 }
 
-Status EagerContext::GetClient(const string& remote_task,
-                               core::RefCountPtr<eager::EagerClient>* client) {
+absl::Status EagerContext::GetClient(
+    const string& remote_task, core::RefCountPtr<eager::EagerClient>* client) {
   {
     tf_shared_lock l(remote_state_mu_);
     if (remote_eager_workers_ == nullptr) {
@@ -1482,13 +1489,13 @@ void EagerContext::IncrementContextViewId() {
   context_view_id_ += 1;
 }
 
-Status EagerContext::EnableCollectiveOps(const ServerDef& server_def) {
+absl::Status EagerContext::EnableCollectiveOps(const ServerDef& server_def) {
   return distributed_manager_->EnableCollectiveOps(server_def);
 }
 
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
-Status EagerContext::StoreCollectiveOpsServer(
+absl::Status EagerContext::StoreCollectiveOpsServer(
     std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
@@ -1536,7 +1543,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   return absl::OkStatus();
 }
 
-Status EagerContext::SetRemoteDeviceFilters(
+absl::Status EagerContext::SetRemoteDeviceFilters(
     const string& remote_worker, const std::vector<string>& device_filters) {
   // Get fully specified task name for remote worker
   string remote_worker_task_name;
@@ -1622,7 +1629,7 @@ void EagerContext::SetWorkerEnv(WorkerEnv* worker_env,
   worker_session_ = worker_session;
 }
 
-Status EagerContext::InitializeRemoteMaster(
+absl::Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
@@ -1653,7 +1660,7 @@ Status EagerContext::InitializeRemoteMaster(
       cluster_flr, std::move(remote_mgr));
 }
 
-Status EagerContext::UpdateRemoteMaster(
+absl::Status EagerContext::UpdateRemoteMaster(
     uint64 context_id,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const std::vector<string>& add_remote_contexts,
@@ -1720,7 +1727,7 @@ Status EagerContext::UpdateRemoteMaster(
 }
 
 // Set distributed execution related state in the master context.
-Status EagerContext::SetMasterContextState(
+absl::Status EagerContext::SetMasterContextState(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
@@ -1809,7 +1816,7 @@ Status EagerContext::SetMasterContextState(
                   {
                     for (const auto& worker : remote_contexts_) {
                       core::RefCountPtr<eager::EagerClient> client;
-                      Status s =
+                      absl::Status s =
                           remote_eager_workers_->GetClient(worker, &client);
 
                       if (!s.ok()) {
@@ -1827,7 +1834,7 @@ Status EagerContext::SetMasterContextState(
                       request->set_context_id(context_id_);
                       client->KeepAliveAsync(
                           request, response,
-                          [request, response](const Status& s) {
+                          [request, response](const absl::Status& s) {
                             delete request;
                             delete response;
                           });
@@ -1842,7 +1849,7 @@ Status EagerContext::SetMasterContextState(
   return absl::OkStatus();
 }
 
-Status EagerContext::InitializeRemoteWorker(
+absl::Status EagerContext::InitializeRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
@@ -1899,7 +1906,7 @@ Status EagerContext::InitializeRemoteWorker(
   return absl::OkStatus();
 }
 
-Status EagerContext::UpdateRemoteWorker(
+absl::Status EagerContext::UpdateRemoteWorker(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const std::vector<string>& remote_contexts, uint64 context_id) {
   {
