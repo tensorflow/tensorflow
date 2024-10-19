@@ -29,7 +29,7 @@ namespace {
 
 class IdentityOpTest : public OpsTestBase {
  protected:
-  Status Init(DataType input_type) {
+  absl::Status Init(DataType input_type) {
     TF_CHECK_OK(NodeDefBuilder("op", "Identity")
                     .Input(FakeInput(input_type))
                     .Finalize(node_def()));
