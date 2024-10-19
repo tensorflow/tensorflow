@@ -54,7 +54,7 @@ static Device* CreateDevice(const string& type, int n) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return absl::OkStatus(); }
+    absl::Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -254,7 +254,7 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
           {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
-  Status s = context()->AddFunctionDef(x_times_two_copy);
+  absl::Status s = context()->AddFunctionDef(x_times_two_copy);
   EXPECT_FALSE(s.ok());
 }
 
@@ -281,7 +281,7 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
            {{"T", DT_FLOAT}},
            /*dep=*/{"assert"}},
       });
-  Status s = context()->AddFunctionDef(assert_and_identity);
+  absl::Status s = context()->AddFunctionDef(assert_and_identity);
   auto fail_op = ImmediateOpPtr(context()->CreateOperation());
   TF_ASSERT_OK(fail_op->Reset("AssertAndIdentity",
                               "/job:localhost/replica:0/task:0/device:CPU:0"));
@@ -340,7 +340,7 @@ TEST_F(EagerContextTest, XlaCompileDeviceType) {
           {{"y"}, "Mul", {"x", "two"}, {{"T", DT_INT64}}},
       });
 
-  Status s = context()->AddFunctionDef(x_times_two);
+  absl::Status s = context()->AddFunctionDef(x_times_two);
   context()->SetJitCompileRewrite(true);
   auto op = ImmediateOpPtr(context()->CreateOperation());
   TF_ASSERT_OK(
