@@ -57,7 +57,7 @@ class MasterSession : public core::RefCounted {
 
   // Initialize the MasterSession for "def".  Must be called before Extend(),
   // Run(), or Close().
-  Status Create(GraphDef&& def, const ClusterDef& cluster_def);
+  absl::Status Create(GraphDef&& def, const ClusterDef& cluster_def);
 
   // Returns the session handle.
   const string& handle() const { return handle_; }
@@ -76,32 +76,33 @@ class MasterSession : public core::RefCounted {
   //   is "resp->new_graph_version".
   //
   // Extend() may block the caller thread for a long time.
-  Status Extend(const ExtendSessionRequest* req, ExtendSessionResponse* resp);
+  absl::Status Extend(const ExtendSessionRequest* req,
+                      ExtendSessionResponse* resp);
 
   // Setup a partial run call.
-  Status PartialRunSetup(const PartialRunSetupRequest* req,
-                         PartialRunSetupResponse* resp);
+  absl::Status PartialRunSetup(const PartialRunSetupRequest* req,
+                               PartialRunSetupResponse* resp);
 
   // Run one step.
-  Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
-             MutableRunStepResponseWrapper* resp);
+  absl::Status Run(CallOptions* opts, const RunStepRequestWrapper& req,
+                   MutableRunStepResponseWrapper* resp);
 
-  Status ListDevices(ListDevicesResponse* resp) const;
+  absl::Status ListDevices(ListDevicesResponse* resp) const;
 
-  Status MakeCallable(const MakeCallableRequest& req,
-                      MakeCallableResponse* resp);
+  absl::Status MakeCallable(const MakeCallableRequest& req,
+                            MakeCallableResponse* resp);
 
-  Status RunCallable(CallOptions* opts, const RunCallableRequest& req,
-                     RunCallableResponse* resp);
+  absl::Status RunCallable(CallOptions* opts, const RunCallableRequest& req,
+                           RunCallableResponse* resp);
 
-  Status ReleaseCallable(const ReleaseCallableRequest& req,
-                         ReleaseCallableResponse* resp);
+  absl::Status ReleaseCallable(const ReleaseCallableRequest& req,
+                               ReleaseCallableResponse* resp);
 
   // Close this session and delete "*this". Returns OK if all known
   // states are cleanup successfully.
   //
   // Close() may block the caller thread for a long time.
-  Status Close();
+  absl::Status Close();
 
   // Close this session and release a reference on "*this".
   //
@@ -217,39 +218,40 @@ class MasterSession : public core::RefCounted {
   // If this session is operating using the new ClusterSpec propagation behavior
   // call this method in order to propagate the cluster membership to all
   // workers.
-  Status CreateWorkerSessions(const ClusterDef& cluster_def);
+  absl::Status CreateWorkerSessions(const ClusterDef& cluster_def);
 
   bool should_delete_worker_sessions_ = false;
-  Status DeleteWorkerSessions();
+  absl::Status DeleteWorkerSessions();
 
-  Status StartStep(const BuildGraphOptions& opts, bool is_partial,
-                   ReffedClientGraph** out_rcg, int64_t* out_count);
+  absl::Status StartStep(const BuildGraphOptions& opts, bool is_partial,
+                         ReffedClientGraph** out_rcg, int64_t* out_count);
   void ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
                       RCGMap* rcg_map) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void FillPerStepState(MasterSession::ReffedClientGraph* rcg,
                         const RunOptions& run_options, uint64 step_id,
                         int64_t count, PerStepState* out_pss,
                         std::unique_ptr<ProfileHandler>* out_ph);
-  Status DoRunWithLocalExecution(CallOptions* opts,
-                                 const RunStepRequestWrapper& req,
-                                 MutableRunStepResponseWrapper* resp);
-  Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
-                      MutableRunStepResponseWrapper* resp);
-  Status DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
-                       const RunCallableRequest& req,
-                       RunCallableResponse* resp);
-  Status PostRunCleanup(MasterSession::ReffedClientGraph* rcg, uint64 step_id,
-                        const RunOptions& run_options, PerStepState* pss,
-                        const std::unique_ptr<ProfileHandler>& ph,
-                        const Status& run_status,
-                        RunMetadata* out_run_metadata);
+  absl::Status DoRunWithLocalExecution(CallOptions* opts,
+                                       const RunStepRequestWrapper& req,
+                                       MutableRunStepResponseWrapper* resp);
+  absl::Status DoPartialRun(CallOptions* opts, const RunStepRequestWrapper& req,
+                            MutableRunStepResponseWrapper* resp);
+  absl::Status DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
+                             const RunCallableRequest& req,
+                             RunCallableResponse* resp);
+  absl::Status PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
+                              uint64 step_id, const RunOptions& run_options,
+                              PerStepState* pss,
+                              const std::unique_ptr<ProfileHandler>& ph,
+                              const absl::Status& run_status,
+                              RunMetadata* out_run_metadata);
 
   void MarkRunCompletion();
   void UpdateLastAccessTime();
 
-  Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
+  absl::Status BuildAndRegisterPartitions(ReffedClientGraph* rcg);
 
-  Status CreateDebuggerState(
+  absl::Status CreateDebuggerState(
       const DebugOptions& debug_options, const RunStepRequestWrapper& req,
       int64_t rcg_execution_count,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);

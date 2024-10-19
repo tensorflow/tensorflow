@@ -39,7 +39,7 @@ class RemoteDevice : public Device {
       : Device(env, da),
         local_dev_name_(DeviceNameUtils::LocalName(da.name())) {}
 
-  Status Sync() override { return absl::OkStatus(); }
+  absl::Status Sync() override { return absl::OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
   ResourceMgr* resource_manager() override {
@@ -91,8 +91,8 @@ void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
   };
   Call* call = new Call;
   auto cb = [env, worker_cache, worker_name, done, wi,
-             call](const Status& status) {
-    Status s = status;
+             call](const absl::Status& status) {
+    absl::Status s = status;
     std::vector<Device*> remote_devices;
     auto cleanup = gtl::MakeCleanup(
         [&worker_cache, &worker_name, &wi, &done, &remote_devices, &s, call] {
