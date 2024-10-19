@@ -16,61 +16,25 @@
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITERT_HANDLE_H_
 
 #include <algorithm>
+#include <memory>
 
 namespace litert {
 namespace internal {
 
 // This class is used to wrap and manage the lifetime of opaque handles from the
-// C API into an equivalent C++ object. The class is similar to an
-// std::unique_ptr<> with a deleter, which is introduced in C++23.
-template <typename H>
-class Handle {
+// C API into an equivalent C++ object. The class is a wrapper on
+// std::unique_ptr<> that has a default constructor and doesn't crash if the
+// deleter is null.
+template <typename T>
+class Handle : public std::unique_ptr<T, void (*)(T*)> {
  public:
-  Handle() = default;
-  Handle(H h, void (*deleter)(H)) : h_(h), deleter_(deleter) {}
-
-  ~Handle() {
-    if (deleter_ && h_) {
-      deleter_(h_);
-    }
-  }
-
-  Handle(Handle&& other) {
-    std::swap(h_, other.h_);
-    std::swap(deleter_, other.deleter_);
-  }
-
-  Handle& operator=(Handle&& other) {
-    std::swap(h_, other.h_);
-    std::swap(deleter_, other.deleter_);
-    return *this;
-  }
-
-  Handle(const Handle&) = delete;
-  Handle& operator=(const Handle& other) = delete;
-
-  // Return true if the underlying handle is valid.
-  bool IsValid() const { return h_ != nullptr; }
-
-  H Get() {
-    assert(h_);
-    return h_;
-  }
-
-  H Get() const {
-    assert(h_);
-    return h_;
-  }
-
-  H Release() {
-    assert(h_);
-    deleter_ = nullptr;
-    return h_;
-  }
+  Handle() : std::unique_ptr<T, void (*)(T*)>(nullptr, DummyDeleter) {}
+  Handle(T* ptr, void (*deleter)(T*))
+      : std::unique_ptr<T, void (*)(T*)>(ptr,
+                                         deleter ? deleter : DummyDeleter) {}
 
  private:
-  H h_ = nullptr;
-  void (*deleter_)(H) = nullptr;
+  static void DummyDeleter(T*) {}
 };
 
 }  // namespace internal

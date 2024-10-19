@@ -57,16 +57,16 @@ class TensorBufferRequirements {
 
   // Return true if the underlying LiteRtTensorBufferRequirements handle is
   // valid.
-  bool IsValid() const { return handle_.IsValid(); }
+  explicit operator bool() const { return static_cast<bool>(handle_); }
 
   // Return the underlying LiteRtTensorBufferRequirements handle.
-  explicit operator LiteRtTensorBufferRequirements() { return handle_.Get(); }
+  explicit operator LiteRtTensorBufferRequirements() { return handle_.get(); }
 
   absl::StatusOr<std::vector<LiteRtTensorBufferType>> SupportedTypes() const {
     int num_types;
     if (auto status =
             LiteRtGetTensorBufferRequirementsNumSupportedTensorBufferTypes(
-                handle_.Get(), &num_types);
+                handle_.get(), &num_types);
         status != kLiteRtStatusOk) {
       return absl::InternalError(
           "Failed to get the number of supported tensor types");
@@ -75,7 +75,7 @@ class TensorBufferRequirements {
     for (auto i = 0; i < num_types; ++i) {
       if (auto status =
               LiteRtGetTensorBufferRequirementsSupportedTensorBufferType(
-                  handle_.Get(), i, &types[i]);
+                  handle_.get(), i, &types[i]);
           status != kLiteRtStatusOk) {
         return absl::InternalError("Failed to get supported tensor type");
       }
@@ -85,7 +85,7 @@ class TensorBufferRequirements {
 
   absl::StatusOr<size_t> BufferSize() const {
     size_t buffer_size;
-    if (auto status = LiteRtGetTensorBufferRequirementsBufferSize(handle_.Get(),
+    if (auto status = LiteRtGetTensorBufferRequirementsBufferSize(handle_.get(),
                                                                   &buffer_size);
         status != kLiteRtStatusOk) {
       return absl::InternalError("Failed to get tensor buffer size");
@@ -94,7 +94,7 @@ class TensorBufferRequirements {
   }
 
  private:
-  internal::Handle<LiteRtTensorBufferRequirements> handle_;
+  internal::Handle<LiteRtTensorBufferRequirementsT> handle_;
 };
 
 }  // namespace litert
