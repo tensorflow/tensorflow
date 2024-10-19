@@ -41,7 +41,7 @@ TEST(AttrTypeMap, Lookup) {
   // Unknown ops are assumed to be functions.
   // Their maps are filled with default attributes.
   bool is_function = false;
-  Status s = AttrTypeMapForOp("SomeFunctionName", &m, &is_function);
+  absl::Status s = AttrTypeMapForOp("SomeFunctionName", &m, &is_function);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(is_function);
   ASSERT_NE(m->end(), m->find("executor_type"));
@@ -134,7 +134,7 @@ TEST(AttrBuilder, GetTypeList) {
   AttrBuilder a("IdentityN");
   a.Set("T", absl::Span<const DataType>({DT_FLOAT, DT_INT64}));
   absl::InlinedVector<DataType, 4> type_list;
-  Status s = a.GetTypeList("T", &type_list);
+  absl::Status s = a.GetTypeList("T", &type_list);
   ASSERT_TRUE(s.ok()) << s;
   ASSERT_EQ(2, type_list.size()) << type_list.size();
   ASSERT_EQ(DT_FLOAT, type_list[0]) << type_list[0];

@@ -65,7 +65,7 @@ class ConditionalAccumulator
 
   functor::SetZeroFunctor<Device, T> set_zero_functor_;
 
-  Status ValidateShape(const Tensor* tensor)
+  absl::Status ValidateShape(const Tensor* tensor)
       TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Must be compatible with accumulated gradient if available
     if (counter_ > 0) {
