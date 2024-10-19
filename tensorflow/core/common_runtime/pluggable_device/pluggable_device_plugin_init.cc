@@ -43,10 +43,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Status InitDeviceModule(void* dso_handle) {
+static absl::Status InitDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "SE_InitPlugin", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
@@ -76,12 +76,12 @@ static Status InitDeviceModule(void* dso_handle) {
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-static Status InitNextPluggableDeviceModule(void* dso_handle) {
+static absl::Status InitNextPluggableDeviceModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
 
   // Loads the next pluggable device.
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TFNPD_InitPlugin", &dso_symbol);
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Next pluggable device module not found.";
@@ -147,10 +147,10 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   return absl::OkStatus();
 }
 
-static Status InitGraphModule(void* dso_handle) {
+static absl::Status InitGraphModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitGraph", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
@@ -167,10 +167,10 @@ static Status InitGraphModule(void* dso_handle) {
 }
 
 typedef void (*TFKernelInitFn)();
-static Status InitKernelModule(void* dso_handle) {
+static absl::Status InitKernelModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitKernel", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
@@ -187,11 +187,11 @@ static Status InitKernelModule(void* dso_handle) {
   return absl::OkStatus();
 }
 
-static Status InitProfilerModule(void* dso_handle) {
+static absl::Status InitProfilerModule(void* dso_handle) {
   void* dso_symbol;
   tensorflow::Env* env = tensorflow::Env::Default();
 
-  Status status =
+  absl::Status status =
       env->GetSymbolFromLibrary(dso_handle, "TF_InitProfiler", &dso_symbol);
 
   if (absl::IsNotFound(status)) {
@@ -208,7 +208,7 @@ static Status InitProfilerModule(void* dso_handle) {
   return absl::OkStatus();
 }
 
-Status RegisterPluggableDevicePlugin(void* dso_handle) {
+absl::Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // All modules are optional. Only return an error when a module is found but
   // has issues in loading / initializing.
   // Step 1 Init Device Module.

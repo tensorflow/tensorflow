@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status RegisterPluggableDevicePlugin(void* library_filename);
+absl::Status RegisterPluggableDevicePlugin(void* library_filename);
 
 }  // namespace tensorflow
 
