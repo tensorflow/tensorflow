@@ -107,7 +107,7 @@ Node* AddNode(Graph& graph, const string& name, const string& node_type,
   NodeDef node_def;
   TF_CHECK_OK(builder.Finalize(&node_def));
 
-  Status s;
+  absl::Status s;
   Node* node = graph.AddNode(node_def, &s);
   TF_CHECK_OK(s);
   return node;
