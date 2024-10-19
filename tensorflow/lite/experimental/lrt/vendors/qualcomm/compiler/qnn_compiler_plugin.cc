@@ -16,7 +16,6 @@
 
 #include <cstddef>
 #include <cstdlib>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -204,7 +203,7 @@ LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LITERT_RETURN_STATUS_IF_NOT_OK(ComposeGraph(
+    LITERT_RETURN_STATUS_IF_NOT_OK(litert::qnn::ComposeGraph(
         **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
   }
 

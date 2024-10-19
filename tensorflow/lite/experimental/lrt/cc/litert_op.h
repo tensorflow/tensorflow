@@ -27,7 +27,7 @@ namespace litert {
 //
 // NOTE ON USAGE: This "unpacks" upfront some of the data behind the LiteRtOp
 // for efficiency and a cleaner interface (no status checks needed on getters).
-// Becasuse of this, it is required that `op : LiteRtOp` is stable and
+// Because of this, it is required that `op : LiteRtOp` is stable and
 // unmutated throughout the lifetime. This is guaranteed within (but not
 // between) calls to an LiteRtCompilerPlugin. Plugins should close all
 // LiteRtOpManagers before exiting a call and initialize fresh ones in later

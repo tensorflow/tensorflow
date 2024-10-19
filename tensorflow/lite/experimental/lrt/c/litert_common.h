@@ -74,6 +74,9 @@ typedef enum {
 
   // Tool related errors.
   kLiteRtStatusErrorInvalidToolConfig = 1500,
+
+  // Lealization related errors.
+  kLrtStatusLegalizeNoMatch = 2000,
 } LiteRtStatus;
 
 #ifdef __cplusplus

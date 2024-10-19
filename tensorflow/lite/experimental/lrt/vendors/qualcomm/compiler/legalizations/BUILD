@@ -12,76 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "litert_dynamic_lib", "litert_lib", "litert_test")
+load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "litert_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-litert_dynamic_lib(
-    name = "qnn_compiler_plugin",
-    srcs = ["qnn_compiler_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin.h"],
-    export_litert_only = True,
-    shared_lib_name = "qnn_compiler_plugin_so",
-    so_name = "libLiteRtQnnCompilerPlugin.so",
-    tags = [
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-    ],
-    ungrte = True,
+litert_lib(
+    name = "legalization",
+    hdrs = ["legalization.h"],
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
-        ":qnn_compose_graph",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/core:api_internal",
-        "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/core:logging",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
-    ],
-)
-
-litert_test(
-    name = "qnn_compiler_plugin_test",
-    srcs = [
-        "qnn_compiler_plugin_test.cc",
-    ],
-    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
-    linkstatic = True,
-    tags = [
-        # Tests with ungrte deps do not currently work on forge.
-        "no-remote-exec",
-        "notap",
-        # Don't build/test in OS until qnn is available.
-        "nobuilder",
-        "no_oss",
-        # Sanitizer runtime doesn't work with anything that loads libQnnHtp.so.
-        "nosan",
-    ],
-    use_sys_malloc = True,
-    deps = [
-        ":qnn_compiler_plugin",  # buildcleaner: keep
-        "@com_google_absl//absl/log:absl_check",
-        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/core:api_internal",
-        "//tensorflow/lite/experimental/lrt/core:graph_tools",
-        "//tensorflow/lite/experimental/lrt/core:model",
-        "//tensorflow/lite/experimental/lrt/test:common",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_op",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler:graph_mapper",
     ],
 )
 
 litert_lib(
-    name = "qnn_compose_graph",
-    srcs = ["qnn_compose_graph.cc"],
-    hdrs = ["qnn_compose_graph.h"],
+    name = "mul_op_legalization",
+    srcs = ["mul_op_legalization.cc"],
+    hdrs = ["mul_op_legalization.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
+    visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
-        ":graph_mapper",
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
@@ -93,26 +55,23 @@ litert_lib(
         "//tensorflow/lite/experimental/lrt/core:logging",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler:graph_mapper",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR:qnn_op",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR:qnn_tensor",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations:legalization",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations:mul_op_legalization",
     ],
 )
 
 litert_lib(
-    name = "graph_mapper",
-    srcs = [
-        "graph_mapper.cc",
-    ],
-    hdrs = ["graph_mapper.h"],
+    name = "util",
+    srcs = ["util.cc"],
+    hdrs = ["util.h"],
     tags = [
         # Don't build/test in OS until qnn is available.
         "nobuilder",
     ],
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
+        ":legalization",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
@@ -122,8 +81,10 @@ litert_lib(
         "//tensorflow/lite/experimental/lrt/cc:litert_tensor",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:logging",
+        "//tensorflow/lite/experimental/lrt/tools:dump",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:common",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler:graph_mapper",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR:qnn_op",
         "//tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR:qnn_tensor",
     ],

@@ -37,6 +37,11 @@ extern "C" {
 #define LITERT_RETURN_STATUS_IF_NOT_OK(expr) \
   if (LiteRtStatus status = expr; status != kLiteRtStatusOk) return status;
 
+#define LITERT_RETURN_STATUS_IF_NOT_OK_OR_NOT_MATCHED(expr)               \
+  if (LiteRtStatus status = expr;                                         \
+      (status != kLiteRtStatusOk && status != kLrtStatusLegalizeNoMatch)) \
+    return status;
+
 // TODO: b/365295276 - Add optional debug only print messages support
 // to all macros.
 #define LITERT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg) \

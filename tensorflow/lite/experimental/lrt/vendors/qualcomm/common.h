@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMMON_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMMON_H_
 
+#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
 #include "third_party/qairt/latest/include/QNN/QnnInterface.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemInterface.h"
@@ -24,6 +25,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+#define LITERT_RETURN_STATUS_IF_QNN_NOT_OK(expr) \
+  if (QNN_SUCCESS != (expr)) {                   \
+    return kLiteRtStatusErrorNotFound;           \
+  }
 
 // Pointers to functions of a dynamically loaded QNN library.
 typedef QNN_INTERFACE_VER_TYPE QnnApi;
