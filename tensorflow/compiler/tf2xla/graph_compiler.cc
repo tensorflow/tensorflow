@@ -62,10 +62,10 @@ auto* graph_compiler_failed_compilation_op_count =
         /*metric_label=*/"op_name");
 
 namespace {
-Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
-                        const std::vector<const XlaExpression*>& expressions,
-                        const NameAttrList& func,
-                        std::vector<XlaCompiler::Argument>* args) {
+absl::Status PrepareArguments(
+    XlaOpKernelContext* ctx, Graph* graph,
+    const std::vector<const XlaExpression*>& expressions,
+    const NameAttrList& func, std::vector<XlaCompiler::Argument>* args) {
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
 
@@ -117,7 +117,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   return absl::OkStatus();
 }
 }  // namespace
-Status GraphCompiler::Compile() {
+absl::Status GraphCompiler::Compile() {
   // Check that the graph has no illegal cycles.
   TF_RETURN_IF_ERROR(graph::ValidateGraphHasNoCycle(*graph_));
   // Maintain a mapping from node id to node outputs.
@@ -144,7 +144,7 @@ Status GraphCompiler::Compile() {
     OpKernel* op_kernel_raw = nullptr;
     // The kernel is not actually run for functional ops, we just need it
     // for metadata.
-    Status s = flib_->CreateKernel(n->properties(), &op_kernel_raw);
+    absl::Status s = flib_->CreateKernel(n->properties(), &op_kernel_raw);
     // Transfer ownership of the kernel to a local smart pointer.
     std::unique_ptr<OpKernel> op_kernel(op_kernel_raw);
 
@@ -183,7 +183,7 @@ Status GraphCompiler::Compile() {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {
       device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
-      Status s = op_context.status();
+      absl::Status s = op_context.status();
       if (!s.ok()) {
         graph_compiler_failed_compilation_op_count
             ->GetCell(params.op_kernel->def().op())
@@ -209,8 +209,8 @@ Status GraphCompiler::Compile() {
 
 namespace {
 
-Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
-                              const Node& node, NameAttrList* func) {
+absl::Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
+                                    const Node& node, NameAttrList* func) {
   if (node.IsPartitionedCall()) {
     const AttrValue* attr_value;
     TF_RETURN_IF_ERROR(
@@ -235,8 +235,8 @@ Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
 
 }  // namespace
 
-Status GraphCompiler::CompileFunctionalNode(Node* n,
-                                            OpKernelContext* op_context) {
+absl::Status GraphCompiler::CompileFunctionalNode(Node* n,
+                                                  OpKernelContext* op_context) {
   TF_RET_CHECK(IsFunctionCall(*flib_->GetFunctionLibraryDefinition(), *n));
   // For functional nodes, compile them using compiler from the context and call
   // into the functions.

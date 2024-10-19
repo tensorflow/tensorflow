@@ -175,8 +175,8 @@ inline std::pair<string, string> GetSrcAndDstDataFormats(
   return {src_format, dst_format};
 }
 
-Status ExpandLayoutSensitiveOp(TransposeContext* context,
-                               TransposerFactory* transposer_factory) {
+absl::Status ExpandLayoutSensitiveOp(TransposeContext* context,
+                                     TransposerFactory* transposer_factory) {
   const int num_nodes = context->num_nodes;
   for (int i = 0; i < num_nodes; ++i) {
     auto* node_view = context->graph_view->GetNode(i);
@@ -185,7 +185,7 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
       std::shared_ptr<Transposer> transposer =
           transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout sensitive operation should have a transposer. Node: ",
@@ -197,8 +197,8 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
   return absl::OkStatus();
 }
 
-Status ExpandLayoutAgnosticOp(TransposeContext* context,
-                              TransposerFactory* transposer_factory) {
+absl::Status ExpandLayoutAgnosticOp(TransposeContext* context,
+                                    TransposerFactory* transposer_factory) {
   const int num_nodes = context->num_nodes;
   for (int i = 0; i < num_nodes; ++i) {
     auto* node_view = context->graph_view->GetNode(i);
@@ -206,7 +206,7 @@ Status ExpandLayoutAgnosticOp(TransposeContext* context,
     if (IsLayoutAgnosticOp(*node_def)) {
       const auto& transposer = transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
-        return Status(
+        return absl::Status(
             absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout agnostic operation should have a transposer. Node: ",
@@ -282,7 +282,7 @@ inline bool IsCancellableNodePair(
          IsCancellableDataFormatNodePair(fanout_transpose, fanin_transpose);
 }
 
-Status EraseCancellableNodes(TransposeContext* context) {
+absl::Status EraseCancellableNodes(TransposeContext* context) {
   const int original_num_nodes = context->num_nodes;
   utils::MutableGraphView* graph_view = context->graph_view.get();
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
@@ -329,7 +329,7 @@ Status EraseCancellableNodes(TransposeContext* context) {
 //
 // From: Transpose[NHWC->NCHW] -> Pad[paddings] -> Transpose[NCHW->NHWC]
 // To:   Pad[Permute(paddings)]
-Status EraseCancellableNodesAroundPad(TransposeContext* context) {
+absl::Status EraseCancellableNodesAroundPad(TransposeContext* context) {
   utils::MutableGraphView* graph_view = context->graph_view.get();
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
 
@@ -437,7 +437,7 @@ Status EraseCancellableNodesAroundPad(TransposeContext* context) {
   return mutation->Apply();
 }
 
-Status EraseOutputShapeAttrs(TransposeContext* context) {
+absl::Status EraseOutputShapeAttrs(TransposeContext* context) {
   utils::MutableGraphView* graph_view = context->graph_view.get();
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
   const int num_nodes = graph_view->NumNodes();
@@ -458,9 +458,9 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
 // When there is only CPU, there will be no conversion by default, unless user
 // chose to convert the graph to a desired format. Currently, NCHW -> NHWC
 // format conversion is available on CPU.
-Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
-                                        const GrapplerItem& item,
-                                        GraphDef* output) {
+absl::Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
+                                              const GrapplerItem& item,
+                                              GraphDef* output) {
   if (cluster == nullptr) {
     LOG(WARNING)
         << "generic layout optimizer was called with cluster == nullptr";
@@ -468,7 +468,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   }
   if (!enforced_layout_.empty() && enforced_layout_ != "NHWC" &&
       enforced_layout_ != "NCHW") {
-    return Status(
+    return absl::Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrCat("Invalid value for enforced_layout: ", enforced_layout_,
                      ". Supported layouts: 'NHWC', 'NCHW'."));

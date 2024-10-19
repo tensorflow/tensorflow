@@ -32,21 +32,21 @@ limitations under the License.
 namespace tensorflow {
 
 // ValidateConfig returns OK iff config is valid.
-Status ValidateConfig(const tf2xla::Config& config);
+absl::Status ValidateConfig(const tf2xla::Config& config);
 
 // Modifies <graph_def> to include placeholders for each fed tensor, and
 // update references to the fed tensors to refer to the placeholders.
 // The existing nodes referenced by the feeds are not removed or modified
 // (except where their input edges are modified by the replacement of other
 // feeds).
-Status AddPlaceholdersForFeeds(
+absl::Status AddPlaceholdersForFeeds(
     const tf2xla::Config& config, const OpRegistryInterface* op_registry,
     std::unordered_map<string, string>* feed_remapping, GraphDef* graph_def);
 
 // Returns in <out> a copy of <in>, pruned to only include fetches from
 // <config>.
-Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
-                         GraphDef* out);
+absl::Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
+                               GraphDef* out);
 
 // Returns node:port for the given <id>.
 string TensorIdToString(const tf2xla::TensorId& id);
@@ -54,7 +54,7 @@ string TensorIdToString(const tf2xla::TensorId& id);
 // Updates the sharding of <n> based on the sharding of its neighbors.
 // If <out_edges> is true, outgoing edges from <n> are considered; else incoming
 // edges are considered.
-Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
+absl::Status SetNodeShardingFromNeighbors(Node* n, bool out_edges);
 
 // Add an allowed data type to the AttrConstraint with the given name.
 void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
@@ -139,7 +139,7 @@ std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
 // 2. For SymbolicGradient op, add or replace GradientDef in
 //    FunctionLibraryDefinition;
 // 3. For nodes like XlaWhile/XlaIf, modify their function attributes.
-Status RewriteAssociatedFunction(
+absl::Status RewriteAssociatedFunction(
     Graph* graph, Node* node, FunctionLibraryDefinition* fld,
     const AssociatedFunctionInfo& associated_function,
     const string& rewritten_function_name);
@@ -152,12 +152,12 @@ class CachedFunctionHandles {
   // Populates `handle` for requested function and attributes. If we have
   // instantiated the function with the same attributes before, `handle` will be
   // cached handle; otherwise instantiate the function and populate `handle`.
-  Status GetOrInstantiate(const string& func_name, AttrSlice attrs,
-                          FunctionLibraryRuntime::Handle* handle);
+  absl::Status GetOrInstantiate(const string& func_name, AttrSlice attrs,
+                                FunctionLibraryRuntime::Handle* handle);
 
   // Releases all handles in the cache. Returns first non-OK status if any;
   // returns OK otherwise.
-  Status ReleaseAllHandles();
+  absl::Status ReleaseAllHandles();
 
   ~CachedFunctionHandles() { ReleaseAllHandles().IgnoreError(); }
 
@@ -193,13 +193,13 @@ absl::StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
 // input for tf.ones/tf.zeros. But XLA requires that shape input to be compile
 // time constant, so XLA compilation will fail. This rewriting process will
 // change the shape input to Const node.
-Status PropagateConstIntoFunctionalNodes(
+absl::Status PropagateConstIntoFunctionalNodes(
     Graph* g, const FunctionLibraryDefinition* lookup_fld,
     FunctionLibraryDefinition* fld);
 
 // Prunes unreachable FunctionDefs from FunctionLibraryDefinition.
-Status PruneUnreachableFunctionsFromGraph(const Graph& g,
-                                          FunctionLibraryDefinition* fld);
+absl::Status PruneUnreachableFunctionsFromGraph(const Graph& g,
+                                                FunctionLibraryDefinition* fld);
 
 // Finds the following pattern in the graph:
 // 1) EmptyTensorList -> forward While op -> backward While op,
@@ -208,8 +208,8 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
 // And rewrites backward While op to use Const node instead of TensorListPopBack
 // result.
 // TODO(b/128633174) remove the TensorList and related TensorList ops.
-Status RewriteTensorListWithConstElement(Graph* g,
-                                         FunctionLibraryDefinition* fld);
+absl::Status RewriteTensorListWithConstElement(Graph* g,
+                                               FunctionLibraryDefinition* fld);
 
 inline bool IsConstTraversableOpType(const Node* node) {
   return node->type_string() == "Identity" ||
