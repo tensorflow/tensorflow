@@ -916,7 +916,7 @@ class BaseBatchMatMulOp : public OpKernel {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
 
-    const Status s = ValidateInputTensors(ctx, in0, in1);
+    const absl::Status s = ValidateInputTensors(ctx, in0, in1);
     if (!s.ok()) {
       ctx->SetStatus(s);
       return;
@@ -1020,8 +1020,9 @@ class BaseBatchMatMulOp : public OpKernel {
   }
 
  protected:
-  virtual Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                                      const Tensor& in1) = 0;
+  virtual absl::Status ValidateInputTensors(OpKernelContext* ctx,
+                                            const Tensor& in0,
+                                            const Tensor& in1) = 0;
 
  private:
   // TODO(171979567) Make the ops take both adj and transpose attributes.
@@ -1052,8 +1053,8 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
   ~BatchMatMulOp() override {}
 
  private:
-  Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                              const Tensor& in1) override {
+  absl::Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                                    const Tensor& in1) override {
     // Disallow broadcasting support. Ensure that all batch dimensions of the
     // input tensors match.
     if (in0.dims() != in1.dims()) {
@@ -1097,8 +1098,8 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
   ~BatchMatMulV2Op() override {}
 
  private:
-  Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
-                              const Tensor& in1) override {
+  absl::Status ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
+                                    const Tensor& in1) override {
     // Enable broadcasting support. Validity of broadcasting is checked in
     // BaseBatchMatMulOp.
     if (in0.dims() < 2) {

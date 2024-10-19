@@ -33,33 +33,38 @@ namespace lookup {
 // passed by attribute with name input_name, returns null if the table
 // doesn't exist. Use GetResourceLookupTable() or GetReferenceLookupTable() if
 // the input dtype is known.
-Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                      LookupInterface** table);
-Status GetResourceLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                              LookupInterface** table);
-Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                               LookupInterface** table);
+absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                            LookupInterface** table);
+absl::Status GetResourceLookupTable(StringPiece input_name,
+                                    OpKernelContext* ctx,
+                                    LookupInterface** table);
+absl::Status GetReferenceLookupTable(StringPiece input_name,
+                                     OpKernelContext* ctx,
+                                     LookupInterface** table);
 
 // Gets the InitializableLookupTable stored in the
 // ctx->resource_manager() with key passed by attribute with name
 // input_name, returns null if the table doesn't exist.
-Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                                   InitializableLookupTable** table);
+absl::Status GetInitializableLookupTable(StringPiece input_name,
+                                         OpKernelContext* ctx,
+                                         InitializableLookupTable** table);
 
 // Verify that the given key_dtype and value_dtype matches the corresponding
 // table's data types.
-Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
-                           DataType value_dtype, const string& table_name);
+absl::Status CheckTableDataTypes(const LookupInterface& table,
+                                 DataType key_dtype, DataType value_dtype,
+                                 const string& table_name);
 
 // Initializes `table` from `filename`.
-Status InitializeTableFromTextFile(const string& filename, int64_t vocab_size,
-                                   char delimiter, int32_t key_index,
-                                   int32_t value_index, int64_t offset,
-                                   Env* env, InitializableLookupTable* table);
+absl::Status InitializeTableFromTextFile(const string& filename,
+                                         int64_t vocab_size, char delimiter,
+                                         int32_t key_index, int32_t value_index,
+                                         int64_t offset, Env* env,
+                                         InitializableLookupTable* table);
 
 // Initializes `table` from `filename`. `func` may specify how to represent the
 // initializer as a graphdef, so that the table can be serialized as metadata.
-Status InitializeTableFromTextFile(
+absl::Status InitializeTableFromTextFile(
     const string& filename, int64_t vocab_size, char delimiter,
     int32_t key_index, int32_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,

@@ -432,7 +432,7 @@ TEST(CheckAttrExists, All) {
   TF_EXPECT_OK(CheckAttrsExist(node, {"apple", "pear"}));
   TF_EXPECT_OK(CheckAttrsExist(node, {"pear", "apple"}));
 
-  Status status = CheckAttrExists(node, "banana");
+  absl::Status status = CheckAttrExists(node, "banana");
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(
@@ -600,7 +600,7 @@ template <typename T>
 void TestSetTensorValue(DataType type, int val, bool success,
                         absl::string_view error_msg) {
   Tensor t(type, TensorShape({}));
-  Status s = SetTensorValue(t.dtype(), val, &t);
+  absl::Status s = SetTensorValue(t.dtype(), val, &t);
   EXPECT_EQ(s.ok(), success);
   if (s.ok()) {
     test::ExpectTensorEqual<T>(Tensor(static_cast<T>(val)), t);

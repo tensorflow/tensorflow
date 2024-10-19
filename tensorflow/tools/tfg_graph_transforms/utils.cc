@@ -43,15 +43,15 @@ bool IsTextProto(const std::string& input_file) {
   return !extension.compare("pbtxt");
 }
 
-tensorflow::Status ReadSavedModelImageFormat(
-    const std::string& input_file, tensorflow::SavedModel& model_proto) {
+absl::Status ReadSavedModelImageFormat(const std::string& input_file,
+                                       tensorflow::SavedModel& model_proto) {
   std::string saved_model_prefix(GetNameWithoutExtension(input_file));
   return tensorflow::image_format::ReadSavedModel(saved_model_prefix,
                                                   &model_proto);
 }
-tensorflow::Status WriteSavedModelImageFormat(
-    tensorflow::SavedModel* model_proto, const std::string& output_file,
-    int debug_max_size) {
+absl::Status WriteSavedModelImageFormat(tensorflow::SavedModel* model_proto,
+                                        const std::string& output_file,
+                                        int debug_max_size) {
   std::string saved_model_prefix(GetNameWithoutExtension(output_file));
   if (debug_max_size > 0) {
     return tensorflow::image_format::WriteSavedModel(
