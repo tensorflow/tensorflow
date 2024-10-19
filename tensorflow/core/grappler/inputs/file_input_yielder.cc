@@ -74,7 +74,7 @@ bool FileInputYielder::NextItem(GrapplerItem* item) {
   LOG(INFO) << "Loading model from " << filename;
 
   MetaGraphDef metagraph;
-  Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
+  absl::Status s = ReadBinaryProto(Env::Default(), filename, &metagraph);
   if (!s.ok()) {
     s = ReadTextProto(Env::Default(), filename, &metagraph);
   }
