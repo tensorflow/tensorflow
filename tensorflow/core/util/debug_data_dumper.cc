@@ -20,9 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {

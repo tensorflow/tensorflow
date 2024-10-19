@@ -22,11 +22,15 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

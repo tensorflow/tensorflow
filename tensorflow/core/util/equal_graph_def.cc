@@ -20,15 +20,16 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/strings/match.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

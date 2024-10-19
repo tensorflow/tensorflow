@@ -19,6 +19,9 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/src/Core/util/EmulateArray.h"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
