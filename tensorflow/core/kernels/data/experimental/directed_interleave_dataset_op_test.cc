@@ -49,7 +49,7 @@ class DirectedInterleaveDatasetParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(
         DirectedInterleaveDatasetOp::kSelectorInputDataset);
@@ -60,7 +60,7 @@ class DirectedInterleaveDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back(DirectedInterleaveDatasetOp::kOutputTypes,
                               output_dtypes_);
