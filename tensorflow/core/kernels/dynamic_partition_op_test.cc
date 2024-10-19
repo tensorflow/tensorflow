@@ -153,7 +153,7 @@ TEST_F(DynamicPartitionOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({5}), {0, 2, 99, 2, 2});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "partitions[2] = 99 is not in [0, 4)"))
       << s;
