@@ -49,12 +49,12 @@ class CacheDatasetParams : public DatasetParams {
     return {filename_tensor};
   }
 
-  Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {CacheDatasetOp::kInputDataset, CacheDatasetOp::kFileName};
     return absl::OkStatus();
   }
 
-  Status GetAttributes(AttributeVector* attr_vector) const override {
+  absl::Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{"output_types", output_dtypes_},
                     {"output_shapes", output_shapes_},
                     {"metadata", ""}};
@@ -71,7 +71,7 @@ class CacheDatasetParams : public DatasetParams {
 
 class CacheDatasetOpTest : public DatasetOpsTestBase {
  public:
-  Status Initialize(const DatasetParams& dataset_params) {
+  absl::Status Initialize(const DatasetParams& dataset_params) {
     TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const CacheDatasetParams&>(dataset_params);
     cache_filename_ = params.filename();
@@ -81,7 +81,7 @@ class CacheDatasetOpTest : public DatasetOpsTestBase {
   ~CacheDatasetOpTest() override {
     if (!cache_filename_.empty()) {
       std::vector<string> cache_files;
-      Status s = device_->env()->GetMatchingPaths(
+      absl::Status s = device_->env()->GetMatchingPaths(
           strings::StrCat(cache_filename_, "*"), &cache_files);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get matching files on " << cache_filename_

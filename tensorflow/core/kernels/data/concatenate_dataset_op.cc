@@ -108,8 +108,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
-  Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
-                                split_providers) const override {
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
     TF_ASSIGN_OR_RETURN(*split_providers, GetSplitProviders(this));
     return absl::OkStatus();
   }
@@ -141,19 +141,20 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return input_cardinality + to_concatenate_cardinality;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     inputs->push_back(to_concatenate_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(input_->CheckExternalState());
     return to_concatenate_->CheckExternalState();
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     if (index < input_cardinality_) {
       TF_RETURN_IF_ERROR(input_->Get(ctx, index, out_tensors));
@@ -169,9 +170,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
     Node* to_concatenate_graph = nullptr;
@@ -190,7 +191,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       input_impls_.resize(2);
 
@@ -204,9 +205,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       if (!input_impls_[0] && !input_impls_[1]) {
         *end_of_sequence = true;
@@ -327,8 +328,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kIndex, i_));
       TF_RETURN_IF_ERROR(
@@ -348,8 +349,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
 
       int64_t input_uninitialized[2];
@@ -443,9 +444,9 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     size_t element_count_ TF_GUARDED_BY(mu_) = 0;
   };
 
-  Status MostSpecificCompatibleShape(const PartialTensorShape& ts1,
-                                     const PartialTensorShape& ts2,
-                                     PartialTensorShape* output_tensorshape) {
+  absl::Status MostSpecificCompatibleShape(
+      const PartialTensorShape& ts1, const PartialTensorShape& ts2,
+      PartialTensorShape* output_tensorshape) {
     if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
       return absl::OkStatus();
     auto dims1 = ts1.dim_sizes();
