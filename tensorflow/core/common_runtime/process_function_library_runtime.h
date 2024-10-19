@@ -47,14 +47,14 @@ class FunctionArgsInterface {
 
   virtual bool HasRemoteOrPackedInputs() const = 0;
 
-  virtual Status GetLocalArg(const FunctionArgIndex& index,
-                             Tensor* val) const = 0;
+  virtual absl::Status GetLocalArg(const FunctionArgIndex& index,
+                                   Tensor* val) const = 0;
 
   virtual std::vector<Tensor> GetLocalTensors() const = 0;
 
 #if !defined(IS_MOBILE_PLATFORM)
-  virtual Status GetRemoteArg(const FunctionArgIndex& index,
-                              eager::RemoteTensorHandle* val) const {
+  virtual absl::Status GetRemoteArg(const FunctionArgIndex& index,
+                                    eager::RemoteTensorHandle* val) const {
     return errors::Unimplemented(
         "Serializing a remote argument is not implemented.");
   }
@@ -92,13 +92,12 @@ class ProcessFunctionLibraryRuntime {
   // doing the sending. `alloc_attrs` should either be empty or be the size of
   // `tensors_to_send` and indicates how the input tensors are allocated. Method
   // takes references on each of the `tensors_to_send`. Method doesn't block.
-  static Status SendTensors(const string& source_device,
-                            const string& target_device,
-                            const string& key_prefix, int64_t src_incarnation,
-                            absl::Span<const Tensor> tensors_to_send,
-                            DeviceContext* device_context,
-                            const std::vector<AllocatorAttributes>& alloc_attrs,
-                            RendezvousInterface* rendezvous);
+  static absl::Status SendTensors(
+      const string& source_device, const string& target_device,
+      const string& key_prefix, int64_t src_incarnation,
+      absl::Span<const Tensor> tensors_to_send, DeviceContext* device_context,
+      const std::vector<AllocatorAttributes>& alloc_attrs,
+      RendezvousInterface* rendezvous);
 
   // Receives `received_tensors` from `target_device` (originally sent from
   // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
@@ -119,12 +118,12 @@ class ProcessFunctionLibraryRuntime {
   FunctionLibraryRuntime* GetFLR(const string& device_name) const;
 
   // Returns the return types for the function identified by handle `h`.
-  Status GetRetTypes(FunctionLibraryRuntime::Handle h,
-                     DataTypeVector* ret_types);
+  absl::Status GetRetTypes(FunctionLibraryRuntime::Handle h,
+                           DataTypeVector* ret_types);
 
   // Returns the device incarnation for the given device_name.
-  Status GetDeviceIncarnation(const string& device_name,
-                              int64_t* incarnation) const;
+  absl::Status GetDeviceIncarnation(const string& device_name,
+                                    int64_t* incarnation) const;
 
   // For a given canonicalized key signature of the function instantiated
   // on device `device_name` and a `local_handle`, creates a handle and returns
@@ -154,20 +153,21 @@ class ProcessFunctionLibraryRuntime {
   // is set to nullptr. If some output is DT_RESOURCE, the corresponding Device*
   // is set to the device backing the resource.
   // REQUIRES: `handle` identifies a multi-device function.
-  Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
-                          std::vector<Device*>* output_devices) const;
+  absl::Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
+                                std::vector<Device*>* output_devices) const;
 
   // Instantiates the function. See framework/function.h for more details.
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
-  Status Instantiate(const string& function_name, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::Handle* handle);
+  absl::Status Instantiate(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::Handle* handle);
 
   // Returns whether the function represented by the given handle needs to
   // execute cross process.
-  Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
-                        bool* is_cross_process) const;
+  absl::Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
+                              bool* is_cross_process) const;
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isn't needed at all, the local FLR
@@ -176,7 +176,7 @@ class ProcessFunctionLibraryRuntime {
   // For multi-device functions, calls ReleaseHandle on local FLRs for each
   // component function that is part of this multi-device function.
   // Each local FLR might call RemoveHandle on this.
-  Status ReleaseHandle(FunctionLibraryRuntime::Handle handle);
+  absl::Status ReleaseHandle(FunctionLibraryRuntime::Handle handle);
 
   // Runs the function with given `handle`. Function could have been
   // instantiated on any device. More details in framework/function.h
@@ -193,13 +193,13 @@ class ProcessFunctionLibraryRuntime {
            const FunctionArgsInterface& args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status RunSync(const FunctionLibraryRuntime::Options& opts,
-                 FunctionLibraryRuntime::Handle handle,
-                 absl::Span<const Tensor> args,
-                 std::vector<Tensor>* rets) const;
-  Status RunSync(const FunctionLibraryRuntime::Options& opts,
-                 FunctionLibraryRuntime::Handle handle,
-                 CallFrameInterface* frame) const;
+  absl::Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                       FunctionLibraryRuntime::Handle handle,
+                       absl::Span<const Tensor> args,
+                       std::vector<Tensor>* rets) const;
+  absl::Status RunSync(const FunctionLibraryRuntime::Options& opts,
+                       FunctionLibraryRuntime::Handle handle,
+                       CallFrameInterface* frame) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
@@ -343,15 +343,15 @@ class ProcessFunctionLibraryRuntime {
 
   // For a given device_name, returns a DeviceContext for copying
   // tensors to/from the device.
-  Status GetDeviceContext(const string& device_name,
-                          DeviceContext** device_context) const;
+  absl::Status GetDeviceContext(const string& device_name,
+                                DeviceContext** device_context) const;
 
   // Looks up the information for the given `handle` and returns the name
   // of the device where the function is registered.
   string GetDeviceName(FunctionLibraryRuntime::Handle handle) const;
 
   // Removes handle from the state owned by this object.
-  Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
+  absl::Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
 
   // Clones ProcessFunctionLibraryRuntime and FunctionLibraryDefinition
   // (transferring ownership of both to the caller). Note that the
@@ -365,15 +365,15 @@ class ProcessFunctionLibraryRuntime {
   // FunctionLibraryDefinitions for its functions independently (and passes
   // these into the FunctionLibraryRuntime through an overlay), to avoid linear
   // runtime w.r.t. to number of functions in the current function library.
-  Status Clone(Env* env, int graph_def_version,
-               const OptimizerOptions& optimizer_options,
-               std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
-               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-               bool skip_flib_def = false) const;
+  absl::Status Clone(Env* env, int graph_def_version,
+                     const OptimizerOptions& optimizer_options,
+                     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+                     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+                     bool skip_flib_def = false) const;
 
-  Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
+  absl::Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 
-  Status InstantiateMultiDevice(
+  absl::Status InstantiateMultiDevice(
       const string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
       FunctionLibraryRuntime::Handle* handle);
@@ -397,7 +397,7 @@ class ProcessFunctionLibraryRuntime {
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status CreateRendezvous(
+  absl::Status CreateRendezvous(
       FunctionLibraryRuntime::Options& opts,
       tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const;
 
@@ -410,28 +410,29 @@ class ProcessFunctionLibraryRuntime {
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
 
-  static Status GetComponentArgs(absl::Span<const Tensor> args,
-                                 const ComponentFunctionData& comp_data,
-                                 InternalArgs* comp_args);
+  static absl::Status GetComponentArgs(absl::Span<const Tensor> args,
+                                       const ComponentFunctionData& comp_data,
+                                       InternalArgs* comp_args);
 
 #if !defined(IS_MOBILE_PLATFORM)
-  static Status GetComponentArgs(const FunctionArgsInterface& args,
-                                 const ComponentFunctionData& comp_data,
-                                 InternalArgs* comp_args);
+  static absl::Status GetComponentArgs(const FunctionArgsInterface& args,
+                                       const ComponentFunctionData& comp_data,
+                                       InternalArgs* comp_args);
 #endif  // IS_MOBILE_PLATFORM
 
   std::vector<string> GetOrderedSubgraphs(
       const MultiDeviceFunctionData* data) const;
 
-  Status PrepareRunMultiDevice(const FunctionLibraryRuntime::Options& opts,
-                               FunctionLibraryRuntime::Handle handle,
-                               const MultiDeviceFunctionData** data) const;
+  absl::Status PrepareRunMultiDevice(
+      const FunctionLibraryRuntime::Options& opts,
+      FunctionLibraryRuntime::Handle handle,
+      const MultiDeviceFunctionData** data) const;
 
-  Status RunMultiDeviceSync(
+  absl::Status RunMultiDeviceSync(
       const FunctionLibraryRuntime::Options& opts,
       FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
-      std::function<Status(const ComponentFunctionData& comp_data,
-                           InternalArgs* args)>
+      std::function<absl::Status(const ComponentFunctionData& comp_data,
+                                 InternalArgs* args)>
           get_component_args) const;
 
   void RunMultiDeviceAsync(
@@ -439,8 +440,8 @@ class ProcessFunctionLibraryRuntime {
       FunctionLibraryRuntime::Handle handle, std::vector<FunctionRet>* rets,
       std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
       FunctionLibraryRuntime::DoneCallback done,
-      std::function<Status(const ComponentFunctionData& comp_data,
-                           InternalArgs* args)>
+      std::function<absl::Status(const ComponentFunctionData& comp_data,
+                                 InternalArgs* args)>
           get_component_args) const;
 
   void PublishSubgraphs(
@@ -487,7 +488,7 @@ class ProcessFunctionLibraryRuntime {
     const string function_key_;
     bool is_cross_process_ TF_GUARDED_BY(mu_) = false;
     bool init_started_ TF_GUARDED_BY(mu_) = false;
-    Status init_result_ TF_GUARDED_BY(mu_);
+    absl::Status init_result_ TF_GUARDED_BY(mu_);
     Notification init_done_;
   };
 

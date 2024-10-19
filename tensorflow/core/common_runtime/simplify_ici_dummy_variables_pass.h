@@ -101,7 +101,7 @@ namespace tensorflow {
 // The dummy variables will be put on the same task as the TPUExecute Op.
 class SimplifyIciDummyVariablesPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow
