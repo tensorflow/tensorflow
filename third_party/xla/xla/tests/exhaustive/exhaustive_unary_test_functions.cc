@@ -76,6 +76,7 @@ UNARY_TEST(Exp, {
       .Run();
 })
 UNARY_TEST(Expm1, { Expm1Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
+UNARY_TEST(Exp2, { Exp2Op<kT>(this).Error(GetDefaultSpecGenerator()).Run(); })
 
 UNARY_TEST(Logistic, {
   LogisticOp<kT>(this)
