@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::pair<Status, bool> BarrierProxy::Wait() {
+std::pair<absl::Status, bool> BarrierProxy::Wait() {
   mutex_lock l(mu_);
   if (status_set_) {
     return std::make_pair(
@@ -97,10 +97,10 @@ size_t BarrierProxyManager::size() const {
   return barriers_.size();
 }
 
-Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
-                                 const std::vector<CoordinatedTask>& tasks,
-                                 int num_local_threads, absl::string_view key,
-                                 absl::Duration timeout) {
+absl::Status BarrierProxyManager::Wait(
+    tsl::CoordinationServiceAgent* agent,
+    const std::vector<CoordinatedTask>& tasks, int num_local_threads,
+    absl::string_view key, absl::Duration timeout) {
   // Only one device, no need to wait.
   if (tasks.size() == 1 && num_local_threads <= 1) return absl::OkStatus();
 
