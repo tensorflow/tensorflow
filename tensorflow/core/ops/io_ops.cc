@@ -26,7 +26,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status ScalarInputsAndOutputs(InferenceContext* c) {
+absl::Status ScalarInputsAndOutputs(InferenceContext* c) {
   ShapeHandle unused;
   for (int i = 0; i < c->num_inputs(); ++i) {
     TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &unused));
@@ -37,7 +37,7 @@ Status ScalarInputsAndOutputs(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
+absl::Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle unused_handle;
   for (int i = 0; i < c->num_inputs(); ++i) {
@@ -50,7 +50,7 @@ Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status TwoElementOutput(InferenceContext* c) {
+absl::Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
   return absl::OkStatus();
 }

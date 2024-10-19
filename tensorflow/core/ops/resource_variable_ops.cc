@@ -31,14 +31,14 @@ namespace tensorflow {
 
 namespace {
 
-Status ReadVariableShapeFn(InferenceContext* c) {
+absl::Status ReadVariableShapeFn(InferenceContext* c) {
   // The user can add a "_shape" atribute to ReadVariableOp nodes. It is
   // useful for inferring shapes in a function, when no shape information
   // is passed about input resources. The user can annotate the graph using
   // the variable capture list of the function.
   // If the "_shape" attribute is found, it is used to set the output shape.
   PartialTensorShape p;
-  Status annotation_found_status = c->GetAttr("_shape", &p);
+  absl::Status annotation_found_status = c->GetAttr("_shape", &p);
   if (annotation_found_status.ok()) {
     ShapeHandle s;
     TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
@@ -58,7 +58,7 @@ Status ReadVariableShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status ReadVariablesShapeFn(InferenceContext* c) {
+absl::Status ReadVariablesShapeFn(InferenceContext* c) {
   int n;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
   DataTypeVector value_dtypes;
@@ -160,7 +160,7 @@ REGISTER_OP("_ReadVariablesOp")
     .Attr("dtypes: list(type)")
     .SetShapeFn(ReadVariablesShapeFn);
 
-Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
+absl::Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FunctionDefHelper::Define(
       // Arg defs
@@ -182,7 +182,7 @@ REGISTER_OP("DestroyResourceOp")
     .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs);
 
-Status CreateAssignShapeFn(InferenceContext* c) {
+absl::Status CreateAssignShapeFn(InferenceContext* c) {
   std::vector<ShapeAndType> handle_shape_and_type;
   TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
       c, &handle_shape_and_type));
@@ -232,7 +232,7 @@ REGISTER_OP("VarIsInitializedOp")
     .Output("is_initialized: bool")
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-Status VariableShapeShapeFn(InferenceContext* c) {
+absl::Status VariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
     c->set_output(0, c->Vector(c->UnknownDim()));
@@ -320,7 +320,7 @@ REGISTER_OP("ResourceGatherNd")
 
 namespace {
 
-Status ResourceScatterUpdateShape(InferenceContext* c) {
+absl::Status ResourceScatterUpdateShape(InferenceContext* c) {
   std::vector<ShapeAndType> handle_shape_and_type;
   TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
       c, &handle_shape_and_type));

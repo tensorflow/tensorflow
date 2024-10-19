@@ -36,7 +36,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status FractionalPoolShapeFn(InferenceContext* c) {
+absl::Status FractionalPoolShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
@@ -521,7 +521,7 @@ create these operators.
 
 namespace {
 
-Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
+absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
@@ -1397,7 +1397,7 @@ REGISTER_OP("InTopKV2")
 
 namespace {
 
-Status TopKShapeFn(InferenceContext* c) {
+absl::Status TopKShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
 
@@ -1443,7 +1443,7 @@ inline uint32_t log2_ceil(uint64_t value) {
   return value == 0 ? 0 : Log2Ceiling(value);
 }
 
-Status ApproxTopKShape(shape_inference::InferenceContext* c) {
+absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   int64_t k;
   int64_t reduction_dimension;
   float recall_target;

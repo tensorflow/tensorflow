@@ -23,7 +23,7 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 // --------------------------------------------------------------------------
-static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
+static absl::Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
   std::vector<ShapeHandle> sparse_handles;
   if (c->input("sparse_weights", &sparse_handles).ok()) {
     TF_RETURN_IF_ERROR(

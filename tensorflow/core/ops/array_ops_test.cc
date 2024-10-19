@@ -414,7 +414,7 @@ TEST(ArrayOpsTest, Shape_ShapeFn) {
 }
 
 // Runs type inference pass on graph
-static Status type_inference(Graph& graph) {
+static absl::Status type_inference(Graph& graph) {
   GraphOptimizationPassOptions opt_options;
   std::unique_ptr<Graph> graph_ptr(new Graph(OpRegistry::Global()));
   graph_ptr->Copy(graph);
