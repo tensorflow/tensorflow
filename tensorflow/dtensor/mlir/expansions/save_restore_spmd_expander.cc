@@ -205,7 +205,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
   // the extraction failed to just ignore those values and work as if those are
   // empty.
   llvm::SmallVector<std::string, 4> original_shape_and_slices;
-  const Status extraction_status = ExtractConstStringVectorFromValue(
+  const absl::Status extraction_status = ExtractConstStringVectorFromValue(
       original_save.getShapeAndSlices(), original_shape_and_slices);
   if (extraction_status.ok()) {
     for (const std::string& shape_and_slice : original_shape_and_slices) {

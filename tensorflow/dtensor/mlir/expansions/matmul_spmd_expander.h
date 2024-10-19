@@ -62,11 +62,11 @@ class MatMulSPMDExpander : public SPMDExpanderBase {
   // matmul_layout will be set to the layout of the output of the local matmul
   // (after the above reduction). This may be different from the desired output
   // layout.
-  Status MaybeRelayoutInputs(mlir::Operation* op, const Layout& left_layout,
-                             bool left_transposed, const Layout& right_layout,
-                             bool right_transposed, const Layout& output_layout,
-                             std::string& reduced_dim, Layout& matmul_layout,
-                             mlir::Value& left, mlir::Value& right);
+  absl::Status MaybeRelayoutInputs(
+      mlir::Operation* op, const Layout& left_layout, bool left_transposed,
+      const Layout& right_layout, bool right_transposed,
+      const Layout& output_layout, std::string& reduced_dim,
+      Layout& matmul_layout, mlir::Value& left, mlir::Value& right);
 };
 
 }  // namespace dtensor
