@@ -22,12 +22,12 @@
 
 #include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"

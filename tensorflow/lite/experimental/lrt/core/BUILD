@@ -22,6 +22,7 @@ cc_library(
     srcs = ["litert_common.cc"],
     hdrs = [
         "//tensorflow/lite/experimental/lrt/c:litert_common.h",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging.h",
         "//tensorflow/lite/experimental/lrt/c:litert_model.h",
         "//tensorflow/lite/experimental/lrt/c:litert_op_code.h",
         "//tensorflow/lite/experimental/lrt/c:litert_options.h",
@@ -137,6 +138,7 @@ cc_library(
         ":api_internal",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -149,8 +151,8 @@ cc_library(
     hdrs = ["dynamic_loading.h"],
     linkopts = ["-ldl"],
     deps = [
-        ":logging",
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -222,9 +224,9 @@ cc_library(
         "tensor_buffer.h",
     ],
     deps = [
-        ":logging",
         ":utils",
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
@@ -337,15 +339,4 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
-)
-
-cc_library(
-    name = "logging",
-    srcs = [
-        "logging.cc",
-    ],
-    hdrs = [
-        "logging.h",
-    ],
-    deps = ["//tensorflow/lite:minimal_logging"],
 )

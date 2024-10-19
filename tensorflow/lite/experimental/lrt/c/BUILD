@@ -18,9 +18,22 @@ package(
 )
 
 cc_library(
+    name = "litert_logging",
+    srcs = [
+        "litert_logging.cc",
+    ],
+    hdrs = [
+        "litert_common.h",
+        "litert_logging.h",
+    ],
+    deps = ["//tensorflow/lite:minimal_logging"],
+)
+
+cc_library(
     name = "litert_c_api",
     hdrs = [
         "litert_common.h",
+        "litert_logging.h",
         "litert_model.h",
         "litert_op_code.h",
         "litert_options.h",
