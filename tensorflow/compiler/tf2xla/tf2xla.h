@@ -32,9 +32,10 @@ namespace tensorflow {
 //
 // The computation is built in the context of the given `client`, which may
 // subsequently be used to compile or execute the computation.
-Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
-                            xla::Client* client,
-                            xla::XlaComputation* computation);
+absl::Status ConvertGraphDefToXla(GraphDef graph_def,
+                                  const tf2xla::Config& config,
+                                  xla::Client* client,
+                                  xla::XlaComputation* computation);
 
 // Similar to ConvertGraphDefToXla, but uses MLIR and handle debug information.
 //
@@ -42,7 +43,7 @@ Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
 // debug_info_path_begin_marker: if not empty, file pathes in the debug
 //   information are trimmed from the beginning to the first appearance of the
 //   marker.
-Status ConvertGraphDefToXlaViaMlir(
+absl::Status ConvertGraphDefToXlaViaMlir(
     GraphDef graph_def, const tf2xla::Config& config,
     xla::XlaComputation* computation, absl::string_view debug_info_filename,
     absl::string_view debug_info_path_begin_marker);
