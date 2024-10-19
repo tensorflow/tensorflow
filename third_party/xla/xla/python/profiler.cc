@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/aggregate_profile.h"
-#include "xla/python/profiler/xplane_visitor.h"
+#include "xla/python/profiler/profile_data.h"
 #include "xla/python/profiler_utils.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
@@ -201,11 +201,11 @@ void BuildProfilerSubmodule(nb::module_& m) {
            })
       .def("stop_and_get_profile_data",
            [](ProfilerSessionWrapper* sess)
-               -> tensorflow::profiler::python::XSpaceVisitor {
+               -> tensorflow::profiler::python::ProfileData {
              std::shared_ptr<tensorflow::profiler::XSpace> xspace;
              // Disables the ProfilerSession
              xla::ThrowIfError(sess->session->CollectData(xspace.get()));
-             return tensorflow::profiler::python::XSpaceVisitor(xspace);
+             return tensorflow::profiler::python::ProfileData(xspace);
            })
       .def("export",
            [](ProfilerSessionWrapper* sess, nb::bytes xspace,

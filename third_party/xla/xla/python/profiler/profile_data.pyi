@@ -12,42 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for visiting XPlanes."""
+"""Utilities for visiting program execution data."""
 
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple
 
 
-class XSpaceVisitor:
-  """Parses a XSpace protobuf and provides accessors to its contents."""
+class ProfileData:
+  """Program execution data captured by jax.profiler functions."""
 
   def __init__(self, serialized_xspace: bytes):
     ...
 
   @classmethod
-  def from_file(cls, path: str) -> 'XSpaceVisitor':
-    """Creates an XSpaceVisitor from a serialized XSpace proto file."""
+  def from_file(cls, path: str) -> 'ProfileData':
+    """Creates a ProfileData from a serialized XSpace proto file."""
     ...
 
   @classmethod
-  def from_serialized_xspace(cls, serialized_xspace: bytes) -> 'XSpaceVisitor':
-    """Creates an XSpaceVisitor from a serialized XSpace proto."""
+  def from_serialized_xspace(cls, serialized_xspace: bytes) -> 'ProfileData':
+    """Creates a ProfileData from a serialized XSpace proto."""
     ...
 
   @classmethod
-  def from_raw_cpp_ptr(cls, raw_proto_ptr: object) -> 'XSpaceVisitor':
-    """Creates an XSpaceVisitor from a raw C++ pointer enclosed in a capsule to a XSpace proto."""
+  def from_raw_cpp_ptr(cls, raw_proto_ptr: object) -> 'ProfileData':
+    """Creates a ProfileData from a raw C++ pointer enclosed in a capsule to a XSpace proto."""
     ...
 
   @property
-  def planes(self) -> Iterator['XPlaneVisitor']:
+  def planes(self) -> Iterator['ProfilePlane']:
     ...
 
-  def find_plane_with_name(self, name: str) -> Optional['XPlaneVisitor']:
+  def find_plane_with_name(self, name: str) -> Optional['ProfilePlane']:
     """Finds the plane with the given name."""
     ...
 
 
-class XPlaneVisitor:
+class ProfilePlane:
   """Wraps XPlane protobuf and provides accessors to its contents."""
 
   @property
@@ -56,7 +56,7 @@ class XPlaneVisitor:
     ...
 
   @property
-  def lines(self) -> Iterator['XLineVisitor']:
+  def lines(self) -> Iterator['ProfileLine']:
     """Lines in the plane."""
     ...
 
@@ -72,7 +72,7 @@ class XPlaneVisitor:
     ...
 
 
-class XLineVisitor:
+class ProfileLine:
   """Wraps XLine protobuf and provides accessors to its contents."""
 
   @property
@@ -81,12 +81,12 @@ class XLineVisitor:
     ...
 
   @property
-  def events(self) -> Iterator['XEventVisitor']:
+  def events(self) -> Iterator['ProfileEvent']:
     """Events in the line."""
     ...
 
 
-class XEventVisitor:
+class ProfileEvent:
   """Wraps XEvent protobuf and provides accessors to its contents."""
 
   @property

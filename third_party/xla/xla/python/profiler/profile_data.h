@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_PROFILER_XPLANE_VISITOR_H_
-#define XLA_PYTHON_PROFILER_XPLANE_VISITOR_H_
+#ifndef XLA_PYTHON_PROFILER_PROFILE_DATA_H_
+#define XLA_PYTHON_PROFILER_PROFILE_DATA_H_
 
 #include <nanobind/nanobind.h>
 
@@ -76,14 +76,14 @@ class VisitorIterator
   int pos_ = 0;
 };
 
-class XEventVisitor {
+class ProfileEvent {
  public:
-  XEventVisitor() = delete;
+  ProfileEvent() = delete;
 
-  XEventVisitor(const tensorflow::profiler::XEvent* event,
-                int64_t line_timestamp_ns,
-                const tensorflow::profiler::XPlane* plane,
-                std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
+  ProfileEvent(const tensorflow::profiler::XEvent* event,
+               int64_t line_timestamp_ns,
+               const tensorflow::profiler::XPlane* plane,
+               std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
 
   double start_ns() const;
 
@@ -101,44 +101,44 @@ class XEventVisitor {
   const XPlane* plane_;
   const int64_t line_timestamp_ns_;
   // The actual XSpace protobuf we are wrapping around. A shared ptr is used so
-  // the different levels of  visitors (XSpaceVisitor, XPlaneVisitor,
-  // XLineVisitor, etc.) don't depend on the lifetime of others.
+  // the different levels of  visitors (ProfileData, ProfilePlane,
+  // ProfileLine, etc.) don't depend on the lifetime of others.
   const std::shared_ptr<const XSpace> xspace_;
 };
 
-class XLineVisitor {
+class ProfileLine {
  public:
-  XLineVisitor() = delete;
+  ProfileLine() = delete;
 
-  XLineVisitor(const tensorflow::profiler::XLine* line,
-               const tensorflow::profiler::XPlane* plane,
-               std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
+  ProfileLine(const tensorflow::profiler::XLine* line,
+              const tensorflow::profiler::XPlane* plane,
+              std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
 
   const std::string& name() const;
 
-  VisitorIterator<XEventVisitor, tensorflow::profiler::XEvent> events_begin();
-  VisitorIterator<XEventVisitor, tensorflow::profiler::XEvent> events_end();
+  VisitorIterator<ProfileEvent, tensorflow::profiler::XEvent> events_begin();
+  VisitorIterator<ProfileEvent, tensorflow::profiler::XEvent> events_end();
 
  private:
   const XLine* line_;
   const XPlane* plane_;
   // The actual XSpace protobuf we are wrapping around. A shared ptr is used so
-  // the different levels of  visitors (XSpaceVisitor, XPlaneVisitor,
-  // XLineVisitor, etc.) don't depend on the lifetime of others.
+  // the different levels of  visitors (ProfileData, ProfilePlane,
+  // ProfileLine, etc.) don't depend on the lifetime of others.
   const std::shared_ptr<const XSpace> xspace_;
 };
 
-class XPlaneVisitor {
+class ProfilePlane {
  public:
-  XPlaneVisitor() = delete;
+  ProfilePlane() = delete;
 
-  XPlaneVisitor(const tensorflow::profiler::XPlane* plane,
-                std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
+  ProfilePlane(const tensorflow::profiler::XPlane* plane,
+               std::shared_ptr<const tensorflow::profiler::XSpace> xspace);
 
   const std::string& name() const;
 
-  VisitorIterator<XLineVisitor, tensorflow::profiler::XLine> lines_begin();
-  VisitorIterator<XLineVisitor, tensorflow::profiler::XLine> lines_end();
+  VisitorIterator<ProfileLine, tensorflow::profiler::XLine> lines_begin();
+  VisitorIterator<ProfileLine, tensorflow::profiler::XLine> lines_end();
 
   VisitorIterator<nb::tuple, tensorflow::profiler::XStat> stats_begin();
 
@@ -147,46 +147,44 @@ class XPlaneVisitor {
  private:
   const XPlane* plane_;
   // The actual XSpace protobuf we are wrapping around. A shared ptr is used so
-  // the different levels of  visitors (XSpaceVisitor, XPlaneVisitor,
-  // XLineVisitor, etc.) don't depend on the lifetime of others.
+  // the different levels of  visitors (ProfileData, ProfilePlane,
+  // ProfileLine, etc.) don't depend on the lifetime of others.
   const std::shared_ptr<const XSpace> xspace_;
 };
 
-class XSpaceVisitor {
+class ProfileData {
  public:
-  static XSpaceVisitor from_serialized_xspace(
-      const nb::bytes& serialized_xspace);
+  static ProfileData from_serialized_xspace(const nb::bytes& serialized_xspace);
 
-  static XSpaceVisitor from_file(const std::string& proto_file_path);
+  static ProfileData from_file(const std::string& proto_file_path);
 
-  static XSpaceVisitor from_raw_cpp_ptr(nb::capsule capsule);
+  static ProfileData from_raw_cpp_ptr(nb::capsule capsule);
 
-  XSpaceVisitor() = delete;
+  ProfileData() = delete;
 
-  XSpaceVisitor(const char* serialized_xspace_ptr,
-                size_t serialized_xspace_size);
+  ProfileData(const char* serialized_xspace_ptr, size_t serialized_xspace_size);
 
-  explicit XSpaceVisitor(std::shared_ptr<XSpace> xspace_ptr);
+  explicit ProfileData(std::shared_ptr<XSpace> xspace_ptr);
 
-  explicit XSpaceVisitor(const nb::bytes& serialized_xspace);
+  explicit ProfileData(const nb::bytes& serialized_xspace);
 
-  VisitorIterator<XPlaneVisitor, XPlane> planes_begin();
+  VisitorIterator<ProfilePlane, XPlane> planes_begin();
 
-  VisitorIterator<XPlaneVisitor, XPlane> planes_end();
+  VisitorIterator<ProfilePlane, XPlane> planes_end();
 
-  XPlaneVisitor* find_plane_with_name(const std::string& name) const;
+  ProfilePlane* find_plane_with_name(const std::string& name) const;
 
  private:
   // The actual XSpace protobuf we are wrapping around. A shared ptr is used so
-  // the different levels of  visitors (XSpaceVisitor, XPlaneVisitor,
-  // XLineVisitor, etc.) don't depend on the lifetime of others.
+  // the different levels of  visitors (ProfileData, ProfilePlane,
+  // ProfileLine, etc.) don't depend on the lifetime of others.
   std::shared_ptr<XSpace> xspace_;
 };
 
-XSpaceVisitor from_serialized_xspace(const std::string& serialized_xspace);
+ProfileData from_serialized_xspace(const std::string& serialized_xspace);
 
-XSpaceVisitor from_file(const std::string& proto_file_path);
+ProfileData from_file(const std::string& proto_file_path);
 
 }  // namespace tensorflow::profiler::python
 
-#endif  // XLA_PYTHON_PROFILER_XPLANE_VISITOR_H_
+#endif  // XLA_PYTHON_PROFILER_PROFILE_DATA_H_

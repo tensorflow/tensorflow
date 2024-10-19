@@ -16,7 +16,7 @@ limitations under the License.
 #include <nanobind/make_iterator.h>  // For automatic conversion of std::iterator to Python iterable.
 #include <nanobind/stl/string.h>  // For automatic conversion of std::string to Python string.
 
-#include "xla/python/profiler/xplane_visitor.h"
+#include "xla/python/profiler/profile_data.h"
 
 namespace {
 
@@ -26,59 +26,58 @@ using namespace nb::literals;
 using namespace tensorflow::profiler::python;
 // NOLINTEND(build/namespaces)
 
-NB_MODULE(xplane_visitor, m) {
-  nb::class_<XEventVisitor>(m, "XEventVisitor")
-      .def_prop_ro("start_ns", &XEventVisitor::start_ns)
-      .def_prop_ro("duration_ns", &XEventVisitor::duration_ns)
-      .def_prop_ro("end_ns", &XEventVisitor::end_ns)
-      .def_prop_ro("name", &XEventVisitor::name)
+NB_MODULE(profile_data, m) {
+  nb::class_<ProfileEvent>(m, "ProfileEvent")
+      .def_prop_ro("start_ns", &ProfileEvent::start_ns)
+      .def_prop_ro("duration_ns", &ProfileEvent::duration_ns)
+      .def_prop_ro("end_ns", &ProfileEvent::end_ns)
+      .def_prop_ro("name", &ProfileEvent::name)
       .def_prop_ro(
           "stats",
-          [](XEventVisitor&& e) {
+          [](ProfileEvent&& e) {
             return nb::make_iterator(nb::type<nb::tuple>(), "event_stats",
                                      e.stats_begin(), e.stats_end());
           },
           nb::keep_alive<0, 1>());
-  nb::class_<XLineVisitor>(m, "XLineVisitor")
-      .def_prop_ro("name", &XLineVisitor::name)
+  nb::class_<ProfileLine>(m, "ProfileLine")
+      .def_prop_ro("name", &ProfileLine::name)
       .def_prop_ro(
           "events",
-          [](XLineVisitor&& l) {
-            return nb::make_iterator(nb::type<XEventVisitor>(), "events",
+          [](ProfileLine&& l) {
+            return nb::make_iterator(nb::type<ProfileEvent>(), "events",
                                      l.events_begin(), l.events_end());
           },
           nb::keep_alive<0, 1>());
-  nb::class_<XPlaneVisitor>(m, "XPlaneVisitor")
-      .def_prop_ro("name", &XPlaneVisitor::name)
+  nb::class_<ProfilePlane>(m, "ProfilePlane")
+      .def_prop_ro("name", &ProfilePlane::name)
       .def_prop_ro(
           "lines",
-          [](XPlaneVisitor&& p) {
-            return nb::make_iterator(nb::type<XLineVisitor>(), "lines",
+          [](ProfilePlane&& p) {
+            return nb::make_iterator(nb::type<ProfileLine>(), "lines",
                                      p.lines_begin(), p.lines_end());
           },
           nb::keep_alive<0, 1>())
       .def_prop_ro(
           "stats",
-          [](XPlaneVisitor&& p) {
+          [](ProfilePlane&& p) {
             return nb::make_iterator(nb::type<nb::tuple>(), "plane_stats",
                                      p.stats_begin(), p.stats_end());
           },
           nb::keep_alive<0, 1>());
-  nb::class_<XSpaceVisitor>(m, "XSpaceVisitor")
-      .def_static("from_raw_cpp_ptr", &XSpaceVisitor::from_raw_cpp_ptr,
+  nb::class_<ProfileData>(m, "ProfileData")
+      .def_static("from_raw_cpp_ptr", &ProfileData::from_raw_cpp_ptr,
                   "capsule"_a)
-      .def_static(
-          "from_file", &XSpaceVisitor::from_file, "proto_file_path"_a,
-          "Creates an XSpaceVisitor from a serialized XSpace proto file.")
+      .def_static("from_file", &ProfileData::from_file, "proto_file_path"_a,
+                  "Creates a ProfileData from a serialized XSpace proto file.")
       .def_static("from_serialized_xspace",
-                  &XSpaceVisitor::from_serialized_xspace, "serialized_xspace"_a)
+                  &ProfileData::from_serialized_xspace, "serialized_xspace"_a)
       .def(nb::init<const nb::bytes&>())
-      .def("find_plane_with_name", &XSpaceVisitor::find_plane_with_name,
-           "name"_a, nb::keep_alive<0, 1>())
+      .def("find_plane_with_name", &ProfileData::find_plane_with_name, "name"_a,
+           nb::keep_alive<0, 1>())
       .def_prop_ro(
           "planes",
-          [](XSpaceVisitor&& s) {
-            return nb::make_iterator(nb::type<XPlaneVisitor>(), "planes",
+          [](ProfileData&& s) {
+            return nb::make_iterator(nb::type<ProfilePlane>(), "planes",
                                      s.planes_begin(), s.planes_end());
           },
           nb::keep_alive<0, 1>());
