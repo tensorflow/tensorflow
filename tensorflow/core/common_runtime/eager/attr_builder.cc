@@ -57,17 +57,17 @@ const AttrTypeMap* GetDefaultFunctionAttrTypeMap() {
 
 }  // namespace
 
-Status OpDefForOp(const string& op_name, const OpDef** op_def) {
+absl::Status OpDefForOp(const string& op_name, const OpDef** op_def) {
   const OpRegistrationData* op_reg_data = nullptr;
-  Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
+  absl::Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (s.ok()) {
     *op_def = &op_reg_data->op_def;
   }
   return s;
 }
 
-Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
-                        bool* is_function) {
+absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
+                              bool* is_function) {
   {
     tf_shared_lock l(g_op_name_to_attr_type_map_lock);
     *is_function = false;
@@ -84,7 +84,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   if (*out != nullptr) return absl::OkStatus();
 
   const OpDef* op_def = nullptr;
-  Status s = OpDefForOp(op_name, &op_def);
+  absl::Status s = OpDefForOp(op_name, &op_def);
   if (absl::IsNotFound(s)) {
     // If we did not find the op def, we assume `op_name` is a function.
     // If it is actually a misspelled op, user will get another error when
@@ -161,8 +161,8 @@ DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 #undef DEFINE_GET_ATTR
 
 template <>
-Status AttrBuilder::Get(StringPiece attr_name,
-                        absl::InlinedVector<DataType, 4>* value) const {
+absl::Status AttrBuilder::Get(StringPiece attr_name,
+                              absl::InlinedVector<DataType, 4>* value) const {
   auto it = encoded_attrs_.find(string(attr_name));
   if (it == encoded_attrs_.end()) {
     return errors::NotFound("No attr named '", attr_name,
@@ -192,7 +192,7 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
   // specify all the default attr values (e.g. for matmul, the `transpose_a`
   // attr defaults to false).
   const OpDef* op_def = nullptr;
-  Status s = OpDefForOp(op_name().c_str(), &op_def);
+  absl::Status s = OpDefForOp(op_name().c_str(), &op_def);
   // This is expected, if this op is a custom function, and is therefore not
   // present in the op registry.
   if (!s.ok()) return;
@@ -224,7 +224,7 @@ bool ValueMatchesDefault(const OpDef* op_def, const string& attr_name,
 
 void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
   const OpDef* op_def = nullptr;
-  Status s = OpDefForOp(op_name().c_str(), &op_def);
+  absl::Status s = OpDefForOp(op_name().c_str(), &op_def);
 
   for (auto& entry : encoded_attrs_) {
     attr_tmp_.ParseFromString(entry.second);
@@ -260,8 +260,8 @@ void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
                         other.encoded_attrs_.end());
 }
 
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list) {
+absl::Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+                            TF_AttrType* out, unsigned char* is_list) {
   auto* t = gtl::FindOrNull(m, attr_name);
   if (t == nullptr) {
     return errors::InvalidArgument("Attribute '", attr_name,
@@ -322,28 +322,28 @@ void AttrBuilder::GetNameAttrList(
   name_and_attrs->set_name(op_name());
 }
 
-Status AttrBuilder::GetTypeList(
+absl::Status AttrBuilder::GetTypeList(
     absl::string_view attr_name,
     absl::InlinedVector<DataType, 4>* type_list) const {
   return Get(attr_name, type_list);
 }
 
 bool AttrBuilder::GetInt(absl::string_view attr_name, int64_t* result) const {
-  Status s = Get(attr_name, result);
+  absl::Status s = Get(attr_name, result);
   return s.ok();
 }
 bool AttrBuilder::GetFloat(absl::string_view attr_name, float* result) const {
-  Status s = Get(attr_name, result);
+  absl::Status s = Get(attr_name, result);
   return s.ok();
 }
 bool AttrBuilder::GetBool(absl::string_view attr_name, bool* result) const {
-  Status s = Get(attr_name, result);
+  absl::Status s = Get(attr_name, result);
   return s.ok();
 }
 
 bool AttrBuilder::GetType(absl::string_view attr_name,
                           tensorflow::DataType* result) const {
-  Status s = Get(attr_name, result);
+  absl::Status s = Get(attr_name, result);
   return s.ok();
 }
 

@@ -42,12 +42,12 @@ namespace tensorflow {
 // '*num_retvals' should be set to the size of this array. It is an error if
 // the size of 'retvals' is less than the number of outputs. This call sets
 // *num_retvals to the number of outputs.
-Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
-                    int* num_retvals);
+absl::Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                          int* num_retvals);
 
 // Low-level utility to execute the kernel specified by `kernel` on
 // `kernel->device()`, with the inputs op_inputs, in the context 'ctx'.
-Status EagerKernelExecute(
+absl::Status EagerKernelExecute(
     EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const core::RefCountPtr<KernelAndDevice>& kernel,
@@ -60,9 +60,9 @@ Status EagerKernelExecute(
 // the mirror flag, EagerCopyToDevice will attempt to add a mirror to the
 // original handle and update *result to point to h. Since this is not
 // guaranteed, callers should always use the value in *result.
-Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
-                         EagerExecutor* executor, Device* device, bool mirror,
-                         TensorHandle** result);
+absl::Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
+                               EagerExecutor* executor, Device* device,
+                               bool mirror, TensorHandle** result);
 
 // Utility function that executes a fully constructed EagerOperation
 // asynchronously on the local task. This function works differently from
