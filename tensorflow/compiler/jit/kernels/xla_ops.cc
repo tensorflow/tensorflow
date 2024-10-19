@@ -205,7 +205,8 @@ XlaComputationLaunchContext GetLaunchContext(
   return launch_context;
 }
 
-Status GetTaskName(const std::string_view device_name, std::string* task_name) {
+absl::Status GetTaskName(const std::string_view device_name,
+                         std::string* task_name) {
   string ignored;
   if (!DeviceNameUtils::SplitDeviceName(device_name, task_name, &ignored)) {
     return errors::InvalidArgument("Unable to parse device name: ",
@@ -366,7 +367,7 @@ GetXlaCompilerArgsAndSnapshotVariables(
   return result;
 }
 
-Status CompileToLocalExecutable(
+absl::Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
     const std::vector<XlaCompiler::Argument>& args,
@@ -419,7 +420,7 @@ Status CompileToLocalExecutable(
       compilation_result, executable);
 }
 
-Status GetUpdatedVariables(
+absl::Status GetUpdatedVariables(
     const OpKernelContext* ctx, absl::Span<const Tensor* const> inputs,
     absl::Span<const int> variable_indices,
     const XlaCompiler::CompilationResult& compilation_result,
@@ -509,7 +510,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     std::set<int> variables_updated;
     // Here we only need to reader-lock the variables, so we pass an empty
     // variables_updated set here.
-    Status status = GetVariableInfosFromInputs(
+    absl::Status status = GetVariableInfosFromInputs(
         ctx->resource_manager(), ctx->device(), inputs, resources_,
         &variables_updated, &variable_infos);
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
@@ -528,7 +529,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                           platform_info_.device_type());
   if (use_pjrt) {
     VLOG(2) << "Compiling using PJRT";
-    Status status = CompileToPjRtLoadedExecutable(
+    absl::Status status = CompileToPjRtLoadedExecutable(
         *ctx, platform_info_, function_, xla_compiler_args,
         DeviceCompileMode::kStrict, has_ref_vars_,
         /*may_alias_resource_update=*/true, &compilation_result, &pjrt_client,
@@ -569,7 +570,7 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     return;
   }
 
-  Status status = CompileToLocalExecutable(
+  absl::Status status = CompileToLocalExecutable(
       ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
       xla_compiler_args, DeviceCompileMode::kStrict,
       /*may_alias_resource_update=*/true, &client, &compilation_result,
@@ -776,7 +777,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 
     // Do not alias resource updates as locking variables in XlaCompile and
     // unlocking them in XlaRun may lead to deadlocks.
-    Status status;
+    absl::Status status;
     if (use_pjrt) {
       VLOG(2) << "Using PJRT for compilation. Function name: "
               << function_.name();
