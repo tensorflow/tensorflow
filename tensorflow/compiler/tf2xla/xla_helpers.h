@@ -68,19 +68,20 @@ class XlaHelpers {
 
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
-  static Status ReshapeLiteral(const xla::Literal& input,
-                               absl::Span<const int64_t> shape,
-                               xla::Literal* output);
+  static absl::Status ReshapeLiteral(const xla::Literal& input,
+                                     absl::Span<const int64_t> shape,
+                                     xla::Literal* output);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
-                       DataType index_type, const TensorShape& indices_shape,
-                       xla::XlaOp indices, xla::XlaOp on_value,
-                       xla::XlaOp off_value, xla::XlaOp* one_hot);
+  static absl::Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
+                             DataType index_type,
+                             const TensorShape& indices_shape,
+                             xla::XlaOp indices, xla::XlaOp on_value,
+                             xla::XlaOp off_value, xla::XlaOp* one_hot);
 
   // Certain DataTypes should use increased precision DataTypes when performing
   // reductions.  This function remaps a given DataType to a higher precision
@@ -201,7 +202,7 @@ struct XlaCompilationResult {
 // Takes several extra configuration objects by reference since
 // xla::ExecutableRunOptions does not take ownership; these are configured and
 // bundled into `run_options` if applicable.
-Status ResolveDeviceAssignment(
+absl::Status ResolveDeviceAssignment(
     OpKernelContext* ctx,
     const XlaCompilationResult::CollectiveInfo& collective_info,
     xla::ExecutableRunOptions& run_options,
