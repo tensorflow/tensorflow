@@ -152,6 +152,7 @@ class AutoMixedPrecisionListsFp16 : public AutoMixedPrecisionLists {
       list.insert("TmlpV3");
       list.insert("Pmlp");
       list.insert("FastUnsortedSegmentMax");
+      list.insert("VoxelMax");
     }
 #if TENSORFLOW_USE_ROCM
     if (true) {
