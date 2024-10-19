@@ -68,15 +68,15 @@ class NextPluggableDevice : public PjRtBaseDevice {
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
 
-  Status Sync() override;
+  absl::Status Sync() override;
 
   void Sync(const DoneCallback& done) override;
 
-  Status TryGetDeviceContext(DeviceContext** out_context) override;
+  absl::Status TryGetDeviceContext(DeviceContext** out_context) override;
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
 
   int GetDeviceOrdinal() const { return device_ordinal_; }
 
