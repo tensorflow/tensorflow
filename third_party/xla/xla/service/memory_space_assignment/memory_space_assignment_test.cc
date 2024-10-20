@@ -8714,6 +8714,77 @@ entry {
   VLOG(2) << "module: " << module->ToString();
 }
 
+// This test verifies that window prefetched operands are seen by the
+// reserved_scoped_memory_fn. Because window prefetched operands allocates space
+// in the alternate memory, which will be identified as prefetched_operands.
+// Therefore they will be seen by reserved_scoped_memory_fn.
+TEST_F(MemorySpaceAssignmentTest,
+       WindowPrefetchedOperandsAreSeenByReservedScopedMemoryFn) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  fused_computation {
+    param0 = f32[1024] parameter(0)
+    param1 = f32[1024] parameter(1)
+    ROOT root = f32[1024] add(param0, param1)
+  }
+
+  ENTRY Entry {
+    param0 = f32[1024] parameter(0)
+    param1 = f32[1024] parameter(1)
+    ROOT fusion = f32[1024] fusion(param0, param1), kind=kLoop, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
+  bool seen_window_prefetched_operand = false;
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_repacks = 10;
+  options.repack_after_every_allocation = true;
+  options.reduce_scoped_memory_limit = true;
+  options.reserved_scoped_memory_fn =
+      [&](const HloInstruction* instruction,
+          const absl::flat_hash_set<std::pair<int, ShapeIndex>>
+              operands_in_alternate_memory,
+          const absl::flat_hash_set<ShapeIndex> outputs_in_alternate_memory) {
+        if (instruction == fusion && !operands_in_alternate_memory.empty()) {
+          seen_window_prefetched_operand = true;
+        }
+        return 1;
+      };
+
+  // Make sure that the alternate memory is larger than the fusion operand's
+  // full size, but smaller than its span buffer size, so that it will be window
+  // prefetched.
+  options.enable_window_prefetch = true;
+  ASSERT_LT(options.max_size_in_bytes, 1024);
+  ASSERT_GT(options.max_size_in_bytes, 32);
+  // This lambda instructs MSA to allocate 32 bytes in the alternate memory as
+  // span buffer of the fusion instruction.
+  options.window_prefetch_detail_fn =
+      [&](const HloInstruction* instruction) -> WindowPrefetchDetail {
+    WindowPrefetchDetail detail;
+    if (instruction == fusion) {
+      WindowPrefetchDetail::WindowDetail* window = detail.add_windows();
+      window->set_operand(0);
+      window->set_size(32);
+    }
+    return detail;
+  };
+
+  // Run memory space assignment and verify that window prefetched operands are
+  // seen by the reserved_scoped_memory_fn.
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/0);
+  EXPECT_TRUE(seen_window_prefetched_operand);
+}
+
 using AsynchronousCopyOrderingTest = ::testing::Test;
 
 TEST_F(AsynchronousCopyOrderingTest, Simple) {
