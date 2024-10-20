@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "xla/service/gather_expander.h"
 
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -23,7 +29,19 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using GatherExpanderTest = HloTestBase;
+class GatherExpanderTest : public HloTestBase {
+ protected:
+  void CheckWhileBody(HloModule* module, absl::string_view expected) {
+    std::vector<HloInstruction*> while_instructions =
+        FindInstructions(module, HloOpcode::kWhile);
+    EXPECT_EQ(while_instructions.size(), 1);
+    HloComputation* while_body = while_instructions[0]->while_body();
+    EXPECT_TRUE(*RunFileCheck(
+        while_body->ToString(
+            HloPrintOptions{}.set_include_layout_in_shapes(false)),
+        expected));
+  }
+};
 
 TEST_F(GatherExpanderTest, ErrorStatusOnTooManyIndices) {
   const std::string hlo_text = R"(
@@ -257,6 +275,141 @@ ENTRY main {
   ASSERT_TRUE(hlo_query::ContainsInstrWithOpcode(module->entry_computation(),
                                                  {HloOpcode::kBroadcast}));
   module->VerifyOrAddFailure("after-gather-expander.");
+}
+
+TEST_F(GatherExpanderTest, GatherToLoopWithBatchDims) {
+  const std::string hlo_text = R"(
+HloModule GatherWithBatchDims
+
+ENTRY main {
+  operand = s32[5,2] parameter(0)
+  indices = s32[5,1] parameter(1)
+  ROOT gather = s32[5,1] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={},
+      start_index_map={1},
+      index_vector_dim=1,
+      operand_batching_dims={0},
+      start_indices_batching_dims={0},
+      slice_sizes={1,1}
+}
+)";
+  const std::string expected = R"(
+  //CHECK: (s32[], s32[5,2], s32[5,1], s32[5,1])) -> (s32[], s32[5,2], s32[5,1], s32[5,1]) {
+  //CHECK: %[[PARAM:.*]] = (s32[], s32[5,2], s32[5,1], s32[5,1]) parameter(0)
+  //CHECK: %[[I:.*]] = s32[] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=
+  //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(s32[] %[[I]], s32[] %[[CONSTANT1]])
+  //CHECK: %[[OPERAND:.*]] = s32[5,2] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=1
+  //CHECK: %[[START_INDICES:.*]] = s32[5,1] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=2
+  //CHECK: %[[RESULT:.*]] = s32[5,1] get-tuple-element((s32[], s32[5,2], s32[5,1], s32[5,1]) %[[PARAM]]), index=3
+
+  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(s32[] %[[I]])
+  //CHECK: %[[I_1D_2:.*]] = s32[1] broadcast(s32[] %[[I]])
+
+  //CHECK: %[[START_INDICES_INDEX_D1_PAD:.*]] = s32[] constant(0)
+  //CHECK: %[[START_INDICES_INDEX_VECTOR:.*]] = s32[2] pad(s32[1] %[[I_1D_2]], s32[] %[[START_INDICES_INDEX_D1_PAD]]), padding=0_1
+  //CHECK: %[[START_INDICES_INDEX_D0_SLICE:.*]] = s32[1] slice(s32[2] %[[START_INDICES_INDEX_VECTOR]]), slice={[0:1]}
+  //CHECK: %[[START_INDICES_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_D0_SLICE]])
+  //CHECK: %[[START_INDICES_INDEX_D1_SLICE:.*]] = s32[1] slice(s32[2] %[[START_INDICES_INDEX_VECTOR]]), slice={[1:2]}
+  //CHECK: %[[START_INDICES_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_D1_SLICE]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1,1] dynamic-slice(s32[5,1] %[[START_INDICES]], s32[] %[[START_INDICES_INDEX_D0]], s32[] %[[START_INDICES_INDEX_D1]])
+
+  //CHECK: %[[OFFSET_RAW:.*]] = s32[1] reshape(s32[1,1] %[[INDEX_VECTOR]])
+  //CHECK: %[[OFFSET:.*]] = s32[1] slice(s32[1] %[[OFFSET_RAW]])
+  //CHECK: %[[OPERAND_INDEX:.*]] = s32[2] concatenate(s32[1] %[[I_1D_1]], s32[1] %[[OFFSET]])
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(s32[2] %[[OPERAND_INDEX]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(s32[2] %[[OPERAND_INDEX]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[RESULT_SLICE_RAW0:.*]] = s32[1,1] dynamic-slice(s32[5,2] %[[OPERAND]], s32[] %[[OPERAND_INDEX_D0]], s32[] %[[OPERAND_INDEX_D1]])
+
+  //CHECK: %[[RESULT_SLICE_RAW1:.*]] = s32[1] reshape(s32[1,1] %[[RESULT_SLICE_RAW0]])
+  //CHECK: %[[RESULT_SLICE:.*]] = s32[1,1] reshape(s32[1] %[[RESULT_SLICE_RAW1]])
+  //CHECK: %[[RESULT_INDEX_D1_PAD:.*]] = s32[] constant(0)
+  //CHECK: %[[RESULT_INDEX_VECTOR:.*]] = s32[2] pad(s32[1] %[[I_1D_2]], s32[] %[[RESULT_INDEX_D1_PAD]]), padding=0_1
+  //CHECK: %[[RESULT_INDEX_D0_SLICE:.*]] = s32[1] slice(s32[2] %[[RESULT_INDEX_VECTOR]]), slice={[0:1]}
+  //CHECK: %[[RESULT_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[RESULT_INDEX_D0_SLICE]])
+  //CHECK: %[[RESULT_INDEX_D1_SLICE:.*]] = s32[1] slice(s32[2] %[[RESULT_INDEX_VECTOR]]), slice={[1:2]}
+  //CHECK: %[[RESULT_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[RESULT_INDEX_D1_SLICE]])
+  //CHECK: %[[UPDATED_RESULT:.*]] = s32[5,1] dynamic-update-slice(s32[5,1] %[[RESULT]], s32[1,1] %[[RESULT_SLICE]], s32[] %[[RESULT_INDEX_D0]], s32[] %[[RESULT_INDEX_D1]])
+
+  //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s32[5,1], s32[5,1]) tuple(s32[] %[[I_PLUS_1]], s32[5,2] %[[OPERAND]], s32[5,1] %[[START_INDICES]], s32[5,1] %[[UPDATED_RESULT]])
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
+  ASSERT_TRUE(changed);
+  CheckWhileBody(module.get(), expected);
+}
+
+TEST_F(GatherExpanderTest, GatherToLoopWithBatchDimsAndCollapsedDims) {
+  const std::string hlo_text = R"(
+HloModule GatherWithBatchAndCollapsedDims
+
+ENTRY main {
+  operand = s32[7,3,4,5] parameter(0)
+  indices = s32[5,2,7] parameter(1)
+  ROOT gather = s32[5,3,2,7] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={2},
+      start_index_map={2},
+      index_vector_dim=3,
+      operand_batching_dims={0,3},
+      start_indices_batching_dims={2,0},
+      slice_sizes={1,3,1,1}
+}
+)";
+  // Compared with the previous test, this test adds complexity in calculating
+  // the indices for the operand. As such, we mostly check the operand indices
+  // here.
+  const std::string expected = R"(
+  //CHECK: (s32[], s32[7,3,4,5], s32[70], s32[70,3])) -> (s32[], s32[7,3,4,5], s32[70], s32[70,3]) {
+  //CHECK: %[[PARAM:.*]] = (s32[], s32[7,3,4,5], s32[70], s32[70,3]) parameter(0)
+  //CHECK: %[[I:.*]] = s32[] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=0
+
+  //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(s32[] %[[I]], s32[] %[[CONSTANT1]])
+  //CHECK: %[[OPERAND:.*]] = s32[7,3,4,5] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=1
+  //CHECK: %[[START_INDICES:.*]] = s32[70] get-tuple-element((s32[], s32[7,3,4,5], s32[70], s32[70,3]) %[[PARAM]]), index=2
+
+  //CHECK: %[[CONSTANT7:.*]] = s32[] constant(7)
+  //CHECK: %[[BD0_RAW:.*]] = s32[] remainder(s32[] %[[I]], s32[] %[[CONSTANT7]])
+  //CHECK: %[[BD0:.*]] = s32[1] broadcast(s32[] %[[BD0_RAW]])
+  //CHECK: %[[CONSTANT0:.*]] = s32[1] constant({0})
+  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(s32[] %[[I]])
+  //CHECK: %[[START_INDICES_INDEX_RAW:.*]] = s32[1] slice(s32[1] %[[I_1D_1]])
+  //CHECK: %[[START_INDICES_INDEX:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_RAW]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1] dynamic-slice(s32[70] %[[START_INDICES]], s32[] %[[START_INDICES_INDEX]])
+
+  //CHECK: %[[OFFSET:.*]] = s32[1] slice(s32[1] %[[INDEX_VECTOR]])
+  //CHECK: %[[BD1:.*]] = s32[] divide(s32[] %[[I]], s32[] %[[CONSTANT7]])
+  //CHECK: %[[CONSTANT2:.*]] = s32[] constant(2)
+  //CHECK: %[[BD2_RAW:.*]] = s32[] divide(s32[] %[[BD1]], s32[] %[[CONSTANT2]])
+  //CHECK: %[[BD2:.*]] = s32[1] broadcast(s32[] %[[BD2_RAW]])
+  //CHECK: %[[OPERAND_INDEX:.*]] = s32[4] concatenate(s32[1] %[[BD0]], s32[1] %[[CONSTANT0]], s32[1] %[[OFFSET]], s32[1] %[[BD2]])
+
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D2_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[2:3]}
+  //CHECK: %[[OPERAND_INDEX_D2:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D2_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D3_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDEX]]), slice={[3:4]}
+  //CHECK: %[[OPERAND_INDEX_D3:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D3_RAW]])
+  //CHECK: %{{.*}} = s32[1,3,1,1] dynamic-slice(s32[7,3,4,5] %[[OPERAND]], s32[] %[[OPERAND_INDEX_D0]], s32[] %[[OPERAND_INDEX_D1]], s32[] %[[OPERAND_INDEX_D2]], s32[] %[[OPERAND_INDEX_D3]])
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      GatherExpander{GatherExpander::kEliminateAllGathers}.Run(module.get()));
+  ASSERT_TRUE(changed);
+  CheckWhileBody(module.get(), expected);
 }
 
 }  // namespace

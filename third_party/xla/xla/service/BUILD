@@ -2042,6 +2042,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
@@ -2538,10 +2539,13 @@ xla_cc_test(
     deps = [
         ":gather_expander",
         "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_query",
         "//xla/tests:hlo_test_base",
         "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
