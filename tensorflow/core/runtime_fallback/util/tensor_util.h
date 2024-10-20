@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/SmallVector.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"

@@ -20,6 +20,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "Eigen/Core"  // from @eigen_archive  // IWYU pragma: keep
+#include "Eigen/src/Core/util/ConfigureVectorization.h"  // from @eigen_archive
+#include "llvm/ADT/ArrayRef.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
