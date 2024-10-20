@@ -27,7 +27,7 @@ void FunctionOptimizationPassRegistry::Init(
   pass_ = std::move(pass);
 }
 
-Status FunctionOptimizationPassRegistry::Run(
+absl::Status FunctionOptimizationPassRegistry::Run(
     const std::string& function_name, const DeviceSet& device_set,
     const ConfigProto& config_proto,
     const FunctionOptimizationPass::FunctionOptions& function_options,
