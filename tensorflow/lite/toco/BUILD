@@ -147,6 +147,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//base:raw_logging",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -342,9 +343,12 @@ cc_library(
         "//tensorflow/lite/toco/tensorflow_graph_matching:resolve_cluster",
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:import",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf_headers",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -352,6 +356,8 @@ tf_cc_test(
     name = "import_tensorflow_test",
     srcs = ["import_tensorflow_test.cc"],
     deps = [
+        ":model",
+        ":model_flags_proto_cc",
         ":toco_port",
         ":toco_tooling",
         "//tensorflow/core:framework",
@@ -360,6 +366,7 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest",
     ],
 )
