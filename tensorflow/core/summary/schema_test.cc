@@ -16,7 +16,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/db/sqlite.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

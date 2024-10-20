@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/schema.h"
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/db/sqlite.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {

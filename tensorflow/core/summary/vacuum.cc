@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
+#include "absl/log/log.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
