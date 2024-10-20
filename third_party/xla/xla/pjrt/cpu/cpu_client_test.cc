@@ -25,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -153,7 +154,8 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(cpu_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetTfrtCpuClient(std::move(cpu_options)));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 

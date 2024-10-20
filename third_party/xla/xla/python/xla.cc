@@ -340,7 +340,7 @@ NB_MODULE(xla_extension, m_nb) {
           options.collectives = std::move(collectives);
           options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
-              xla::ValueOrThrow(GetTfrtCpuClient(options));
+              xla::ValueOrThrow(GetTfrtCpuClient(std::move(options)));
           ifrt::PjRtClient::CreateOptions ifrt_options;
           ifrt_options.pjrt_client =
               std::shared_ptr<PjRtClient>(std::move(client));

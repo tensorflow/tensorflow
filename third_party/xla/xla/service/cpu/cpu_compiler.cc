@@ -866,7 +866,18 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
-  pipeline.AddPass<CopyInsertion>();
+
+  // If enabled we'll use more precise region based analysis for copy removal.
+  if (module->config()
+          .debug_options()
+          .xla_cpu_copy_insertion_use_region_analysis()) {
+    pipeline.AddPass<CopyInsertion>(
+        /*can_share_buffer=*/nullptr,
+        /*use_region_based_live_range_analysis=*/-1);
+  } else {
+    pipeline.AddPass<CopyInsertion>();
+  }
+
   pipeline.AddPass<HloDCE>();
   return pipeline.Run(module).status();
 }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/tests/pjrt_client_registry.h"
 
@@ -23,7 +25,7 @@ namespace {
 const bool kUnused = (RegisterPjRtClientTestFactory([]() {
                         CpuClientOptions options;
                         options.cpu_device_count = 4;
-                        return GetTfrtCpuClient(options);
+                        return GetTfrtCpuClient(std::move(options));
                       }),
                       true);
 

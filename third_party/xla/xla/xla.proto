@@ -48,9 +48,11 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
+  // go/keep-sorted start newline_separated=yes skip_lines=1
 
-  // go/keep-sorted start newline_separated=yes
-  //
+  // Use region analysis in copy insertion pass.
+  bool xla_cpu_copy_insertion_use_region_analysis = 337;
+
   // When true, XLA:CPU uses HLO module scheduler that is optimized for
   // extracting concurrency at the cost of extra memory: we extend the live
   // ranges of temporaries to allow XLA runtime to schedule independent
@@ -1020,7 +1022,7 @@ message DebugOptions {
   //   coll.2-done = collective(coll.2-start)
   int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
 
-  // Next id: 337
+  // Next id: 338
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

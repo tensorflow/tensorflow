@@ -383,7 +383,7 @@ static int CpuDeviceCount() {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    const CpuClientOptions& options) {
+    CpuClientOptions options) {
   // Need at least CpuDeviceCount threads to launch one collective.
   int cpu_device_count = options.cpu_device_count.value_or(CpuDeviceCount());
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
@@ -398,7 +398,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       options.process_id, std::move(devices), std::move(options.collectives),
-      num_threads, options.asynchronous));
+      num_threads, options.asynchronous,
+      std::move(options.customize_hlo_module_config)));
 }
 
 // An upper bound on the number of threads to use for intra-op parallelism. It
@@ -419,7 +420,8 @@ static tsl::ThreadOptions GetThreadOptions() {
 TfrtCpuClient::TfrtCpuClient(
     int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
     std::shared_ptr<cpu::CollectivesInterface> collectives, size_t num_threads,
-    bool asynchronous)
+    bool asynchronous,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
@@ -441,7 +443,8 @@ TfrtCpuClient::TfrtCpuClient(
       topology_(TfrtCpuTopologyDescription::Create(
           platform_id(), platform_name(), platform_version(), owned_devices_,
           cpu::DetectMachineAttributes())),
-      asynchronous_(asynchronous) {
+      asynchronous_(asynchronous),
+      customize_hlo_module_config_(std::move(customize_hlo_module_config)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(
@@ -708,7 +711,8 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options,
     const ExecutionOptions& execution_options,
-    const xla::Compiler::CompileOptions& compile_options, int num_threads) {
+    const xla::Compiler::CompileOptions& compile_options, int num_threads,
+    std::function<void(HloModuleConfig&)> customize_hlo_module_config) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
   // Unoptimized HloModuleConfig.
@@ -717,6 +721,11 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
       CreateModuleConfig(program_shape, argument_layouts, &execution_options,
                          execution_options.num_replicas(), num_threads,
                          /*aot_options=*/nullptr));
+
+  // Apply the user-provided callback to customize the HloModuleConfig.
+  if (customize_hlo_module_config) {
+    customize_hlo_module_config(*hlo_module_config);
+  }
 
   // Unoptimized HloModule.
   const xla::HloModuleProto& hlo_module_proto = computation.proto();
@@ -826,7 +835,8 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
       std::unique_ptr<Executable> cpu_executable,
       JitCompile(computation, argument_layout_pointers, build_options,
                  execution_options, compile_options,
-                 eigen_intraop_device()->getPool()->NumThreads()));
+                 eigen_intraop_device()->getPool()->NumThreads(),
+                 customize_hlo_module_config_));
   auto cpu_executable_ptr =
       tensorflow::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
 
