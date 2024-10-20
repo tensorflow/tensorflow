@@ -19,12 +19,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace eager {
