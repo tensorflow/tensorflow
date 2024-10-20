@@ -379,7 +379,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {0});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "input image must be 4-D")) << s;
 }
@@ -390,7 +390,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "box_index has incompatible shape"))
@@ -403,7 +403,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {1});
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "box_index has values outside [0, batch_size)"))
