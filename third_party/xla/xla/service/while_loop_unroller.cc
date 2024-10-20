@@ -521,6 +521,29 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
+  if (opcode == HloOpcode::kDynamicSlice) {
+    // Check the result shape against the operand shape to ensure that the slice
+    // size is 1 on the induction dimension and matches the operand dimension
+    // size on other dimensions.
+    const Shape& result_shape = instr->shape();
+    const Shape& operand_shape = operand->shape();
+    if (result_shape.dimensions_size() != operand_shape.dimensions_size()) {
+      VLOG(3) << "Result shape and operand shape must have the same rank.";
+      return std::nullopt;
+    }
+    int64_t induction_dim = start_indices_offset - start_indices_offset;
+
+    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+      if ((i == induction_dim && result_shape.dimensions(i) != 1) ||
+          (i != induction_dim &&
+           result_shape.dimensions(i) != operand_shape.dimensions(i))) {
+        VLOG(3) << "Slice size must be 1 on induction dimension and match the "
+                   "operand dimension size on other dimensions. ";
+        return std::nullopt;
+      }
+    }
+  }
+
   return dynamic_index;
 }
 
