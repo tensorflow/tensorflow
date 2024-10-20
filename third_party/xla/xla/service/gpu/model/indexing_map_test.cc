@@ -32,10 +32,10 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
