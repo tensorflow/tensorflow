@@ -102,6 +102,15 @@ void AddSPMDPasses(
         /*is_spmd=*/true, /*propagate_metadata=*/false,
         config.allow_spmd_sharding_propagation_to_output());
   }
+  std::optional<int64_t> oper_size_threshold = std::nullopt;
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_operand_bytes_threshold_for_windowed_einsum() >= 0) {
+    oper_size_threshold =
+        hlo_module->config()
+            .debug_options()
+            .xla_gpu_operand_bytes_threshold_for_windowed_einsum();
+  }
   spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
       num_partitions, hlo_module->config().replica_count(),
       hlo_module->config()
@@ -111,7 +120,7 @@ void AddSPMDPasses(
           .debug_options()
           .xla_gpu_multi_streamed_windowed_einsum(),
       /*skip_checking_windowed_einsum_users=*/true,
-      /*disable_ag_rewrite_for_multiple_consumers=*/true);
+      /*disable_ag_rewrite_for_multiple_consumers=*/true, oper_size_threshold);
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }
 
