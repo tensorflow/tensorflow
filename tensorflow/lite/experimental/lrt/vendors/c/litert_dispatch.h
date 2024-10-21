@@ -65,8 +65,9 @@ typedef enum LiteRtDispatchExecutableType {
 // Initialize the Dispatch API runtime.
 //
 // This function should be called before calling any other Dispatch API
-// functions. Parameter shared_lib_path is optional and can be NULL.
-LiteRtStatus LiteRtDispatchInitialize(const char* shared_lib_path);
+// functions. Parameter `shared_library_dir` is optional (it can be NULL) and
+// can be used to specify a directory from where to load shared libraries.
+LiteRtStatus LiteRtDispatchInitialize(const char* shared_library_dir);
 
 // Return the version of the Dispatch API runtime.
 LiteRtStatus LiteRtDispatchGetApiVersion(LiteRtDispatchApiVersion* api_version);

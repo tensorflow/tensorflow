@@ -72,6 +72,7 @@ class QnnManager {
 
   static absl::StatusOr<Ptr> Create(
       absl::Span<const QnnBackend_Config_t*> configs,
+      std::optional<std::string> shared_library_dir = std::nullopt,
       std::optional<QnnHtpDevice_Arch_t> soc_model = std::nullopt);
 
   static absl::Span<const QnnBackend_Config_t*> DefaultBackendConfigs();
@@ -114,6 +115,7 @@ class QnnManager {
   QnnManager() = default;
 
   LiteRtStatus Init(absl::Span<const QnnBackend_Config_t*> configs,
+                    std::optional<std::string> shared_library_dir,
                     std::optional<QnnHtpDevice_Arch_t> soc_model);
 
   //

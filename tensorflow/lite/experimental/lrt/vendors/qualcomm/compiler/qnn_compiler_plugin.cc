@@ -183,7 +183,8 @@ LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
   auto opt_soc_model = FindSocModel(soc_model);
 
   auto backend_configs = QnnManager::DefaultBackendConfigs();
-  auto qnn_manager = QnnManager::Create(backend_configs, opt_soc_model);
+  auto qnn_manager = QnnManager::Create(
+      backend_configs, /*shared_library_dir=*/std::nullopt, opt_soc_model);
   if (!qnn_manager.ok()) {
     LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.status().message().data());
     return kLiteRtStatusErrorRuntimeFailure;

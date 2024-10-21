@@ -20,6 +20,7 @@
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/qairt/latest/include/QNN/QnnCommon.h"
@@ -240,10 +241,36 @@ LiteRtStatus QnnManager::GenerateContextBinary(
 }
 
 LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
+                              std::optional<std::string> shared_library_dir,
                               std::optional<QnnHtpDevice_Arch_t> soc_model) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(LoadLib(kLibQnnHtpSo));
+  if (shared_library_dir.has_value()) {
+    // We must change the variable environment used to load DSP libraries.
+    std::string new_adsp_library_path;
+    if (auto* adsp_library_path = getenv("ADSP_LIBRARY_PATH");
+        adsp_library_path != nullptr) {
+      new_adsp_library_path = absl::StrFormat(
+          "%s:%s", shared_library_dir->data(), adsp_library_path);
+    } else {
+      new_adsp_library_path = shared_library_dir->data();
+    }
+    LITERT_LOG(LITERT_INFO, "Setting ADSP_LIBRARY_PATH to %s",
+               new_adsp_library_path.data());
+    setenv("ADSP_LIBRARY_PATH", new_adsp_library_path.data(), /*overwrite=*/1);
+  }
+
+  auto lib_qnn_htp_so_path =
+      shared_library_dir.has_value()
+          ? absl::StrFormat("%s/%s", shared_library_dir->data(), kLibQnnHtpSo)
+          : kLibQnnHtpSo;
+  LITERT_RETURN_STATUS_IF_NOT_OK(LoadLib(lib_qnn_htp_so_path));
   LITERT_RETURN_STATUS_IF_NOT_OK(ResolveApi());
-  LITERT_RETURN_STATUS_IF_NOT_OK(LoadSystemLib(kLibQnnSystemSo));
+
+  auto lib_qnn_system_so_path =
+      shared_library_dir.has_value()
+          ? absl::StrFormat("%s/%s", shared_library_dir->data(),
+                            kLibQnnSystemSo)
+          : kLibQnnSystemSo;
+  LITERT_RETURN_STATUS_IF_NOT_OK(LoadSystemLib(lib_qnn_system_so_path));
   LITERT_RETURN_STATUS_IF_NOT_OK(ResolveSystemApi());
 
   if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
@@ -331,9 +358,11 @@ absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
 
 absl::StatusOr<QnnManager::Ptr> QnnManager::Create(
     absl::Span<const QnnBackend_Config_t*> configs,
+    std::optional<std::string> shared_library_dir,
     std::optional<QnnHtpDevice_Arch_t> soc_model) {
   Ptr qnn_manager(new QnnManager);
-  if (qnn_manager->Init(configs, soc_model) != kLiteRtStatusOk) {
+  if (qnn_manager->Init(configs, shared_library_dir, soc_model) !=
+      kLiteRtStatusOk) {
     return absl::InternalError("Failed to set up QNN manager");
   }
   return qnn_manager;

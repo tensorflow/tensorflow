@@ -40,6 +40,10 @@ TfLiteStatus LiteRtDispatchDelegateOptionsAdd(
     LiteRtDispatchDelegateOptions* options, const char* option_name,
     const char* option_value);
 
+// Specify a directory for loading dynamic libraries.
+TfLiteStatus LiteRtDispatchDelegateOptionsAddSharedLibraryDir(
+    LiteRtDispatchDelegateOptions* options, const char* shared_library_dir);
+
 // Add NPU executable information keyed by a provided tag.
 TfLiteStatus LiteRtDispatchDelegateOptionsExecInfo(
     LiteRtDispatchDelegateOptions* options, const char* exec_tag,

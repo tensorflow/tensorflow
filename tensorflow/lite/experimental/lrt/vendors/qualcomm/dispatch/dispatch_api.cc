@@ -48,9 +48,14 @@ char BuildId[256];
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LiteRtStatus Initialize() {
+LiteRtStatus Initialize(const char* shared_library_dir) {
+  std::optional<std::string> shared_library_dir_opt =
+      shared_library_dir ? std::make_optional(std::string(shared_library_dir))
+                         : std::nullopt;
+
   auto configs = QnnManager::DefaultBackendConfigs();
-  if (auto qnn_manager = QnnManager::Create(configs); !qnn_manager.ok()) {
+  if (auto qnn_manager = QnnManager::Create(configs, shared_library_dir_opt);
+      !qnn_manager.ok()) {
     ABSL_LOG(ERROR) << qnn_manager.status();
     return kLiteRtStatusErrorRuntimeFailure;
   } else {

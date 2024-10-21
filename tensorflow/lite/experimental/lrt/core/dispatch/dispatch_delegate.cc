@@ -121,6 +121,17 @@ TfLiteStatus LiteRtDispatchDelegateOptionsAddOption(
   return kTfLiteOk;
 }
 
+TfLiteStatus LiteRtDispatchDelegateOptionsAddSharedLibraryDir(
+    LiteRtDispatchDelegateOptions* options, const char* shared_library_dir) {
+  if (!options || !shared_library_dir) {
+    LITERT_LOG(LITERT_ERROR, "Null input");
+    return kTfLiteError;
+  }
+
+  options->SetSharedLibraryDir(shared_library_dir);
+  return kTfLiteOk;
+}
+
 TfLiteStatus LiteRtDispatchDelegateOptionsExecInfo(
     LiteRtDispatchDelegateOptions* options, const char* exec_tag,
     const void* bytecode_addr, size_t bytecode_size,

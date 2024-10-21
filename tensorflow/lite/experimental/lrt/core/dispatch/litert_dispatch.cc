@@ -18,7 +18,9 @@
 #include <fcntl.h>
 
 #include <cstddef>
+#include <string>
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_event.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
@@ -62,7 +64,7 @@
 
 namespace {
 
-constexpr const char* kSharedLibPath = "libLiteRtDispatch.so";
+constexpr const char* kSharedLibName = "libLiteRtDispatch.so";
 
 bool IsTheApiInitialized = false;
 LiteRtDispatchApi TheApi = {
@@ -72,7 +74,9 @@ LiteRtDispatchApi TheApi = {
     /*.graph_interface=*/nullptr,
 };
 
-LiteRtStatus Initialize() { INVOKE_FUNC(initialize); }
+LiteRtStatus Initialize(const char* shared_library_dir) {
+  INVOKE_FUNC(initialize, shared_library_dir);
+}
 
 }  // namespace
 
@@ -80,16 +84,16 @@ LiteRtStatus Initialize() { INVOKE_FUNC(initialize); }
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LiteRtStatus LiteRtDispatchInitialize(const char* shared_lib_path) {
+LiteRtStatus LiteRtDispatchInitialize(const char* shared_library_dir) {
   if (IsTheApiInitialized) {
     return kLiteRtStatusOk;
   }
 
-  if (!shared_lib_path) {
-    shared_lib_path = kSharedLibPath;
-  }
-
-  void* lib_handle = ::dlopen(shared_lib_path, RTLD_NOW | RTLD_LOCAL);
+  std::string shared_lib_path =
+      (shared_library_dir != nullptr)
+          ? absl::StrFormat("%s/%s", shared_library_dir, kSharedLibName)
+          : kSharedLibName;
+  void* lib_handle = ::dlopen(shared_lib_path.data(), RTLD_NOW | RTLD_LOCAL);
   if (!lib_handle) {
     LITERT_LOG(LITERT_ERROR, "Failed to load dispatch library: %s",
                ::dlerror());
@@ -123,7 +127,7 @@ LiteRtStatus LiteRtDispatchInitialize(const char* shared_lib_path) {
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  auto status = Initialize();
+  auto status = Initialize(shared_library_dir);
   if (status == kLiteRtStatusOk) {
     IsTheApiInitialized = true;
   }

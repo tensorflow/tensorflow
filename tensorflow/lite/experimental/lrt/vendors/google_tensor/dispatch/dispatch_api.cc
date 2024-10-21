@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 
@@ -84,8 +85,14 @@ namespace google_tensor {
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LiteRtStatus Initialize() {
-  if (auto status = litert::google_tensor::Southbound::Create(); !status.ok()) {
+LiteRtStatus Initialize(const char* shared_library_dir) {
+  std::optional<std::string> shared_library_dir_opt =
+      shared_library_dir ? std::make_optional(std::string(shared_library_dir))
+                         : std::nullopt;
+
+  if (auto status =
+          litert::google_tensor::Southbound::Create(shared_library_dir_opt);
+      !status.ok()) {
     ABSL_LOG(ERROR) << "Initialization failure: " << status;
     return kLiteRtStatusErrorRuntimeFailure;
   } else {

@@ -30,7 +30,8 @@ extern "C" {
 
 // /////////////////////////////////////////////////////////////////////////////
 
-typedef LiteRtStatus (*LiteRtDispatchInitializeT)();
+typedef LiteRtStatus (*LiteRtDispatchInitializeT)(
+    const char* shared_library_dir);
 
 typedef LiteRtStatus (*LiteRtDispatchGetVendorIdT)(const char** vendor_id);
 

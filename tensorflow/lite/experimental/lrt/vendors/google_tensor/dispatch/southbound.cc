@@ -16,7 +16,12 @@
 
 #include <dlfcn.h>
 
+#include <memory>
+#include <optional>
+#include <string>
+
 #include "absl/log/absl_log.h"
+#include "absl/status/statusor.h"
 
 #define Load(H, S)                                               \
   H = reinterpret_cast<decltype(&S)>(::dlsym(dlib_handle_, #S)); \
@@ -28,6 +33,12 @@
 namespace litert {
 namespace google_tensor {
 
+namespace {
+// Currently the SouthBound implementation is bundled inside the Edge TPU
+// runtime shared library.
+constexpr const char* kSouthBoundLibPath = "/vendor/lib64/libedgetpu_util.so";
+}  // namespace
+
 Southbound::Southbound() : thr_functions_(new ThrFunctions) {}
 
 Southbound::~Southbound() {
@@ -36,16 +47,21 @@ Southbound::~Southbound() {
   }
 }
 
-absl::StatusOr<std::unique_ptr<Southbound>> Southbound::Create() {
+absl::StatusOr<std::unique_ptr<Southbound>> Southbound::Create(
+    std::optional<std::string> shared_library_dir) {
   std::unique_ptr<Southbound> southbound(new Southbound);
-  if (auto status = southbound->LoadSymbols(); !status.ok()) {
+  if (auto status = southbound->LoadSymbols(shared_library_dir); !status.ok()) {
     return status;
   }
 
   return southbound;
 }
 
-absl::Status Southbound::LoadSymbols() {
+absl::Status Southbound::LoadSymbols(
+    std::optional<std::string> shared_library_dir) {
+  // Always load the Southbound API library from the vendor partition.
+  (void)shared_library_dir;
+
   dlib_handle_ = ::dlopen(kSouthBoundLibPath, RTLD_NOW | RTLD_LOCAL);
   if (!dlib_handle_) {
     return absl::InternalError("Failed to load Southbound shared library");

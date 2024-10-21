@@ -18,15 +18,15 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
 
 class LiteRtDispatchDelegateOptions {
  public:
-  static constexpr auto kDispatchApiLibPath = "dispatch_api_lib_path";
-
   // Information about NPU binary, including the NPU binary bytecode and the
   // name of the entry-point function.
   struct ExecInfo {
@@ -34,8 +34,8 @@ class LiteRtDispatchDelegateOptions {
     std::optional<std::string> function_name;
   };
 
-  void AddOption(const std::string& key, const std::string& value) {
-    options_[key] = value;
+  void AddOption(absl::string_view key, absl::string_view value) {
+    options_[std::string{key}] = std::string{value};
   }
 
   std::optional<std::string> GetOption(const std::string& key) const {
@@ -45,9 +45,15 @@ class LiteRtDispatchDelegateOptions {
     return {};
   }
 
+  void SetSharedLibraryDir(absl::string_view dir) { shared_library_dir_ = dir; }
+
+  const std::optional<std::string>& GetSharedLibraryDir() const {
+    return shared_library_dir_;
+  }
+
   // Store a given ExecInfo object and associated it to a given tag.
-  void AddExecInfo(const std::string& exec_tag, const ExecInfo& exec_info) {
-    exec_infos_[exec_tag] = exec_info;
+  void AddExecInfo(absl::string_view exec_tag, ExecInfo&& exec_info) {
+    exec_infos_[std::string{exec_tag}] = std::move(exec_info);
   }
 
   // Retrieve the ExecInfo object associated with a given tag.
@@ -63,6 +69,7 @@ class LiteRtDispatchDelegateOptions {
   std::map<std::string, std::string> options_;
   // ExecInfos are stored as (tag, ExecInfo) pairs.
   std::map<std::string, ExecInfo> exec_infos_;
+  std::optional<std::string> shared_library_dir_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_
