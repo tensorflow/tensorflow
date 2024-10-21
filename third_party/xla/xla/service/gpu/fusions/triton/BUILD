@@ -456,6 +456,7 @@ xla_test(
     backend_args = if_google(
         {
             "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
         },
         {},
     ),
@@ -588,7 +589,6 @@ cc_library(
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
-        "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

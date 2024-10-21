@@ -187,6 +187,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
@@ -220,7 +221,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
@@ -1400,6 +1400,12 @@ void AddGemmRewriterPasses(HloPassPipeline& pipeline,
     bias_mode = GemmRewriterOptions::BiasMode::kNoBias;
   }
 
+  // Rewrite dots with the algorithms that cannot be handled by cublas directly.
+  // I.e. transform single dot into a chain of dots with the default algorithm
+  // that cublas can handle. These dots were inlined by the CallInliner pass
+  // above.
+  pipeline.AddPass<DotAlgorithmRewriter>();
+
   pipeline.AddPass<GemmRewriter>(
       gpu_version, toolkit_version,
       GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only, bias_mode});
@@ -1591,6 +1597,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
+
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
                         gpu_target_config.device_description.runtime_version());
 

@@ -71,6 +71,7 @@ cc_library(
         "//xla/service/gpu/kernels:custom_kernel_fusion_pattern",
         "//xla/service/gpu/transforms:cudnn_fusion_compiler",
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
+        "//xla/service/gpu/transforms:dot_algorithm_rewriter",
         "//xla/service/gpu/transforms:fusion_wrapper",
         "//xla/service/gpu/transforms:gemm_rewriter",
         "//xla/service/gpu/transforms:priority_fusion",

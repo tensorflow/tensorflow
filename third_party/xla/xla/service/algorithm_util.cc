@@ -46,6 +46,7 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
@@ -111,6 +112,7 @@ bool IsSupportedByCublasOrCublasLt(
     stream_executor::GpuComputeCapability gpu_compute_capability) {
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:

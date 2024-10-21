@@ -76,6 +76,7 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
@@ -333,8 +334,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   // don't use cuBlas in the end. This assumes that the substituting algorithm
   // has result which are close enough for the check in this file.
   if (dot->precision_config().algorithm() ==
-          PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
-      dot->precision_config().algorithm() ==
           PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       dot->precision_config().algorithm() ==
           PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
@@ -345,11 +344,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
         GemmRewriterOptions::DType::kNonFp8Only}) {
-    GemmRewriter rewriter(config.GetGpuComputeCapability(), toolkit_version,
-                          GemmRewriterOptions{dtype});
+    GemmRewriter gemm_rewriter(config.GetGpuComputeCapability(),
+                               toolkit_version, GemmRewriterOptions{dtype});
+    DotAlgorithmRewriter dot_algorithm_rewriter;
     PriorityFusion fusion_pass(
         /*thread_pool=*/nullptr, gpu_device_info, PriorityFusionOptions());
-    TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
+    TF_RETURN_IF_ERROR(dot_algorithm_rewriter.Run(new_module.get()).status());
+    TF_RETURN_IF_ERROR(gemm_rewriter.Run(new_module.get()).status());
     TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
   }
   // TODO(tdanyluk): Consider running GemmAlgorithmPicker here for better cuBLAS
