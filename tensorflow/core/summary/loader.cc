@@ -15,13 +15,24 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "tensorflow/core/summary/schema.h"
-#include "tensorflow/core/summary/summary_db_writer.h"
+#include "absl/log/log.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/util/event.pb.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {

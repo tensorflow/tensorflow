@@ -14,14 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_converter.h"
 
+#include "absl/status/status.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/Tensor.h"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorDimensions.h"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
