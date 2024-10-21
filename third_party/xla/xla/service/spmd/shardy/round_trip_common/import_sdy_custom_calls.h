@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_CONVERT_SHARDING_CUSTOM_CALLS_H_
-#define XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_CONVERT_SHARDING_CUSTOM_CALLS_H_
+#ifndef XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_IMPORT_SDY_CUSTOM_CALLS_H_
+#define XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_IMPORT_SDY_CUSTOM_CALLS_H_
 
 #include <memory>
 
@@ -23,14 +23,15 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Creates a pass that converts a `CustomCall` with target name Sharding into a
-// `ShardingConstraintOp`.
-std::unique_ptr<mlir::Pass> createConvertShardingCustomCallsPass();
+// Creates a pass that imports sdy tagged `CustomCall` ops. Namely it converts
+// * xla.sdy.Sharding -> ShardingConstraintOp
+// * xla.sdy.ShardingGroup -> ShardingGroupOp
+std::unique_ptr<mlir::Pass> createImportSdyCustomCallsPass();
 
-// Register the xla-sdy-convert-sharding-custom-calls pass.
-void registerConvertShardingCustomCallsPass();
+// Register the xla-sdy-import-sdy-custom-calls pass.
+void registerImportSdyCustomCallsPass();
 
 }  // namespace sdy
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_CONVERT_SHARDING_CUSTOM_CALLS_H_
+#endif  // XLA_SERVICE_SPMD_SHARDY_ROUND_TRIP_COMMON_IMPORT_SDY_CUSTOM_CALLS_H_
