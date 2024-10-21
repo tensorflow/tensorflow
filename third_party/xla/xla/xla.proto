@@ -993,8 +993,13 @@ message DebugOptions {
 
   // Enables strict PGLE checking. If an FDO profile is specified and latency
   // hiding scheduler encounters missing instructions in the profile
-  // compilation will halt.
-  bool xla_gpu_enable_pgle_accuracy_checker = 326;
+  // compilation will halt or warn depending on the value of this option.
+  enum PGLEStrictnessLevel {
+    PGLE_STRICTNESS_LEVEL_OFF = 0;
+    PGLE_STRICTNESS_LEVEL_WARN = 1;
+    PGLE_STRICTNESS_LEVEL_ERROR = 2;
+  }
+  PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 326;
 
   // Timeouts for RendezvousSingle stuck warning and termination.
   int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
