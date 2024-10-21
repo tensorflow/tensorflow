@@ -77,6 +77,7 @@ typedef enum {
 
   // Lealization related errors.
   kLrtStatusLegalizeNoMatch = 2000,
+  kLrtStatusErrorInvalidLegalization = 2001,
 } LiteRtStatus;
 
 #ifdef __cplusplus

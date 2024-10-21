@@ -35,6 +35,7 @@
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations/legalization.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations/mul_op_legalization.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations/slice_op_legalization.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -44,6 +45,7 @@ namespace {
 LiteRtStatus RegisterAllLegalizations(
     std::vector<std::unique_ptr<Legalization>>& legalizations) {
   legalizations.push_back(MulOpLegalization::Create());
+  legalizations.push_back(SliceOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }

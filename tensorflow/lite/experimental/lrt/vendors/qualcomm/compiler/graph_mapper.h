@@ -53,6 +53,10 @@ class GraphMapper {
   LiteRtStatus PushToScope(LiteRtTensor litert_tensor,
                            Qnn_Tensor_t& qnn_tensor);
 
+  // NOTE: QNN Tensors must be created with a unique name. This will ensure
+  // uniqueness but will want to have more meaningful names in the future.
+  LiteRtStatus AssignTensorName(Qnn_Tensor_t& qnn_tensor);
+
   // QNN Sdk Accessors
   QnnManager& Qnn();
   Qnn_GraphHandle_t& QnnGraph();
@@ -107,9 +111,6 @@ class GraphMapper {
   // Tensor Naming
   //
 
-  // NOTE: QNN Tensors must be created with a unique name. This will ensure
-  // uniqueness but will want to have more meaningful names in the future.
-  LiteRtStatus AssignTensorName(Qnn_Tensor_t& qnn_tensor);
   uint32_t cur_tensor_num_ = 0;
 };
 

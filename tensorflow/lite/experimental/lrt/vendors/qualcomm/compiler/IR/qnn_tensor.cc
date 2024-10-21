@@ -104,6 +104,13 @@ Qnn_Tensor_t BuildInputTensor() {
   return tensor;
 }
 
+Qnn_ClientBuffer_t BuildDefaultClientBuffer() {
+  Qnn_ClientBuffer_t client_buf = QNN_CLIENT_BUFFER_INIT;
+  client_buf.data = nullptr;
+  client_buf.dataSize = 0;
+  return client_buf;
+}
+
 Qnn_Tensor_t BuildOutputTensor() {
   Qnn_Tensor_t tensor = BuildDefaultTensor();
   SetOutputTensorAttrs(tensor);
