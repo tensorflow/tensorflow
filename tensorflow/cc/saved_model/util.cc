@@ -42,7 +42,7 @@ std::set<std::string> GetMapKeys(
   return keys;
 }
 
-Status GetInputValues(
+absl::Status GetInputValues(
     const SignatureDef& signature,
     const ::google::protobuf::Map<std::string, ::tensorflow::TensorProto>& request_inputs,
     std::vector<std::pair<string, Tensor>>& inputs) {
