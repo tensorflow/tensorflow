@@ -192,7 +192,7 @@ bool IsFunctionStateful(const FunctionLibraryDefinition& library,
 bool IsNodeStateful(const FunctionLibraryDefinition& library,
                     const NodeDef& node, bool skip_assert) {
   const OpDef* op_def;
-  Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  absl::Status s = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
 
   if (!s.ok()) return true;
 
