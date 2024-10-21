@@ -4242,7 +4242,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
         PaddingConfig pad_config;
         for (int64_t i = 0; i != gather->shape().rank(); ++i) {
           auto dimension = pad_config.add_dimensions();
-          if (reshape_dims_to_padded_dims.contains(
+          if (gather_operand_passthrough_output_to_operand_dims.contains(i) &&
+              reshape_dims_to_padded_dims.contains(
                   gather_operand_passthrough_output_to_operand_dims[i])) {
             int64_t padded_dim = reshape_dims_to_padded_dims
                 [gather_operand_passthrough_output_to_operand_dims[i]];

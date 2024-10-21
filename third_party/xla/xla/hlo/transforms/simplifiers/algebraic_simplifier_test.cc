@@ -8588,6 +8588,37 @@ ENTRY %entry {
           m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, GatherOfReshapeOfPad4) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  dot.165 = bf16[2048,8192]{1,0} parameter(0)
+  constant.16 = bf16[] constant(0)
+  reshape.60 = s32[16,1]{1,0} parameter(1)
+  pad.6 = bf16[4096,8192]{1,0} pad(
+    bf16[2048,8192]{1,0} %dot.165, bf16[] %constant.16), padding=0_2048x0_0
+  reshape.170 = bf16[4096,16,512]{2,1,0} reshape(bf16[4096,8192]{1,0} %pad.6)
+  gather.175 = bf16[4096,16,512]{2,1,0} gather(
+    bf16[4096,16,512]{2,1,0} %reshape.170, s32[16,1]{1,0} %reshape.60),
+    offset_dims={0,2}, collapsed_slice_dims={1}, start_index_map={1},
+    index_vector_dim=1, slice_sizes={4096,1,512}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(0) << "After rewrite \n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Pad(m::Gather(m::Reshape(), m::Parameter(1)),
+                                      m::ConstantScalar(0))));
+  EXPECT_EQ(root->padding_config().dimensions(0).edge_padding_high(), 2048);
+  EXPECT_EQ(root->padding_config().dimensions(1).edge_padding_high(), 0);
+  EXPECT_EQ(root->padding_config().dimensions(2).edge_padding_high(), 0);
+}
+
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(
 HloModule module
