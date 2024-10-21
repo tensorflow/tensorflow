@@ -26,9 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
