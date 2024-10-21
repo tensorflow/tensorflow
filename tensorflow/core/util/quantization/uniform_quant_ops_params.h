@@ -66,8 +66,8 @@ class UniformQuantizedConvolutionParams {
   int feature_group_count() const { return feature_group_count_; }
 
   // Load UniformQuantizedConvolutionParams members by reading op attrs.
-  Status LoadFromAttrs(const OpKernelConstruction& context);
-  Status LoadFromAttrs(const shape_inference::InferenceContext& context);
+  absl::Status LoadFromAttrs(const OpKernelConstruction& context);
+  absl::Status LoadFromAttrs(const shape_inference::InferenceContext& context);
 
   // Check if UniformQuantizedConvolutionParams members loaded from Attr are
   // valid regarding the lhs_shape and rhs_shape, and fill param values if
@@ -77,8 +77,8 @@ class UniformQuantizedConvolutionParams {
   //
   // NOTE: This method should be called only after calling one of
   // LoadFromAttrs().
-  Status ValidateOrFillParamsAndValidateShape(const TensorShape& lhs_shape,
-                                              const TensorShape& rhs_shape);
+  absl::Status ValidateOrFillParamsAndValidateShape(
+      const TensorShape& lhs_shape, const TensorShape& rhs_shape);
 
   // Calculate output shape using lhs_shape, rhs_shape, and the params.
   //
@@ -97,11 +97,11 @@ class UniformQuantizedConvolutionParams {
 
  private:
   template <typename ContextT>
-  Status LoadFromAttrsInternal(const ContextT& context);
-  Status ValidateShape(const TensorShape& lhs_shape,
-                       const TensorShape& rhs_shape);
-  Status ValidateOrFillPaddingList(const TensorShape& lhs_shape,
-                                   const TensorShape& rhs_shape);
+  absl::Status LoadFromAttrsInternal(const ContextT& context);
+  absl::Status ValidateShape(const TensorShape& lhs_shape,
+                             const TensorShape& rhs_shape);
+  absl::Status ValidateOrFillPaddingList(const TensorShape& lhs_shape,
+                                         const TensorShape& rhs_shape);
 
   // Params from Attrs.
   std::vector<int> window_strides_;
