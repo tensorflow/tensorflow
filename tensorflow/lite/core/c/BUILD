@@ -44,6 +44,7 @@ bzl_library(
 filegroup(
     name = "headers_filegroup",
     srcs = [
+        "builtin_op_data.h",
         "c_api.h",
         "c_api_types.h",
         "common.h",
@@ -54,7 +55,6 @@ filegroup(
 filegroup(
     name = "tflite_internal_cc_3p_api_deps_src",
     srcs = [
-        "builtin_op_data.h",
         "common.cc",
         "common.h",
     ],
