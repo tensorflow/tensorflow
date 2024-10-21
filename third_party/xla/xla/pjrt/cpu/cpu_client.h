@@ -293,8 +293,6 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
