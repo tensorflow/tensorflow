@@ -536,11 +536,11 @@ cc_library(
     hdrs = ["collective_permute_valid_iteration_annotator.h"],
     deps = [
         "//xla:literal_util",
+        "//xla/hlo/analysis:while_loop_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:collective_ops_utils",
         "//xla/service:pattern_matcher",
-        "//xla/service:while_loop_analysis",
     ],
 )
 
@@ -2172,8 +2172,8 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_dfs_reachability",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_graph_dumper",
