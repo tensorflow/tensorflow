@@ -817,8 +817,7 @@ class HloModule {
 
   // Compilation environments (protos that carry command line flags and
   // environment variables).
-  std::unique_ptr<CompilationEnvironments> comp_envs_ =
-      std::make_unique<CompilationEnvironments>();
+  std::unique_ptr<CompilationEnvironments> comp_envs_;
 
   // Stack frame indexes flat representation.
   std::optional<StackFrameIndexProto> stack_frame_index_;
