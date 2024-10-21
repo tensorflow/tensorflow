@@ -1,0 +1,13 @@
+This resolves the issue here b/372630230. The patch is not intended for upstream.
+--- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
++++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp
+@@ -55,7 +55,8 @@ SmallVector<Value> reorderValues(const S
+     }
+     return ret;
+   }
+-  if (inBitWidth == 8 && ouBitWidth == 16) {
++  if ((inBitWidth == 8 && ouBitWidth == 16) ||
++      (inBitWidth == 16 && ouBitWidth == 8)) {
+     SmallVector<Value> ret;
+     for (unsigned i = 0; i < values.size(); i += 16) {
+       ret.push_back(values[i + 0]);
