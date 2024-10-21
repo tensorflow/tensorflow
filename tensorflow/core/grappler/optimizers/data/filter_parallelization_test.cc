@@ -28,8 +28,9 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-Status OptimizeWithFilterParallelization(const GrapplerItem& item,
-                                         GraphDef* output, bool autotune) {
+absl::Status OptimizeWithFilterParallelization(const GrapplerItem& item,
+                                               GraphDef* output,
+                                               bool autotune) {
   FilterParallelization optimizer;
   RewriterConfig_CustomGraphOptimizer config;
   if (autotune) {
