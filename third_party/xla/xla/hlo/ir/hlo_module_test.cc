@@ -18,15 +18,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using HloModuleTest = HloTestBase;
+using HloModuleTest = HloHardwareIndependentTestBase;
 
 TEST_F(HloModuleTest, AbslHashValue) {
   std::unique_ptr<VerifiedHloModule> module1 = CreateNewVerifiedModule();
