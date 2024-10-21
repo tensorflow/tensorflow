@@ -1,15 +1,44 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..6872938 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,24 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++@@ -119,6 +119,11 @@
++     hdrs = ["include/llvm-libc-macros/linux/fcntl-macros.h"],
++ )
++ 
+++libc_support_library(
+++    name = "llvm_libc_types_size_t",
+++    hdrs = ["include/llvm-libc-types/size_t.h"],
+++)
+++
++ ########################### Macro Proxy Header Files ###########################
++ 
++ libc_support_library(
++@@ -3193,6 +3198,7 @@
++         ":__support_common",
++         ":__support_cpp_bitset",
++         ":__support_macros_optimization",
+++        ":llvm_libc_types_size_t",
++         ":string_memory_utils",
++     ],
++ )
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 8b8c2fe..31578bf 100644
+index 31578bf..2eff03e 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "9c80eb7c83c6471d4126ef46f85bf673787de521"
--    LLVM_SHA256 = "0a00f1377852ce42e2c7ee8cd376d037b8932ed362cd2ae423a52d291314b213"
-+    LLVM_COMMIT = "12bcea3292a1559ecad549b5d34c8abcf19f2626"
-+    LLVM_SHA256 = "1ce4ec480f47e8b46cea858a652d18dff18844c821d18836c41edbf36151c209"
+-    LLVM_COMMIT = "12bcea3292a1559ecad549b5d34c8abcf19f2626"
+-    LLVM_SHA256 = "1ce4ec480f47e8b46cea858a652d18dff18844c821d18836c41edbf36151c209"
++    LLVM_COMMIT = "d80b9cf713fd1698641c5b265de6b66618991476"
++    LLVM_SHA256 = "6d98ccd3720df0daf2ea7f4ed3dd313df9634b58e266a0800006488e0c883046"
  
      tf_http_archive(
          name = name,
