@@ -70,9 +70,13 @@ inline void AddN(const ArithmeticParams& params,
     }
 
     const int32_t raw_output =
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            scaled_x, params.output_multiplier, params.output_shift) +
-        params.output_offset;
+        (params.output_shift <= 0)
+            ? MultiplyByQuantizedMultiplierSmallerThanOneExp(
+                  scaled_x, params.output_multiplier, params.output_shift) +
+                  params.output_offset
+            : MultiplyByQuantizedMultiplierGreaterThanOne(
+                  scaled_x, params.output_multiplier, params.output_shift) +
+                  params.output_offset;
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
