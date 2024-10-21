@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -34,7 +34,7 @@ using ::testing::HasSubstr;
 namespace xla {
 namespace {
 
-using HloMatchersTest = HloTestBase;
+using HloMatchersTest = HloHardwareIndependentTestBase;
 
 std::string DescribeHloMatcher(
     const ::testing::Matcher<const HloInstruction*>& m) {

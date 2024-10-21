@@ -29,11 +29,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -1086,7 +1086,7 @@ TEST(HloShardingUtilTest, UntileShape) {
             ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
 }
 
-using HloShardingUtilTestWithHlo = HloTestBase;
+using HloShardingUtilTestWithHlo = HloHardwareIndependentTestBase;
 
 TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest1) {
   absl::string_view hlo_string = R"(

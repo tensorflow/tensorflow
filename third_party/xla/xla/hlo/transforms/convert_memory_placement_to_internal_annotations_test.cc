@@ -25,8 +25,8 @@
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/host_memory_offload_annotations.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"

@@ -46,7 +46,7 @@ class HloParserOptions {
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
-// Note: Tests derived from HloTestBase should use
+// Note: Tests derived from HloHardwareIndependentTestBase should use
 // ParseAndReturnVerifiedModule() instead!
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config = HloModuleConfig(),

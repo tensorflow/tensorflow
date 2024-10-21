@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
-#include "xla/tests/filecheck.h"
 
 namespace xla {
 namespace {
