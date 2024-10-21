@@ -46,8 +46,8 @@ class CommonSubgraphElimination : public GraphOptimizer {
 
   bool UsesFunctionLibrary() const override { return false; }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override;
+  absl::Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                        GraphDef* optimized_graph) override;
 
  private:
   friend class CommonSubgraphEliminationTest;
@@ -56,7 +56,7 @@ class CommonSubgraphElimination : public GraphOptimizer {
   bool CanDedup(const NodeDef& node) const;
 
   // Dedup redundant nodes in the graph.
-  Status DedupComputations(GraphDef* optimized_graph);
+  absl::Status DedupComputations(GraphDef* optimized_graph);
 
   RewriterConfig::Toggle opt_level_;
 
