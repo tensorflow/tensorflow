@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -680,7 +681,7 @@ absl::Status ConstantFold(const ConstantFoldingOptions& opts,
     tensors_to_replace.push_back(n.second);
   }
 
-  auto graph_runner = std::unique_ptr<GraphRunner>(new GraphRunner(env));
+  auto graph_runner = std::make_unique<GraphRunner>(env);
   // Evaluate the constant foldable nodes.
   std::vector<Tensor> outputs;
   auto delete_tensors = gtl::MakeCleanup([&graph_runner, &outputs] {
