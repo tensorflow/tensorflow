@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/mul_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/tanh_op_legalization.h"
 
 #include <string>
 
@@ -20,7 +20,6 @@
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/litert/c/litert_common.h"
-#include "tensorflow/lite/experimental/litert/c/litert_logging.h"
 #include "tensorflow/lite/experimental/litert/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_op.h"
@@ -30,22 +29,22 @@
 
 namespace litert::qnn {
 
-static constexpr absl::string_view kQnnMulOpTypeName = "ElementWiseMultiply";
+static constexpr absl::string_view kQnnTanhOpTypeName = "Tanh";
 static constexpr absl::string_view kDefaultQnnOpPackageName = "qti.aisw";
-static constexpr absl::string_view kMulOpFmt = "mul_%d";
+static constexpr absl::string_view kTanhOpFmt = "tanh_%d";
 
-LiteRtStatus MulOpLegalization::LegalizeOp(LiteRtOpManager& src,
-                                           Qnn_OpConfig_t& dest,
-                                           GraphMapper& graph_mapper) {
-  if (src.Code() != kLiteRtOpCodeTflMul) {
+LiteRtStatus TanhOpLegalization::LegalizeOp(LiteRtOpManager& src,
+                                            Qnn_OpConfig_t& dest,
+                                            GraphMapper& graph_mapper) {
+  if (src.Code() != kLiteRtOpCodeTflTanh) {
     return kLiteRtStatusLegalizeNoMatch;
   }
-  std::string op_name = absl::StrFormat(kMulOpFmt, op_counter_++);
+  std::string op_name = absl::StrFormat(kTanhOpFmt, op_counter_++);
   LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
                                            kDefaultQnnOpPackageName.data(),
-                                           kQnnMulOpTypeName.data(), dest));
+                                           kQnnTanhOpTypeName.data(), dest));
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeSimpleOp(src, dest, graph_mapper));
-  LITERT_LOG(LITERT_INFO, "Legalized mul op", "");
+  LITERT_LOG(LITERT_INFO, "Legalized tanh op", "");
   return kLiteRtStatusOk;
 }
 
