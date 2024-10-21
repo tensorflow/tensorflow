@@ -13,13 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/java/src/main/native/session_jni.h"
+
 #include <string.h>
+
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/java/src/main/native/utils_jni.h"
+#include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
-#include "tensorflow/java/src/main/native/session_jni.h"
+#include "tensorflow/java/src/main/native/utils_jni.h"
 
 namespace {
 TF_Session* requireHandle(JNIEnv* env, jlong handle) {
