@@ -13,6 +13,92 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Exhaustive test for binary operations for 8-bit floating point types,
+// including float16 and bfloat.
+//
+// Test parameter is a pair of (begin, end) for range under test.
+template <PrimitiveType T, bool kLeftToRightPacking = false>
+class Exhaustive8BitBinaryTest
+    : public ExhaustiveBinaryTest<T>,
+      public ::testing::WithParamInterface<std::pair<int64_t, int64_t>> {
+ public:
+  int64_t GetInputSize() override {
+    int64_t begin, end;
+    std::tie(begin, end) = GetParam();
+    return end - begin;
+  }
+
+  // Given a range of uint64_t representation, uses bits 7..0 and bits 15..8
+  // for the values of src0 and src1 (see below for ordering) for the 8-bit
+  // binary operation being tested, and generate the cartesian product of the
+  // two sets as the two inputs for the test.
+  //
+  // If `kLeftToRightPacking == true`, then bits 15..8 are interpreted as src0
+  // and bits 7..0 are interpreted as src1. If `kLeftToRightPacking == false`,
+  // then bits 15..8 are interpreted as src1 and 7..0 are interpreted as src0.
+  void FillInput(std::array<Literal, 2>* input_literals) override {
+    int64_t input_size = GetInputSize();
+    CHECK_EQ(input_size, (*input_literals)[0].element_count());
+    CHECK_EQ(input_size, (*input_literals)[1].element_count());
+
+    int64_t begin, end;
+    std::tie(begin, end) = GetParam();
+
+    if (VLOG_IS_ON(2)) {
+      uint8_t left_begin, left_end, right_begin, right_end;
+      if constexpr (kLeftToRightPacking) {
+        left_begin = std::bit_cast<uint8_t>(static_cast<int8_t>(begin >> 8));
+        left_end = std::bit_cast<uint8_t>(static_cast<int8_t>(end >> 8));
+        right_begin = std::bit_cast<uint8_t>(static_cast<int8_t>(begin));
+        right_end = std::bit_cast<uint8_t>(static_cast<int8_t>(end));
+      } else {
+        left_begin = std::bit_cast<uint8_t>(static_cast<int8_t>(begin));
+        left_end = std::bit_cast<uint8_t>(static_cast<int8_t>(end));
+        right_begin = std::bit_cast<uint8_t>(static_cast<int8_t>(begin >> 8));
+        right_end = std::bit_cast<uint8_t>(static_cast<int8_t>(end >> 8));
+      }
+
+      LOG(INFO) << this->SuiteName() << this->TestName() << " Range:";
+      // N.B.: Cast to u32 to avoid printing values as char.
+      LOG(INFO) << "\tfrom=(" << static_cast<uint32_t>(left_begin) << ", "
+                << static_cast<uint32_t>(right_begin) << "); hex=(" << std::hex
+                << static_cast<uint32_t>(left_begin) << ", "
+                << static_cast<uint32_t>(right_begin) << "); float=("
+                << std::bit_cast<tsl::float8_e5m2>(left_begin) << ", "
+                << std::bit_cast<tsl::float8_e5m2>(right_begin)
+                << ") (inclusive)";
+      LOG(INFO) << "\tto=(" << static_cast<uint32_t>(left_end) << ", "
+                << static_cast<uint32_t>(right_end) << "); hex=(" << std::hex
+                << static_cast<uint32_t>(left_end) << ", "
+                << static_cast<uint32_t>(right_end) << "); float=("
+                << std::bit_cast<tsl::float8_e5m2>(left_end) << ", "
+                << std::bit_cast<tsl::float8_e5m2>(right_end)
+                << ") (exclusive)";
+      LOG(INFO) << "\ttotal values to test=" << (end - begin);
+    }
+
+    absl::Span<NativeT> input_arr_0 = (*input_literals)[0].data<NativeT>();
+    absl::Span<NativeT> input_arr_1 = (*input_literals)[1].data<NativeT>();
+    for (int64_t i = 0; i < input_size; i++) {
+      uint32_t input_val = i + begin;
+      // Convert the packed bits to a pair of NativeT and replace known
+      // incorrect input values with 0.
+      //
+      // In either case, we only use 16 bits out of the 64 bits possible.
+      if constexpr (kLeftToRightPacking) {
+        input_arr_0[i] = this->ConvertValue(input_val >> 8);
+        input_arr_1[i] = this->ConvertValue(input_val);
+      } else {
+        input_arr_0[i] = this->ConvertValue(input_val);
+        input_arr_1[i] = this->ConvertValue(input_val >> 8);
+      }
+    }
+  }
+
+ protected:
+  using typename ExhaustiveBinaryTest<T>::NativeT;
+};
+
 // Exhaustive test for binary operations for 16 bit floating point types,
 // including float16 and bfloat.
 //
@@ -147,10 +233,28 @@ class Exhaustive32BitOrMoreBinaryTest
   }
 };
 
+using ExhaustiveF8E4M3FNBinaryTest = Exhaustive8BitBinaryTest<F8E4M3FN>;
+using ExhaustiveF8E5M2BinaryTest = Exhaustive8BitBinaryTest<F8E5M2>;
 using ExhaustiveF16BinaryTest = Exhaustive16BitBinaryTest<F16>;
 using ExhaustiveBF16BinaryTest = Exhaustive16BitBinaryTest<BF16>;
 using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
 using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
+
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_F8E4M3FN)
+#define BINARY_TEST_F8E4M3FN(test_name, ...)          \
+  XLA_TEST_P(ExhaustiveF8E4M3FNBinaryTest, test_name) \
+  __VA_ARGS__
+#else
+#define BINARY_TEST_E4M3FN(test_name, ...)
+#endif
+
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_F8E5M2)
+#define BINARY_TEST_F8E5M2(test_name, ...)          \
+  XLA_TEST_P(ExhaustiveF8E5M2BinaryTest, test_name) \
+  __VA_ARGS__
+#else
+#define BINARY_TEST_E5M2(test_name, ...)
+#endif
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 #define BINARY_TEST_F16(test_name, ...)          \
@@ -160,13 +264,9 @@ using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 #define BINARY_TEST_F16(test_name, ...)
 #endif
 
-#if defined(XLA_BACKEND_SUPPORTS_BFLOAT16)
 #define BINARY_TEST_BF16(test_name, ...)          \
   XLA_TEST_P(ExhaustiveBF16BinaryTest, test_name) \
   __VA_ARGS__
-#else
-#define BINARY_TEST_BF16(test_name, ...)
-#endif
 
 #define BINARY_TEST_F32(test_name, ...)          \
   XLA_TEST_P(ExhaustiveF32BinaryTest, test_name) \
@@ -180,10 +280,12 @@ using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 #define BINARY_TEST_F64(test_name, ...)
 #endif
 
-#define BINARY_TEST(test_name, ...)        \
-  BINARY_TEST_F16(test_name, __VA_ARGS__)  \
-  BINARY_TEST_BF16(test_name, __VA_ARGS__) \
-  BINARY_TEST_F32(test_name, __VA_ARGS__)  \
+#define BINARY_TEST(test_name, ...)            \
+  BINARY_TEST_F8E4M3FN(test_name, __VA_ARGS__) \
+  BINARY_TEST_F8E5M2(test_name, __VA_ARGS__)   \
+  BINARY_TEST_F16(test_name, __VA_ARGS__)      \
+  BINARY_TEST_BF16(test_name, __VA_ARGS__)     \
+  BINARY_TEST_F32(test_name, __VA_ARGS__)      \
   BINARY_TEST_F64(test_name, __VA_ARGS__)
 
 #define BINARY_TEST_COMPLEX(test_name, ...) \

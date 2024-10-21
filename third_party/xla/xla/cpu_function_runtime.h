@@ -21,6 +21,8 @@ limitations under the License.
 #include <cassert>
 #include <cstdlib>
 
+#include "Eigen/Core"
+
 namespace xla {
 namespace cpu_function_runtime {
 
@@ -179,7 +181,7 @@ class BufferInfo {
 inline constexpr size_t Align() { return 64; }
 
 // The minimum alignment of buffers passed to XLA:CPU.
-inline constexpr size_t MinAlign() { return 16; }
+inline constexpr size_t MinAlign() { return EIGEN_MAX_ALIGN_BYTES; }
 
 // When declaring variables that will be passed to an XLA instance as input via
 // set_arg_data(), be it a regular input or a resource variable in the graph,

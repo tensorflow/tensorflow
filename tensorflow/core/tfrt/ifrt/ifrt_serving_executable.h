@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_SERVING_EXECUTABLE_H_
 
+#include <stdbool.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -49,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
@@ -72,7 +75,8 @@ class IfrtServingExecutable {
       tensorflow::DeviceMgr* device_mgr,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
-      tsl::protobuf::Message* compilation_environment_proto);
+      tsl::protobuf::Message* compilation_environment_proto,
+      IfrtPersistentCompilationCache* persistent_compilation_cache);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -99,6 +103,7 @@ class IfrtServingExecutable {
   }
 
  private:
+  friend class IfrtBackendCompilerTest;
   // In memory cache key.
   struct Key {
     std::vector<tensorflow::TensorShape> input_shapes;
@@ -145,7 +150,8 @@ class IfrtServingExecutable {
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list,
-      tsl::protobuf::Message* compilation_environment_proto)
+      tsl::protobuf::Message* compilation_environment_proto,
+      IfrtPersistentCompilationCache* persistent_compilation_cache)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -160,7 +166,8 @@ class IfrtServingExecutable {
         device_mgr_(device_mgr),
         shape_representation_fn_(std::move(shape_representation_fn)),
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
-        compilation_environment_proto_(compilation_environment_proto) {}
+        compilation_environment_proto_(compilation_environment_proto),
+        persistent_compilation_cache_(persistent_compilation_cache) {}
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
@@ -193,6 +200,11 @@ class IfrtServingExecutable {
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
+
+  // The persistent compilation cache is a global cache and is not owned by
+  // this executable. When it is nullptr, the persistent compilation cache is
+  // disabled at ifrt serving level.
+  IfrtPersistentCompilationCache* persistent_compilation_cache_;
 
   // Asynchronously load the restored variable tensors to Ifrt array.
   absl::Status AsyncLoadIfrtArray(

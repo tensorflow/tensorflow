@@ -53,12 +53,7 @@ using memory_space_assignment::RuntimeSimulator;
 using ::testing::ElementsAreArray;
 using ::testing::IsEmpty;
 
-constexpr int64_t kPointerSize = 8;
 constexpr int64_t kAlternateMemorySpace = 1;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
 
 class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
  protected:
@@ -84,7 +79,6 @@ class MemorySpaceAssignmentSimulatorTest : public HloTestBase {
       }
     }
     HloCostAnalysis::Options tpu_device_options;
-    tpu_device_options.shape_size = ShapeSize;
     // Assume 1 FLOP per second for testing.
     tpu_device_options.set_flops_per_second(1);
     // Assume 1 byte per second for testing.

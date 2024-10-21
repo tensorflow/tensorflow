@@ -92,7 +92,7 @@ class TensorResponseTest : public ::testing::Test {
     DummyDevice cpu_device(Env::Default());
     response.InitAlloc(&cpu_device, AllocatorAttributes());
     for (int i = 0; i < 2; i++) {  // Twice so we exercise reuse of "response"
-      Status s = response.ParseFrom(&source);
+      absl::Status s = response.ParseFrom(&source);
       EXPECT_TRUE(s.ok());
 
       const RecvTensorResponse& meta = response.metadata();
@@ -183,7 +183,7 @@ static void BM_TensorResponse(::testing::benchmark::State& state) {
     TensorResponse response;
     response.InitAlloc(&cpu_device, AllocatorAttributes());
     StringSource source(&encoded, -1);
-    Status s = response.ParseFrom(&source);
+    absl::Status s = response.ParseFrom(&source);
     bytes = response.tensor().TotalBytes();
   }
   state.SetLabel(strings::StrCat("Bytes: ", bytes));

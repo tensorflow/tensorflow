@@ -164,13 +164,13 @@ struct ApplyAdagradV2<CPUDevice, T> {
 
 template <typename T, typename Tindex, bool has_epsilon>
 struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
-  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar epsilon,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices,
-                    int64_t inner_dim, bool update_slots) {
+  absl::Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                          typename TTypes<T>::Matrix accum,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar epsilon,
+                          typename TTypes<T>::ConstMatrix grad,
+                          typename TTypes<Tindex>::ConstVec indices,
+                          int64_t inner_dim, bool update_slots) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
     if (N == 0) return absl::OkStatus();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
@@ -272,14 +272,14 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
 
 template <typename T, typename Tindex>
 struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
-  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
-                    typename TTypes<T>::Matrix accum,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar l1,
-                    typename TTypes<T>::ConstScalar l2,
-                    typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices,
-                    int64_t inner_dim) {
+  absl::Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                          typename TTypes<T>::Matrix accum,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar l1,
+                          typename TTypes<T>::ConstScalar l2,
+                          typename TTypes<T>::ConstMatrix grad,
+                          typename TTypes<Tindex>::ConstVec indices,
+                          int64_t inner_dim) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
     if (N == 0) return absl::OkStatus();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
@@ -587,17 +587,18 @@ void ComputeFtrl(GradTy grad,
 
 template <typename T, typename Tindex, bool has_l2_shrinkage>
 struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
-  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var_flat,
-                    typename TTypes<T>::Matrix accum_flat,
-                    typename TTypes<T>::Matrix linear_flat,
-                    typename TTypes<T>::ConstScalar lr,
-                    typename TTypes<T>::ConstScalar l1,
-                    typename TTypes<T>::ConstScalar l2,
-                    typename TTypes<T>::ConstScalar l2_shrinkage,
-                    typename TTypes<T>::ConstScalar lr_power,
-                    typename TTypes<T>::ConstMatrix grad_flat,
-                    typename TTypes<Tindex>::ConstVec indices_vec,
-                    int64_t inner_dim, bool multiply_linear_by_lr) {
+  absl::Status operator()(const CPUDevice& d,
+                          typename TTypes<T>::Matrix var_flat,
+                          typename TTypes<T>::Matrix accum_flat,
+                          typename TTypes<T>::Matrix linear_flat,
+                          typename TTypes<T>::ConstScalar lr,
+                          typename TTypes<T>::ConstScalar l1,
+                          typename TTypes<T>::ConstScalar l2,
+                          typename TTypes<T>::ConstScalar l2_shrinkage,
+                          typename TTypes<T>::ConstScalar lr_power,
+                          typename TTypes<T>::ConstMatrix grad_flat,
+                          typename TTypes<Tindex>::ConstVec indices_vec,
+                          int64_t inner_dim, bool multiply_linear_by_lr) {
     const Tindex N = static_cast<Tindex>(indices_vec.dimension(0));
     if (N > 0) {
       T lr_scalar = lr();

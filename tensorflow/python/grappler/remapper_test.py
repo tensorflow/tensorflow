@@ -168,6 +168,15 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     def gelu_exact(x):
       return nn.gelu(x, approximate=False)
 
+    # Erfc-based implementation of GeluExact from:
+    # https://github.com/tensorflow/tensorflow/pull/76174
+    def gelu_exact_erfc(x):
+      return (
+          0.5
+          * x
+          * math_ops.erfc(-x * math_ops.cast(0.7071067811865476, x.dtype))
+      )
+
     device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
     config = []
     use_fp16 = True
@@ -180,6 +189,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       use_fp16 = False
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
+      config.append((dtypes.float32, gelu_exact_erfc, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
       if _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(dtypes.bfloat16):
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))

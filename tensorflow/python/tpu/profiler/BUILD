@@ -44,6 +44,7 @@ py_strict_library(
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@pypi_packaging//:pkg",
     ],
 )
 
@@ -55,5 +56,6 @@ py_strict_binary(
     deps = [
         ":capture_tpu_profile_lib",
         "@absl_py//absl/flags",
+        "@pypi_packaging//:pkg",
     ],
 )

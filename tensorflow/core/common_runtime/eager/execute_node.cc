@@ -35,9 +35,10 @@ bool ExecuteNodeArgs::IsRemote(EagerContext* ctx, Device* input_device,
 }
 #endif  // IS_MOBILE_PLATFORM
 
-Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
-                                         Device* input_device,
-                                         TensorHandle* packed_handle) {
+absl::Status ExecuteNodeArgs::InitPackedHandle(const int index,
+                                               EagerContext* ctx,
+                                               Device* input_device,
+                                               TensorHandle* packed_handle) {
   int num_handles = packed_handle->NumPackedHandles();
   packed_args_.emplace(index,
                        absl::InlinedVector<TensorValue, 4UL>(num_handles));
@@ -47,7 +48,8 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
     TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));
     // We have validated that h->device() is not a CustomDevice when
     // constructing a pack TensorHandle.
-    const Status status = h->TensorValue(h->device(), &packed_arg_flat[i]);
+    const absl::Status status =
+        h->TensorValue(h->device(), &packed_arg_flat[i]);
     if (!status.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
       if (IsRemote(ctx, input_device, h)) {
@@ -64,7 +66,7 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
   return absl::OkStatus();
 }
 
-Status ExecuteNodeArgs::Init(
+absl::Status ExecuteNodeArgs::Init(
     EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4UL>& op_inputs,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
   // If there are multiple references to a TensorHandle in 'op_inputs' we must
@@ -79,7 +81,8 @@ Status ExecuteNodeArgs::Init(
     for (int i = 0; i < n_inputs; ++i) {
       TensorHandle* in = op_inputs_flat[i];
       Device* d = kernel->InputDevice(i);
-      Status s = in->TensorValue(ctx->CanonicalDevice(d), &tensor_args_flat[i]);
+      absl::Status s =
+          in->TensorValue(ctx->CanonicalDevice(d), &tensor_args_flat[i]);
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
         if (IsRemote(ctx, d, in)) {
@@ -103,7 +106,7 @@ Status ExecuteNodeArgs::Init(
     serialize_remote_handle_ =
         [ctx, &op_inputs, is_function](
             const FunctionArgIndex& index,
-            eager::RemoteTensorHandle* handle) -> Status {
+            eager::RemoteTensorHandle* handle) -> absl::Status {
       TensorHandle* h = op_inputs[index.index];
       if (op_inputs[index.index]->Type() == TensorHandle::PACKED) {
         TF_RETURN_IF_ERROR(
@@ -124,9 +127,9 @@ Status ExecuteNodeArgs::Init(
   return absl::OkStatus();
 }
 
-Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
-                                    Tensor* val) const {
-  Status s = EagerKernelArgs::GetLocalArg(index, val);
+absl::Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
+                                          Tensor* val) const {
+  absl::Status s = EagerKernelArgs::GetLocalArg(index, val);
   if (s.ok()) {
     return absl::OkStatus();
   }

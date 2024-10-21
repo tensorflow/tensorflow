@@ -56,7 +56,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
@@ -139,14 +139,12 @@ cc_library(
     srcs = ["legalize_tf_to_hlo.cc"],
     hdrs = ["legalize_tf_to_hlo.h"],
     deps = [
-        ":compilation_timer",
         ":legalize_tf_mlir",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_tf_graph",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_tpu_backend_registration",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",

@@ -15,14 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 
-#include "absl/strings/match.h"
-
 namespace stream_executor {
 bool IsLibNvPtxCompilerSupported() { return LIBNVPTXCOMPILER_SUPPORT; }
-
-bool IsPtxRegisterAllocationError(absl::string_view str) {
-  return absl::StrContains(str, "ptxas fatal") &&
-         (absl::StrContains(str, "Register allocation failed") ||
-          absl::StrContains(str, "Insufficient registers"));
-}
 }  // namespace stream_executor

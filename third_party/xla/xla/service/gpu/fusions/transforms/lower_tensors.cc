@@ -19,10 +19,12 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
@@ -58,6 +60,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -345,7 +348,8 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
       Value low_updated = b.create<mlir::arith::OrIOp>(
           b.create<mlir::arith::AndIOp>(
               current_value, b.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
-          scalar_value);
+          b.create<mlir::arith::AndIOp>(
+              scalar_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
       Value high_updated = b.create<mlir::arith::OrIOp>(
           b.create<mlir::arith::AndIOp>(
               current_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
@@ -453,11 +457,28 @@ mlir::LLVM::GlobalOp CreateGlobalOp(mlir::Attribute value,
   }
 
   Type element_type = shaped_ty.getElementType();
+  int64_t num_elements = shaped_ty.getNumElements();
   // Needed to support complex element type.
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
-  auto array_ty = mlir::LLVM::LLVMArrayType::get(llvm_element_type,
-                                                 shaped_ty.getNumElements());
+  if (mlir::isa<mlir::IntegerType>(element_type)) {
+    int bit_width = mlir::cast<mlir::IntegerType>(element_type).getWidth();
+    if (bit_width == 4) {
+      num_elements = CeilOfRatio<int64_t>(num_elements, 2);
+      llvm_element_type = b.getI8Type();
+      auto unpacked_data =
+          mlir::cast<mlir::DenseElementsAttr>(value).getRawData();
+      std::vector<char> packed_data(num_elements);
+      absl::Span<char> packed_data_span =
+          absl::MakeSpan(packed_data.data(), packed_data.size());
+      PackIntN(4, unpacked_data, packed_data_span);
+      value = mlir::DenseElementsAttr::getFromRawBuffer(
+          mlir::RankedTensorType::get({num_elements}, llvm_element_type),
+          packed_data);
+    }
+  }
+  auto array_ty =
+      mlir::LLVM::LLVMArrayType::get(llvm_element_type, num_elements);
   std::string name;
   int index = 0;
   do {

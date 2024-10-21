@@ -2,7 +2,6 @@
 #   XLA client libraries.
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -41,29 +40,13 @@ cc_library(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:padding
+# instead.
 cc_library(
     name = "padding",
-    srcs = ["padding.cc"],
     hdrs = ["padding.h"],
     deps = [
-        "//xla:types",
-        "//xla:util",
-        "//xla/tsl/lib/math:math_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-xla_cc_test(
-    name = "padding_test",
-    srcs = ["padding_test.cc"],
-    deps = [
-        ":padding",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
+        "//xla/hlo/builder:padding",
     ],
 )
 
@@ -72,7 +55,6 @@ cc_library(
     srcs = ["client.cc"],
     hdrs = ["client.h"],
     deps = [
-        ":xla_computation",
         "//xla:execution_options_util",
         "//xla:literal",
         "//xla:shape_util",
@@ -81,6 +63,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_computation",
         "//xla/service",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/status",
@@ -125,7 +108,6 @@ cc_library(
     deps = [
         ":client",
         ":executable_build_options",
-        ":xla_computation",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:literal",
@@ -133,6 +115,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_computation",
         "//xla/service:backend",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
@@ -162,11 +145,11 @@ cc_library(
     hdrs = ["compile_only_client.h"],
     deps = [
         ":client",
-        ":xla_computation",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/builder:xla_computation",
         "//xla/service:compile_only_service",
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
@@ -206,141 +189,45 @@ cc_library(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:sharding_builder
+# instead.
 cc_library(
     name = "sharding_builder",
-    srcs = ["sharding_builder.cc"],
     hdrs = ["sharding_builder.h"],
     deps = [
-        "//xla:array",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/log:check",
+        "//xla/hlo/builder:sharding_builder",
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:xla_computation
+# instead.
 cc_library(
     name = "xla_computation",
-    srcs = ["xla_computation.cc"],
     hdrs = ["xla_computation.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/hlo/builder:xla_computation",
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:value_inference
+# instead.
 cc_library(
     name = "value_inference",
-    srcs = ["value_inference.cc"],
     hdrs = ["value_inference.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":xla_builder",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/evaluator:hlo_evaluator",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "//xla/hlo/builder:value_inference",
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/builder:xla_builder
+# instead.
 cc_library(
     name = "xla_builder",
-    srcs = ["xla_builder.cc"],
     hdrs = ["xla_builder.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":padding",
-        ":sharding_builder",
-        ":xla_computation",
-        "//xla:array",
-        "//xla:array2d",
-        "//xla:array3d",
-        "//xla:array4d",
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:permutation_util",
-        "//xla:shape_util",
-        "//xla:sharding_op_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:window_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_proto_cc",
-        "//xla/service:shape_inference",
-        "//xla/tsl/lib/core:bitmap",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-xla_cc_test(
-    name = "xla_builder_test",
-    srcs = ["xla_builder_test.cc"],
-    deps = [
-        ":padding",
-        ":sharding_builder",
-        ":value_inference",
-        ":xla_builder",
-        ":xla_computation",
-        "//xla:comparison_util",
-        "//xla:debug_options_flags",
-        "//xla:shape_util",
-        "//xla:test",
-        "//xla:test_helpers",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_parser",
-        "//xla/service:hlo_proto_cc",
-        "//xla/service:pattern_matcher",
-        "//xla/service:pattern_matcher_gmock",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
+        "//xla/hlo/builder:xla_builder",
     ],
 )

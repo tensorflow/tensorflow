@@ -35,11 +35,11 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Declaring this here so it doesn't need to be in the public header.
-Status ReplaceSendRecvs(const GraphDef& original_graph_def,
-                        const GraphDef& rewritten_graph_def,
-                        const std::vector<string>& inputs,
-                        const std::vector<string>& outputs,
-                        GraphDef* output_graph_def);
+absl::Status ReplaceSendRecvs(const GraphDef& original_graph_def,
+                              const GraphDef& rewritten_graph_def,
+                              const std::vector<string>& inputs,
+                              const std::vector<string>& outputs,
+                              GraphDef* output_graph_def);
 
 class ConstantFoldingTest : public ::testing::Test {
  protected:

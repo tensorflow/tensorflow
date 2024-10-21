@@ -266,8 +266,14 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   init_resp->set_runtime_type(AsProtoStringData(client_->runtime_type()));
   init_resp->set_process_index(client_->process_index());
 
-  for (auto* device : client_->devices()) {
-    InitResponse::Device* d = init_resp->add_devices();
+  absl::Span<xla::ifrt::Device* const> all_devices;
+  if (version_.protocol_version() < 7) {
+    all_devices = client_->devices();
+  } else {
+    all_devices = client_->GetAllDevices();
+  }
+  for (auto* device : all_devices) {
+    InitResponse::Device* d = init_resp->add_all_devices();
     d->set_id(device->Id().value());
     d->set_device_kind(AsProtoStringData(device->Kind()));
     if (auto default_memory = device->DefaultMemory(); default_memory.ok()) {
@@ -289,13 +295,17 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     } else {
       *d->mutable_attributes() = device->Attributes().ToProto();
     }
+
+    if (device->IsAddressable()) {
+      init_resp->add_addressable_device_ids(device->Id().value());
+    }
   }
-  for (auto* addressable_device : client_->addressable_devices()) {
-    init_resp->add_addressable_device_ids(addressable_device->Id().value());
+  for (auto* device : client_->devices()) {
+    init_resp->add_primary_device_ids(device->Id().value());
   }
 
   absl::flat_hash_map<int, xla::ifrt::Memory*> memories;
-  for (auto* device : client_->devices()) {
+  for (auto* device : all_devices) {
     for (xla::ifrt::Memory* memory : device->Memories()) {
       const auto [it, inserted] =
           memories.insert({memory->Id().value(), memory});
@@ -472,12 +482,23 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
       auto sharding, Sharding::FromProto(
                          absl::bind_front(&Client::LookupDevice, client_.get()),
                          assemble_request.sharding()));
-  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
-                                          assemble_request.copy_semantics()));
+  TF_ASSIGN_OR_RETURN(
+      auto array_copy_semantics,
+      FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
+  SingleDeviceShardSemantics single_device_shard_semantics;
+  if (version_.protocol_version() < 8) {
+    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
+  } else {
+    TF_ASSIGN_OR_RETURN(single_device_shard_semantics,
+                        FromSingleDeviceShardSemanticsProto(
+                            assemble_request.single_device_shard_semantics()));
+  }
 
-  TF_ASSIGN_OR_RETURN(auto array, client_->AssembleArrayFromSingleDeviceArrays(
-                                      std::move(shape), std::move(sharding),
-                                      absl::MakeSpan(arrays), semantics));
+  TF_ASSIGN_OR_RETURN(
+      auto array,
+      client_->AssembleArrayFromSingleDeviceArrays(
+          std::move(shape), std::move(sharding), absl::MakeSpan(arrays),
+          array_copy_semantics, single_device_shard_semantics));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
@@ -608,15 +629,24 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
     std::unique_ptr<IfrtRequest> request) {
-  TF_ASSIGN_OR_RETURN(
-      auto array,
-      GetArray(request->disassemble_into_single_device_arrays_request()
-                   .array_handle()));
+  const auto& disassemble_request =
+      request->disassemble_into_single_device_arrays_request();
+  TF_ASSIGN_OR_RETURN(auto array, GetArray(disassemble_request.array_handle()));
+  SingleDeviceShardSemantics single_device_shard_semantics;
+  if (version_.protocol_version() < 8) {
+    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        single_device_shard_semantics,
+        FromSingleDeviceShardSemanticsProto(
+            disassemble_request.single_device_shard_semantics()));
+  }
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
   TF_ASSIGN_OR_RETURN(auto single_device_arrays,
                       array->DisassembleIntoSingleDeviceArrays(
-                          xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+                          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+                          single_device_shard_semantics));
 
   // Set up an IfrtResponse with pre-allocated space for the right number of
   // single device array handles.
@@ -1058,6 +1088,12 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   TF_ASSIGN_OR_RETURN(auto execute_options,
                       xla::ifrt::LoadedExecutable::ExecuteOptions::FromProto(
                           execute.execute_options()));
+  // Force the old behavior where `fill_status` was implicitly true before
+  // protocol version 6. Can be cleaned up once version 6 is outside the
+  // compatibility window.
+  if (version_.protocol_version() < 6) {
+    execute_options.fill_status = true;
+  }
 
   std::optional<tsl::RCReference<DeviceList>> devices;
   if (!execute.device_ids().empty()) {
@@ -1082,7 +1118,10 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // `CheckFuture` exactly once to check for its status and erase it. In future,
   // we may introduce separate mechanisms to remove futures from `futures_`
   // without checking its status for situations where futures are not used.
-  {
+  //
+  // Starting protocol version 6, the client tells the server whether the status
+  // future needs to be populated or not.
+  if (version_.protocol_version() < 6 || execute_options.fill_status) {
     absl::MutexLock lock(&futures_mutex_);
     execute_response->set_status_handle(handle_generator_.New());
     futures_.insert(

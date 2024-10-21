@@ -4,25 +4,25 @@
 // CHECK %0 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster__train_helper", device = ""} : () -> tensor<!tf_type.string>
 // CHECK %1 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<25x5xf32>>>) -> tensor<25x5xf32>
 // CHECK %2 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf_type.resource<tensor<25x5xf32>>>) -> tensor<25x5xf32>
-// CHECK %cst = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK %cst_0 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
-// CHECK %3 = "tf.Fill"(%cst_0, %cst) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
-// CHECK %cst_1 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK %cst_2 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
-// CHECK %4 = "tf.Fill"(%cst_2, %cst_1) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
-// CHECK %cst_3 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK %cst_4 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
-// CHECK %5 = "tf.Fill"(%cst_4, %cst_3) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
-// CHECK %cst_5 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK %cst_6 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
-// CHECK %6 = "tf.Fill"(%cst_6, %cst_5) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
+// CHECK %cst = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK %cst_0 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
+// CHECK %3 = "tf.Fill"(%cst_0, %cst) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
+// CHECK %cst_1 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK %cst_2 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
+// CHECK %4 = "tf.Fill"(%cst_2, %cst_1) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
+// CHECK %cst_3 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK %cst_4 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
+// CHECK %5 = "tf.Fill"(%cst_4, %cst_3) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
+// CHECK %cst_5 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK %cst_6 = "tf.Const"() <{value = dense<[25, 5]> : tensor<2xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
+// CHECK %6 = "tf.Fill"(%cst_6, %cst_5) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<25x5xf32>
 // CHECK %7:8 = tf_device.replicate([%1, %3, %4, %3] as %arg2: tensor<25x5xf32>, [%2, %5, %6, %5] as %arg3: tensor<25x5xf32>) {n = 4 : i32} {
 // CHECK   %10 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-// CHECK    %13 = "tf.Identity"(%arg2) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<25x5xf32>) -> tensor<25x5xf32>
+// CHECK    %13 = "tf.Identity"(%arg2) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<25x5xf32>) -> tensor<25x5xf32>
 // CHECK     tf_device.return %13 : tensor<25x5xf32>
 // CHECK   }) : () -> tensor<25x5xf32>
 // CHECK   %11 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-// CHECK     %13 = "tf.Identity"(%arg3) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<25x5xf32>) -> tensor<25x5xf32>
+// CHECK     %13 = "tf.Identity"(%arg3) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<25x5xf32>) -> tensor<25x5xf32>
 // CHECK     tf_device.return %13 : tensor<25x5xf32>
 // CHECK   }) : () -> tensor<25x5xf32>
 // CHECK   %12:2 = "tf_device.cluster_func"(%10, %11) <{func = @_func}> {_dynamic_arg_index = [], _has_manual_control_dependencies = true, _replication_info = "cluster__train_helper", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0], host_compute_core = [], input_sharding_configuration = ["", ""], num_cores_per_replica = 1 : i64, output_sharding_configuration = ["", ""], padding_map = [], step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\02\02\01\01\10\02\18\02\22\10\00\00\00\00\00\01\00\00\01\00\00\00\01\01\00\00*\02\08\01", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<25x5xf32>, tensor<25x5xf32>) -> (tensor<128xf32>, tensor<128xf32>)

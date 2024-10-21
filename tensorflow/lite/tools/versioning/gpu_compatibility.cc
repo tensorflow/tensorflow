@@ -371,15 +371,11 @@ absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
   }
   // Only supports float inputs with non-broadcastable or scalar if/else.
   absl::Status error = absl::InvalidArgumentError(
-      "Cond must be float or bool type, if, else tensors must be float and "
+      "Cond must be float or bool type, if, else tensors must be "
       "either be same the shape as output or constant, scalar.");
-  if ((op_sig.inputs.at(0).type != kTfLiteBool &&
-       op_sig.inputs.at(0).type != kTfLiteFloat16 &&
-       op_sig.inputs.at(0).type != kTfLiteFloat32) ||
-      (op_sig.inputs.at(1).type != kTfLiteFloat16 &&
-       op_sig.inputs.at(1).type != kTfLiteFloat32) ||
-      (op_sig.inputs.at(2).type != kTfLiteFloat16 &&
-       op_sig.inputs.at(2).type != kTfLiteFloat32)) {
+  if (op_sig.inputs.at(0).type != kTfLiteBool &&
+      op_sig.inputs.at(0).type != kTfLiteFloat16 &&
+      op_sig.inputs.at(0).type != kTfLiteFloat32) {
     return error;
   }
   std::vector<int32_t> output_dims = op_sig.outputs[0].dims;
@@ -1078,6 +1074,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinFloor:
     case kTfLiteBuiltinGelu:
     case kTfLiteBuiltinLog:
+    case kTfLiteBuiltinLogicalNot:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:
     case kTfLiteBuiltinRsqrt:
@@ -1099,13 +1096,16 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinGreater:
     case kTfLiteBuiltinGreaterEqual:
     case kTfLiteBuiltinLogicalAnd:
+    case kTfLiteBuiltinLogicalOr:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinNotEqual:
     case kTfLiteBuiltinPow:
+    case kTfLiteBuiltinRightShift:
     case kTfLiteBuiltinStablehloRemainder:
+    case kTfLiteBuiltinStablehloShiftLeft:
     case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinSub: {
       if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/2,

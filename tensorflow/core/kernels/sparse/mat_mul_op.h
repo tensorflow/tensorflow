@@ -110,9 +110,9 @@ class CSRMatMulOp : public OpKernel {
 
   ~CSRMatMulOp() override {}
 
-  Status ValidateInputs(const CSRSparseMatrix& sparse_matrix_a,
-                        const Tensor& dense_tensor_b, int* rank,
-                        int64_t* batch_size) {
+  absl::Status ValidateInputs(const CSRSparseMatrix& sparse_matrix_a,
+                              const Tensor& dense_tensor_b, int* rank,
+                              int64_t* batch_size) {
     if (sparse_matrix_a.dtype() != dense_tensor_b.dtype()) {
       return absl::InvalidArgumentError(absl::StrCat(
           "Input types don't match.  a.dtype == ",
@@ -243,11 +243,12 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
   // transpose_output is True, allocates a temporary buffer with the transposed
   // output. 'matmul_result' points to either output or output_transposed, based
   // on whether transpose_output is True.
-  Status AllocateOutput(OpKernelContext* ctx, const int32_t rank,
-                        const int64_t batch_size, const int64_t num_rows,
-                        const int64_t num_cols, const bool transpose_output,
-                        Tensor** output, Tensor* output_transposed,
-                        Tensor** matmul_result) {
+  absl::Status AllocateOutput(OpKernelContext* ctx, const int32_t rank,
+                              const int64_t batch_size, const int64_t num_rows,
+                              const int64_t num_cols,
+                              const bool transpose_output, Tensor** output,
+                              Tensor* output_transposed,
+                              Tensor** matmul_result) {
     TensorShape output_shape;
     if (rank == 3) {
       TF_RETURN_IF_ERROR(output_shape.AddDimWithStatus(batch_size));
@@ -468,8 +469,9 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
   // Transposes (and optionally, conjugates) a given Tensor. Also allocates the
   // required memory for the output Tensor.
-  Status TransposeAndConjugateTensor(OpKernelContext* ctx, const Tensor& input,
-                                     bool conjugate, Tensor* output) {
+  absl::Status TransposeAndConjugateTensor(OpKernelContext* ctx,
+                                           const Tensor& input, bool conjugate,
+                                           Tensor* output) {
     TensorShape transposed_shape = input.shape();
     transposed_shape.set_dim(input.dims() - 1,
                              input.dim_size(input.dims() - 2));
@@ -482,9 +484,10 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
 
   // Transposes (and optionally, conjugates) a given Tensor. The output should
   // be already allocated.
-  Status TransposeAndConjugateAllocatedTensor(OpKernelContext* ctx,
-                                              const Tensor& input,
-                                              bool conjugate, Tensor* output) {
+  absl::Status TransposeAndConjugateAllocatedTensor(OpKernelContext* ctx,
+                                                    const Tensor& input,
+                                                    bool conjugate,
+                                                    Tensor* output) {
     if (conjugate) {
       TF_RETURN_IF_ERROR(DoConjugateMatrixTranspose(
           ctx->eigen_device<CPUDevice>(), input, output));
@@ -595,7 +598,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
                                     a_dense_shape_comp};
         const T* b_i = b_base_ptr + i * b_slice_size;
         T* c_i = &c_t->template flat<T>()(i * c_slice_size);
-        Status s = csr_spmv.Compute(ctx, a_comp, b_i, c_i);
+        absl::Status s = csr_spmv.Compute(ctx, a_comp, b_i, c_i);
         OP_REQUIRES_OK(ctx, s);
       }
       if (conjugate_output) {
@@ -690,7 +693,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
           {c_matrix_lhs, c_matrix_rhs});
       ConstCSRComponent<T> a_comp{a_row_ptr, a_col_ind, a_values,
                                   a_input_dense_shape_comp};
-      Status s = csr_spmmadd.Compute(ctx, a_comp, b_i, c_mat_col_major_i);
+      absl::Status s = csr_spmmadd.Compute(ctx, a_comp, b_i, c_mat_col_major_i);
       OP_REQUIRES_OK(ctx, s);
     }
 

@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/lru_cache.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -70,7 +71,6 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -135,7 +135,10 @@ class PjitFunctionCache {
 
   int Size() const { return lru_list_.Size(); }
   int Capacity() const { return lru_list_.Capacity(); }
-  void Clear() { lru_list_.Clear(); }
+  void Clear() {
+    lru_list_.Clear();
+    functions_.clear();
+  }
 
  private:
   struct Key {
@@ -347,6 +350,7 @@ class PjitFunctionStore {
     for (auto* function : compiled_functions_) {
       function->ClearCache();
     }
+    compiled_functions_.clear();
   }
 
  private:

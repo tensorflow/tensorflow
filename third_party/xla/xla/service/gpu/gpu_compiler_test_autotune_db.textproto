@@ -71,3 +71,38 @@ results {
     }
   }
 }
+results {
+  device: "CUDA: 9.0, Cores: 132, GPU clock: 1.98 GHz, Memory bandwidth: 3352 GB/s, L2 cache: 50 MB"
+  hlo: "(bf16[12288,16384]{1,0}, s8[33554432]{0}) custom-call(f8e4m3fn[4096,12288]{0,1}, f8e4m3fn[4096,16384]{0,1}, f32[], f32[], f32[], f32[]), custom_call_target=\"__cublas$lt$matmul$f8\", backend_config={\"force_earliest_schedule\":false,\"gemm_backend_config\":{\"alpha_imag\":0,\"alpha_real\":0.95703125,\"beta\":0,\"damax_output\":false,\"dot_dimension_numbers\":{\"lhs_batch_dimensions\":[],\"lhs_contracting_dimensions\":[\"0\"],\"rhs_batch_dimensions\":[],\"rhs_contracting_dimensions\":[\"0\"]},\"epilogue\":\"DEFAULT\",\"grad_x\":false,\"grad_y\":false,\"lhs_stride\":\"50331648\",\"precision_config\":{\"algorithm\":\"ALG_UNSET\",\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"rhs_stride\":\"67108864\"},\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[]}"
+  result {
+    gemm {
+    }
+    run_time {
+      nanos: 1
+    }
+  }
+}
+results {
+  device: "CUDA: 9.0, Cores: 132, GPU clock: 1.98 GHz, Memory bandwidth: 3352 GB/s, L2 cache: 50 MB"
+  hlo: "{\n  tmp_0 = f8e4m3fn[12288,4096]{0,1} parameter(0)\n  tmp_1 = f8e4m3fn[4096,16384]{0,1} parameter(1)\n  tmp_2 = bf16[12288,16384]{1,0} dot(f8e4m3fn[12288,4096]{0,1} tmp_0, f8e4m3fn[4096,16384]{0,1} tmp_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  tmp_3 = bf16[] constant({...})\n  tmp_4 = bf16[12288,16384]{1,0} broadcast(bf16[] tmp_3), dimensions={}\n  ROOT tmp_5 = bf16[12288,16384]{1,0} multiply(bf16[12288,16384]{1,0} tmp_2, bf16[12288,16384]{1,0} tmp_4)\n}"
+  result {
+    gemm {
+      algorithm: -1
+    }
+    run_time {
+      nanos: 1
+    }
+  }
+}
+results {
+  device: "CUDA: 9.0, Cores: 132, GPU clock: 1.98 GHz, Memory bandwidth: 3352 GB/s, L2 cache: 50 MB"
+  hlo: "{\n  tmp_0 = f8e4m3fn[12288,4096]{0,1} parameter(0)\n  tmp_1 = f8e4m3fn[4096,12288]{1,0} bitcast(f8e4m3fn[12288,4096]{0,1} tmp_0)\n  tmp_2 = f8e4m3fn[4096,16384]{0,1} parameter(1)\n  tmp_3 = bf16[12288,16384]{1,0} dot(f8e4m3fn[4096,12288]{1,0} tmp_1, f8e4m3fn[4096,16384]{0,1} tmp_2), lhs_contracting_dims={0}, rhs_contracting_dims={0}\n  tmp_4 = bf16[] constant({...})\n  tmp_5 = bf16[12288,16384]{1,0} broadcast(bf16[] tmp_4), dimensions={}\n  ROOT tmp_6 = bf16[12288,16384]{1,0} multiply(bf16[12288,16384]{1,0} tmp_3, bf16[12288,16384]{1,0} tmp_5)\n}"
+  result {
+    gemm {
+      algorithm: -1
+    }
+    run_time {
+      nanos: 1
+    }
+  }
+}

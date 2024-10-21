@@ -18,7 +18,7 @@ limitations under the License.
 #include <limits>
 #include <type_traits>
 
-#include "xla/client/xla_builder.h"  // IWYU pragma: keep, exhaustive_binary_test_ops.inc
+#include "xla/hlo/builder/xla_builder.h"  // IWYU pragma: keep, exhaustive_binary_test_ops.inc
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_binary_test_definitions.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
@@ -299,7 +299,13 @@ bool PowCpuGpuF16Skip(NativeT left, NativeT right) {
 BINARY_TEST(Pow, {
   PowOp<kT>(this)
       .CpuError(+[](NativeT left, NativeT right) {
-        if constexpr (std::is_same_v<NativeT, xla::half>) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder()
+              .distance_err(1)
+              .strict_signed_zeros()
+              .build();
+        } else if constexpr (std::is_same_v<NativeT, xla::half>) {
           return ErrorSpec::Builder()
               .strict_signed_zeros()
               .skip_comparison(PowCpuGpuF16Skip(left, right))
@@ -357,7 +363,14 @@ bool Atan2CpuBf16F32Skip(NativeT left, NativeT right) {
 BINARY_TEST(Atan2, {
   Atan2Op<kT>(this)
       .CpuError([](NativeT left, NativeT right) {
-        if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder()
+              .distance_err(1)
+              .strict_signed_zeros()
+              .build();
+
+        } else if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
           return ErrorSpec::Builder()
               .abs_err(
                   Atan2CpuBf16F32F64AbsErr<NativeT, NativeRefT>(left, right))
@@ -383,6 +396,13 @@ BINARY_TEST(Atan2, {
         return ErrorSpec::Builder().strict_signed_zeros().build();
       })
       .GpuError(+[](NativeT, NativeT) {
+        if constexpr (std::is_same_v<NativeT, tsl::float8_e4m3fn> ||
+                      std::is_same_v<NativeT, tsl::float8_e5m2>) {
+          return ErrorSpec::Builder()
+              .distance_err(1)
+              .strict_signed_zeros()
+              .build();
+        }
         if constexpr (std::is_same_v<NativeT, xla::half> ||
                       std::is_same_v<NativeT, xla::bfloat16>) {
           return ErrorSpec::Builder()

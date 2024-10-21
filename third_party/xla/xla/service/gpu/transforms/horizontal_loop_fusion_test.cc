@@ -26,12 +26,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/transforms/instruction_fusion.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -840,6 +840,48 @@ TEST_F(HorizontalLoopFusionTest, DoNotMergeVariadicReductions) {
     tmp_4 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_3), kind=kLoop, calls=fused_computation2
     tmp_5 = s32[554112]{0} get-tuple-element(tmp_4), index=1
     ROOT tmp_6 = s32[554112]{0} add(tmp_2, tmp_5)
+  })")
+                    .value();
+
+  EXPECT_FALSE(HorizontalLoopFusion().Run(module.get()).value());
+}
+
+TEST_F(HorizontalLoopFusionTest, DoNotMergeFusionIfResultWillNotBeUnrolled) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule m
+ 
+  fused_computation.0 {
+    p0 = f32[1024,1024]{1,0} parameter(0)
+    p1 = f32[1024,1024]{1,0} parameter(1)
+    p2 = f32[1024,1024]{1,0} parameter(2)
+    sqrt.0 = f32[1024,1024]{1,0} sqrt(p0)
+    sqrt.1 = f32[1024,1024]{1,0} sqrt(p1)
+    sqrt.2 = f32[1024,1024]{1,0} sqrt(p2)
+    ROOT tuple = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(sqrt.0, sqrt.1, sqrt.2)
+  }
+  
+  fused_computation.1 {
+    p0 = f32[1024,1024]{1,0} parameter(0)
+    p1 = f32[1024,1024]{1,0} parameter(1)
+    p2 = f32[1024,1024]{1,0} parameter(2)
+    sqrt.0 = f32[1024,1024]{1,0} sqrt(p0)
+    sqrt.1 = f32[1024,1024]{1,0} sqrt(p1)
+    sqrt.2 = f32[1024,1024]{1,0} sqrt(p2)
+    ROOT tuple = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(sqrt.0, sqrt.1, sqrt.2)
+  }
+
+
+  ENTRY entry {
+    p0 = f32[1024,1024]{1,0} parameter(0)
+    p1 = f32[1024,1024]{1,0} parameter(1)
+    p2 = f32[1024,1024]{1,0} parameter(2)
+    p3 = f32[1024,1024]{1,0} parameter(3)
+    p4 = f32[1024,1024]{1,0} parameter(4)
+    p5 = f32[1024,1024]{1,0} parameter(5)
+    
+    fusion.0 = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) fusion(p0, p1, p2), kind=kLoop, calls=fused_computation.0
+    fusion.1 = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) fusion(p3, p4, p5), kind=kLoop, calls=fused_computation.1
+    ROOT tuple = ((f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0}), (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}, f32[1024,1024]{1,0})) tuple(fusion.0, fusion.1)
   })")
                     .value();
 

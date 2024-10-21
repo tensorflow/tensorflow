@@ -22,51 +22,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_H_
 
-#include <cstddef>
-#include <cstdint>
-#include <string>
-#include <utility>
-
-#include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
+// A GpuKernel is a `Kernel` that can be launched on a GPU. It allows
+// access to the underlying GPU function through `gpu_function()`.
 class GpuKernel : public Kernel {
  public:
-  explicit GpuKernel(GpuExecutor* gpu_executor)
-      : gpu_executor_(gpu_executor),
-        gpu_context_(gpu_executor->gpu_context()) {}
-
-  // Note that the function is unloaded when the module is unloaded, and the
-  // module that the function is contained in is owned by the GpuExecutor.
-  ~GpuKernel() override { gpu_executor_->UnloadKernel(this); }
-
-  // As arity cannot be reflected upon using the CUDA API, the arity is
-  // explicitly set during the GpuExecutor::GetKernel initialization process.
-  void set_arity(unsigned arity) { arity_ = arity; }
-  unsigned Arity() const override { return arity_; }
-
-  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
-      ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
-
-  // Simple accessor methods.
-  GpuFunctionHandle gpu_function() const { return gpu_function_; }
-  void set_gpu_function(GpuFunctionHandle gpu_function) {
-    gpu_function_ = gpu_function;
-  }
-
- private:
-  GpuExecutor* gpu_executor_ = nullptr;
-  Context* gpu_context_ = nullptr;  // context where kernel is loaded
-
-  GpuFunctionHandle gpu_function_ = nullptr;  // wrapped CUDA kernel handle
-  unsigned arity_ = 0;  // number of formal parameters the kernel takes
+  virtual GpuFunctionHandle gpu_function() const = 0;
 };
 
 inline const GpuKernel* AsGpuKernel(const Kernel* kernel) {

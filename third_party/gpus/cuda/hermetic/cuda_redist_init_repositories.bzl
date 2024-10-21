@@ -219,6 +219,10 @@ def _create_libcuda_symlinks(
         repository_ctx.symlink(nvidia_driver_path, "lib/libcuda.so.1")
         repository_ctx.symlink("lib/libcuda.so.1", "lib/libcuda.so")
 
+def _create_cuda_header_symlinks(repository_ctx):
+    if repository_ctx.name == "cuda_nvcc":
+        repository_ctx.symlink("../cuda_cudart/include/cuda.h", "include/cuda.h")
+
 def use_local_path(repository_ctx, local_path, dirs):
     # buildifier: disable=function-docstring-args
     """Creates repository using local redistribution paths."""
@@ -339,6 +343,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         repository_ctx,
         lib_name_to_version_dict,
     )
+    _create_cuda_header_symlinks(repository_ctx)
     repository_ctx.file("version.txt", major_version)
 
 def _cuda_repo_impl(repository_ctx):

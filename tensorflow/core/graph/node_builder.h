@@ -123,7 +123,8 @@ class NodeBuilder {
   // *created_node will be set to the new node (or nullptr on error).
   // If `consume` is true, the builder state will be moved into `node_def`,
   // and the builder will be left in an undefined state.
-  Status Finalize(Graph* graph, Node** created_node, bool consume = false);
+  absl::Status Finalize(Graph* graph, Node** created_node,
+                        bool consume = false);
 
   // Same as `Finalize` above, but using StatusOr to return value. Preferred
   // form.

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
@@ -82,12 +83,14 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     bytes_read += n_bytes_total;
 
     bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
+    PrimitiveType element_type = operand->shape().element_type();
 
     VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
 
     read_time += ReadTimeWithDRAMHeuristic(
         device_info, num_blocks, n_bytes_net, n_bytes_total,
-        operand->shape().element_type(), coalesced);
+        operand->shape().element_type(),
+        GetCoalescingUtilizationRate(element_type, device_info, coalesced));
   }
 
   absl::Duration write_time = WriteTime(device_info, bytes_written);
@@ -229,12 +232,14 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     bytes_read += n_bytes_total;
 
     bool coalesced = coalescing_analysis.IsReadCoalesced(operand);
+    PrimitiveType element_type = operand->shape().element_type();
 
     VLogOperandRead(operand, n_bytes_total, n_bytes_net, coalesced);
 
     read_time += ReadTimeWithDRAMHeuristic(
         device_info, launch_dimensions.num_blocks(), n_bytes_net, n_bytes_total,
-        operand->shape().element_type(), coalesced);
+        operand->shape().element_type(),
+        GetCoalescingUtilizationRate(element_type, device_info, coalesced));
   }
 
   auto exec_time = CombineComputeAndMemoryAccessTime(

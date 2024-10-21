@@ -226,11 +226,12 @@ class GpuPerformanceModelBase {
   // given GPU.
   //
   // Assumes that the first n_bytes_net are always read from DRAM, but next
-  // reads can be cached. Applies waste factor if read from DRAM is uncoalesced.
+  // reads can be cached. Restricts the effective HBM bandwidth using the
+  // utilization rate passed as a parameter to model not-fully-coalesced reads.
   static absl::Duration ReadTimeWithDRAMHeuristic(
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
-      bool coalesced);
+      double hbm_bandwidth_utilization_rate);
 
   // Tells input access time of the producer alone if fused_consumer
   // is not specified. Otherwise estimates the access time to producer's
@@ -258,6 +259,17 @@ class GpuPerformanceModelBase {
                               int64_t n_bytes_total, int64_t n_bytes_net,
                               bool coalesced);
 };
+
+// Given an element type and whether the read is coalesced, returns the
+// utilization rate of the HBM bandwidth.
+//
+// TODO(b/332714755): to avoid interfering with the cost model as it exists
+// right now, this duplicates pre-existing logic and doesn't take into account
+// how much of the memory access is actually useful and just assumes the worst
+// possible utilization if the read is uncoalesced.
+double GetCoalescingUtilizationRate(
+    PrimitiveType element_type, const se::DeviceDescription& gpu_device_info,
+    bool coalesced);
 
 }  // namespace gpu
 }  // namespace xla

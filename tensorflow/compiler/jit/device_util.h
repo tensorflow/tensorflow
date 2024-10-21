@@ -149,7 +149,8 @@ class DeviceInfoCache {
 }  // namespace jit
 
 // Returns the DeviceType corresponding to 'device'.
-Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
+absl::Status DeviceNameToDeviceType(const string& device,
+                                    DeviceType* device_type);
 
 // Picks the device for which XLA should compile a cluster that contains
 // operations placed in devices in `devices`.  For instance a cluster that

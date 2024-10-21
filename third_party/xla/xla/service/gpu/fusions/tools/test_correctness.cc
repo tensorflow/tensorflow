@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/tools/test_lib.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_test_base.h"
@@ -71,7 +72,7 @@ absl::Status TestBijection(const IndexingMap& map,
   auto status = VerifyBijection(map, intervals);
   if (status.ok()) return status;
   return absl::FailedPreconditionError(
-      absl::StrCat(status.message(), " in map ", map.ToString()));
+      absl::StrCat(status.message(), " in map ", ToString(map)));
 }
 
 TEST_F(CorrectnessTest, RunAndCompare) {

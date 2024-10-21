@@ -95,7 +95,8 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
     // Find out the input fusion instructions whose only consumer is `consumer`.
     // This guarantees that fusing these candidates will never create cycles, as
     // there is no back edge.
-    if (IsInputFusibleReduction(*predecessor) &&
+    if (!predecessor->IsCustomFusion() &&
+        IsInputFusibleReduction(*predecessor) &&
         IsConsumerTheOnlyNonRootUser(*predecessor, *consumer)) {
       if (fusion_instr_set.insert(predecessor).second) {
         fusion_instrs.push_back(predecessor);

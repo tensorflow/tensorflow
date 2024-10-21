@@ -86,6 +86,11 @@ class HloInstructionSequence {
     id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
   }
 
+  bool contains(const HloInstruction* inst) const {
+    return absl::c_find(instruction_sequence_, inst) !=
+           instruction_sequence_.end();
+  }
+
   // Clears the sequence of all instructions.
   void clear() {
     instruction_sequence_.clear();

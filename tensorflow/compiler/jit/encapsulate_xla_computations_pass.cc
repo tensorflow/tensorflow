@@ -71,7 +71,7 @@ bool is_guaranteed_constant(const Node& n) {
 }
 
 // Finds the `index` of an _Arg or _Retval node.
-Status GetIndexAttr(const Node& n, int num_args, int* index) {
+absl::Status GetIndexAttr(const Node& n, int num_args, int* index) {
   TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
@@ -111,11 +111,10 @@ void AddControlOutputs(const Node& node, absl::flat_hash_set<Node*>* deps) {
 // of the arguments.
 //
 // TODO(b/113166435): Ordering constraints on XlaLaunch op can be relaxed.
-Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
-                       std::unique_ptr<Graph>* graph_ptr,
-                       std::vector<int>* input_permutation,
-                       std::vector<int>* output_permutation,
-                       NodeDef* call_def) {
+absl::Status RewriteSubgraph(
+    const std::vector<OutputTensor>& arg_source_tensors,
+    std::unique_ptr<Graph>* graph_ptr, std::vector<int>* input_permutation,
+    std::vector<int>* output_permutation, NodeDef* call_def) {
   Graph* graph = graph_ptr->get();
   const int num_args = input_permutation->size();
   const int num_retvals = output_permutation->size();
@@ -194,7 +193,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
 }  // namespace
 
-/*static*/ Status EncapsulateXlaComputationsPass::Encapsulate(
+/*static*/ absl::Status EncapsulateXlaComputationsPass::Encapsulate(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
   // Check for undeclared outputs before Encapsulation, so we can give a better
   // error message.
@@ -226,7 +225,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   return absl::OkStatus();
 }
 
-/*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+/*static*/ absl::Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph,
     const std::function<absl::StatusOr<bool>(const Node&)>& is_xla_launch_node,
     const std::function<absl::StatusOr<XlaFunctionInfo>(const Node&)>&
@@ -358,7 +357,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   return absl::OkStatus();
 }
 
-/*static*/ Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
+/*static*/ absl::Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph) {
   const auto is_xla_launch_node = [](const Node& node) -> absl::StatusOr<bool> {
     const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
@@ -377,7 +376,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
                            /*add_edges_to_output_of_downstream_nodes=*/true);
 }
 
-Status EncapsulateXlaComputationsPass::Run(
+absl::Status EncapsulateXlaComputationsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateXlaComputations(): "
           << DumpGraphToFile("encapsulate_xla_computations_before",

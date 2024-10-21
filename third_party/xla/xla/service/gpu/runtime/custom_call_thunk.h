@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_RUNTIME_CUSTOM_CALL_THUNK_H_
 
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -77,17 +76,17 @@ class CustomCallThunk : public Thunk {
     Shape shape;
   };
 
-  using Attribute = ffi::CallFrameBuilder::FlatAttribute;
-  using AttributesMap = ffi::CallFrameBuilder::FlatAttributesMap;
+  using Attribute = ffi::CallFrameBuilder::Attribute;
+  using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
-      ThunkInfo thunk_info, CustomCallTarget call_target,
-      std::vector<std::optional<Slice>> operands,
+      ThunkInfo thunk_info, std::string target_name,
+      CustomCallTarget call_target, std::vector<std::optional<Slice>> operands,
       std::vector<std::optional<Slice>> results, const std::string& opaque);
 
   static absl::StatusOr<std::unique_ptr<CustomCallThunk>> Create(
-      ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
-      std::vector<std::optional<Slice>> operands,
+      ThunkInfo thunk_info, std::string target_name,
+      XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
       std::vector<std::optional<Slice>> results, AttributesMap attributes,
       const HloComputation* called_computation);
 
@@ -96,20 +95,27 @@ class CustomCallThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  const CustomCallTarget& call_target() const { return call_target_; }
+  const std::string& target_name() const { return target_name_; }
+  CustomCallTarget call_target() const { return call_target_; }
+  std::optional<XLA_FFI_Handler_Bundle> bundle() const { return bundle_; }
+  const AttributesMap& attributes() const { return attributes_; }
+
   const std::vector<std::optional<Slice>>& operands() const {
     return operands_;
   }
   const std::vector<std::optional<Slice>>& results() const { return results_; }
+
   absl::string_view opaque() const { return opaque_; }
 
  private:
-  CustomCallThunk(ThunkInfo thunk_info, CustomCallTarget call_target,
+  CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
+                  CustomCallTarget call_target,
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
                   const std::string& opaque);
 
-  CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler_Bundle bundle,
+  CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
+                  XLA_FFI_Handler_Bundle bundle,
                   std::vector<std::optional<Slice>> operands,
                   std::vector<std::optional<Slice>> results,
                   AttributesMap attributes,
@@ -123,6 +129,8 @@ class CustomCallThunk : public Thunk {
                                  se::Stream* stream,
                                  const ffi::ExecutionContext* execution_context,
                                  const BufferAllocations* buffer_allocations);
+
+  std::string target_name_;
 
   std::vector<std::optional<Slice>> operands_;
   std::vector<std::optional<Slice>> results_;

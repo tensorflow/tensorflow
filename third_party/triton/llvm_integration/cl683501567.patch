@@ -1,0 +1,13 @@
+
+--- a/lib/Target/LLVMIR/LLVMDIScope.cpp	2024-09-16 13:44:40.000000000 -0700
++++ b/lib/Target/LLVMIR/LLVMDIScope.cpp	2024-10-08 22:38:50.000000000 -0700
+@@ -104,7 +104,8 @@
+     auto subprogramAttr = LLVM::DISubprogramAttr::get(
+         context, distinctId, compileUnitAttr, fileAttr, funcNameAttr,
+         funcNameAttr, fileAttr, /*line=*/line, /*scopeline=*/line,
+-        subprogramFlags, subroutineTypeAttr, /*retainNodes=*/{});
++        subprogramFlags, subroutineTypeAttr, /*retainNodes=*/{},
++        /*annotations=*/{});
+     funcOp->setLoc(FusedLoc::get(context, {loc}, subprogramAttr));
+   }
+ 

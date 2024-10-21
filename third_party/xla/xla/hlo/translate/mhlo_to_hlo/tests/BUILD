@@ -12,6 +12,7 @@ lit_test_suite(
         [
             "add.mlir",
             "attributes.mlir",
+            "call.mlir",
             "case.mlir",
             "composite.mlir",
             "dynamic.mlir",
@@ -23,6 +24,7 @@ lit_test_suite(
             "export_large_constants.mlir",
             "export_replicas.mlir",
             "frontend_attributes.mlir",
+            "function.mlir",
             "fusion.mlir",
             "if.mlir",
             "input_output_aliasing.mlir",

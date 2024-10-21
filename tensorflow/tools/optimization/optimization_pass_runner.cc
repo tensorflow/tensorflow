@@ -52,11 +52,11 @@ class FakeDevice : public Device {
       : Device(nullptr, device_attributes) {}
 
  public:
-  Status Sync() override;
+  absl::Status Sync() override;
   static std::unique_ptr<Device> Make(const string& name, const string& type);
 };
 
-Status FakeDevice::Sync() {
+absl::Status FakeDevice::Sync() {
   return errors::Unimplemented("FakeDevice::Sync()");
 }
 
@@ -68,8 +68,8 @@ std::unique_ptr<Device> FakeDevice::Make(const string& name,
   return std::unique_ptr<Device>(new FakeDevice(device_attributes));
 }
 
-Status FindPassWithName(absl::string_view name,
-                        GraphOptimizationPass** result) {
+absl::Status FindPassWithName(absl::string_view name,
+                              GraphOptimizationPass** result) {
   *result = nullptr;
   // Run the optimization pass specified by the command line flag.
   for (const auto& groups_and_passes :
@@ -93,8 +93,8 @@ Status FindPassWithName(absl::string_view name,
 }
 }  // namespace
 
-Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
-                                   GraphDef input, GraphDef* result) {
+absl::Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
+                                         GraphDef input, GraphDef* result) {
   auto session_options = std::make_unique<SessionOptions>();
   session_options->config.mutable_graph_options()
       ->mutable_optimizer_options()
@@ -131,13 +131,14 @@ Status OptimizationPassRunner::Run(absl::string_view pass_to_run,
   return absl::OkStatus();
 }
 
-Status OptimizationPassRunner::SetJitLevel(
+absl::Status OptimizationPassRunner::SetJitLevel(
     OptimizerOptions::GlobalJitLevel jit_level) {
   jit_level_ = jit_level;
   return absl::OkStatus();
 }
 
-Status OptimizationPassRunner::AddDevices(absl::string_view type, int count) {
+absl::Status OptimizationPassRunner::AddDevices(absl::string_view type,
+                                                int count) {
   for (int i = 0; i < count; i++) {
     devices_.push_back(FakeDevice::Make(
         absl::StrCat("/job:localhost/replica:0/task:0/device:", type, ":", i),

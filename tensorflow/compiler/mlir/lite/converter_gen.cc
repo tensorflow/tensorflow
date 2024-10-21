@@ -102,7 +102,7 @@ static int HasOptions(const Record &def) {
 }
 
 static void EmitOptionBuilders(const RecordKeeper &record_keeper,
-                               const std::vector<Record *> &defs,
+                               const std::vector<const Record *> &defs,
                                raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -130,7 +130,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     mlir::tblgen::Operator op(*def);
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         // This binds the name of the attribute in the TD file with the name
@@ -188,7 +188,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
 // arguments that depend on op definitions should be auto-generated and then
 // operator should be built by the caller because it does not require
 // auto-generation.
-static void EmitOperatorBuilders(const std::vector<Record *> &defs,
+static void EmitOperatorBuilders(const std::vector<const Record *> &defs,
                                  raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -276,7 +276,7 @@ static inline std::string GetOperatorName(const Record &def) {
 //
 // TODO(hinsu): Consider converting this to a static constant associative
 // container instead of a series of if conditions, if required.
-static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
+static void EmitGetBuiltinOpCode(const std::vector<const Record *> &defs,
                                  raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -306,7 +306,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
 //   return {0, 0};
 // }
 static void EmitOperandNumbers(const RecordKeeper &record_keeper,
-                               const std::vector<Record *> &defs,
+                               const std::vector<const Record *> &defs,
                                raw_ostream *ostream) {
   raw_ostream &os = *ostream;
   const auto attr_type = record_keeper.getClass("Attr");
@@ -352,7 +352,7 @@ static void EmitOperandNumbers(const RecordKeeper &record_keeper,
 //       const std::vector<int32_t>& intermediates,
 //       flatbuffers::FlatBufferBuilder *fbb,
 //       std::optional<int> debug_metadata_index);
-static void EmitBuildOperator(const std::vector<Record *> &defs,
+static void EmitBuildOperator(const std::vector<const Record *> &defs,
                               raw_ostream *ostream) {
   raw_ostream &os = *ostream;
 
@@ -391,10 +391,9 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
 //
 // where id is an empty string if builtin_options_id is 1, or builtin_options_id
 // otherwise.
-static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
-                                           const std::vector<Record *> &defs,
-                                           raw_ostream *ostream,
-                                           const int builtin_options_id) {
+static void EmitBuiltinOptionsToAttributes(
+    const RecordKeeper &record_keeper, const std::vector<const Record *> &defs,
+    raw_ostream *ostream, const int builtin_options_id) {
   raw_ostream &os = *ostream;
 
   const std::string builtin_options_suffix = [&] {
@@ -434,7 +433,7 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
     auto *arg_values = def->getValueAsDag("arguments");
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         StringRef arg_name = arg_values->getArgNameStr(i);
@@ -465,11 +464,11 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
-static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
+static bool OperatorWritersMain(raw_ostream &os, const RecordKeeper &records) {
   emitSourceFileHeader("MLIR TFLite FlatBuffer Builders", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<Record *> defs = records.getAllDerivedDefinitions("TFL_Op");
+  std::vector<const Record *> defs = records.getAllDerivedDefinitions("TFL_Op");
   llvm::sort(defs, LessRecord());
 
   for (const auto *def : defs) {
@@ -504,7 +503,7 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
 }
 
 static void GenOperandResultVerifier(raw_ostream &os,
-                                     llvm::ArrayRef<llvm::Init *> values,
+                                     llvm::ArrayRef<const llvm::Init *> values,
                                      StringRef valueKind) {
   mlir::tblgen::FmtContext fctx;
 
@@ -552,11 +551,12 @@ static void GenOperandResultVerifier(raw_ostream &os,
 }
 
 // NOLINTNEXTLINE
-static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
+static bool RuntimeVerifierWriterMain(raw_ostream &os,
+                                      const RecordKeeper &records) {
   emitSourceFileHeader("MLIR TFLite Runtime Verifiers", os);
 
   // Retrieve all the definitions derived from TFL_Op and sort by record name.
-  std::vector<Record *> defs = records.getAllDerivedDefinitions("Op");
+  std::vector<const Record *> defs = records.getAllDerivedDefinitions("Op");
   llvm::sort(defs, LessRecord());
 
   // Iterate through all the ops defined.

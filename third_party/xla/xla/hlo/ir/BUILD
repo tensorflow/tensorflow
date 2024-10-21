@@ -77,10 +77,10 @@ cc_library(
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/parser:hlo_lexer",
         "//xla/service:compilation_environments",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:hlo_lexer",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:mapped_ptr_container_sorter",
@@ -111,6 +111,21 @@ cc_library(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_module_test",
+    srcs = ["hlo_module_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/hash",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -166,28 +181,21 @@ cc_library(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.
 cc_library(
     name = "hlo_reachability",
-    srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
-    deps = [
-        ":hlo",
-        "//xla:types",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:span",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_reachability"],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability
+# instead.
 cc_library(
     name = "hlo_dfs_reachability",
-    srcs = ["hlo_dfs_reachability.cc"],
     hdrs = ["hlo_dfs_reachability.h"],
-    deps = [
-        ":hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@llvm-project//llvm:Support",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_dfs_reachability"],
 )
 
 cc_library(

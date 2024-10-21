@@ -243,6 +243,6 @@ tf_cc_fuzz_test(
     deps = [
         "@local_tsl//tsl/platform:env",
         "@local_xla//xla:text_literal_reader",
-        "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/hlo/parser:hlo_parser",
     ],
 )

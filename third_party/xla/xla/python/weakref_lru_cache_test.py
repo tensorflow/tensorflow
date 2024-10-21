@@ -15,6 +15,7 @@
 
 import threading
 import time
+import weakref
 
 from absl.testing import absltest
 
@@ -111,6 +112,19 @@ class WeakrefLRUCacheTest(absltest.TestCase):
     cache(wrkey, "arg2")
     self.assertLen(cache.cache_keys(), 2)
 
+  def testNonWeakreferenceableKey(self):
+    class NonWRKey:
+      __slots__ = ()
+
+    non_wr_key = NonWRKey()
+    with self.assertRaises(TypeError):
+      weakref.ref(non_wr_key)
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x: 2048)
+    for _ in range(100):
+      with self.assertRaises(TypeError):
+        cache(non_wr_key)
+
   def testCrashingKey(self):
     class WRKey:
       pass
@@ -145,6 +159,29 @@ class WeakrefLRUCacheTest(absltest.TestCase):
         repr(cache.cache_info()),
         "WeakrefLRUCache(hits=5, misses=10, maxsize=2048, currsize=10)",
     )
+
+  def testGCKeys(self):
+    class WRKey:
+
+      def __init__(self, x):
+        self.x = x
+
+      def __eq__(self, other):
+        return self.x == other.x
+
+      def __hash__(self):
+        return hash(self.x)
+
+    cache = xla_client.weakref_lru_cache(lambda: None, lambda x, y: y, 2048)
+    keys = [WRKey(i) for i in range(10)]
+    for i in range(10):
+      cache(keys[i], i)
+
+    # Delete some keys, to exercise the weakref callback behavior.
+    del keys[::2]
+
+    for key in keys:
+      cache(key, 7)
 
 
 if __name__ == "__main__":

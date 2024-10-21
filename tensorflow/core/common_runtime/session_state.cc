@@ -23,7 +23,7 @@ namespace tensorflow {
 // kTensorHandleResourceTypeName.
 const char* SessionState::kTensorHandleResourceTypeName = "TensorHandle";
 
-Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
+absl::Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
   mutex_lock l(state_lock_);
   auto it = tensors_.find(handle);
   if (it == tensors_.end()) {
@@ -34,7 +34,8 @@ Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
   return absl::OkStatus();
 }
 
-Status SessionState::AddTensor(const string& handle, const Tensor& tensor) {
+absl::Status SessionState::AddTensor(const string& handle,
+                                     const Tensor& tensor) {
   mutex_lock l(state_lock_);
   if (!tensors_.insert({handle, tensor}).second) {
     return errors::InvalidArgument("Failed to add a tensor with handle '",
@@ -43,7 +44,7 @@ Status SessionState::AddTensor(const string& handle, const Tensor& tensor) {
   return absl::OkStatus();
 }
 
-Status SessionState::DeleteTensor(const string& handle) {
+absl::Status SessionState::DeleteTensor(const string& handle) {
   mutex_lock l(state_lock_);
   if (tensors_.erase(handle) == 0) {
     return errors::InvalidArgument("Failed to delete a tensor with handle '",
@@ -57,7 +58,8 @@ int64_t SessionState::GetNewId() {
   return tensor_id_++;
 }
 
-Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
+absl::Status TensorStore::AddTensor(const string& name,
+                                    const TensorAndKey& tk) {
   mutex_lock l(lock_);
   if (!tensors_.insert({name, tk}).second) {
     return errors::InvalidArgument("Failed to add a tensor with name '", name,
@@ -67,8 +69,8 @@ Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
   return absl::OkStatus();
 }
 
-Status TensorStore::SaveTensors(const std::vector<string>& output_names,
-                                SessionState* session_state) {
+absl::Status TensorStore::SaveTensors(const std::vector<string>& output_names,
+                                      SessionState* session_state) {
   mutex_lock l(lock_);
   if (!tensors_.empty()) {
     // Save only the tensors in output_names in the session.

@@ -745,8 +745,9 @@ mlir::LogicalResult BuildOuterMainFunc(
   return mlir::success();
 }
 
-Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
-                            std::vector<ExpandedResults>& expanded_results) {
+absl::Status ExtractResultLayouts(
+    mlir::Operation* op, mlir::func::ReturnOp return_op,
+    std::vector<ExpandedResults>& expanded_results) {
   if (!return_op || (return_op.getNumOperands() == 0)) {
     return absl::OkStatus();
   }
@@ -838,7 +839,7 @@ struct DTensorMultiDeviceExpansion
         return_op ? return_op->getNumOperands() : 0);
     for (const mlir::TF::StatefulPartitionedCallOp& stateful_call_op :
          stateful_call_ops) {
-      const Status status =
+      const absl::Status status =
           ExtractResultLayouts(stateful_call_op, return_op, expanded_results);
       const StatusOr<std::optional<Mesh>> mesh =
           status.ok() ? ExtractDeviceMeshFromOp(stateful_call_op) : status;

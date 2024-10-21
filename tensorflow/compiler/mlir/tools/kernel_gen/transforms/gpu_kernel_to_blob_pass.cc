@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/platform/cuda_libdevice_path.h"
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"

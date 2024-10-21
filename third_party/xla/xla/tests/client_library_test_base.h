@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/array4d.h"
 #include "xla/client/client_library.h"
 #include "xla/client/global_data.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -56,6 +56,20 @@ std::vector<TestCase> ExpandUseBfloat16(
     for (const auto& spec : specs) {
       expanded.push_back(spec);
       expanded.back().use_bfloat16 = use_bfloat16;
+    }
+  }
+  return expanded;
+}
+
+template <typename TestCase>
+std::vector<TestCase> ExpandTestType(
+    absl::Span<const PrimitiveType> test_type_params,
+    absl::Span<const TestCase> specs) {
+  std::vector<TestCase> expanded;
+  for (const PrimitiveType test_type : test_type_params) {
+    for (const auto& spec : specs) {
+      expanded.push_back(spec);
+      expanded.back().test_type = test_type;
     }
   }
   return expanded;
@@ -236,9 +250,8 @@ class ClientLibraryTestBase : public ::testing::Test {
                          absl::Span<GlobalData* const> arguments,
                          ErrorSpec error);
   // Create scalar operations for use in reductions.
-  XlaComputation CreateScalarRelu();
+  XlaComputation CreateScalarReluF32();
   XlaComputation CreateScalarMax();
-  XlaComputation CreateScalarReluSensitivity();
 
   // Special case convenience functions for creating filled arrays.
 
@@ -277,7 +290,7 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Creates a parameter instruction, transfers the literal for the parameter to
   // server, then stores into "data_handle" the global handle for that
   // parameter. When the test_type is bfloat16 but the literal has F32 elements,
-  // the literal will be converted to BF16 before being transferred.
+  // the literal will be converted to test_type_ before being transferred.
   absl::StatusOr<std::unique_ptr<GlobalData>> CreateParameterAndTransferLiteral(
       int64_t parameter_number, const Literal& literal, const std::string& name,
       XlaBuilder* builder, XlaOp* data_handle);
@@ -304,7 +317,7 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // Creates a constant instruction with the given literal. When the test_type
   // is bfloat16 but the literal has F32 elements, the literal will be converted
-  // to BF16 before being transferred.
+  // to test_type_ before being transferred.
   XlaOp CreateConstantFromLiteral(const Literal& literal, XlaBuilder* builder);
 
   // Creates a constant instruction with the given array. When the test_type is
@@ -417,8 +430,8 @@ class ClientLibraryTestBase : public ::testing::Test {
   absl::StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
       XlaBuilder* builder, absl::Span<const Literal> arguments);
 
-  // Converts an f32 literal to bf16 if test_type is BF16.
-  Literal MaybeConvertLiteralToBfloat16(const Literal& literal);
+  // Converts a literal to the test_type if the literal's type is F32.
+  Literal MaybeConvertLiteralToTestType(const Literal& literal);
 
   LocalClient* client_;
   LocalClient* ref_client_;  // To compute reference result.
@@ -439,10 +452,11 @@ class ClientLibraryTestBase : public ::testing::Test {
           verify_output,
       const Shape* output_with_layout = nullptr);
 
-  // Converts an f32 shape to bf16 if use_bfloat16_ is true.
-  Shape MaybeConvertShapeToBfloat16(const Shape& shape);
+  // Converts an f32 shape to test_type_.
+  Shape MaybeConvertShapeToTestType(const Shape& shape);
 
-  // Type to use when running tests.
+  // Type to use when running tests. By default, we use F32 for historical
+  // reasons and we rely on the underlying tests to change it.
   PrimitiveType test_type_ = F32;
 
   // Arguments to be passed to the computation when it runs.
@@ -584,9 +598,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
     NativeT value, int64_t parameter_number, const std::string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR0(value);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
@@ -597,9 +609,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
     absl::Span<const NativeT> values, int64_t parameter_number,
     const std::string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR1(values);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
@@ -610,9 +620,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const Array2D<NativeT>& array_2d, int64_t parameter_number,
     const std::string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR2FromArray2D(array_2d);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
@@ -623,9 +631,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const Array3D<NativeT>& array_3d, int64_t parameter_number,
     const std::string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR3FromArray3D(array_3d);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
@@ -636,9 +642,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
     const Array4D<NativeT>& array_4d, int64_t parameter_number,
     const std::string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateR4FromArray4D(array_4d);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
@@ -649,9 +653,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateParameter(
     const Array<NativeT>& array, int64_t parameter_number,
     const std::string& name, XlaBuilder* builder, XlaOp* data_handle) {
   Literal literal = LiteralUtil::CreateFromArray(array);
-  if (use_bfloat16() && literal.shape().element_type() == F32) {
-    literal = LiteralUtil::ConvertF32ToBF16(literal);
-  }
+  literal = MaybeConvertLiteralToTestType(literal);
   std::unique_ptr<GlobalData> data = client_->TransferToServer(literal).value();
   *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;

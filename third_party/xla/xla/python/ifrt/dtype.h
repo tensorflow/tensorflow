@@ -78,13 +78,15 @@ class DType {
     // dtype will have empty dimensions.
     kToken = 17,
 
+    kF8E3M4 = 29,
+    kF8E4M3 = 28,
     kF8E4M3FN = 20,
     kF8E4M3B11FNUZ = 23,
     kF8E4M3FNUZ = 25,
     kF8E5M2 = 19,
     kF8E5M2FNUZ = 24,
 
-    // Next = 26
+    // Next = 30
 
     // Variable-length string represented as raw bytes, as in `bytes` in Python,
     // i.e., no encoding enforcement. String is not support in XLA. DType.Kind
@@ -125,7 +127,13 @@ class DType {
   // Returns a `DTypeProto` representation.
   DTypeProto ToProto() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DType& dtype) {
+    sink.Append(dtype.DebugString());
+  }
 
  private:
   Kind kind_;

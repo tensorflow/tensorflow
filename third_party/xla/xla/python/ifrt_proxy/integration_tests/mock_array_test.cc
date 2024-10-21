@@ -124,7 +124,8 @@ class MockArrayTest : public testing::Test {
     CpuClientOptions options;
     options.asynchronous = true;
     options.cpu_device_count = 2;
-    TF_ASSIGN_OR_RETURN(auto tfrt_cpu_client, xla::GetTfrtCpuClient(options));
+    TF_ASSIGN_OR_RETURN(auto tfrt_cpu_client,
+                        xla::GetTfrtCpuClient(std::move(options)));
     auto mock_backend = std::make_unique<MockClient>(
         /*delegate=*/xla::ifrt::PjRtClient::Create(std::move(tfrt_cpu_client)));
 

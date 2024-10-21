@@ -31,7 +31,7 @@ extern const char* const kCompositeDeviceType;
 // op on this virtial device.
 class CompositeDevice : public Device {
  public:
-  Status Sync() override {
+  absl::Status Sync() override {
     return errors::Internal(
         "Sync() should never been invoked on CompositeDevice.");
   }
@@ -46,12 +46,12 @@ class CompositeDevice : public Device {
   // CPU.
   static std::unique_ptr<CompositeDevice> MakeDevice(
       const std::vector<string>& underlying_devices, const int unique_device_id,
-      const DeviceNameUtils::ParsedName& host_name, Status* status);
+      const DeviceNameUtils::ParsedName& host_name, absl::Status* status);
 
   // Helper for creating a CompositeDevice with the given device name.
   static std::unique_ptr<CompositeDevice> MakeDevice(
       const std::vector<string>& underlying_devices, const string& device_name,
-      Status* status);
+      absl::Status* status);
 
   bool IsRemoteCallAllowed() const override { return false; }
 

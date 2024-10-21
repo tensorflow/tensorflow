@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/Location.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
 
@@ -43,14 +46,24 @@ static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloToStablehloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
+  if (!flatten_computation_args_result.getValue() ||
+      !import_all_computations.getValue()) {
+    mlir::emitWarning(mlir::UnknownLoc::get(context),
+                      "HLO => StableHLO requires flattened_args and "
+                      "import_all_computations to be set to true.");
+  }
+  return xla::HloToStablehloTranslateFunction(input, context);
 }
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloTextToStablehloTranslateFunction(
-      input, context, import_all_computations, flatten_computation_args_result);
+  if (!flatten_computation_args_result.getValue() ||
+      !import_all_computations.getValue()) {
+    mlir::emitWarning(mlir::UnknownLoc::get(context),
+                      "HLO => StableHLO requires flattened_args and "
+                      "import_all_computations to be set to true.");
+  }
+  return xla::HloTextToStablehloTranslateFunction(input, context);
 }
 
 static mlir::TranslateToMLIRRegistration HloToMlirHloTranslateRegistration(

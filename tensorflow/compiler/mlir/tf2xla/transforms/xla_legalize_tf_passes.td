@@ -50,7 +50,7 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
     "chlo::ChloDialect",
     "func::FuncDialect",
     "mhlo::MhloDialect",
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
     "shape::ShapeDialect",
     "sparse_tensor::SparseTensorDialect",
     "stablehlo::StablehloDialect"

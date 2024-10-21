@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -47,7 +48,13 @@ struct ArraySpec {
   // Returns a `ArraySpecProto` representation.
   absl::StatusOr<ArraySpecProto> ToProto() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ArraySpec& array_spec) {
+    sink.Append(array_spec.DebugString());
+  }
 };
 
 }  // namespace ifrt

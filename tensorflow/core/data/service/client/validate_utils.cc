@@ -28,7 +28,8 @@ namespace data {
 namespace {
 
 // Validates local worker related parameters.
-Status ValidateLocalWorkers(const DataServiceParams& data_service_params) {
+absl::Status ValidateLocalWorkers(
+    const DataServiceParams& data_service_params) {
   if (data_service_params.target_workers != TARGET_WORKERS_LOCAL) {
     return absl::OkStatus();
   }
@@ -58,7 +59,8 @@ Status ValidateLocalWorkers(const DataServiceParams& data_service_params) {
 }
 
 // Validates cross-trainer cache related parameters.
-Status ValidateCrossTrainerCache(const DataServiceParams& data_service_params) {
+absl::Status ValidateCrossTrainerCache(
+    const DataServiceParams& data_service_params) {
   if (!data_service_params.cross_trainer_cache_options.has_value()) {
     return absl::OkStatus();
   }
@@ -88,7 +90,8 @@ Status ValidateCrossTrainerCache(const DataServiceParams& data_service_params) {
 }
 }  // namespace
 
-Status ValidateDataServiceParams(const DataServiceParams& data_service_params) {
+absl::Status ValidateDataServiceParams(
+    const DataServiceParams& data_service_params) {
   TF_RETURN_IF_ERROR(ValidateLocalWorkers(data_service_params));
   TF_RETURN_IF_ERROR(ValidateCrossTrainerCache(data_service_params));
   return absl::OkStatus();

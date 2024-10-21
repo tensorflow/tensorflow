@@ -77,6 +77,11 @@ message GPUOptions {
   //    name "/device:GPU:<id>") are also called "TF GPU id"s. Please
   //    refer to third_party/tensorflow/core/common_runtime/gpu/gpu_id.h
   //    for more information.
+  // 3. The visible_device_list is also used for PluggableDevice. And
+  //    different types of PluggableDevices share this field. In that case,
+  //    the pluggable_device_type is used to distinguish them, making the
+  //    visible_device_list a list of <pluggable_device_type>:<device_index>,
+  //    e.g. "PluggableDeviceA:0,PluggableDeviceA:1,PluggableDeviceB:0".
   string visible_device_list = 5;
 
   // In the event polling loop sleep this many microseconds between

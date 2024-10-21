@@ -87,7 +87,7 @@ class HloPassPipeline : public HloPassInterface {
       HloModuleGroup* module_group,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  bool IsPassPipeline() override { return true; }
+  bool IsPassPipeline() const override { return true; }
 
   // Return size of passes_.
   int PassesSize() { return passes_.size(); }

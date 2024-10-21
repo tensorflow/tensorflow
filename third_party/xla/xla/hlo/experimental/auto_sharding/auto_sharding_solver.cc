@@ -78,13 +78,7 @@ constexpr double kMaxCostValue = 1e18;
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && cost == other.cost &&
-         peak_times == other.peak_times;
-}
-
-bool AutoShardingSolverResult::operator==(
-    const AutoShardingSolverResult& other) const {
-  return status == other.status &&
-         skip_auto_sharding == other.skip_auto_sharding;
+         is_optimal == other.is_optimal && peak_times == other.peak_times;
 }
 
 void PrintLargestInstructions(
@@ -143,7 +137,7 @@ void PrintLargestInstructions(
   }
 }
 
-AutoShardingSolverResult SolveAndExtractSolution(
+absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
@@ -399,7 +393,7 @@ void AddMemoryTerms(
 //    can be a few (usually < 10) edges in the problem with negative costs. This
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
-AutoShardingSolverResult CallORToolsSolver(
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& unscaled_request) {
   const absl::Time start_time = absl::Now();
   const AutoShardingSolverRequest& request = ScaleRequest(unscaled_request);
@@ -420,13 +414,16 @@ AutoShardingSolverResult CallORToolsSolver(
     // Set random_seed, interleave_search and share_binary_clauses for
     // determinism, mip_max_bound (to handle large costs), and num_workers for
     // parallelism.
-    solver_parameter_str =
-        request.deterministic_mode()
-            ? absl::StrCat(
-                  "share_binary_clauses:false,random_seed:1,interleave_"
-                  "search:true,num_workers:",
-                  num_workers)
-            : absl::StrCat("num_workers:", num_workers);
+    solver_parameter_str = absl::StrCat("num_workers:", num_workers);
+    if (request.deterministic_mode()) {
+      absl::StrAppend(
+          &solver_parameter_str,
+          ",share_binary_clauses:false,random_seed:1,interleave_search:true");
+    }
+    if (request.has_solver_timeout()) {
+      absl::StrAppend(&solver_parameter_str, ",max_deterministic_time:",
+                      request.solver_timeout().solver_timeout_in_seconds());
+    }
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
   // Create variables
@@ -565,8 +562,7 @@ AutoShardingSolverResult CallORToolsSolver(
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
-        return AutoShardingSolverResult(absl::InternalError(err_msg),
-                                        /*skip_auto_sharding=*/false);
+        return absl::InternalError(err_msg);
       }
     }
   }
@@ -754,11 +750,12 @@ AutoShardingSolverResult CallORToolsSolver(
       LOG(ERROR) << write_status.message();
     }
   }
-#endif
-  if (request.has_solver_timeout()) {
-    solver->SetTimeLimit(
-        absl::Seconds(request.solver_timeout().solver_timeout_in_seconds()));
+  // Invokes the solver request callback for any additional debugging.
+  bool solver_request_callback = false;
+  if (solver_request_callback) {
+    SolverRequestCallback(unscaled_request);
   }
+#endif
   if (request.enable_output()) {
     solver->EnableOutput();
   }
@@ -766,7 +763,9 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Solver parameter string: " << solver_parameter_str << "\n"
           << "Number of workers: " << num_workers << "\n"
           << "Number of threads: " << solver->GetNumThreads() << "\n"
-          << "Time limit: " << solver->time_limit() << "\n"
+          << "Time limit: "
+          << request.solver_timeout().solver_timeout_in_seconds()
+          << " seconds\n"
           << "Request valid: " << ValidateRequest(request).ok() << "\n"
           << "Aliases: " << request.aliases_size() << "\n"
           << "Unique nodes: " << unique_nodes << "\n"
@@ -778,15 +777,19 @@ AutoShardingSolverResult CallORToolsSolver(
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
           << "Deterministic mode: " << request.deterministic_mode() << "\n"
+          << "Minimize departures: " << request.minimize_departures() << "\n"
           << "Module name: " << request.module_name();
   if (request.has_max_cost()) {
     VLOG(0) << "Max cost: " << request.max_cost().coeff();
   }
+  if (request.has_max_departures()) {
+    VLOG(0) << "Max departures: " << request.max_departures().coeff();
+  }
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
                                         makespan_var, *solver);
-  if (result.status.ok()) {
+  if (result.ok()) {
     const AutoShardingEvaluation evaluation =
-        Evaluate(unscaled_request, result);
+        Evaluate(unscaled_request, *result);
     LOG(INFO) << "*** Total costs for the (unscaled) solver request ***";
     LOG(INFO) << "Total Communication Cost: "
               << evaluation.total.communication_cost
@@ -832,7 +835,7 @@ std::vector<NodeStrategyIdx> GetChosenNodeStrategy(
   return chosen_node_strategy;
 }
 
-AutoShardingSolverResult SolveAndExtractSolution(
+absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
     const std::vector<std::vector<MPVariable*>>& e,
@@ -841,6 +844,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   auto status = solver.Solve();
   LOG(INFO) << "Solver absl::Status: " << status;
 
+  bool is_optimal = false;
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
@@ -870,19 +874,20 @@ AutoShardingSolverResult SolveAndExtractSolution(
       }
     }
 #endif
-    return AutoShardingSolverResult(
-        absl::InternalError("MPSolver could not find any feasible solution."),
-        /*skip_auto_sharding=*/false);
+    return absl::InternalError(
+        "MPSolver could not find any feasible solution.");
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
-    LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
-                  "likely a bug and should be reported.";
-    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
-                                    /*skip_auto_sharding=*/false);
+    LOG(FATAL) << "The MIP fed to the solver is invalid. This is most likely a "
+                  "bug and should be reported.";
+    return absl::InternalError("Invalid MIP.");
+  } else if (status == operations_research::MPSolver::NOT_SOLVED) {
+    LOG(WARNING) << "Solver timeout; no solution was produced";
+    return absl::InternalError("Solver timed out.");
   } else if (status != operations_research::MPSolver::OPTIMAL) {
-    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
-                                    /*skip_auto_sharding=*/true);
+    LOG(WARNING) << "Solver timeout; moving forward with a suboptimal solution";
+  } else {
+    is_optimal = true;
   }
-
   // Fingerprint the model & solution (useful when checking for determinism).
   // We use TensorFlow's fingerprint library here, which differs from CP-SAT's.
   operations_research::MPModelProto model_proto;
@@ -949,9 +954,9 @@ AutoShardingSolverResult SolveAndExtractSolution(
               << request.memory_budget() / (1024 * 1024 * 1024) << " GB";
   }
   PrintLargestInstructions(chosen_node_strategy, request);
-  const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
-                                           solver.Objective().Value()};
-  return AutoShardingSolverResult(output, /*skip_auto_sharding=*/false);
+  return AutoShardingSolverOutput{.s_val = std::move(chosen_node_strategy),
+                                  .cost = solver.Objective().Value(),
+                                  .is_optimal = is_optimal};
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {
@@ -975,13 +980,13 @@ bool AutoShardingEvaluation::operator==(
 }
 
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverResult& result) {
+                                const AutoShardingSolverOutput& result) {
   const auto& c = request.computation_costs();
   const auto& d = request.communication_costs();
   const auto& r = request.resharding_costs();
   const auto& v = request.value_costs();
   const auto& p = request.departure_costs();
-  const std::vector<NodeStrategyIdx>& s_val = result.status->s_val;
+  const std::vector<NodeStrategyIdx>& s_val = result.s_val;
   const auto e_val = [&](EdgeIdx edge_idx) {
     const auto& edge = request.edges(edge_idx);
     return s_val[edge.first()] * request.s_len(edge.second()) +

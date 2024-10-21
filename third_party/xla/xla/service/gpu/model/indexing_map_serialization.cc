@@ -15,15 +15,22 @@ limitations under the License.
 
 #include "xla/service/gpu/model/indexing_map_serialization.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -43,8 +50,14 @@ namespace {
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using llvm::StringRef;
+using mlir::AffineBinaryOpExpr;
+using mlir::AffineConstantExpr;
+using mlir::AffineDimExpr;
 using mlir::AffineExpr;
+using mlir::AffineExprKind;
 using mlir::AffineMap;
+using mlir::AffineMapAttr;
+using mlir::AffineSymbolExpr;
 using mlir::ArrayRef;
 using mlir::MLIRContext;
 
@@ -282,9 +295,6 @@ Token Parser::GetNextTokenImpl() {
     if (spelling == "domain") {
       return Token{spelling, Token::Kind::kKeywordDomain};
     }
-    if (spelling == "is_simplified") {
-      return Token{spelling, Token::Kind::kKeywordIsSimplified};
-    }
     if (spelling == "in") {
       return Token{spelling, Token::Kind::kKeywordIn};
     }
@@ -376,16 +386,199 @@ bool ParseAffineExprsWithMLIR(ArrayRef<std::string> dim_var_names,
     llvm::errs() << "Failed to parse affine map: " << ss.str() << "\n";
     return false;
   }
-  mlir::AffineMap affine_map =
-      mlir::cast<mlir::AffineMapAttr>(affine_map_attr).getValue();
+  AffineMap affine_map = mlir::cast<AffineMapAttr>(affine_map_attr).getValue();
   affine_exprs = llvm::to_vector(affine_map.getResults());
   return true;
+}
+
+std::string GetVarName(int64_t id, std::string_view name,
+                       std::string_view prefix) {
+  if (!name.empty()) {
+    return std::string(name);
+  }
+  return absl::StrFormat("%s%d", prefix, id);
+}
+
+std::string GetDimVarName(int64_t dim_id, std::string_view dim_name = "") {
+  return GetVarName(dim_id, dim_name, "d");
+}
+
+std::string GetRangeVarName(int64_t range_id,
+                            std::string_view range_name = "") {
+  return GetVarName(range_id, range_name, "s");
+}
+
+std::string GetRTVarName(int64_t rt_id, std::string_view rt_name = "") {
+  return GetVarName(rt_id, rt_name, "rt");
+}
+
+std::string GetAffineSymbolName(
+    int64_t id, absl::Span<const std::string> symbol_names = {}) {
+  if (id < symbol_names.size()) {
+    const auto& name = symbol_names[id];
+    if (!name.empty()) {
+      return name;
+    }
+  }
+  return absl::StrFormat("%s%d", "s", id);
+}
+
+std::string GetAffineDimensionName(
+    int64_t id, absl::Span<const std::string> dim_names = {}) {
+  if (id < dim_names.size()) {
+    const auto& name = dim_names[id];
+    if (!name.empty()) {
+      return name;
+    }
+  }
+  return absl::StrFormat("%s%d", "d", id);
+}
+
+void PrintAffineExprImpl(const AffineExpr affine_expr,
+                         absl::Span<const std::string> dim_names,
+                         absl::Span<const std::string> symbol_names,
+                         bool add_parentheses, llvm::raw_ostream& os) {
+  const char* binopSpelling = nullptr;
+  switch (affine_expr.getKind()) {
+    case AffineExprKind::SymbolId: {
+      unsigned symbol_id =
+          mlir::cast<AffineSymbolExpr>(affine_expr).getPosition();
+      os << GetAffineSymbolName(symbol_id, symbol_names);
+      return;
+    }
+    case AffineExprKind::DimId: {
+      unsigned dim_id = mlir::cast<AffineDimExpr>(affine_expr).getPosition();
+      os << GetAffineDimensionName(dim_id, dim_names);
+      return;
+    }
+    case AffineExprKind::Constant:
+      os << mlir::cast<AffineConstantExpr>(affine_expr).getValue();
+      return;
+    case AffineExprKind::Add:
+      binopSpelling = " + ";
+      break;
+    case AffineExprKind::Mul:
+      binopSpelling = " * ";
+      break;
+    case AffineExprKind::FloorDiv:
+      binopSpelling = " floordiv ";
+      break;
+    case AffineExprKind::CeilDiv:
+      binopSpelling = " ceildiv ";
+      break;
+    case AffineExprKind::Mod:
+      binopSpelling = " mod ";
+      break;
+  }
+
+  auto binOp = mlir::cast<AffineBinaryOpExpr>(affine_expr);
+  AffineExpr lhsExpr = binOp.getLHS();
+  AffineExpr rhsExpr = binOp.getRHS();
+
+  // Handle tightly binding binary operators.
+  if (binOp.getKind() != AffineExprKind::Add) {
+    if (add_parentheses) {
+      os << '(';
+    }
+
+    // Pretty print multiplication with -1.
+    auto rhsConst = mlir::dyn_cast<AffineConstantExpr>(rhsExpr);
+    if (rhsConst && binOp.getKind() == AffineExprKind::Mul &&
+        rhsConst.getValue() == -1) {
+      os << "-";
+      PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                          /*add_parentheses=*/true, os);
+      if (add_parentheses) {
+        os << ')';
+      }
+      return;
+    }
+    PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                        /*add_parentheses=*/true, os);
+
+    os << binopSpelling;
+    PrintAffineExprImpl(rhsExpr, dim_names, symbol_names,
+                        /*add_parentheses=*/true, os);
+
+    if (add_parentheses) {
+      os << ')';
+    }
+    return;
+  }
+
+  // Print out special "pretty" forms for add.
+  if (add_parentheses) {
+    os << '(';
+  }
+
+  // Pretty print addition to a product that has a negative operand as a
+  // subtraction.
+  if (auto rhs = mlir::dyn_cast<AffineBinaryOpExpr>(rhsExpr)) {
+    if (rhs.getKind() == AffineExprKind::Mul) {
+      AffineExpr rrhsExpr = rhs.getRHS();
+      if (auto rrhs = mlir::dyn_cast<AffineConstantExpr>(rrhsExpr)) {
+        if (rrhs.getValue() == -1) {
+          PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                              /*add_parentheses=*/false, os);
+          os << " - ";
+          if (rhs.getLHS().getKind() == AffineExprKind::Add) {
+            PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                                /*add_parentheses=*/true, os);
+          } else {
+            PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                                /*add_parentheses=*/false, os);
+          }
+          if (add_parentheses) {
+            os << ')';
+          }
+          return;
+        }
+
+        if (rrhs.getValue() < -1) {
+          PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                              /*add_parentheses=*/false, os);
+          os << " - ";
+          PrintAffineExprImpl(rhs.getLHS(), dim_names, symbol_names,
+                              /*add_parentheses=*/true, os);
+          os << " * " << -rrhs.getValue();
+          if (add_parentheses) {
+            os << ')';
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  // Pretty print addition to a negative number as a subtraction.
+  if (auto rhsConst = mlir::dyn_cast<AffineConstantExpr>(rhsExpr)) {
+    if (rhsConst.getValue() < 0) {
+      PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                          /*add_parentheses=*/false, os);
+      os << " - " << -rhsConst.getValue();
+      if (add_parentheses) {
+        os << ')';
+      }
+      return;
+    }
+  }
+
+  PrintAffineExprImpl(lhsExpr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, os);
+
+  os << " + ";
+  PrintAffineExprImpl(rhsExpr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, os);
+
+  if (add_parentheses) {
+    os << ')';
+  }
 }
 
 }  // namespace
 
 std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
-                                            mlir::MLIRContext* context) {
+                                            MLIRContext* context) {
   Parser parser(input);
 
   // Parse variable names.
@@ -425,14 +618,15 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
     return std::nullopt;
   }
   // Parse dimension variables.
-  std::vector<DimVar> dim_vars;
-  for (auto& dim_name : dim_var_names) {
+  std::vector<IndexingMap::Variable> dim_vars;
+  for (const auto& [dim_id, dim_name] : llvm::enumerate(dim_var_names)) {
     std::string var_name;
     Interval interval;
     if (!parser.ParseVarName(&var_name) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse DimVar\n";
       return std::nullopt;
     }
@@ -440,53 +634,49 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
       llvm::errs() << "Dimension name mismatch\n";
       return std::nullopt;
     }
-    dim_vars.push_back(DimVar{interval});
+    if (var_name == GetDimVarName(dim_id)) {
+      var_name = "";
+    }
+    dim_vars.push_back(IndexingMap::Variable{interval, var_name});
   }
   // Parse range variables.
-  std::vector<RangeVar> range_vars;
-  for (auto& symbol_var : symbol_var_names) {
+  std::vector<IndexingMap::Variable> range_vars;
+  for (const auto& [index, range_name] : llvm::enumerate(symbol_var_names)) {
     std::string var_name;
     Interval interval;
     if (!parser.ParseVarName(&var_name) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse RangeVar\n";
       return std::nullopt;
     }
-    if (var_name != symbol_var) {
+    if (var_name != range_name) {
       llvm::errs() << "Symbol name mismatch\n";
       return std::nullopt;
     }
-    range_vars.push_back(RangeVar{interval});
+    if (var_name == GetRangeVarName(index)) {
+      var_name = "";
+    }
+    range_vars.push_back(IndexingMap::Variable{interval, var_name});
   }
   // Parse constraints.
   SmallVector<Interval> constraint_bounds;
-  while (!parser.ConsumeToken(Token::Kind::kKeywordIsSimplified)) {
+  while (!parser.ConsumeToken(Token::Kind::kEOF)) {
     std::string affine_expr_str;
     Interval interval;
     if (!parser.ParseAffineExprString(&affine_expr_str) ||
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
-        !parser.ConsumeToken(Token::Kind::kComma)) {
+        (parser.GetCurrentToken().kind != Token::Kind::kEOF &&
+         !parser.ConsumeToken(Token::Kind::kComma))) {
       llvm::errs() << "Failed to parse constraint\n";
       return std::nullopt;
     }
     affine_expr_strs.push_back(affine_expr_str);
     constraint_bounds.push_back(interval);
   }
-  // Parse is_simplified.
-  bool is_simplified;
-  if (!parser.ConsumeToken(Token::Kind::kColon) ||
-      !parser.ParseBool(&is_simplified)) {
-    llvm::errs() << "Failed to parse is_simplified\n";
-    return std::nullopt;
-  }
-  // Check that the input is consumed.
-  if (!parser.ConsumeToken(Token::Kind::kEOF)) {
-    return std::nullopt;
-  }
-
   // Parse affine expressions.
   SmallVector<AffineExpr> affine_exprs;
   if (!ParseAffineExprsWithMLIR(dim_var_names, symbol_var_names,
@@ -507,9 +697,161 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   }
   auto map = AffineMap::get(dim_vars.size(), range_vars.size(),
                             affine_map_results, context);
-  return IndexingMap{
-      map,         std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{},
-      constraints, is_simplified};
+  return IndexingMap{map, std::move(dim_vars), std::move(range_vars),
+                     /*rt_vars=*/{}, constraints};
+}
+
+std::string ToString(AffineExpr affine_expr,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> symbol_names) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  PrintAffineExprImpl(affine_expr, dim_names, symbol_names,
+                      /*add_parentheses=*/false, ss);
+  return s;
+}
+
+std::string ToString(AffineExpr affine_expr) {
+  return ToString(affine_expr, /*dim_names=*/{}, /*symbol_names=*/{});
+}
+
+std::ostream& operator<<(std::ostream& out, AffineExpr affine_expr) {
+  out << ToString(affine_expr);
+  return out;
+}
+
+std::string ToString(AffineMap affine_map,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> symbol_names) {
+  CHECK_EQ(dim_names.size(), affine_map.getNumDims());
+  CHECK_EQ(symbol_names.size(), affine_map.getNumSymbols());
+
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+
+  // Dimension identifiers.
+  ss << '(' << absl::StrJoin(dim_names, ", ") << ')';
+  // Symbolic identifiers.
+  if (affine_map.getNumSymbols() != 0) {
+    ss << '[' << absl::StrJoin(symbol_names, ", ") << ']';
+  }
+  // Result affine expressions.
+  ss << " -> (";
+  llvm::interleaveComma(affine_map.getResults(), ss, [&](AffineExpr expr) {
+    PrintAffineExprImpl(expr, dim_names, symbol_names,
+                        /*add_parentheses=*/false, ss);
+  });
+  ss << ')';
+  return s;
+}
+
+std::string ToString(AffineMap affine_map) {
+  int dim_count = affine_map.getNumDims();
+  SmallVector<std::string, 3> dim_names;
+  dim_names.reserve(affine_map.getNumDims());
+  for (int64_t dim_id = 0; dim_id < dim_count; ++dim_id) {
+    dim_names.push_back(GetAffineDimensionName(dim_id));
+  }
+  int symbol_count = affine_map.getNumSymbols();
+  SmallVector<std::string, 3> symbol_names;
+  symbol_names.reserve(affine_map.getNumSymbols());
+  for (int64_t symbol_id = 0; symbol_id < symbol_count; ++symbol_id) {
+    symbol_names.push_back(GetAffineSymbolName(symbol_id));
+  }
+  return ToString(affine_map, dim_names, symbol_names);
+}
+
+std::ostream& operator<<(std::ostream& out, AffineMap affine_map) {
+  out << ToString(affine_map);
+  return out;
+}
+
+std::string ToString(const IndexingMap& indexing_map,
+                     absl::Span<const std::string> dim_names,
+                     absl::Span<const std::string> range_names,
+                     absl::Span<const std::string> rt_names) {
+  std::stringstream ss;
+  if (indexing_map.IsKnownEmpty()) {
+    ss << "KNOWN EMPTY\n";
+    return ss.str();
+  }
+  const auto& dim_vars = indexing_map.GetDimVars();
+  CHECK_EQ(dim_names.size(), dim_vars.size());
+  const auto& range_vars = indexing_map.GetRangeVars();
+  CHECK_EQ(range_names.size(), range_vars.size());
+  const auto& rt_vars = indexing_map.GetRTVars();
+  CHECK_EQ(rt_names.size(), rt_vars.size());
+  SmallVector<std::string, 3> symbol_names;
+  symbol_names.reserve(range_names.size() + rt_names.size());
+  symbol_names.append(range_names.begin(), range_names.end());
+  symbol_names.append(rt_names.begin(), rt_names.end());
+  ss << ToString(indexing_map.GetAffineMap(), dim_names, symbol_names);
+  if (dim_vars.empty() && range_vars.empty() && rt_vars.empty()) {
+    return ss.str();
+  }
+  ss << ", domain: ";
+  int64_t remaining_vars_to_print =
+      dim_vars.size() + range_vars.size() + rt_vars.size();
+  for (const auto& [index, dim_var] : llvm::enumerate(dim_vars)) {
+    ss << dim_names[index] << " in " << dim_var.bounds;
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
+  }
+  for (const auto& [index, range_var] : llvm::enumerate(range_vars)) {
+    ss << symbol_names[index] << " in " << range_var.bounds;
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
+  }
+  for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
+    ss << rt_names[index] << " in " << rt_var.bounds;
+    if (--remaining_vars_to_print > 0) {
+      ss << ", ";
+    }
+  }
+  std::vector<std::string> expr_range_strings;
+  const auto& constraints = indexing_map.GetConstraints();
+  expr_range_strings.reserve(constraints.size());
+  for (const auto& [expr, range] : constraints) {
+    expr_range_strings.push_back(absl::StrCat(
+        ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+  }
+  std::sort(expr_range_strings.begin(), expr_range_strings.end());
+  if (!expr_range_strings.empty()) {
+    ss << ", " << absl::StrJoin(expr_range_strings, ", ");
+  }
+  return ss.str();
+}
+
+std::string ToString(const IndexingMap& indexing_map) {
+  // Get variable names for DimVars.
+  SmallVector<std::string, 3> dim_names;
+  dim_names.reserve(indexing_map.GetDimensionCount());
+  for (const auto& [index, dim_var] :
+       llvm::enumerate(indexing_map.GetDimVars())) {
+    dim_names.push_back(GetDimVarName(index, dim_var.name));
+  }
+  // Get variable names for RangeVars.
+  SmallVector<std::string, 3> range_names;
+  range_names.reserve(indexing_map.GetRangeVarsCount());
+  for (const auto& [index, range_var] :
+       llvm::enumerate(indexing_map.GetRangeVars())) {
+    range_names.push_back(GetRangeVarName(index, range_var.name));
+  }
+  // Get variable names for RTVars.
+  SmallVector<std::string, 3> rt_names;
+  rt_names.reserve(indexing_map.GetRTVarsCount());
+  for (const auto& [index, rt_var] :
+       llvm::enumerate(indexing_map.GetRTVars())) {
+    rt_names.push_back(GetRTVarName(index, rt_var.name));
+  }
+  return ToString(indexing_map, dim_names, range_names, rt_names);
+}
+
+std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
+  out << ToString(indexing_map);
+  return out;
 }
 
 }  // namespace gpu

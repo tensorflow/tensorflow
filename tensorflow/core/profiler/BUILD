@@ -105,10 +105,10 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "@local_tsl//tsl/profiler/utils:time_utils_impl",
         "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@local_xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )

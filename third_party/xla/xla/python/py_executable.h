@@ -227,7 +227,7 @@ class PyLoadedExecutable {
     return exec->shared_ptr_pjrt_loaded_executable();
   }
 
-  const ExecuteOptions& options() const { return options_; }
+  const ifrt::ExecuteOptions& options() const { return options_; }
   const std::optional<std::string>& fingerprint() const { return fingerprint_; }
 
   // Keep `obj` alive as long as PyLoadedExecutable.
@@ -246,7 +246,7 @@ class PyLoadedExecutable {
   std::optional<std::string> fingerprint_;
 
   // The options to pass to `executable_.Execute`.
-  ExecuteOptions options_;
+  ifrt::ExecuteOptions options_;
 
   // Python objects to keep alive as requested by user.
   std::vector<nanobind::object> keepalives_;

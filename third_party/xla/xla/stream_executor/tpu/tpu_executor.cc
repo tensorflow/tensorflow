@@ -56,13 +56,6 @@ bool TpuExecutor::SynchronizeAllActivity() {
   return ExecutorApiFn()->TpuExecutor_SynchronizeAllActivityFn(executor_);
 }
 
-absl::Status TpuExecutor::BlockHostUntilDone(Stream* stream) {
-  StatusHelper status;
-  ExecutorApiFn()->TpuExecutor_BlockHostUntilDoneFn(
-      executor_, get_stream(stream), status.c_status);
-  return status.status();
-}
-
 tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
     const {
   return tensorflow::tpu::TpuCoreLocationExternal(

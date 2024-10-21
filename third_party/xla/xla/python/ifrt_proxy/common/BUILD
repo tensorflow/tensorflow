@@ -72,6 +72,7 @@ tf_proto_library(
         "//xla/pjrt:execute_options_proto",
         "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",
+        "//xla/python/ifrt:execute_options_proto",
         "//xla/python/ifrt:remap_plan_proto",
         "//xla/python/ifrt:serdes_proto",
         "//xla/python/ifrt:shape_proto",

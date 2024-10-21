@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -102,8 +103,9 @@ class CompileTFGraphTest : public ::testing::Test {
     absl::Status compilation_status =
         tensorflow::tf2xla::v1::CompileTensorflowGraphToHlo(
             computation, metadata_proto, use_tuple_args,
-            shape_determination_fns, arg_shapes, &arg_core_mapping,
-            &per_core_arg_shapes, client, &compilation_result);
+            shape_determination_fns, arg_shapes, tsl::DeviceType("XLA_TPU_JIT"),
+            &arg_core_mapping, &per_core_arg_shapes, client,
+            &compilation_result);
 
     if (!compilation_status.ok()) return compilation_status;
 

@@ -42,7 +42,7 @@ class StructureVerifierTest : public ::testing::Test {
   std::unique_ptr<StructureVerifier> verifier_;
 };
 
-Status Scalars(shape_inference::InferenceContext* c) {
+absl::Status Scalars(shape_inference::InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
@@ -84,7 +84,7 @@ TEST_F(StructureVerifierTest, OpNotRegistered) {
       "node { name: 'input' op: 'OpNotRegistered' }"
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
-  Status status = verifier_->Verify(graph_);
+  absl::Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsNotFound(status));
   EXPECT_TRUE(absl::StrContains(status.message(), "Op type not registered"));
 }
@@ -93,7 +93,7 @@ TEST_F(StructureVerifierTest, DuplicateNodeNames) {
   SetGraph(
       "node { name: 'A' op: 'TestParams' }"
       "node { name: 'A' op: 'TestInput' }");
-  Status status = verifier_->Verify(graph_);
+  absl::Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsAlreadyExists(status));
   EXPECT_TRUE(absl::StrContains(status.message(), "Node already exists:"));
 }
@@ -103,7 +103,7 @@ TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
       "node { name: 'input' op: 'TestInput' }"
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
-  Status status = verifier_->Verify(graph_);
+  absl::Status status = verifier_->Verify(graph_);
   EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.message(), "The graph couldn't be sorted in topological order"));

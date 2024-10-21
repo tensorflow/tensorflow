@@ -55,7 +55,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+using TensorVector = absl::InlinedVector<TensorValue, 4UL>;
 
 class LoopInvariantNodeMotionOptimizer {
  public:

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
+#include "xla/tsl/profiler/utils/session_manager.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
-#include "tsl/profiler/utils/session_manager.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -47,7 +47,7 @@ namespace pywrap {
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
 using tsl::profiler::ValidateHostPortPair;
 
-tensorflow::Status Trace(
+absl::Status Trace(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
@@ -57,9 +57,9 @@ tensorflow::Status Trace(
                                            num_tracing_attempts, options);
 }
 
-tensorflow::Status Monitor(const char* service_addr, int duration_ms,
-                           int monitoring_level, bool display_timestamp,
-                           tensorflow::string* result) {
+absl::Status Monitor(const char* service_addr, int duration_ms,
+                     int monitoring_level, bool display_timestamp,
+                     tensorflow::string* result) {
   TF_RETURN_IF_ERROR(ValidateHostPortPair(service_addr));
   {
     TF_RETURN_IF_ERROR(tsl::profiler::Monitor(service_addr, duration_ms,
@@ -69,7 +69,7 @@ tensorflow::Status Monitor(const char* service_addr, int duration_ms,
   return absl::OkStatus();
 }
 
-tensorflow::Status ProfilerSessionWrapper::Start(
+absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
         options) {
@@ -79,10 +79,10 @@ tensorflow::Status ProfilerSessionWrapper::Start(
   return session_->Status();
 }
 
-tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
+absl::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
   if (session_ != nullptr) {
     tensorflow::profiler::XSpace xspace;
-    tensorflow::Status status = session_->CollectData(&xspace);
+    absl::Status status = session_->CollectData(&xspace);
     session_.reset();
     tsl::profiler::ConvertXSpaceToTraceEventsString(xspace, result);
     TF_RETURN_IF_ERROR(status);
@@ -90,12 +90,12 @@ tensorflow::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
   return absl::OkStatus();
 }
 
-tensorflow::Status ProfilerSessionWrapper::ExportToTensorBoard() {
+absl::Status ProfilerSessionWrapper::ExportToTensorBoard() {
   if (!session_ || logdir_.empty()) {
     return absl::OkStatus();
   }
   tensorflow::profiler::XSpace xspace;
-  tensorflow::Status status;
+  absl::Status status;
   status = session_->CollectData(&xspace);
   session_.reset();
   status = tsl::profiler::ExportToTensorBoard(xspace, logdir_);

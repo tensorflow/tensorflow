@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/platform_util.h"
-#include "xla/service/stream_pool.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"

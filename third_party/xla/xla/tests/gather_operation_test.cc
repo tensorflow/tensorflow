@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/array.h"
-#include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/service/service.h"
 #include "xla/status_macros.h"

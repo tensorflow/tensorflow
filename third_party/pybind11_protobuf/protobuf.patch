@@ -1,0 +1,20 @@
+diff --git a/pybind11_protobuf/BUILD b/pybind11_protobuf/BUILD
+--- a/pybind11_protobuf/BUILD	(revision 80f3440cd8fee124e077e2e47a8a17b78b451363)
++++ b/pybind11_protobuf/BUILD	(date 1714533560692)
+@@ -53,8 +53,8 @@
+         "proto_caster_impl.h",
+     ],
+     local_defines = select({
+-        ":enable_pyproto_api_setting": ["PYBIND11_PROTOBUF_ENABLE_PYPROTO_API"],
+-        "//conditions:default": [],
++        ":enable_pyproto_api_setting": ["PROTOBUF_USE_DLLS", "PYBIND11_PROTOBUF_ENABLE_PYPROTO_API"],
++        "//conditions:default": ["PROTOBUF_USE_DLLS"],
+     }),
+     deps = [
+         ":check_unknown_fields",
+@@ -95,4 +95,5 @@
+         "@com_google_absl//absl/synchronization",
+         "@com_google_protobuf//:protobuf",
+     ],
++    local_defines = ["PROTOBUF_USE_DLLS"],
+ )

@@ -261,10 +261,10 @@ func.func private @shmap_body_6(%arg0: tensor<16x8xf32>) -> (tensor<16x8xf32>) {
   return %0 : tensor<16x8xf32>
 }
 
-// CHECK-LABEL: func.func public @sorted_replicated_axes
-func.func public @sorted_replicated_axes(%arg0: tensor<16x16xf32>) -> tensor<32x4xf32> {
+// CHECK-LABEL: func.func public @sharding_with_missing_manual_axes
+func.func public @sharding_with_missing_manual_axes(%arg0: tensor<16x16xf32>) -> tensor<32x4xf32> {
   // CHECK:          %0 = sdy.manual_computation(%arg0)
-  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_2, [{"b"}, {"a"}], replicated={"c"}>] out_shardings=[<@mesh_2, [{"a"}, {}], replicated={"b", "c"}>] manual_axes={"a", "b", "c"} (%arg1: tensor<8x4xf32>) {
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh_2, [{"b"}, {"a"}]>] out_shardings=[<@mesh_2, [{"a"}, {}], replicated={"c"}>] manual_axes={"a", "b", "c"} (%arg1: tensor<8x4xf32>) {
   // CHECK-NEXT:       %1 = mhlo.add %arg1, %arg1 : tensor<8x4xf32>
   // CHECK-NEXT:       sdy.return %1 : tensor<8x4xf32>
   // CHECK-NEXT:     } : (tensor<16x16xf32>) -> tensor<32x4xf32>

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -361,8 +362,11 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
                            output_shape.dimensions_size() == 2 &&
                            lhs_shape.dimensions_size() == 2 &&
                            rhs_shape.dimensions_size() == 2);
+      bool is_fp8_to_fp8 =
+          (lhs_shape.element_type() == PrimitiveType::F8E4M3FN &&
+           rhs_shape.element_type() == PrimitiveType::F8E4M3FN);
 
-      if (is_s8_to_s32 ||
+      if (is_s8_to_s32 || is_fp8_to_fp8 ||
           (is_bf16_to_bf16 &&
            debug_options.xla_gpu_ensure_minor_dot_contraction_dims())) {
         TF_RETURN_IF_ERROR(SetOperandMajorToMinorLayout(

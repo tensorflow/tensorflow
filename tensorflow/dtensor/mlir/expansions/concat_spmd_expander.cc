@@ -38,8 +38,8 @@ namespace tensorflow {
 namespace dtensor {
 namespace {
 
-Status VerifyConcatLayout(mlir::Value concat_dim_operand,
-                          const Layout& concat_layout) {
+absl::Status VerifyConcatLayout(mlir::Value concat_dim_operand,
+                                const Layout& concat_layout) {
   TF_ASSIGN_OR_RETURN(int64_t concat_dim_value,
                       ExtractConstIntFromValue(concat_dim_operand));
   for (const auto& shard_and_dimension :

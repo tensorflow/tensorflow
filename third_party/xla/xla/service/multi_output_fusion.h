@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
@@ -128,6 +128,10 @@ class MultiOutputFusion : public HloModulePass {
   // reachability, worklist, and fusion candidates.
   HloInstruction* CreateFusion(HloInstruction* base, HloInstruction* to_fuse);
 
+  bool is_connected(HloInstruction* instr1, HloInstruction* instr2) {
+    return reachability_->IsConnected(instr1, instr2);
+  }
+
  private:
   // An internal data structure for each instruction in current computation.
   // When an instruction is removed, member 'hlo' is set to nullptr.
@@ -193,10 +197,6 @@ class MultiOutputFusion : public HloModulePass {
 
   void set_is_fused(HloInstruction* instr) {
     candidates_[get_candidate_id(instr)].hlo = nullptr;
-  }
-
-  bool is_connected(HloInstruction* instr1, HloInstruction* instr2) {
-    return reachability_->IsConnected(instr1, instr2);
   }
 
   std::vector<FusionCandidate> candidates_;

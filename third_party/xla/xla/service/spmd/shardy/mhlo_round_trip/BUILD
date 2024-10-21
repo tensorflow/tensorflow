@@ -87,6 +87,7 @@ cc_library(
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",
+        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

@@ -49,14 +49,14 @@ class LocalRendezvous {
         table_buckets_(std::make_unique<TableBucket[]>(num_buckets_)) {}
   ~LocalRendezvous();
 
-  Status Send(const Rendezvous::ParsedKey& key,
-              const Rendezvous::Args& send_args, const Tensor& val,
-              bool is_dead);
+  absl::Status Send(const Rendezvous::ParsedKey& key,
+                    const Rendezvous::Args& send_args, const Tensor& val,
+                    bool is_dead);
   void RecvAsync(const Rendezvous::ParsedKey& key,
                  const Rendezvous::Args& recv_args,
                  Rendezvous::DoneCallback done);
-  void StartAbort(const Status& status);
-  Status status();
+  void StartAbort(const absl::Status& status);
+  absl::Status status();
 
   // Releases all the references to the aborted rendezvous. Used in unit tests.
   static void ReleaseAbortedRendezvous() {
@@ -65,7 +65,7 @@ class LocalRendezvous {
   }
 
  private:
-  void DoAbort(const Status& status);
+  void DoAbort(const absl::Status& status);
 
   tsl::core::RefCountPtr<Rendezvous> GetOwnerRefCountPtr();
 
@@ -101,7 +101,7 @@ class LocalRendezvous {
   // Immutable set of buckets. This uses less memory than std::vector.
   const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
-  Status status_ TF_GUARDED_BY(mu_);
+  absl::Status status_ TF_GUARDED_BY(mu_);
 
   // We deliberately leak one reference of the aborted rendezvous here, so that
   // they won't be destructed, and lose the status_.

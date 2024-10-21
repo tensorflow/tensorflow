@@ -135,7 +135,6 @@ cc_library(
         ":xla_gpu_ops_inc_gen",
         ":xla_gpu_types_inc_gen",
         "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_map_serialization",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeOpInterface",

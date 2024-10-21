@@ -73,17 +73,17 @@ class Runtime {
   absl::StatusOr<FunctionDef> GetFunctionProto(StringPiece name);
 
   // TODO(mdan): Enforce creation or rename to SetFunction.
-  Status CreateFunction(const FunctionDef& fdef);
+  absl::Status CreateFunction(const FunctionDef& fdef);
   // TODO(mdan): Change to mlir::tfg::GraphFuncOp once pybind can depend on it.
-  Status CreateFunction(OpaqueTfgGraphFuncOp* fop);
+  absl::Status CreateFunction(OpaqueTfgGraphFuncOp* fop);
   // TODO(xjun): Change to mlir::func::FuncOp once pybind can depend on it.
-  Status CreateFunction(OpaqueTfFuncOp* fop);
+  absl::Status CreateFunction(OpaqueTfFuncOp* fop);
   // Applies a MLIR pipeline to an existing function.
   // The pipeline may rename the function. If it does so, the old function
   // remains unchanged. If the new name specifies an existing function, it will
   // be overwritten.
-  Status TransformFunction(StringPiece name, StringPiece pipeline_name,
-                           Dialect dialect = Dialect::TFG);
+  absl::Status TransformFunction(StringPiece name, StringPiece pipeline_name,
+                                 Dialect dialect = Dialect::TFG);
 
   absl::StatusOr<ReturnValues> CallFunction(
       StringPiece name, absl::Span<AbstractTensorHandle* const> args);

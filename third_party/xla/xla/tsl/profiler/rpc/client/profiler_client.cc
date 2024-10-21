@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 namespace profiler {

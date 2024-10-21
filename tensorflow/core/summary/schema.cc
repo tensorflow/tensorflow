@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status Run(Sqlite* db, const char* sql) {
+absl::Status Run(Sqlite* db, const char* sql) {
   SqliteStatement stmt;
   TF_RETURN_IF_ERROR(db->Prepare(sql, &stmt));
   return stmt.StepAndReset();
@@ -27,7 +27,7 @@ Status Run(Sqlite* db, const char* sql) {
 
 }  // namespace
 
-Status SetupTensorboardSqliteDb(Sqlite* db) {
+absl::Status SetupTensorboardSqliteDb(Sqlite* db) {
   // Note: GCC raw strings macros are broken.
   // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=55971
   TF_RETURN_IF_ERROR(
@@ -35,7 +35,7 @@ Status SetupTensorboardSqliteDb(Sqlite* db) {
                                        kTensorboardSqliteApplicationId))
           .StepAndReset());
   db->PrepareOrDie("PRAGMA user_version=0").StepAndResetOrDie();
-  Status s;
+  absl::Status s;
 
   // Ids identify resources.
   //

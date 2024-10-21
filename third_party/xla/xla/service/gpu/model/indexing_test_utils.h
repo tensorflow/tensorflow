@@ -31,8 +31,10 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 
@@ -49,7 +51,7 @@ MATCHER_P(MatchIndexingMap, indexing_string, "") {
     return false;
   }
   return ExplainMatchResult(
-      true, ApproximateMatch(indexing_string, arg.ToString()), result_listener);
+      true, ApproximateMatch(indexing_string, ToString(arg)), result_listener);
 }
 
 MATCHER_P(MatchIndexingString, indexing_string, "") {

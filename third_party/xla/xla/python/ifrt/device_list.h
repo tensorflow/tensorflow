@@ -77,12 +77,25 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // `DeviceList`'s lifetime by using `tsl::FormRef()`.
   virtual DeviceList* AddressableDeviceList() const = 0;
 
+  // Returns true if all devices are addressable.
+  bool IsFullyAddressable() const { return AddressableDeviceList() == this; }
+
   virtual bool operator==(const DeviceList& other) const = 0;
   bool operator!=(const DeviceList& other) const { return !(*this == other); }
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const DeviceList& device_list) {
     sink.Append(device_list.ToString());
+  }
+
+  template <class Sink>
+  friend void AbslStringify(Sink& sink,
+                            const tsl::RCReference<DeviceList>& device_list) {
+    if (device_list == nullptr) {
+      sink.Append("<nullptr>");
+    } else {
+      sink.Append(device_list->ToString());
+    }
   }
 
   // Returns the hash of devices. This hash is stable only within the process.

@@ -16,30 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_INFEED_TOKEN_PROPAGATION_H_
 #define XLA_SERVICE_INFEED_TOKEN_PROPAGATION_H_
 
-#include <string_view>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-// Finds dangling infeed/outfeed tokens inside nested computations and bubbles
-// them up through callers until they reach the entry computation. This is
-// needed to prepare these computations to be inlined, otherwise the previous
-// computation boundaries won't be there to stop infeeds/outfeeds from being
-// reordered during scheduling.
-//
-// This pass assumes the HLO graph is flattened.
-class InfeedTokenPropagation : public HloModulePass {
- public:
-  std::string_view name() const override { return "infeed-token-propagation"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<std::string_view>& execution_threads) override;
-};
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/infeed_token_propagation.h"
 
 #endif  // XLA_SERVICE_INFEED_TOKEN_PROPAGATION_H_

@@ -8,7 +8,7 @@ load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support"
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 load("//tensorflow/tools/pip_package/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/utils:py_deps.bzl", "transitive_py_deps")
-load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel")
+load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -309,7 +309,7 @@ py_test(
     tags = [
         "cpu",
     ],
-    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
+    deps = if_wheel_dependency(tf_wheel_dep()),
 )
 
 py_test(
@@ -322,5 +322,5 @@ py_test(
     tags = [
         "gpu",
     ],
-    deps = if_wheel_dependency(["@pypi_tensorflow//:pkg"]),
+    deps = if_wheel_dependency(tf_wheel_dep()),
 )

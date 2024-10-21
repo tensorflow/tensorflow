@@ -98,7 +98,7 @@ do not.
 ### Gather
 
 We only support canonical gathers as produced by [`gather_simplifier`](
-https://github.com/openxla/xla/blob/main/xla/service/gather_simplifier.h).
+https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_simplifier.h).
 
 ## Emission of functions
 

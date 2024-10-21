@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 #include "xla/service/gpu/transforms/copy_fusion.h"
 #include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/loop_schedule_linearizer.h"

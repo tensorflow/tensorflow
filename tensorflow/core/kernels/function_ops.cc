@@ -256,21 +256,23 @@ class SymbolicGradientOp : public AsyncOpKernel {
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
     tsl::profiler::TraceMe trace_me("SymbolicGradientOp");
-    lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
-      if (!status.ok()) {
-        ctx->SetStatus(status);
-      } else if (rets->size() != ctx->num_outputs()) {
-        ctx->SetStatus(errors::InvalidArgument(
-            "SymGrad expects to return ", ctx->num_outputs(),
-            " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-      } else {
-        for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, std::move((*rets)[i]));
-        }
-      }
-      delete rets;
-      done();
-    });
+    lib->Run(
+        opts, handle, args, rets,
+        [ctx, done, rets](const absl::Status& status) {
+          if (!status.ok()) {
+            ctx->SetStatus(status);
+          } else if (rets->size() != ctx->num_outputs()) {
+            ctx->SetStatus(errors::InvalidArgument(
+                "SymGrad expects to return ", ctx->num_outputs(),
+                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+          } else {
+            for (size_t i = 0; i < rets->size(); ++i) {
+              ctx->set_output(i, std::move((*rets)[i]));
+            }
+          }
+          delete rets;
+          done();
+        });
   }
 
  private:
@@ -408,7 +410,8 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   lib->Run(
       opts, handle, args, rets,
       [rets, done = std::move(done), func_name, ctx, cancel_mgr,
-       target_device = std::move(function_target.first)](const Status& status) {
+       target_device =
+           std::move(function_target.first)](const absl::Status& status) {
         tsl::profiler::TraceMe activity(
             [&] {
               return tsl::profiler::TraceMeEncode(

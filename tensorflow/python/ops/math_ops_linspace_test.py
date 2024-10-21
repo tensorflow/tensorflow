@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.linspace."""
 
-# Using distutils.version.LooseVersion was resulting in an error, so importing
-# directly.
-from distutils.version import LooseVersion  # pylint: disable=g-importing-member
-
 from absl.testing import parameterized
 import numpy as np
+from packaging.version import Version  # pylint: disable=g-importing-member
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -47,7 +44,7 @@ class LinspaceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])
   # pylint: enable=g-complex-comprehension
   def testLinspaceBroadcasts(self, start_shape, stop_shape, dtype, num):
-    if LooseVersion(np.version.version) < LooseVersion("1.16.0"):
+    if Version(np.version.version) < Version("1.16.0"):
       self.skipTest("numpy doesn't support axes before version 1.16.0")
 
       ndims = max(len(start_shape), len(stop_shape))

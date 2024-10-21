@@ -842,6 +842,26 @@ func.func @FuseReshapeAroundBMMNagativeTest2(%arg0: tensor<2x1536xf32>) -> tenso
   // CHECK: return %3 : tensor<2x768xf32>
 }
 
+// CHECK-LABEL: @FuseReshapeAroundBMMNagativeTest3
+// Checks that the pattern matcher FuseReshapesAroundBatchMatMulLHS does not get
+// applied for this case that does not pass the constraint around input rank.
+func.func @FuseReshapeAroundBMMNagativeTest3(%arg0: tensor<10xf32>) -> tensor<5xf32> {
+  %cst_0 = arith.constant dense_resource<__elided__> : tensor<10x5xf32>
+  %cst_3 = arith.constant dense<5> : tensor<1xi32>
+  %cst_4 = arith.constant dense<[1, 10]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_4) : (tensor<10xf32>, tensor<2xi32>) -> tensor<1x10xf32>
+  %1 = "tfl.batch_matmul"(%0, %cst_0) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x10xf32>, tensor<10x5xf32>) -> tensor<1x5xf32>
+  %2 = "tfl.reshape"(%1, %cst_3) : (tensor<1x5xf32>, tensor<1xi32>) -> tensor<5xf32>
+  return %2 : tensor<5xf32>
+  // CHECK: %cst = arith.constant dense_resource<__elided__> : tensor<10x5xf32>
+  // CHECK: %cst_0 = arith.constant dense<5> : tensor<1xi32>
+  // CHECK: %cst_1 = arith.constant dense<[1, 10]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<10xf32>, tensor<2xi32>) -> tensor<1x10xf32>
+  // CHECK: %1 = "tfl.batch_matmul"(%0, %cst) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x10xf32>, tensor<10x5xf32>) -> tensor<1x5xf32>
+  // CHECK: %2 = "tfl.reshape"(%1, %cst_0) : (tensor<1x5xf32>, tensor<1xi32>) -> tensor<5xf32>
+  // CHECK: return %2 : tensor<5xf32>
+}
+
 // CHECK-LABEL: @convert_bmm_rhs_transpose_into_fc
 // FOLD-LABEL: @convert_bmm_rhs_transpose_into_fc
 func.func @convert_bmm_rhs_transpose_into_fc(%arg0: tensor<8x256xf32>, %arg1: tensor<256x256xf32>) -> (tensor<8x256xf32>) {
@@ -3633,6 +3653,20 @@ func.func @gelu(%arg0: tensor<3xf32>) -> tensor<3xf32> {
   func.return %4 : tensor<3xf32>
 
 // CHECK-LABEL:gelu
+// CHECK: "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<3xf32>) -> tensor<3xf32>
+}
+
+func.func @gelu_erfc(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  %cst = arith.constant dense<0.707106769> : tensor<f32>
+  %cst_0 = arith.constant dense<5.000000e-01> : tensor<f32>
+  %2 = "tfl.neg"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
+  %3 = "tfl.mul"(%2, %cst) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %4 = "tf.Erfc"(%3) : (tensor<3xf32>) -> tensor<3xf32>
+  %5 = "tfl.mul"(%arg0, %cst_0) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<f32>) -> tensor<3xf32>
+  %6 = "tfl.mul"(%5, %4) <{fused_activation_function = "NONE"}> : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  func.return %6 : tensor<3xf32>
+
+// CHECK-LABEL:gelu_erfc
 // CHECK: "tfl.gelu"(%arg0) <{approximate = false}> : (tensor<3xf32>) -> tensor<3xf32>
 }
 

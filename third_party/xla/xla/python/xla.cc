@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
+#include "xla/python/guard_lib.h"
 #include "xla/python/jax_jit.h"
 #include "xla/python/logging.h"  // IWYU pragma: keep
 #include "xla/python/mlir.h"
@@ -97,7 +98,6 @@ limitations under the License.
 #include "xla/python/nb_absl_span.h"  // IWYU pragma: keep
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/ops.h"
-#include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
@@ -115,7 +115,6 @@ limitations under the License.
 #include "xla/python/pytree.h"
 #include "xla/python/sharding.h"
 #include "xla/python/traceback.h"
-#include "xla/python/transfer_guard_lib.h"
 #include "xla/python/weakref_lru_cache.h"
 #include "xla/python/xla_compiler.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_sync_manager.h"
@@ -182,6 +181,10 @@ NB_MODULE(xla_extension, m_nb) {
   // Exceptions
   nb::exception<XlaRuntimeError> xla_runtime_error(m_nb, "XlaRuntimeError",
                                                    PyExc_RuntimeError);
+  xla_runtime_error.attr("__doc__") = nb::str(
+      "Runtime errors thrown by the JAX runtime. While the JAX runtime may "
+      "raise other exceptions as well, most exceptions thrown by the runtime "
+      "are instances of this class.");
 
   // Types
   nb::enum_<PrimitiveType>(m_nb, "PrimitiveType", nb::is_arithmetic())
@@ -198,6 +201,9 @@ NB_MODULE(xla_extension, m_nb) {
       .value("U32", U32)
       .value("U64", U64)
       .value("F16", F16)
+      // TODO: Uncomment once the minimum ml_dtypes in JAX is >= 0.5.0.
+      // .value("F8E3M4", F8E3M4)
+      // .value("F8E4M3", F8E4M3)
       .value("F8E4M3FN", F8E4M3FN)
       .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E4M3FNUZ", F8E4M3FNUZ)
@@ -334,7 +340,7 @@ NB_MODULE(xla_extension, m_nb) {
           options.collectives = std::move(collectives);
           options.process_id = node_id;
           std::unique_ptr<PjRtClient> client =
-              xla::ValueOrThrow(GetTfrtCpuClient(options));
+              xla::ValueOrThrow(GetTfrtCpuClient(std::move(options)));
           ifrt::PjRtClient::CreateOptions ifrt_options;
           ifrt_options.pjrt_client =
               std::shared_ptr<PjRtClient>(std::move(client));
@@ -584,12 +590,11 @@ NB_MODULE(xla_extension, m_nb) {
   BuildIfrtProgramsSubmodule(m_nb);
   BuildProfilerSubmodule(m_nb);
   BuildOpsSubmodule(m_nb);
-  BuildOutfeedReceiverSubmodule(m_nb);
   BuildPytreeSubmodule(m_nb);
+  jax::BuildGuardSubmodule(m_nb);
   jax::BuildJaxjitSubmodule(m_nb);
   jax::BuildPmapSubmodule(m_nb);
   jax::BuildPjitSubmodule(m_nb);
-  jax::BuildTransferGuardSubmodule(m_nb);
   BuildTracebackSubmodule(m_nb);
   BuildMlirSubmodule(m_nb);
   BuildCustomCallShardingPybindAPI(m_nb);
@@ -775,8 +780,10 @@ NB_MODULE(xla_extension, m_nb) {
          std::optional<std::function<void(absl::Status,
                                           bool coordinator_reported_failure)>>
              missed_heartbeat_callback,
-         std::optional<bool> shutdown_on_destruction)
+         std::optional<bool> shutdown_on_destruction,
+         std::optional<bool> use_compression)
           -> std::shared_ptr<DistributedRuntimeClient> {
+        bool compression = use_compression.value_or(false);
         DistributedRuntimeClient::Options options;
         options.node_id = node_id;
         if (rpc_timeout.has_value()) {
@@ -801,7 +808,7 @@ NB_MODULE(xla_extension, m_nb) {
         if (shutdown_on_destruction.has_value()) {
           options.shutdown_on_destruction = *shutdown_on_destruction;
         }
-        return GetDistributedRuntimeClient(address, options);
+        return GetDistributedRuntimeClient(address, options, compression);
       },
       nb::arg("address"), nb::arg("node_id"),
       nb::arg("rpc_timeout").none() = std::nullopt,
@@ -810,7 +817,8 @@ NB_MODULE(xla_extension, m_nb) {
       nb::arg("heartbeat_interval").none() = std::nullopt,
       nb::arg("max_missing_heartbeats").none() = std::nullopt,
       nb::arg("missed_heartbeat_callback").none() = std::nullopt,
-      nb::arg("shutdown_on_destruction").none() = std::nullopt);
+      nb::arg("shutdown_on_destruction").none() = std::nullopt,
+      nb::arg("use_compression").none() = std::nullopt);
 
   m_nb.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
 

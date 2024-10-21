@@ -47,10 +47,10 @@ RewriterConfig CreateRewriterConfig(
 
 // Rewrites the input dataset using the given config. The rewritten_input
 // stored in the core::RefCountPtr<DatasetBase>* output parameter is owned.
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool record_fingerprint,
-                      core::RefCountPtr<DatasetBase>* rewritten_input);
+absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
+                            std::function<RewriterConfig(void)> config_factory,
+                            bool record_fingerprint,
+                            core::RefCountPtr<DatasetBase>* rewritten_input);
 
 // Creates a grappler item for `graph_def`, which is required for graph
 // optimization.

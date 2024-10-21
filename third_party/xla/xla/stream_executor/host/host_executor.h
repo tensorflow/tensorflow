@@ -88,8 +88,6 @@ class HostExecutor : public StreamExecutorCommon {
 
   void DeallocateStream(Stream* stream) override;
 
-  absl::Status BlockHostUntilDone(Stream* stream) override;
-
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()

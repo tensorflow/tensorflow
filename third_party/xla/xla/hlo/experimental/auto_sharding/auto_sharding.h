@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
@@ -44,24 +45,17 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 
 namespace xla {
-
-enum class AutoShardingResult {
-  kModuleUnchanged,
-  kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerformed
-};
 
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
-  absl::StatusOr<AutoShardingResult> RunAutoSharding(
+  absl::StatusOr<bool> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<std::string>& replicated_small_tensors,
       const absl::flat_hash_set<absl::string_view>& execution_threads,
@@ -121,8 +115,10 @@ class AutoSharding : public HloModulePass {
 
   std::vector<int64_t> GetChosenDeviceMeshShape() { return chosen_mesh_shape_; }
 
- private:
+ protected:
   AutoShardingOption option_;
+
+ private:
   // Stores the optimal value of the objective the solver found.
   double solver_optimal_objective_value_ = -1.0;
   // Stores the optimal mesh shape found.
@@ -213,21 +209,9 @@ bool HasReduceScatterOpportunity(const HloInstruction* inst,
                                  const ConstInstructionSet& modified);
 
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
+                                   const InputShardings& input_shardings,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
-// The high-level "recipe" for solving an Auto Sharding problem.
-AutoShardingSolverResult Solve(
-    const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
-    const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
-    const std::vector<absl::btree_set<int64_t>>& node_groups,
-    const std::vector<absl::btree_set<int64_t>>& edge_groups,
-    const AutoShardingOption& option, absl::string_view request_prefix,
-    const absl::flat_hash_map<std::string, HloSharding>&
-        sharding_propagation_solution = {});
 
 // Populates temporal distance values.
 void PopulateTemporalValues(const CostGraph& cost_graph,

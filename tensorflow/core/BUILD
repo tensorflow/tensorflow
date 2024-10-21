@@ -64,6 +64,8 @@
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+# copybara:uncomment(google-only) load("//tools/build_defs/go:go_library.bzl", "go_library")
+
 load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
@@ -87,7 +89,16 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "cc_header_only_library",
+    "custom_op_cc_header_only_library",
+    "filegroup",
+    "get_compatible_with_portable",
+    "tensorflow_opensource_extra_deps",
+    "tf_monitoring_framework_deps",
+    "tf_selective_registration_deps",
+)
 
 # For platform specific build config
 load(
@@ -1662,6 +1673,7 @@ tf_cuda_library(
         ":protos_all_cc",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/activity_watcher",
+        "//tensorflow/core/config:flag_defs",
         "//tensorflow/core/example:feature_util",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:allocator_registry_impl",
@@ -1719,7 +1731,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-cc_header_only_library(
+custom_op_cc_header_only_library(
     name = "framework_headers_lib",
     # Fully depend on external repositories, because identifying the headers
     # is fragile.

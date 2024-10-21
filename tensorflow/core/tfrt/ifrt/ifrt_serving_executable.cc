@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_device_utils.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_utils.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
@@ -198,7 +200,8 @@ IfrtServingExecutable::Create(
     tensorflow::DeviceMgr* device_mgr,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     IfrtServingCoreSelector* ifrt_serving_core_selector,
-    tsl::protobuf::Message* compilation_environement_proto) {
+    tsl::protobuf::Message* compilation_environment_proto,
+    IfrtPersistentCompilationCache* persistent_compilation_cache) {
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
@@ -217,7 +220,7 @@ IfrtServingExecutable::Create(
       std::move(original_compile_metadata),
       xla::ifrt::BasicDeviceList::Create(xla::ifrt::BasicDeviceList::Devices(
           assigned_devices.begin(), assigned_devices.end())),
-      compilation_environement_proto));
+      compilation_environment_proto, persistent_compilation_cache));
 
   return executable;
 }
@@ -437,16 +440,24 @@ IfrtServingExecutable::CreateExecutableSynchronously(
             std::make_unique<xla::HostCallback>(host_callback)));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable,
-      ifrt_client_->GetDefaultCompiler()->Compile(
-          std::make_unique<xla::ifrt::HloProgram>(
-              tf2hlo_result.mlir_hlo_module.get()),
-          std::make_unique<xla::ifrt::XlaCompileOptions>(
-              xla_compile_options, loaded_host_callbacks)));
-
+  auto hlo_program = std::make_unique<xla::ifrt::HloProgram>(
+      tf2hlo_result.mlir_hlo_module.get());
+  std::unique_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
   SharedCachedExecutableBundle executable_bundle =
       std::make_shared<CachedExecutableBundle>();
+
+  TF_ASSIGN_OR_RETURN(
+      ifrt_executable,
+      persistent_compilation_cache_->LookupLoadedExecutableOrCreate(
+          std::move(hlo_program), assigned_device_list_, xla_compile_options,
+          loaded_host_callbacks, ifrt_client_.get(),
+          [&](std::unique_ptr<xla::ifrt::Program> program,
+              std::unique_ptr<xla::ifrt::CompileOptions> options)
+              -> absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>> {
+            return ifrt_client_->GetDefaultCompiler()->Compile(
+                std::move(program), std::move(options));
+          }));
+
   executable_bundle->ifrt_executable = std::move(ifrt_executable);
   executable_bundle->compile_metadata =
       std::move(tf2hlo_result.compile_metadata);
@@ -639,10 +650,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_ASSIGN_OR_RETURN(
       auto execution_result,
       executable_bundle->ifrt_executable->Execute(
-          absl::MakeSpan(args),
-          /*options=*/
-          {.untuple_result = true,
-           .use_major_to_minor_data_layout_for_callbacks = true},
+          absl::MakeSpan(args), /*options=*/{.fill_status = true},
           std::move(execution_device_list)));
 
   auto status = execution_result.status.Await();

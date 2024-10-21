@@ -392,6 +392,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64_t(const Shape&)>;
 
+  static constexpr int64_t kDefaultPointerSize = 8;
+  static int64_t DefaultShapeSize(const Shape& shape);
+
   // A struct to encapsulate hardware-related options. This includes the shape
   // size function, which is used to encode hardware-specific padding and per
   // second rates of FLOPs, bytes per second (available bandwidth), and
@@ -400,7 +403,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // Function which computes the size of the top-level of a given shape (not
     // including nested elements, if any). If null then bytes_accessed methods
     // return an error.
-    ShapeSizeFunction shape_size;
+    ShapeSizeFunction shape_size = DefaultShapeSize;
     // How much of each property can be processed per second. E.g. if the
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
@@ -454,7 +457,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   };
 
   explicit HloCostAnalysis(const Options& options);
-  explicit HloCostAnalysis(ShapeSizeFunction shape_size,
+  explicit HloCostAnalysis(ShapeSizeFunction shape_size = DefaultShapeSize,
                            const Properties& per_second_rates = {},
                            const Properties& min_latency_seconds = {});
 

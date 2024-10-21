@@ -420,6 +420,9 @@ std::string VectorString(const std::initializer_list<T>& c) {
 std::string RoundTripFpToString(tsl::float8_e5m2 value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3.
+std::string RoundTripFpToString(tsl::float8_e4m3 value);
+
+// Returns a string which can losslessly round trip to a float8 E4M3FN.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3B11.
@@ -430,6 +433,9 @@ std::string RoundTripFpToString(tsl::float8_e5m2fnuz value);
 
 // Returns a string which can losslessly round trip to a float8 E4M3FNUZ.
 std::string RoundTripFpToString(tsl::float8_e4m3fnuz value);
+
+// Returns a string which can losslessly round trip to a float8 E3M4.
+std::string RoundTripFpToString(tsl::float8_e3m4 value);
 
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
@@ -764,6 +770,12 @@ struct ConvertedDimensionNumbers {
 ConvertedDimensionNumbers ConvertDimensionNumbers(
     absl::Span<const int64_t> from_dimensions,
     absl::Span<const int64_t> from_sizes, absl::Span<const int64_t> to_sizes);
+
+// Returns non contracting dimensions for a dot operand based on rank, batch and
+// contracting dimension numbers.
+DimensionVector GetNonContractingDims(
+    int64_t rank, absl::Span<const int64_t> contracting_dim_numbers,
+    absl::Span<const int64_t> batch_dim_numbers);
 
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);

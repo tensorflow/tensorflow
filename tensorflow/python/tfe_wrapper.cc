@@ -459,7 +459,11 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
 
   std::string s_stage(stage);
   IrExportStage selected_stage = [&] {
-    if (s_stage == "hlo") {
+    if (s_stage == "stablehlo") {
+      return IrExportStage::STABLEHLO;
+    } else if (s_stage == "stablehlo_serialized") {
+      return IrExportStage::STABLEHLO_SERIALIZED;
+    } else if (s_stage == "hlo") {
       return IrExportStage::HLO;
     } else if (s_stage == "hlo_no_metadata") {
       return IrExportStage::HLO_NO_METADATA;

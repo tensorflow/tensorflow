@@ -49,9 +49,10 @@ class TensorSliceWriter {
    public:
     virtual ~Builder() = default;
     virtual void Add(StringPiece key, StringPiece value) = 0;
-    virtual Status Finish(int64_t* file_size) = 0;
+    virtual absl::Status Finish(int64_t* file_size) = 0;
   };
-  typedef std::function<Status(const string&, Builder**)> CreateBuilderFunction;
+  typedef std::function<absl::Status(const string&, Builder**)>
+      CreateBuilderFunction;
 
   TensorSliceWriter(const string& filename,
                     CreateBuilderFunction create_builder);
@@ -59,14 +60,15 @@ class TensorSliceWriter {
   // Adds a slice. We support float and int32 for now.
   // TODO(yangke): add more supports
   template <typename T>
-  Status Add(const string& name, const TensorShape& shape,
-             const TensorSlice& slice, const T* data);
-  Status Finish();
+  absl::Status Add(const string& name, const TensorShape& shape,
+                   const TensorSlice& slice, const T* data);
+  absl::Status Finish();
 
   // Allocate "num_elements" elements in "ss" and save the data in "data"
   // there.
   template <typename T>
-  static Status SaveData(const T* data, int64_t num_elements, SavedSlice* ss);
+  static absl::Status SaveData(const T* data, int64_t num_elements,
+                               SavedSlice* ss);
 
   static size_t MaxBytesPerElement(DataType dt);
 
@@ -102,8 +104,9 @@ class TensorSliceWriter {
 };
 
 template <typename T>
-Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
-                              const TensorSlice& slice, const T* data) {
+absl::Status TensorSliceWriter::Add(const string& name,
+                                    const TensorShape& shape,
+                                    const TensorSlice& slice, const T* data) {
   // The tensor and the slice have to be compatible
   if (shape.dims() != slice.dims()) {
     return errors::Internal("Incompatible tensor shape and slice: ", "shape = ",
@@ -167,8 +170,8 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
 }
 
 template <typename T>
-Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
-                                   SavedSlice* ss) {
+absl::Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
+                                         SavedSlice* ss) {
   size_t max_bytes_per_element =
       MaxBytesPerElementOrZero(DataTypeToEnum<T>::value);
   if (max_bytes_per_element == 0) {
@@ -190,15 +193,15 @@ Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
-                                   SavedSlice* ss);
+absl::Status TensorSliceWriter::SaveData(const tstring* data,
+                                         int64_t num_elements, SavedSlice* ss);
 
 // Create a table builder that will write to "filename" in
 // tensorflow::io::Table format.  If successful, return OK
 // and set "*builder" to the allocated builder.  Otherwise, return a
 // non-OK status.
-Status CreateTableTensorSliceBuilder(const string& filename,
-                                     TensorSliceWriter::Builder** builder);
+absl::Status CreateTableTensorSliceBuilder(
+    const string& filename, TensorSliceWriter::Builder** builder);
 
 }  // namespace checkpoint
 

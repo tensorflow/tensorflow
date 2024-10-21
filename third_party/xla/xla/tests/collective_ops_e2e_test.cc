@@ -101,10 +101,11 @@ class CollectiveOpsTestE2E : public HloTestBase {
                             CreateExecutable(std::move(module),
                                              /*run_hlo_passes=*/true));
     EXPECT_TRUE(executable->has_module());
-    HloInstruction* gemm_op =
-        FindInstruction(&executable->module(), HloOpcode::kCustomCall);
-    EXPECT_THAT(gemm_op, NotNull());
-    EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+    std::vector<HloInstruction*> gemm_ops =
+        FindInstructions(&executable->module(), HloOpcode::kCustomCall);
+    for (HloInstruction* gemm_op : gemm_ops) {
+      EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+    }
   }
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
@@ -863,46 +864,62 @@ ENTRY main.12 {
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
 }
 
-TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
-       WindowedEinsumE2EAllGatherAndReduceScatterF8) {
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed, WindowedEinsumE2EAllGatherF8) {
   absl::string_view kModuleReplicatedStr = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(<<F8E4M3>>[2,16,48]{2,1,0}, <<F8E4M3>>[48,192]{1,0}, <<F8E4M3>>[192,48]{1,0}, bf16[], bf16[], bf16[], bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
-ENTRY main.12 {
-  Arg_0.1 = <<F8E4M3>>[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  Arg_1.2 = <<F8E4M3>>[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
-  Arg_2.3 = bf16[] parameter(3)
-  Arg_3.4 = bf16[] parameter(4)
-  broadcast = bf16[2,16,48]{2,1,0} broadcast(Arg_2.3), dimensions={}
-  broadcast.1 = bf16[48,192]{1,0} broadcast(Arg_3.4), dimensions={}
-  convert = bf16[2,16,48]{2,1,0} convert(Arg_0.1)
-  convert.1 = bf16[48,192]{1,0} convert(Arg_1.2)
-  multiply = bf16[2,16,48]{2,1,0} multiply(broadcast, convert)
-  multiply.1 = bf16[48,192]{1,0} multiply(broadcast.1, convert.1)
-  dot.5 = bf16[2,16,192]{2,1,0} dot(multiply, multiply.1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  custom-call.7 = bf16[2,16,192]{2,1,0} custom-call(dot.5), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
-  Arg_4.5 = bf16[] parameter(5)
-  broadcast.2 = bf16[2,16,192]{2,1,0} broadcast(Arg_4.5), dimensions={}
-  divide = bf16[2,16,192]{2,1,0} divide(custom-call.7, broadcast.2)
-  constant = bf16[] constant(-448.)
-  broadcast.3 = bf16[2,16,192]{2,1,0} broadcast(constant), dimensions={}
-  constant.1 = bf16[] constant(448.)
-  broadcast.4 = bf16[2,16,192]{2,1,0} broadcast(constant.1), dimensions={}
-  clamp = bf16[2,16,192]{2,1,0} clamp(broadcast.3, divide, broadcast.4)
-  convert.2 = <<F8E4M3>>[2,16,192]{2,1,0} convert(clamp)
-  Arg_5.6 = bf16[] parameter(6)
-  broadcast.5 = bf16[2,16,192]{2,1,0} broadcast(Arg_5.6), dimensions={}
-  convert.3 = bf16[2,16,192]{2,1,0} convert(convert.2)
-  multiply.2 = bf16[2,16,192]{2,1,0} multiply(convert.3, broadcast.5)
-  Arg_6.7 = <<F8E4M3>>[192,48]{1,0} parameter(2), sharding={devices=[4,1]<=[4]}
-  Arg_7.8 = bf16[] parameter(7)
-  broadcast.6 = bf16[192,48]{1,0} broadcast(Arg_7.8), dimensions={}
-  convert.4 = bf16[192,48]{1,0} convert(Arg_6.7)
-  multiply.3 = bf16[192,48]{1,0} multiply(convert.4, broadcast.6)
-  dot.6 = bf16[2,16,48]{2,1,0} dot(multiply.2, multiply.3), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  tuple.10 = (bf16[2,16,48]{2,1,0}) tuple(dot.6)
-  ROOT get-tuple-element.11 = bf16[2,16,48]{2,1,0} get-tuple-element(tuple.10), index=0, sharding={devices=[1,4,1]<=[4]}
-} // main.12
+ENTRY main {
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[48,192]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[48,192]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[48,192]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherReshapeF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[2,24,192]{2,1,0}, bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs = f8e4m3fn[2,24,192]{2,1,0} parameter(1), sharding={devices=[1,1,4]<=[4]}
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
+  scale_rhs_bcast = bf16[2,24,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[2,24,192]{2,1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[2,24,192]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  rhs_reshaped = bf16[48,192]{1,0} reshape(rhs_scaled)
+  dot = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs_reshaped), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,192]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,1,4]<=[4]}
+} // main
 )";
 
   // Disable the dot merger pass which can prevent the creation of FP8 GEMM
@@ -929,24 +946,61 @@ TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
 HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
 ENTRY main {
-  rhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  lhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  lhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  rhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_lhs = bf16[] parameter(3)
+  scale_rhs0 = bf16[] parameter(4)
+  scale_lhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs0_bcast = bf16[48,192]{1,0} broadcast(scale_rhs0), dimensions={}
+  lhs_bf16 = bf16[2,16,48]{2,1,0} convert(lhs)
+  rhs0_bf16 = bf16[48,192]{1,0} convert(rhs0)
+  lhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs0_scaled = bf16[48,192]{1,0} multiply(scale_rhs0_bcast, rhs0_bf16)
+  dot0 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  rhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  scale_rhs1 = bf16[] parameter(5)
+  scale_rhs1_bcast = bf16[48,192]{1,0} broadcast(scale_rhs1), dimensions={}
+  rhs1_bf16 = bf16[48,192]{1,0} convert(rhs1)
+  rhs1_scaled = bf16[48,192]{1,0} multiply(scale_rhs1_bcast, rhs1_bf16)
+  dot1 = bf16[2,16,192]{2,1,0} dot(lhs_scaled, rhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT add = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EReduceScatterF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,192]{2,1,0}, f8e4m3fn[192,48]{1,0}, bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  lhs = f8e4m3fn[2,16,192]{2,1,0} parameter(0), sharding={devices=[1,1,4]<=[4]}
+  rhs = f8e4m3fn[192,48]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  scale_lhs = bf16[] parameter(2)
   scale_rhs = bf16[] parameter(3)
-  scale_lhs0 = bf16[] parameter(4)
-  scale_rhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
-  scale_lhs0_bcast = bf16[48,192]{1,0} broadcast(scale_lhs0), dimensions={}
-  rhs_bf16 = bf16[2,16,48]{2,1,0} convert(rhs)
-  lhs0_bf16 = bf16[48,192]{1,0} convert(lhs0)
-  rhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
-  lhs0_scaled = bf16[48,192]{1,0} multiply(scale_lhs0_bcast, lhs0_bf16)
-  dot0 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  lhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
-  scale_lhs1 = bf16[] parameter(5)
-  scale_lhs1_bcast = bf16[48,192]{1,0} broadcast(scale_lhs1), dimensions={}
-  lhs1_bf16 = bf16[48,192]{1,0} convert(lhs1)
-  lhs1_scaled = bf16[48,192]{1,0} multiply(scale_lhs1_bcast, lhs1_bf16)
-  dot1 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  ROOT add.8 = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+  scale_lhs_bcast = bf16[2,16,192]{2,1,0} broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[192,48]{1,0} broadcast(scale_rhs), dimensions={}
+  lhs_bf16 = bf16[2,16,192]{2,1,0} convert(lhs)
+  rhs_bf16 = bf16[192,48]{1,0} convert(rhs)
+  lhs_scaled = bf16[2,16,192]{2,1,0} multiply(scale_lhs_bcast, lhs_bf16)
+  rhs_scaled = bf16[192,48]{1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  dot = bf16[2,16,48]{2,1,0} dot(lhs_scaled, rhs_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = bf16[2,16,48]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[1,4,1]<=[4]}
 } // main
 )";
 
@@ -1039,73 +1093,57 @@ ENTRY main.9_spmd {
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr);
 }
 
-TEST_F(CollectiveOpsTestE2E, PostLayoutCollectivePipeliner) {
-  // We need fp8 support to test the post-layout collective pipeliner. This will
-  // preserve the desired fp8 patterns and so the gemm rewriter can correctly
-  // recognize them and rewrite to custom fp8 gemm calls.
+TEST_F(CollectiveOpsTestE2E, CollectivePipelinerF8) {
+  // Verify that FP8 patterns are preserved when collectives are pipelined so
+  // the GEMM rewriter can create FP8 matmuls.
   if (!HasFp8Support()) {
-    GTEST_SKIP() << "Test requires a post-Ada GPU.";
+    GTEST_SKIP() << "Test requires Hopper or newer architecture.";
   }
 
   absl::string_view kModuleReplicatedStr = R"(
-HloModule module, entry_computation_layout={(bf16[384,128], bf16[96,128], bf16[], bf16[])->bf16[384,128]}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
-add {
-  lhs = bf16[] parameter(0)
-  rhs = bf16[] parameter(1)
-  ROOT add = bf16[] add(lhs, rhs)
-}
+HloModule module, entry_computation_layout={(bf16[128,128], bf16[32,128], bf16[], bf16[])->bf16[512,128]}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 while_cond {
-  param = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) parameter(0)
-  gte = s32[] get-tuple-element(param), index=0
-  constant.1 = s32[] constant(3)
-  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+  input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) parameter(0)
+  loop_counter = s32[] get-tuple-element(input), index=0
+  c4 = s32[] constant(4)
+  ROOT compare = pred[] compare(loop_counter, c4), direction=LT
 }
 while_body {
-  param = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) parameter(0)
-  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
-  get-tuple-element.395 = bf16[384,128] get-tuple-element(param), index=1
-  get-tuple-element.k = bf16[96,128] get-tuple-element(param), index=2
-  constant.2561 = s32[] constant(0)
-  constant.2557 = s32[] constant(1)
-  add.230 = s32[] add(get-tuple-element.394, constant.2557)
-  constant.2559 = s32[] constant(3)
-  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
-  constant.2560 = s32[] constant(-1)
-  add.231 = s32[] add(subtract.139, constant.2560)
-  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
-  constant.2562 = s32[] constant(2)
-  add.232 = s32[] add(subtract.139, constant.2562)
-  select.1348 = s32[] select(compare.747, add.232, add.231)
-  dynamic-slice.k = bf16[32,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561), dynamic_slice_sizes={32,128}
-  r = bf16[32,128] bitcast(dynamic-slice.k)
-  a = bf16[32,128] add(r, r), control-predecessors={constant.2559}
-  // A fp8 pattern of quant-dequant before the collective AG.
-  qa = <<F8E4M3>>[32,128] convert(a)
-  dqa = bf16[32,128] convert(qa)
-  a_scale = bf16[] get-tuple-element(param), index=3
-  a_scales = bf16[32,128] broadcast(a_scale), dimensions={}
-  dqa_unscaled = bf16[32,128] multiply(dqa, a_scales)
-  mb = bf16[128,128] all-gather(dqa_unscaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
-  ma = bf16[128,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561), dynamic_slice_sizes={128,128}
-
-  qma = <<F8E4M3>>[128,128] convert(ma)
-  dqma = bf16[128,128] convert(qma)
-  ma_scale = bf16[] get-tuple-element(param), index=4
-  ma_scales = bf16[128,128] broadcast(ma_scale), dimensions={}
-  dqma_unscaled = bf16[128,128] multiply(dqma, ma_scales)
-  mc = bf16[128,128] dot(dqma_unscaled, mb), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  dynamic-update-slice.35 = bf16[384,128] dynamic-update-slice(get-tuple-element.395, mc, select.1348, constant.2561)
-  ROOT tuple = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k, a_scale, ma_scale), control-predecessors={a}
+  input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) parameter(0)
+  loop_counter = s32[] get-tuple-element(input), index=0
+  lhs = bf16[128,128] get-tuple-element(input), index=1
+  rhs = bf16[32,128] get-tuple-element(input), index=2
+  partial_dot_output = bf16[512,128] get-tuple-element(input), index=5
+  lhs_f8 = f8e4m3fn[128,128] convert(lhs)
+  rhs_f8 = f8e4m3fn[32,128] convert(rhs)
+  lhs_bf16 = bf16[128,128] convert(lhs_f8)
+  rhs_bf16 = bf16[32,128] convert(rhs_f8)
+  scale_lhs = bf16[] get-tuple-element(input), index=3
+  scale_rhs = bf16[] get-tuple-element(input), index=4
+  scale_lhs_bcast = bf16[128,128] broadcast(scale_lhs), dimensions={}
+  scale_rhs_bcast = bf16[32,128] broadcast(scale_rhs), dimensions={}
+  lhs_scaled = bf16[128,128] multiply(lhs_bf16, scale_lhs_bcast)
+  rhs_scaled = bf16[32,128] multiply(rhs_bf16, scale_rhs_bcast)
+  rhs_scaled_all_gathered = bf16[128,128] all-gather(rhs_scaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
+  dot = bf16[128,128] dot(lhs_scaled, rhs_scaled_all_gathered), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  c0 = s32[] constant(0)
+  size = s32[] constant(128)
+  iteration_offset = s32[] multiply(loop_counter, size)
+  updated_dot_output = bf16[512,128] dynamic-update-slice(partial_dot_output, dot, iteration_offset, c0)
+  c1 = s32[] constant(1)
+  loop_counter_plus_one = s32[] add(loop_counter, c1)
+  ROOT tuple = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) tuple(loop_counter_plus_one, lhs, rhs, scale_lhs, scale_rhs, updated_dot_output)
 }
 ENTRY entry {
   c0 = s32[] constant(0)
-  p0 = bf16[384,128] parameter(0)
-  p1 = bf16[96,128] parameter(1)
-  s0 = bf16[] parameter(2)
-  s1 = bf16[] parameter(3)
-  tuple = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) tuple(c0, p0, p1, s0, s1)
-  while = (s32[], bf16[384,128], bf16[96,128], bf16[], bf16[]) while(tuple), condition=while_cond, body=while_body
-  ROOT gte1 = bf16[384,128] get-tuple-element(while), index=1
+  lhs = bf16[128,128] parameter(0)
+  rhs = bf16[32,128] parameter(1)
+  scale_lhs = bf16[] parameter(2)
+  scale_rhs = bf16[] parameter(3)
+  result_buffer = bf16[512,128] constant(0.)
+  while_input = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) tuple(c0, lhs, rhs, scale_lhs, scale_rhs, result_buffer)
+  while = (s32[], bf16[128,128], bf16[32,128], bf16[], bf16[], bf16[512,128]) while(while_input), condition=while_cond, body=while_body
+  ROOT dot_output = bf16[512,128] get-tuple-element(while), index=5
 }
 )";
 
@@ -1115,104 +1153,10 @@ ENTRY entry {
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
   CollectiveOpsVerifyF8Matmul(
       absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
-}
-
-TEST_F(CollectiveOpsTestE2E,
-       PostLayoutCollectivePipelinerShouldFlattenCallGraph) {
-  // The allgather in the loop has a nested while loop as its operand,
-  // when the pipelining happens, the nested while loop will be peeled outside.
-  // However, when a while is cloned, its call sites are still preserved which
-  // will error out in alias analysis. When the graph is flattened, the error
-  // should not happen.
-  absl::string_view kModuleReplicatedStr = R"(
-HloModule module
-
-while_cond {
-  param = (s32[], f32[2,128], f32[8,128], f32[8,128]) parameter(0)
-  gte = s32[] get-tuple-element(param), index=0
-  constant.1 = s32[] constant(3)
-  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
-}
-
-while_nested_cond {
-  param.nested = (s32[], f32[2,128]) parameter(0)
-  gte.nested = s32[] get-tuple-element(param.nested), index=0
-  constant.nested = s32[] constant(3)
-  ROOT cmp.nested = pred[] compare(gte.nested, constant.nested), direction=LT
-}
-while_nested_body {
-  param.body_nested = (s32[], f32[2,128]) parameter(0)
-  gte.body_nested = s32[] get-tuple-element(param.body_nested), index=0
-  gte.2.body_nested = f32[2,128] get-tuple-element(param.body_nested), index=1
-
-  constant.body_nested = s32[] constant(1)
-  add.body_nested = s32[] add(gte.body_nested, constant.body_nested)
-  rsqrt.body_nested = f32[2,128] rsqrt(gte.2.body_nested)
-  ROOT tuple.body_nested = (s32[], f32[2,128]) tuple(add.body_nested, rsqrt.body_nested)
-}
-
-while_body {
-  param = (s32[], f32[2,128], f32[8,128], f32[8,128]) parameter(0)
-  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
-  get-tuple-element.395 = f32[2,128] get-tuple-element(param), index=1
-  get-tuple-element.35 = f32[8,128] get-tuple-element(param), index=2
-  get-tuple-element.36 = f32[8,128] get-tuple-element(param), index=3
-
-  constant.2557 = s32[] constant(1)
-  add.230 = s32[] add(get-tuple-element.394, constant.2557)
-  mul = f32[2,128] multiply(get-tuple-element.395, get-tuple-element.395)
-  constant.while = s32[] constant(0)
-  tuple.1 = (s32[], f32[2,128]) tuple(constant.while, mul)
-  while.1 = (s32[], f32[2,128]) while(tuple.1), condition=while_nested_cond, body=while_nested_body
-  gte.while = f32[2,128] get-tuple-element(while.1), index=1
-  add.while = f32[2,128] add(gte.while, get-tuple-element.395)
-
-  ag.1 = f32[8,128] all-gather(add.while), replica_groups={}, dimensions={0}
-  add.ag = f32[8,128] add(ag.1, get-tuple-element.36)
-
-  ROOT tuple = (s32[], f32[2,128], f32[8,128], f32[8,128]) tuple(add.230, get-tuple-element.395, get-tuple-element.35, ag.1)
-}
-
-ENTRY entry {
-  c0 = s32[] constant(0)
-  p0 = f32[2,128] parameter(0)
-  p1 = f32[8,128] parameter(1)
-
-  tuple = (s32[], f32[2,128], f32[8,128], f32[8,128]) tuple(c0, p0, p1, p1)
-  while = (s32[], f32[2,128], f32[8,128], f32[8,128]) while(tuple), condition=while_cond, body=while_body
-  gte1 = f32[2,128] get-tuple-element(while), index=1
-  gte2 = f32[8,128] get-tuple-element(while), index=3
-  ROOT tuple.result = (f32[2,128], f32[8,128]) tuple(gte1, gte2)
-}
-)";
-
-  const int64_t kNumReplicas = 1;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
-  opts.set_xla_gpu_enable_pipelined_all_reduce(true);
-  opts.set_xla_gpu_enable_pipelined_all_gather(true);
-  opts.set_xla_gpu_enable_pipelined_reduce_scatter(true);
-
-  opts.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(opts);
-  config.set_use_spmd_partitioning(false);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
 }
 
 TEST_F(CollectiveOpsTestE2E, AllToAllQuantizeCollectiveQuantizer) {

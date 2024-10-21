@@ -125,7 +125,7 @@ REGISTER_VARIANT_DECODE_TYPE(double);
 
 #undef REGISTER_VARIANT_DECODE_TYPE
 
-Status VariantDeviceCopy(
+absl::Status VariantDeviceCopy(
     const VariantDeviceCopyDirection direction, const Variant& from,
     Variant* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn) {
@@ -143,7 +143,7 @@ Status VariantDeviceCopy(
 
 namespace {
 template <typename T>
-Status DeviceCopyPrimitiveType(
+absl::Status DeviceCopyPrimitiveType(
     const T& in, T* out,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copier) {
   // Dummy copy, we don't actually bother copying to the device and back for
@@ -174,8 +174,8 @@ REGISTER_VARIANT_DEVICE_COPY_TYPE(bool);
 
 namespace {
 template <typename T>
-Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
-                                     T* t_out) {
+absl::Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
+                                           T* t_out) {
   *t_out = T(0);
   return absl::OkStatus();
 }
@@ -196,8 +196,8 @@ REGISTER_VARIANT_ZEROS_LIKE_TYPE(bool);
 
 namespace {
 template <typename T>
-Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a, const T& b,
-                               T* out) {
+absl::Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a,
+                                     const T& b, T* out) {
   *out = a + b;
   return absl::OkStatus();
 }

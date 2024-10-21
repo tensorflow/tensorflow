@@ -23,6 +23,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/optional.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "xla/tsl/profiler/utils/timespan.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
@@ -31,10 +35,6 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
-#include "tsl/profiler/utils/timespan.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace xla {
 namespace profiler {

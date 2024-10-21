@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
 #include "xla/service/gpu/fusions/transforms/passes.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -415,6 +416,50 @@ MlirFusionEmitterBase::CreateMLIRModule(
   return module;
 }
 
+mlir_converter::EpilogueSpecification
+MlirFusionEmitterBase::GetEpilogueForOutputIndexing(
+    const HloFusionAnalysis& analysis,
+    const std::vector<const HloInstruction*>& heroes,
+    const std::vector<const HloInstruction*>& roots,
+    mlir::MLIRContext* mlir_context) const {
+  mlir_converter::EpilogueSpecification result;
+
+  absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
+      root_to_hero;
+  for (auto [root, hero] :
+       llvm::zip(analysis.fusion_roots(), analysis.fusion_heroes())) {
+    root_to_hero[&root.instruction()] = &hero.instruction();
+  }
+  absl::flat_hash_map<const HloInstruction*, int> root_to_index;
+  for (auto [index, root] : llvm::enumerate(analysis.fusion_roots())) {
+    root_to_index[&root.instruction()] = root_to_index.size();
+  }
+
+  result.root_indexing.reserve(roots.size());
+  for (auto* root : roots) {
+    auto indexing =
+        ComputeThreadIdToOutputIndexing(root_to_index[root], mlir_context);
+    if (result.index_ranges.empty()) {
+      result.index_ranges.reserve(indexing->GetDimensionCount() +
+                                  indexing->GetSymbolCount());
+      for (const auto& dim : indexing->GetDimensionBounds()) {
+        result.index_ranges.push_back(dim.upper + 1);
+      }
+      for (const auto& sym : indexing->GetSymbolBounds()) {
+        result.index_ranges.push_back(sym.upper + 1);
+      }
+    }
+    auto* hero = root_to_hero[root];
+    auto epilogue_indexing = ComputeEpilogueInputToOutputIndexing(
+        {*hero, &analysis.fusion()}, {*root, &analysis.fusion()}, mlir_context);
+    result.root_indexing.push_back(
+        ComposeIndexingMaps(*indexing, epilogue_indexing));
+  }
+  result.heroes = heroes;
+  result.roots = roots;
+  return result;
+}
+
 absl::Status MlirFusionEmitterBase::EmitMlir(
     mlir::ModuleOp module, FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
@@ -541,13 +586,13 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(CreateLowerXlaGpuToScfPass());
+  pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
     // CSE after inlining because inlining can introduce duplicates.
     pm.addPass(mlir::createCSEPass());
   }));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
   pm.addNestedPass<FuncOp>(CreatePeelLoopsPass());
   pm.addNestedPass<FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());

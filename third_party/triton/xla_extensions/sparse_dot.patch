@@ -280,7 +280,7 @@ index d74e0a224..4e45f7c4c 100644
  static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
                              Value insertIdx, Value extractIdx,
                              tt::CoarseSchedule &schedule,
-@@ -236,19 +240,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -235,17 +239,25 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -296,10 +296,7 @@ index d74e0a224..4e45f7c4c 100644
 +        unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
 +        tempAttr = ttg::SharedEncodingAttr::get(
 +            val.getContext(), cast<ttg::DotOperandEncodingAttr>(enc),
-+            srcTy.getShape(), ttg::getOrder(srcTy.getEncoding()),
-+            ttg::getCTALayout(srcTy.getEncoding()),
-+            srcTy.getElementType().getIntOrFloatBitWidth(),
-+            /*needTrans=*/false);
++            srcTy.getShape(), order, CTALayout, bitWidth, /*needTrans=*/false);
 +      } else if (isa<ttg::SparseDotMetaEncodingAttr>(enc)) {
 +        auto srcTy = cast<TensorOrMemDesc>(val.getType());
 +        tempAttr = ttg::SharedEncodingAttr::get(
@@ -313,15 +310,13 @@ index d74e0a224..4e45f7c4c 100644
 -      auto order = ttg::getOrder(srcTy.getEncoding());
 -      unsigned bitWidth = srcTy.getElementType().getIntOrFloatBitWidth();
 -      tempAttr = ttg::SharedEncodingAttr::get(
--          val.getContext(), dotOpEnc, srcTy.getShape(),
--          ttg::getOrder(srcTy.getEncoding()),
--          ttg::getCTALayout(srcTy.getEncoding()),
--          srcTy.getElementType().getIntOrFloatBitWidth(), /*needTrans=*/false);
+-          val.getContext(), dotOpEnc, srcTy.getShape(), order, CTALayout,
+-          bitWidth, /*needTrans=*/false);
 +      }
      }
      // Check that the shared encodings needed by the users are compatible.
-     if (attr != nullptr && attr != tempAttr) {
-@@ -357,7 +370,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+     if (attr != nullptr)
+@@ -352,7 +364,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -330,7 +325,7 @@ index d74e0a224..4e45f7c4c 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -434,7 +447,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -429,7 +441,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
@@ -339,15 +334,6 @@ index d74e0a224..4e45f7c4c 100644
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
-@@ -460,7 +473,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
-         // The codegen bug is caught by an assertion, so if you think you've
-         // fixed it, feel free to delete this code and see if the assert still
-         // fails.  :)
--        if (!loadInfo.sharedEncoding) {
-+        if (dot && !loadInfo.sharedEncoding) {
-           if (auto dotEnc = dyn_cast<ttg::NvidiaMmaEncodingAttr>(
-                   dot.getResult().getType().getEncoding())) {
-             auto loadTy = cast<RankedTensorType>(op->getResultTypes()[0]);
 diff --git a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp b/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp
 index fb0e7f6fd..37795c20c 100644
 --- a/lib/Dialect/TritonNvidiaGPU/Transforms/FenceInsertion.cpp

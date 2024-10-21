@@ -66,52 +66,58 @@ class ModularFileSystem final : public FileSystem {
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
-  Status NewWritableFile(const std::string& fname, TransactionToken* token,
-                         std::unique_ptr<WritableFile>* result) override;
-  Status NewAppendableFile(const std::string& fname, TransactionToken* token,
-                           std::unique_ptr<WritableFile>* result) override;
-  Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewWritableFile(const std::string& fname,
+                               TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewAppendableFile(
+      const std::string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
-  Status FileExists(const std::string& fname, TransactionToken* token) override;
+  absl::Status FileExists(const std::string& fname,
+                          TransactionToken* token) override;
   bool FilesExist(const std::vector<std::string>& files,
                   TransactionToken* token,
-                  std::vector<Status>* status) override;
-  Status GetChildren(const std::string& dir, TransactionToken* token,
-                     std::vector<std::string>* result) override;
-  Status GetMatchingPaths(const std::string& pattern, TransactionToken* token,
-                          std::vector<std::string>* results) override;
-  Status DeleteFile(const std::string& fname, TransactionToken* token) override;
-  Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
-                           int64_t* undeleted_files,
-                           int64_t* undeleted_dirs) override;
-  Status DeleteDir(const std::string& dirname,
-                   TransactionToken* token) override;
-  Status RecursivelyCreateDir(const std::string& dirname,
-                              TransactionToken* token) override;
-  Status CreateDir(const std::string& dirname,
-                   TransactionToken* token) override;
-  Status Stat(const std::string& fname, TransactionToken* token,
-              FileStatistics* stat) override;
-  Status IsDirectory(const std::string& fname,
-                     TransactionToken* token) override;
-  Status GetFileSize(const std::string& fname, TransactionToken* token,
-                     uint64* file_size) override;
-  Status RenameFile(const std::string& src, const std::string& target,
-                    TransactionToken* token) override;
-  Status CopyFile(const std::string& src, const std::string& target,
-                  TransactionToken* token) override;
+                  std::vector<absl::Status>* status) override;
+  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+                           std::vector<std::string>* result) override;
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                TransactionToken* token,
+                                std::vector<std::string>* results) override;
+  absl::Status DeleteFile(const std::string& fname,
+                          TransactionToken* token) override;
+  absl::Status DeleteRecursively(const std::string& dirname,
+                                 TransactionToken* token,
+                                 int64_t* undeleted_files,
+                                 int64_t* undeleted_dirs) override;
+  absl::Status DeleteDir(const std::string& dirname,
+                         TransactionToken* token) override;
+  absl::Status RecursivelyCreateDir(const std::string& dirname,
+                                    TransactionToken* token) override;
+  absl::Status CreateDir(const std::string& dirname,
+                         TransactionToken* token) override;
+  absl::Status Stat(const std::string& fname, TransactionToken* token,
+                    FileStatistics* stat) override;
+  absl::Status IsDirectory(const std::string& fname,
+                           TransactionToken* token) override;
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+                           uint64* file_size) override;
+  absl::Status RenameFile(const std::string& src, const std::string& target,
+                          TransactionToken* token) override;
+  absl::Status CopyFile(const std::string& src, const std::string& target,
+                        TransactionToken* token) override;
   std::string TranslateName(const std::string& name) const override;
   void FlushCaches(TransactionToken* token) override;
-  Status SetOption(const std::string& name,
-                   const std::vector<string>& values) override;
-  Status SetOption(const std::string& name,
-                   const std::vector<int64_t>& values) override;
-  Status SetOption(const std::string& name,
-                   const std::vector<double>& values) override;
+  absl::Status SetOption(const std::string& name,
+                         const std::vector<string>& values) override;
+  absl::Status SetOption(const std::string& name,
+                         const std::vector<int64_t>& values) override;
+  absl::Status SetOption(const std::string& name,
+                         const std::vector<double>& values) override;
 
  private:
   std::unique_ptr<TF_Filesystem> filesystem_;
@@ -135,9 +141,9 @@ class ModularRandomAccessFile final : public RandomAccessFile {
 
   ~ModularRandomAccessFile() override { ops_->cleanup(file_.get()); }
 
-  Status Read(uint64 offset, size_t n, StringPiece* result,
-              char* scratch) const override;
-  Status Name(StringPiece* result) const override;
+  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+                    char* scratch) const override;
+  absl::Status Name(StringPiece* result) const override;
 
  private:
   std::string filename_;
@@ -156,12 +162,12 @@ class ModularWritableFile final : public WritableFile {
 
   ~ModularWritableFile() override { ops_->cleanup(file_.get()); }
 
-  Status Append(StringPiece data) override;
-  Status Close() override;
-  Status Flush() override;
-  Status Sync() override;
-  Status Name(StringPiece* result) const override;
-  Status Tell(int64_t* position) override;
+  absl::Status Append(StringPiece data) override;
+  absl::Status Close() override;
+  absl::Status Flush() override;
+  absl::Status Sync() override;
+  absl::Status Name(StringPiece* result) const override;
+  absl::Status Tell(int64_t* position) override;
 
  private:
   std::string filename_;
@@ -190,7 +196,7 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
 };
 
 // Registers a filesystem plugin so that core TensorFlow can use it.
-Status RegisterFilesystemPlugin(const std::string& dso_path);
+absl::Status RegisterFilesystemPlugin(const std::string& dso_path);
 
 }  // namespace tensorflow
 

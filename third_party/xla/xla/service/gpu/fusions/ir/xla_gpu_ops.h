@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Bytecode/BytecodeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
@@ -42,9 +43,9 @@ limitations under the License.
 namespace xla::gpu {
 
 struct VariableConstraints {
-  llvm::SmallVector<llvm::SmallVector<std::pair<mlir::AffineExpr, Interval>>>
+  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
       constraints_for_dims;
-  llvm::SmallVector<llvm::SmallVector<std::pair<mlir::AffineExpr, Interval>>>
+  llvm::SmallVector<llvm::SmallDenseMap<mlir::AffineExpr, Interval>>
       constraints_for_symbols;
 };
 VariableConstraints GetConstraintsForVariables(const IndexingMap& map);

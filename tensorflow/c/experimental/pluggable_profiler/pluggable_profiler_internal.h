@@ -30,7 +30,7 @@ using TFInitProfilerFn = void (*)(TF_ProfilerRegistrationParams* const,
                                   TF_Status* const);
 
 // Registers plugin's profiler to TensorFlow's profiler registry.
-Status InitPluginProfiler(TFInitProfilerFn init_fn);
+absl::Status InitPluginProfiler(TFInitProfilerFn init_fn);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -22,10 +22,11 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,21 +34,12 @@ namespace gpu {
 namespace {
 
 class InPlaceDynamicUpdateSliceFusionTest : public HloTestBase {
- public:
-  void SetUp() override {
-    HloTestBase::SetUp();
-    printer_ =
-        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                         {"chunk_id", "unroll_id"});
-  }
-
  protected:
   DebugOptions GetDebugOptionsForTest() override {
     auto opts = HloTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mlir_emitter_level(0);
     return opts;
   }
-  AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -83,7 +75,9 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
 
   auto thread_id_update_indexing = fusion->ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/1, &mlir_context_);
-  EXPECT_THAT(thread_id_update_indexing->ToString(printer_),
+  EXPECT_THAT(ToString(*thread_id_update_indexing,
+                       {"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
+                       {"chunk_id", "unroll_id"}, {}),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     th_x floordiv 6, th_x mod 6),
@@ -95,8 +89,7 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
     bl_y in [0, 0],
     bl_z in [0, 0],
     chunk_id in [0, 0],
-    unroll_id in [0, 0],
-    is_simplified: true
+    unroll_id in [0, 0]
   )"));
   auto thread_id_dst_indexing = fusion->ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);

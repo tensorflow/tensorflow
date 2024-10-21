@@ -29,8 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ReadGroundTruthFile(const string& file_name,
-                           std::vector<std::pair<string, int64_t>>* result) {
+absl::Status ReadGroundTruthFile(
+    const string& file_name, std::vector<std::pair<string, int64_t>>* result) {
   std::ifstream file(file_name);
   if (!file) {
     return tensorflow::errors::NotFound("Ground truth file '", file_name,

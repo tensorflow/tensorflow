@@ -167,7 +167,8 @@ NodeDef CreateBufferSizeNode(DataType dtype,
   return node;
 }
 
-Status CreateAndAppendPrefetchNode(MutableGraphView* graph, FunctionDef& fdef) {
+absl::Status CreateAndAppendPrefetchNode(MutableGraphView* graph,
+                                         FunctionDef& fdef) {
   auto get_last_dataset_op_node = [&]() -> const NodeDef* {
     // Find the input node of fdef's ret value.
     const auto& output_arg = fdef.signature().output_arg(0).name();
@@ -251,10 +252,10 @@ Status CreateAndAppendPrefetchNode(MutableGraphView* graph, FunctionDef& fdef) {
   return absl::OkStatus();
 }
 
-Status AddInterleaveNode(MutableGraphView* graph,
-                         const NodeDef& parallel_interleave_node,
-                         const std::string& interleave_map_func_name,
-                         absl::flat_hash_set<string>& nodes_to_delete) {
+absl::Status AddInterleaveNode(MutableGraphView* graph,
+                               const NodeDef& parallel_interleave_node,
+                               const std::string& interleave_map_func_name,
+                               absl::flat_hash_set<string>& nodes_to_delete) {
   NodeDef interleave_node;
   interleave_node.set_op(kInterleaveDatasetOpName);
   graph_utils::SetUniqueGraphNodeName(
@@ -321,7 +322,7 @@ Status AddInterleaveNode(MutableGraphView* graph,
 }
 }  // namespace
 
-Status SeqInterleavePrefetch::OptimizeAndCollectStats(
+absl::Status SeqInterleavePrefetch::OptimizeAndCollectStats(
     Cluster* cluster, const GrapplerItem& item, GraphDef* output,
     OptimizationStats* stats) {
   *output = item.graph;

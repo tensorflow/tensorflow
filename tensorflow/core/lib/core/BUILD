@@ -132,14 +132,14 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl",
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core/protobuf:__subpackages__",
         "@local_tsl//tsl:__subpackages__",
     ],
-    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

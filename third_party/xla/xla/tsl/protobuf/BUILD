@@ -48,7 +48,7 @@ tf_proto_library(
     name = "status_proto",
     srcs = ["status.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["//xla/tsl/protobuf:error_codes_proto_impl"],
     visibility = ["//visibility:public"],
 )
 
@@ -72,6 +72,7 @@ tf_proto_library(
     has_services = 1,
     create_grpc_library = True,
     create_java_proto = False,
+    create_kotlin_proto = False,
     create_service = True,
     protodeps = if_google(["@com_google_protobuf//:any"]),
     visibility = ["//visibility:public"],
@@ -80,7 +81,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "coordination_service_py_pb2",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":coordination_service_proto"],
 # )
@@ -101,8 +101,17 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "error_codes_proto_impl",
+    srcs = ["error_codes.proto"],
+    make_default_target_header_only = True,
+    protodeps = if_google(["@com_google_protobuf//:any"]),
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
+    create_kotlin_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
@@ -110,7 +119,7 @@ tf_proto_library(
         ":bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl",
+        "//xla/tsl/protobuf:error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
         ":status_proto",

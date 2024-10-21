@@ -248,12 +248,24 @@ mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
   return mlir::success();
 }
 
-mlir::LogicalResult VerifyIoAliases(mlir::Operation* op,
-                                    mlir::ArrayAttr io_aliases,
-                                    llvm::ArrayRef<IfrtArrayType> inputs,
-                                    llvm::ArrayRef<IfrtArrayType> outputs) {
-  llvm::SmallSet<int, 4> aliased_inputs;
+mlir::LogicalResult VerifyIoAliasesAndDonations(
+    mlir::Operation* op, mlir::ArrayAttr io_aliases,
+    llvm::ArrayRef<int32_t> donated_input_indices,
+    llvm::ArrayRef<IfrtArrayType> inputs,
+    llvm::ArrayRef<IfrtArrayType> outputs) {
+  llvm::SmallSet<int, 4> aliased_or_donated_inputs;
   llvm::SmallSet<int, 4> aliased_outputs;
+  for (const int32_t donated_input_index : donated_input_indices) {
+    if (donated_input_index < 0 || donated_input_index >= inputs.size()) {
+      return op->emitOpError()
+             << "can't donate input #" << donated_input_index
+             << " as only having " << inputs.size() << " inputs";
+    }
+    if (!aliased_or_donated_inputs.insert(donated_input_index).second) {
+      return op->emitOpError() << "can't donate input #" << donated_input_index
+                               << " more than once";
+    }
+  }
   for (const auto& raw_io_alias :
        io_aliases.getAsRange<mlir::DenseI32ArrayAttr>()) {
     llvm::ArrayRef<int> io_alias_as_array = raw_io_alias.asArrayRef();
@@ -263,9 +275,9 @@ mlir::LogicalResult VerifyIoAliases(mlir::Operation* op,
                                    inputs, outputs))) {
       return mlir::failure();
     }
-    if (!aliased_inputs.insert(aliased_input).second) {
-      return op->emitOpError()
-             << "can't alias input #" << aliased_input << " more than once";
+    if (!aliased_or_donated_inputs.insert(aliased_input).second) {
+      return op->emitOpError() << "can't alias or donate input #"
+                               << aliased_input << " more than once";
     }
     if (!aliased_outputs.insert(aliased_output).second) {
       return op->emitOpError()
@@ -618,8 +630,9 @@ mlir::LogicalResult CallOp::verify() {
 
   if (mlir::failed(VerifyDevicePlacement(*this, getDevices(), input_arrays,
                                          output_arrays)) ||
-      mlir::failed(VerifyIoAliases(*this, getIoAliases(), input_arrays,
-                                   output_arrays))) {
+      mlir::failed(VerifyIoAliasesAndDonations(*this, getIoAliases(),
+                                               getDonatedInputIndices(),
+                                               input_arrays, output_arrays))) {
     return mlir::failure();
   }
   return mlir::success();
@@ -680,7 +693,9 @@ mlir::LogicalResult CallLoadedExecutableOp::verify() {
     output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
   }
 
-  return VerifyIoAliases(*this, getIoAliases(), input_arrays, output_arrays);
+  return VerifyIoAliasesAndDonations(*this, getIoAliases(),
+                                     getDonatedInputIndices(), input_arrays,
+                                     output_arrays);
 }
 
 mlir::LogicalResult LoadedExecutableOp::verify() {

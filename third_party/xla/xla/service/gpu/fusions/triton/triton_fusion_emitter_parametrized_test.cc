@@ -1576,6 +1576,7 @@ ENTRY main {
   }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec(/*aabs=*/0, /*arel=*/0),
                             /*reference_preprocessor=*/nullptr,
+                            /*test_preprocessor=*/nullptr,
                             max_bits_of_precision));
 }
 

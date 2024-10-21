@@ -15,17 +15,20 @@ limitations under the License.
 #include "xla/service/gpu/fusions/legacy/scatter.h"
 
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,13 +36,6 @@ namespace gpu {
 namespace {
 
 class ScatterFusionTest : public HloTestBase {
- public:
-  void SetUp() override {
-    HloTestBase::SetUp();
-    printer_ =
-        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                         {"chunk_id", "unroll_id", "index_id"});
-  }
   DebugOptions GetDebugOptionsForTest() override {
     auto opts = HloTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mlir_emitter_level(0);
@@ -47,7 +43,6 @@ class ScatterFusionTest : public HloTestBase {
   }
 
  protected:
-  AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
 };
 
@@ -163,34 +158,33 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     bl_z in [0, 0],
     chunk_id in [0, 0],
     unroll_id in [0, 0],
-    bl_x * 128 + th_x in [0, 8399],
-    is_simplified: true
+    bl_x * 128 + th_x in [0, 8399]
   )";
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/3, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/0, /*hero_operand_index=*/3, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/4, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/0, /*hero_operand_index=*/4, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/3, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/1, /*hero_operand_index=*/3, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kUpdatesIndexing));
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/4, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/1, /*hero_operand_index=*/4, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kUpdatesIndexing));
 
+  range_names.push_back("index_id");
   constexpr auto kIndicesIndexing = R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id, index_id] ->
       ((bl_x * 128 + th_x) floordiv 200, 0),
@@ -204,20 +198,17 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     chunk_id in [0, 0],
     unroll_id in [0, 0],
     index_id in [0, 0],
-    bl_x * 128 + th_x in [0, 8399],
-    is_simplified: true
+    bl_x * 128 + th_x in [0, 8399]
   )";
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/0, /*hero_operand_index=*/2, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/0, /*hero_operand_index=*/2, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kIndicesIndexing));
   EXPECT_THAT(
-      fusion
-          ->ComputeThreadIdToInputIndexing(
-              /*root_index=*/1, /*hero_operand_index=*/2, &mlir_context_)
-          ->ToString(printer_),
+      ToString(*fusion->ComputeThreadIdToInputIndexing(
+                   /*root_index=*/1, /*hero_operand_index=*/2, &mlir_context_),
+               dim_names, range_names, {}),
       MatchIndexingString(kIndicesIndexing));
 }
 

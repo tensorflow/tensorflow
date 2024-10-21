@@ -24,11 +24,11 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
-#include "xla/client/padding.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/padding.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
@@ -43,13 +43,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
-// Tests both F32 and BF16.
 static std::array<bool, 2> use_bfloat16_params{false, true};
-#else
-// Only tests F32.
-static std::array<bool, 1> use_bfloat16_params{false};
-#endif
 
 class ReduceWindowTestBase : public ClientLibraryTestBase {
  public:
@@ -1339,7 +1333,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         /*window_dilations=*/param.window_dilation,
         /*padding=*/padding);
 
-    ComputeAndCompare(&b, {MaybeConvertLiteralToBfloat16(input_literal)},
+    ComputeAndCompare(&b, {MaybeConvertLiteralToTestType(input_literal)},
                       DefaultErrorSpec());
   }
 };

@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 // Defines the following utilities:
 //

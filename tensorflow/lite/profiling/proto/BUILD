@@ -42,14 +42,12 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "profiling_info_py_pb2",
-#     api_version = 2,
 #     compatible_with = get_compatible_with_portable(),
 #     deps = [":profiling_info_proto"],
 # )
 #
 # py_proto_library(
 #     name = "model_runtime_info_py_pb2",
-#     api_version = 2,
 #     compatible_with = get_compatible_with_portable(),
 #     deps = [":model_runtime_info_proto"],
 # )

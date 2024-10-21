@@ -34,6 +34,8 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
       return b.getI1Type();
     case xla::PrimitiveType::F8E5M2:
       return b.getFloat8E5M2Type();
+    case xla::PrimitiveType::F8E4M3:
+      return b.getFloat8E4M3Type();
     case xla::PrimitiveType::F8E4M3FN:
       return b.getFloat8E4M3FNType();
     case xla::PrimitiveType::F8E4M3B11FNUZ:
@@ -42,6 +44,8 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
       return b.getFloat8E5M2FNUZType();
     case xla::PrimitiveType::F8E4M3FNUZ:
       return b.getFloat8E4M3FNUZType();
+    case xla::PrimitiveType::F8E3M4:
+      return b.getFloat8E3M4Type();
     case xla::PrimitiveType::F16:
       return b.getF16Type();
     case xla::PrimitiveType::BF16:
@@ -76,6 +80,8 @@ absl::StatusOr<mlir::Type> ConvertPrimitiveTypeToMlirType(
 xla::PrimitiveType ConvertMlirTypeToPrimitiveType(mlir::Type type) {
   if (type.isFloat8E5M2()) {
     return xla::PrimitiveType::F8E5M2;
+  } else if (type.isFloat8E4M3()) {
+    return xla::PrimitiveType::F8E4M3;
   } else if (type.isFloat8E4M3FN()) {
     return xla::PrimitiveType::F8E4M3FN;
   } else if (type.isFloat8E4M3B11FNUZ()) {
@@ -84,6 +90,8 @@ xla::PrimitiveType ConvertMlirTypeToPrimitiveType(mlir::Type type) {
     return xla::PrimitiveType::F8E4M3FNUZ;
   } else if (type.isFloat8E5M2FNUZ()) {
     return xla::PrimitiveType::F8E5M2FNUZ;
+  } else if (type.isFloat8E3M4()) {
+    return xla::PrimitiveType::F8E3M4;
   } else if (type.isBF16()) {
     return xla::PrimitiveType::BF16;
   } else if (type.isF16()) {

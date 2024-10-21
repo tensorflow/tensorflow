@@ -23,8 +23,8 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -106,8 +106,8 @@ void GraphOptPass::runOnOperation() {
   // Convert Graph to MLIR
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
-  auto module_or_status =
-      ConvertGraphToMlir(**options.graph, debug_info, flib_def, specs, &ctx);
+  auto module_or_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+      **options.graph, debug_info, flib_def, specs, &ctx);
   if (!module_or_status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx))
         << module_or_status.status().message();

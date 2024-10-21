@@ -31,8 +31,9 @@ limitations under the License.
 namespace xla {
 
 struct PjRtEnvironment {
-  std::unique_ptr<xla::PjRtClient> client;
+  // Sequence matters here, client should be destroyed before service.
   std::unique_ptr<xla::DistributedRuntimeService> service;
+  std::unique_ptr<xla::PjRtClient> client;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
   std::shared_ptr<xla::DistributedRuntimeClient> distributed_client;
 };

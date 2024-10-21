@@ -86,7 +86,7 @@ def LegalizeTFPass : Pass<"tfl-legalize-tf", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to TensorFlow Lite dialect.";
   let constructor = "CreateLegalizeTFPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect" ,
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
     "quantfork::QuantizationForkDialect"
   ];
   let options = [
@@ -243,7 +243,7 @@ def PrepareQuantizePass : Pass<"tfl-prepare-quantize", "mlir::func::FuncOp"> {
   let summary = "Remove qdq from input and output nodes after quantization.";
   let constructor = "CreatePrepareQuantizePass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
-    "quant::QuantizationDialect",
+    "quant::QuantDialect",
     "quantfork::QuantizationForkDialect"
   ];
   let options = [
@@ -274,7 +274,7 @@ def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range",
   let summary = "Prepare TFL dialect for dynamic range quantization.";
   let constructor = "CreatePrepareDynamicRangeQuantizePass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
-    "mlir::quant::QuantizationDialect",
+    "mlir::quant::QuantDialect",
     "mlir::quantfork::QuantizationForkDialect"
   ];
   let options = [
@@ -300,7 +300,7 @@ def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   let summary = "Prepare TF for legalization to TensorFlow Lite dialect.";
   let constructor = "CreatePrepareTFPass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
-    "mlir::quant::QuantizationDialect",
+    "mlir::quant::QuantDialect",
     "mlir::quantfork::QuantizationForkDialect",
     "mhlo::MhloDialect"
   ];
@@ -321,7 +321,7 @@ def QuantizePass : Pass<"tfl-quantize", "mlir::func::FuncOp"> {
   let summary = "Apply quantization on models in TensorFlow Lite dialect.";
   let constructor = "CreateDefaultQuantizePass()";
   let dependentDialects = ["TFL::TensorFlowLiteDialect",
-    "mlir::quant::QuantizationDialect",
+    "mlir::quant::QuantDialect",
     "mlir::quantfork::QuantizationForkDialect"
   ];
 

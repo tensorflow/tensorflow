@@ -36,7 +36,7 @@ limitations under the License.
 //   node {name: "Identity0", op: "Identity", input: "fill0",
 //     device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
 //     attr {
-//       key: "ici_weight_distribution_mlir_bridge_marker", value {b: true}
+//       key: "_ici_weight_distribution_mlir_bridge_marker", value {b: true}
 //     }
 //   }
 //   node {name: "const2", op: "Const"}
@@ -45,13 +45,13 @@ limitations under the License.
 //   node {name: "identity1", op: "Identity", input: "fill1"
 //     device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
 //     attr {
-//       key: "ici_weight_distribution_mlir_bridge_marker", value {b: true}
+//       key: "_ici_weight_distribution_mlir_bridge_marker", value {b: true}
 //     }
 //   }
 //   node {name: "const4", op: "Const"}
 //   node {name: "split0", op: "Split", input: "const4", input: "identity1"
 //     attr {
-//       key: "ici_weight_distribution_mlir_bridge_marker"
+//       key: "_ici_weight_distribution_mlir_bridge_marker"
 //       value {b: true}
 //     }
 //   }
@@ -101,7 +101,7 @@ namespace tensorflow {
 // The dummy variables will be put on the same task as the TPUExecute Op.
 class SimplifyIciDummyVariablesPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

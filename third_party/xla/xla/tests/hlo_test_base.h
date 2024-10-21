@@ -16,30 +16,45 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_TEST_BASE_H_
 #define XLA_TESTS_HLO_TEST_BASE_H_
 
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -72,20 +87,8 @@ namespace xla {
 //  )
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
-class HloTestBase : public ::testing::Test {
+class HloTestBase : public HloHardwareIndependentTestBase {
  public:
-  // Creates a new HLO module for a test. The module created will have
-  // TestName() for its name; it will also automatically populate its debug
-  // options from command-line flags. If you want a fresh HloModule object and
-  // then add HloComputations to it, it's recommended to use this method in your
-  // tests.
-  //
-  // This returns a vanilla HloModule that doesn't run the HLO verifier on
-  // destruction.
-  ABSL_DEPRECATED("Use CreateNewVerifiedModule instead.")
-  std::unique_ptr<HloModule> CreateNewUnverifiedModule(
-      const std::string& name = TestName());
-
   // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
   // HLO verifier on destruction.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
@@ -100,44 +103,12 @@ class HloTestBase : public ::testing::Test {
   ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                const HloModuleConfig& config);
 
-  // Runs the hlo_pass with the provided module and returns the result. This
-  // function also verifies that the module remains unchanged when hlo_pass
-  // returns false as the absl::StatusOr value.
-  //
-  // These three overloads all do the same thing.  The && overload lets you do
-  // `RunHloPass(MyPass(), module)` all in one line.  The reason for the
-  // overload that takes a pointer is that, at one point in the past, non-const
-  // lvalue references were banned in Google code.
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
-                                         HloModule* module);
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface& hlo_pass,
-                                         HloModule* module) {
-    return RunHloPass(&hlo_pass, module);
-  }
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
-                                         HloModule* module) {
-    return RunHloPass(&hlo_pass, module);
-  }
-
-  // Runs the hlo_pass with the provided module group and returns the result.
-  // This method runs the input HLO module group pass for a `HloModuleGroup` and
-  // it also verifies the module group remains unchanged when hlo_pass returns
-  // false as the absl::StatusOr value.
-  static absl::StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
-                                         HloModuleGroup* module_group);
-
-  static PrecisionConfig DefaultPrecisionConfig(int operands);
-
-  // Sets most fath math options to be enabled to model the fast math flags
-  // generally used for CPU:AOT compilation.
-  static void SetAotFastMathDebugOptions(DebugOptions* options);
-
   // Compiles the given `hlo` with optimizations, and verifies that optimized
   // HLO matches the given FileCheck pattern.
   void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
                          bool print_operand_shape = false);
 
-  // LikeMatchOptimizedHlo, but checks operand shapes as well.
+  // Like MatchOptimizedHlo, but checks operand shapes as well.
   void MatchOptimizedHloWithShapes(absl::string_view hlo,
                                    absl::string_view pattern) {
     MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
@@ -167,43 +138,7 @@ class HloTestBase : public ::testing::Test {
               bool allow_mixed_precision_in_hlo_verifier = true,
               HloPredicate instruction_can_change_layout_func = {});
 
-  ~HloTestBase() override {}
-
-  // Runs pass `hlo_pass` on input HLO module `hlo` with optional config, and
-  // FileChecks the result against `expected`.
-  //
-  // If the rewrite has changed the module, also runs `additional_checks` on the
-  // result.
-  void RunAndFilecheckHloRewrite(
-      absl::string_view hlo, HloPassInterface&& hlo_pass,
-      std::optional<absl::string_view> expected,
-      std::function<void(HloModule*)> after_pass_checks = nullptr,
-      const HloModuleConfig* config = nullptr);
-
-  // Runs pass `hlo_pass` on a group of input HLO modules `hlo_module_strs`,
-  // and FileChecks the result against `expected`.
-  void RunAndFilecheckHloModuleGroupRewrite(
-      absl::Span<const absl::string_view> hlo_module_strs,
-      HloPassInterface&& hlo_pass,
-      std::optional<absl::Span<const absl::string_view>> expected);
-
-  // Populates debug options from command-line flags and adjusts the options for
-  // testing. It is recommended to use this when you need to pass in
-  // DebugOptions, e.g. when creating a module from a string or a file.
-  //
-  // This function is virtual so tests can specify an alternative set of debug
-  // options (e.g. disabling additional passes).
-  virtual DebugOptions GetDebugOptionsForTest();
-
-  // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
-                                         int64_t num_partitions = 1) {
-    HloModuleConfig config;
-    config.set_debug_options(GetDebugOptionsForTest());
-    config.set_replica_count(replica_count);
-    config.set_num_partitions(num_partitions);
-    return config;
-  }
+  ~HloTestBase() override = default;
 
   // Executes the given module and return the result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
@@ -252,7 +187,7 @@ class HloTestBase : public ::testing::Test {
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
-      bool run_hlo_passes);
+      bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
   // Executes the given hlo module on two backends and compares results.
   //
@@ -266,16 +201,15 @@ class HloTestBase : public ::testing::Test {
   // reference backend. Note that the program shape of the module must not be
   // modified.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Same as above, except that the module will be executed without Hlo
   // optimization.
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
@@ -284,6 +218,7 @@ class HloTestBase : public ::testing::Test {
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
 
   // Same as above, except that the module will be executed without Hlo
@@ -296,17 +231,19 @@ class HloTestBase : public ::testing::Test {
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
   [[nodiscard]] ::testing::AssertionResult Run(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
+      std::unique_ptr<HloModule> module, bool run_hlo_passes,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
-      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
       std::optional<int64_t> args_max_bits_of_precision = std::nullopt);
   [[nodiscard]] ::testing::AssertionResult Run(
-      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
@@ -334,7 +271,7 @@ class HloTestBase : public ::testing::Test {
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const absl::Span<Literal* const> arguments,
+      absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Same as below, except requires passing the modules.
@@ -369,14 +306,14 @@ class HloTestBase : public ::testing::Test {
 
   // Executes an hlo module with fake inputs on multiple replicas.
   [[nodiscard]] ::testing::AssertionResult RunReplicated(
-      const absl::string_view hlo_string, bool run_hlo_passes = true,
+      absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
       const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   [[nodiscard]] ::testing::AssertionResult RunMultipleTimes(
-      const absl::string_view hlo_string, bool run_hlo_passes,
+      absl::string_view hlo_string, bool run_hlo_passes,
       std::vector<ExecutionProfile>* profiles,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
@@ -384,67 +321,12 @@ class HloTestBase : public ::testing::Test {
       const std::string& filename, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
-      const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
+      absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
       const std::string& filename, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
-
-  // Convenience method to force the layout of a given parameter in a module.
-  // The layout of parameter number 'param_no' in the 'module' is set to
-  // 'layout'.
-  void ForceParameterLayout(HloModule* module, int64_t param_no,
-                            const Layout& layout) {
-    ASSERT_LT(param_no,
-              module->mutable_entry_computation_layout()->parameter_count());
-    module->mutable_entry_computation_layout()
-        ->mutable_parameter_layout(param_no)
-        ->ResetLayout(layout);
-  }
-
-  // Convenience method to force the layout of the computation result in a
-  // module. The result layout of 'module' is set to 'layout'.
-  void ForceResultLayout(HloModule* module, const Layout& layout) {
-    module->mutable_entry_computation_layout()
-        ->mutable_result_layout()
-        ->ResetLayout(layout);
-  }
-
-  void ForceResultLayout(HloModule* module, const Layout& layout,
-                         ShapeIndexView shape_index) {
-    module->mutable_entry_computation_layout()
-        ->mutable_result_layout()
-        ->ResetLayout(layout, shape_index);
-  }
-
-  // Convenience method to clear the layout of the computation result in
-  // 'module'.
-  void ForceClearResultLayout(HloModule* module) {
-    module->mutable_entry_computation_layout()
-        ->mutable_result_layout()
-        ->Clear();
-  }
-
-  // Gets the computation/instruction from the given module with the given name.
-  // Note that it is encouraged to use these functions directly via the
-  // hlo_query.h header instead since they are independent from any test-time
-  // variables or contexts.
-
-  // This is useful for tests which create HLOs from a string and then want to
-  // inspect a particular computation or instruction.
-  HloComputation* FindComputation(HloModule* module, absl::string_view name);
-  HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
-  // Gets the instruction from the given module with the given opcode.
-  HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
-  // Gets all the instructions from the given module with the given opcode.
-  std::vector<HloInstruction*> FindInstructions(HloModule* module,
-                                                HloOpcode opcode);
-
-  // Return an HLO verifier constructed for the test backend.
-  HloVerifier& verifier() const { return *hlo_verifier_; }
-
-  static std::string TestName();
 
   // Returns the backend owned by the test runner.
   Backend& backend();
@@ -455,22 +337,11 @@ class HloTestBase : public ::testing::Test {
   HloRunner test_runner_;
   HloRunner reference_runner_;
 
-  bool verifier_layout_sensitive_;
-  bool allow_mixed_precision_in_hlo_verifier_;
-  HloPredicate instruction_can_change_layout_func_;
-  std::unique_ptr<HloVerifier> hlo_verifier_;
-
   ErrorSpec error_spec_{0.0001};
 
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module);
-
-  // Updates the entry computation layout to match the program shape. Useful
-  // when tiling assignment has been run to update the latter and we want those
-  // changes propagated into the former.
-  absl::Status UpdateEntryComputationLayoutToMatchProgramLayout(
-      HloModule* module);
 
   absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
 
@@ -479,15 +350,10 @@ class HloTestBase : public ::testing::Test {
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
-  // Compares the inputs shapes of two modules and returns the list of parameter
-  // indices that mismatch. The mismatch could be either in shape or datatype.
-  // If there is no mismatch, an empty vector is returned.
-  [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
-                                               const HloModule& module_1);
-
- private:
   // Creates or retrieves the allocator.
   se::DeviceMemoryAllocator* GetAllocator();
+
+ private:
   // Either an HloRunner or HloRunnerPjRt depending on if ShouldUsePjRt()
   std::unique_ptr<HloRunnerInterface> runner_;
   se::Platform* test_platform_;
@@ -504,8 +370,7 @@ class HloTestBase : public ::testing::Test {
   // compares the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareInternal(
-      std::unique_ptr<HloModule> module,
-      const absl::Span<Literal* const> arguments,
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes,
       const std::function<void(HloModule*)>& reference_preprocessor,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr);
@@ -524,7 +389,7 @@ class HloTestBase : public ::testing::Test {
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const absl::Span<Literal* const> arguments,
+      absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   // Returns either an HloRunner or HloRunnerPjRt implementation depending if

@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/stream_executor/stream.h"
+
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
@@ -47,8 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -60,17 +60,6 @@ namespace stream_executor::gpu {
 //===----------------------------------------------------------------------===//
 // Implementation details device kernels required by GpuCommandBuffer.
 //===----------------------------------------------------------------------===//
-
-// See device specific implementations. These are
-// various kernels that update Gpu conditionals based on the device memory
-// values, and allow implementing on-device control flow via conditional command
-// buffers.
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec();
 
 using Mode = CommandBuffer::Mode;
 using State = CommandBuffer::State;
@@ -224,71 +213,6 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
   return execution_scope.barriers.empty()
              ? Dependencies{}
              : Dependencies{execution_scope.barriers.back().handle};
-}
-
-absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
-GpuCommandBuffer::GetSetIfConditionKernel() {
-  if (!set_if_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetSetIfConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_if_condition_kernel_,
-        SetIfConditionKernel::FactoryType::Create(parent_, spec));
-  }
-  return &set_if_condition_kernel_;
-}
-
-absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
-GpuCommandBuffer::GetSetIfElseConditionKernel() {
-  if (!set_if_else_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetSetIfElseConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_if_else_condition_kernel_,
-        SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
-  }
-  return &set_if_else_condition_kernel_;
-}
-
-absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
-GpuCommandBuffer::GetSetCaseConditionKernel() {
-  if (!set_case_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetSetCaseConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_case_condition_kernel_,
-        SetCaseConditionKernel::FactoryType::Create(parent_, spec));
-  }
-  return &set_case_condition_kernel_;
-}
-
-absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
-GpuCommandBuffer::GetSetForConditionKernel() {
-  if (!set_for_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetSetForConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_for_condition_kernel_,
-        SetForConditionKernel::FactoryType::Create(parent_, spec));
-  }
-  return &set_for_condition_kernel_;
-}
-
-absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
-GpuCommandBuffer::GetSetWhileConditionKernel() {
-  if (!set_while_condition_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetSetWhileConditionKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(
-        set_while_condition_kernel_,
-        SetWhileConditionKernel::FactoryType::Create(parent_, spec));
-  }
-  return &set_while_condition_kernel_;
-}
-
-absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
-GpuCommandBuffer::GetNoOpKernel() {
-  if (!noop_kernel_) {
-    TF_ASSIGN_OR_RETURN(auto spec, GetNoOpKernelLoaderSpec());
-    TF_ASSIGN_OR_RETURN(noop_kernel_,
-                        NoOpKernel::FactoryType::Create(parent_, spec));
-  }
-  return &noop_kernel_;
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
@@ -691,14 +615,8 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
     absl::Span<const ConditionBuilder> builders) {
   std::vector<std::unique_ptr<GpuCommandBuffer>> cmd_buffers;
 
-  // Conditional command buffers always created in nested mode and with
-  // underlying graphs owned by a conditional node.
-  CommandBuffer::Mode nested = CommandBuffer::Mode::kNested;
-  bool is_owned_graph = false;
-
   for (size_t i = 0; i < handles.size(); ++i) {
-    auto command_buffer = std::make_unique<GpuCommandBuffer>(
-        nested, parent_, graphs[i], is_owned_graph);
+    auto command_buffer = CreateNestedCommandBuffer(graphs[i]);
     TF_RETURN_IF_ERROR(builders[i](command_buffer.get(), handles[i]));
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
 

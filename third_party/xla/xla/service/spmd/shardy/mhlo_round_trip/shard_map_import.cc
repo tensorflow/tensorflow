@@ -140,36 +140,6 @@ void insertAxisNamesFromSharding(mlir::MLIRContext* context,
   }
 }
 
-// Let axesInOldSharding be the axes used in `sharding`, which should be a
-// subset of `axesSet`. Append the set difference `axesSet - axesInOldSharding`
-// in the replicated axes of `sharding`.
-TensorShardingAttr appendReplicatedAxes(
-    mlir::MLIRContext* context, TensorShardingAttr sharding,
-    const llvm::SmallDenseSet<StringAttr>& axesSet, MeshAttr mesh) {
-  llvm::SmallDenseSet<StringAttr> axesInOldSharding;
-  insertAxisNamesFromSharding(context, sharding, axesInOldSharding);
-
-  // `axesInOldSharding` is a subset of `axesSet` since `axesSet` is the union
-  // of axes in all in/out shardings.
-  CHECK(llvm::set_is_subset(axesInOldSharding, axesSet));
-  if (axesInOldSharding.size() == axesSet.size()) {
-    return sharding;
-  }
-
-  SmallVector<AxisRefAttr> newReplicatedAxes(sharding.getReplicatedAxes());
-  newReplicatedAxes.reserve(newReplicatedAxes.size() + axesSet.size() -
-                            axesInOldSharding.size());
-  for (StringAttr axis : axesSet) {
-    if (!axesInOldSharding.contains(axis)) {
-      newReplicatedAxes.push_back(AxisRefAttr::get(context, axis));
-    }
-  }
-  llvm::sort(newReplicatedAxes, AxisRefAttr::getMeshComparator(mesh));
-
-  return TensorShardingAttr::get(context, sharding.getMeshName(),
-                                 sharding.getDimShardings(), newReplicatedAxes);
-}
-
 // Assumptions to confirm this is a shard_map pattern:
 // 1. All operands are the result of a `SPMDFullToShardShape` custom call, which
 //    is the result of a `Sharding` custom call.
@@ -365,28 +335,17 @@ class ShardMapImportPass
         auto inOutShardings =
             llvm::concat<TensorShardingAttr>(inShardings, outShardings);
         // All in/out shardings must refer to the same mesh.
-        const mlir::FlatSymbolRefAttr meshName =
-            inOutShardings.begin()->getMeshSymName();
-        if (absl::c_any_of(inOutShardings,
-                           [&meshName](TensorShardingAttr sharding) {
-                             return sharding.getMeshSymName() != meshName;
-                           })) {
+        MeshAttr mesh = mlir::sdy::getCommonMesh(inShardings, outShardings, op);
+        if (!mesh) {
           op.emitError("Multiple meshes in a single manual computation.");
           success = false;
           return mlir::WalkResult::interrupt();
         }
-        MeshAttr mesh = sdy::getMeshAttr(op, meshName);
 
         // Manual axes are the union of the axes in the in/out shardings.
         llvm::SmallDenseSet<StringAttr> manualAxesSet;
         for (TensorShardingAttr tensorSharding : inOutShardings) {
           insertAxisNamesFromSharding(context, tensorSharding, manualAxesSet);
-        }
-        // Update the in/out shardings with manual axes. Append the unused
-        // manual axes in the list of explicitly replicated axes.
-        for (TensorShardingAttr& tensorSharding : inOutShardings) {
-          tensorSharding = appendReplicatedAxes(context, tensorSharding,
-                                                manualAxesSet, mesh);
         }
 
         manualAxes.assign(manualAxesSet.begin(), manualAxesSet.end());

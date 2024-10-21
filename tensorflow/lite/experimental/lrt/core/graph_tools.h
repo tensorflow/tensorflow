@@ -19,6 +19,9 @@
 #include <cstdint>
 #include <tuple>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+
 #ifndef NDEBUG
 #include <iostream>
 #endif
@@ -27,10 +30,10 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 
 #define _D_MATCH_TRUE(v)                                               \
   {                                                                    \
@@ -64,9 +67,9 @@
 
 namespace graph_tools {
 
-using RankedTypeInfo = std::tuple<LrtElementType, llvm::ArrayRef<int32_t>>;
+using RankedTypeInfo = std::tuple<LiteRtElementType, llvm::ArrayRef<int32_t>>;
 
-using TensorUseInfo = std::tuple<LrtOp, lrt_param_index_t>;
+using TensorUseInfo = std::tuple<LiteRtOp, LiteRtParamIndex>;
 
 //===----------------------------------------------------------------------===//
 //                               Getters                                      //
@@ -76,133 +79,149 @@ using TensorUseInfo = std::tuple<LrtOp, lrt_param_index_t>;
 // Likely will need to define them.
 
 // Get the ops that reference given tensor.
-inline LrtResult<llvm::SmallVector<TensorUseInfo>> GetTensorUses(
-    LrtTensor tensor) {
-  lrt_param_index_t num_uses;
-  lrt_param_index_t* use_user_arg_ind;
-  LrtOpArray users = nullptr;
+inline LiteRtResult<llvm::SmallVector<TensorUseInfo>> GetTensorUses(
+    LiteRtTensor tensor) {
+  LiteRtParamIndex num_uses;
+  LiteRtParamIndex* use_user_arg_ind;
+  LiteRtOpArray users = nullptr;
 
-  LRT_RETURN_RESULT_IF_NOT_OK(
+  LITERT_RETURN_RESULT_IF_NOT_OK(
       GetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind),
       llvm::SmallVector<TensorUseInfo>);
 
-  llvm::ArrayRef<LrtOp> users_arr(users, num_uses);
-  llvm::ArrayRef<lrt_param_index_t> user_arg_ind_arr(use_user_arg_ind,
-                                                     num_uses);
+  llvm::ArrayRef<LiteRtOp> users_arr(users, num_uses);
+  llvm::ArrayRef<LiteRtParamIndex> user_arg_ind_arr(use_user_arg_ind, num_uses);
 
   auto results = llvm::zip(users_arr, user_arg_ind_arr);
   llvm::SmallVector<TensorUseInfo> results_vec(results.begin(), results.end());
 
-  return LrtResult<llvm::SmallVector<TensorUseInfo>>::FromValue(results_vec);
+  return LiteRtResult<llvm::SmallVector<TensorUseInfo>>::FromValue(results_vec);
 }
 
 // Get the only user of given tensor, bad status if tensor doesn't have
 // exactly one user.
-inline LrtResult<TensorUseInfo> GetTensorOnlyUse(LrtTensor tensor) {
-  LRT_ASSIGN_OR_RETURN_RESULT(auto uses, GetTensorUses(tensor), TensorUseInfo);
+inline LiteRtResult<TensorUseInfo> GetTensorOnlyUse(LiteRtTensor tensor) {
+  LITERT_ASSIGN_OR_RETURN_RESULT(auto uses, GetTensorUses(tensor),
+                                 TensorUseInfo);
   if (uses.size() != 1) {
-    return LrtResult<TensorUseInfo>::FromCode(kLrtStatusGraphInvariantError);
+    return LiteRtResult<TensorUseInfo>::FromStatus(
+        kLiteRtStatusErrorInvalidGraphInvariant);
   }
-  return LrtResult<TensorUseInfo>::FromValue(uses[0]);
+  return LiteRtResult<TensorUseInfo>::FromValue(uses[0]);
 }
 
 // Get tensor inputs to given op.
-inline LrtResult<llvm::ArrayRef<LrtTensor>> GetOpIns(LrtOp op) {
-  lrt_param_index_t num_inputs;
-  LrtTensorArray inputs = nullptr;
+inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetOpIns(LiteRtOp op) {
+  LiteRtParamIndex num_inputs;
+  LiteRtTensorArray inputs = nullptr;
 
-  LRT_RETURN_RESULT_IF_NOT_OK(GetOpInputs(op, &num_inputs, &inputs),
-                              llvm::ArrayRef<LrtTensor>);
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetOpInputs(op, &num_inputs, &inputs),
+                                 llvm::ArrayRef<LiteRtTensor>);
 
-  return LrtResult<llvm::ArrayRef<LrtTensor>>::FromValue(
-      llvm::ArrayRef<LrtTensor>(inputs, num_inputs));
+  return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
+      llvm::ArrayRef<LiteRtTensor>(inputs, num_inputs));
 }
 
 // Get the only tensor input to given op, bad status if op doesn't have
 // exacty one input.
-inline LrtResult<LrtTensor> GetOnlyOpIn(LrtOp op) {
-  LRT_ASSIGN_OR_RETURN_RESULT(auto ins, GetOpIns(op), LrtTensor);
+inline LiteRtResult<LiteRtTensor> GetOnlyOpIn(LiteRtOp op) {
+  LITERT_ASSIGN_OR_RETURN_RESULT(auto ins, GetOpIns(op), LiteRtTensor);
   if (ins.size() != 1) {
-    return LrtResult<LrtTensor>::FromCode(kLrtStatusGraphInvariantError);
+    return LiteRtResult<LiteRtTensor>::FromStatus(
+        kLiteRtStatusErrorInvalidGraphInvariant);
   }
-  return LrtResult<LrtTensor>::FromValue(ins[0]);
+  return LiteRtResult<LiteRtTensor>::FromValue(ins[0]);
 }
 
 // Get tensors outputs to given op.
-inline LrtResult<llvm::ArrayRef<LrtTensor>> GetOpOuts(LrtOp op) {
-  lrt_param_index_t num_outputs;
-  LrtTensorArray outputs = nullptr;
+inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetOpOuts(LiteRtOp op) {
+  LiteRtParamIndex num_outputs;
+  LiteRtTensorArray outputs = nullptr;
 
-  LRT_RETURN_RESULT_IF_NOT_OK(GetOpOutputs(op, &num_outputs, &outputs),
-                              llvm::ArrayRef<LrtTensor>);
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetOpOutputs(op, &num_outputs, &outputs),
+                                 llvm::ArrayRef<LiteRtTensor>);
 
-  return LrtResult<llvm::ArrayRef<LrtTensor>>::FromValue(
-      llvm::ArrayRef<LrtTensor>(outputs, num_outputs));
+  return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
+      llvm::ArrayRef<LiteRtTensor>(outputs, num_outputs));
 }
 
 // Get the only tensor output to given op, bad status if op doesn't have
 // exacty one output.
-inline LrtResult<LrtTensor> GetOnlyOpOut(LrtOp op) {
-  LRT_ASSIGN_OR_RETURN_RESULT(auto outs, GetOpOuts(op), LrtTensor);
+inline LiteRtResult<LiteRtTensor> GetOnlyOpOut(LiteRtOp op) {
+  LITERT_ASSIGN_OR_RETURN_RESULT(auto outs, GetOpOuts(op), LiteRtTensor);
   if (outs.size() != 1) {
-    return LrtResult<LrtTensor>::FromCode(kLrtStatusGraphInvariantError);
+    return LiteRtResult<LiteRtTensor>::FromStatus(
+        kLiteRtStatusErrorInvalidGraphInvariant);
   }
-  return LrtResult<LrtTensor>::FromValue(outs[0]);
+  return LiteRtResult<LiteRtTensor>::FromValue(outs[0]);
 }
 
 // Get all ops in given subgraph in topological order.
-inline LrtResult<llvm::ArrayRef<LrtOp>> GetSubgraphOps(LrtSubgraph subgraph) {
-  lrt_param_index_t num_ops;
-  LrtOpArray ops = nullptr;
-  LRT_RETURN_RESULT_IF_NOT_OK(GetSubgraphOps(subgraph, &num_ops, &ops),
-                              llvm::ArrayRef<LrtOp>);
+inline LiteRtResult<llvm::ArrayRef<LiteRtOp>> GetSubgraphOps(
+    LiteRtSubgraph subgraph) {
+  LiteRtParamIndex num_ops;
+  LiteRtOpArray ops = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetSubgraphOps(subgraph, &num_ops, &ops),
+                                 llvm::ArrayRef<LiteRtOp>);
 
-  return LrtResult<llvm::ArrayRef<LrtOp>>::FromValue(
-      llvm::ArrayRef<LrtOp>(ops, num_ops));
+  return LiteRtResult<llvm::ArrayRef<LiteRtOp>>::FromValue(
+      llvm::ArrayRef<LiteRtOp>(ops, num_ops));
 }
 
 // Get tensor inputs to given subgraph.
-inline LrtResult<llvm::ArrayRef<LrtTensor>> GetSubgraphInputs(
-    LrtSubgraph subgraph) {
-  lrt_param_index_t num_inputs;
-  LrtTensorArray inputs = nullptr;
-  LRT_RETURN_RESULT_IF_NOT_OK(GetSubgraphInputs(subgraph, &num_inputs, &inputs),
-                              llvm::ArrayRef<LrtTensor>);
+inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetSubgraphInputs(
+    LiteRtSubgraph subgraph) {
+  LiteRtParamIndex num_inputs;
+  LiteRtTensorArray inputs = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      GetSubgraphInputs(subgraph, &num_inputs, &inputs),
+      llvm::ArrayRef<LiteRtTensor>);
 
-  return LrtResult<llvm::ArrayRef<LrtTensor>>::FromValue(
-      llvm::ArrayRef<LrtTensor>(inputs, num_inputs));
+  return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
+      llvm::ArrayRef<LiteRtTensor>(inputs, num_inputs));
 }
 
 // Get tensor outputs to given subgraph.
-inline LrtResult<llvm::ArrayRef<LrtTensor>> GetSubgraphOutputs(
-    LrtSubgraph subgraph) {
-  lrt_param_index_t num_outputs;
-  LrtTensorArray outputs = nullptr;
-  LRT_RETURN_RESULT_IF_NOT_OK(
+inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetSubgraphOutputs(
+    LiteRtSubgraph subgraph) {
+  LiteRtParamIndex num_outputs;
+  LiteRtTensorArray outputs = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
       GetSubgraphOutputs(subgraph, &num_outputs, &outputs),
-      llvm::ArrayRef<LrtTensor>);
+      llvm::ArrayRef<LiteRtTensor>);
 
-  return LrtResult<llvm::ArrayRef<LrtTensor>>::FromValue(
-      llvm::ArrayRef<LrtTensor>(outputs, num_outputs));
+  return LiteRtResult<llvm::ArrayRef<LiteRtTensor>>::FromValue(
+      llvm::ArrayRef<LiteRtTensor>(outputs, num_outputs));
 }
 
-// Get only subgraph in given model, bad status if model doens't have exactly
+// Get only subgraph in given model, bad status if model doesn't have exactly
 // one subgraph.
 // TODO: b/365299994 - Add multi-subgraph getters for graph tools.
-inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
-  lrt_param_index_t num_subgraphs;
-  LRT_RETURN_RESULT_IF_NOT_OK(GetModelNumSubgraphs(model, &num_subgraphs),
-                              LrtSubgraph);
+inline LiteRtResult<LiteRtSubgraph> GetSubgraph(LiteRtModel model) {
+  LiteRtParamIndex num_subgraphs;
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetModelNumSubgraphs(model, &num_subgraphs),
+                                 LiteRtSubgraph);
 
   if (num_subgraphs != 1) {
-    return LrtResult<LrtSubgraph>::FromCode(kLrtStatusErrorUnsupported);
+    return LiteRtResult<LiteRtSubgraph>::FromStatus(
+        kLiteRtStatusErrorUnsupported);
   }
 
-  LrtSubgraph subgraph = nullptr;
-  LRT_RETURN_RESULT_IF_NOT_OK(GetModelSubgraph(model, 0, &subgraph),
-                              LrtSubgraph);
+  LiteRtSubgraph subgraph = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetModelSubgraph(model, 0, &subgraph),
+                                 LiteRtSubgraph);
 
-  return LrtResult<LrtSubgraph>::FromValue(subgraph);
+  return LiteRtResult<LiteRtSubgraph>::FromValue(subgraph);
+}
+
+inline LiteRtResult<FbConstBufferT> GetMetadata(LiteRtModel model,
+                                                const absl::string_view key) {
+  const void* buf;
+  size_t size;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      LiteRtModelGetMetadata(model, key.data(), &buf, &size), FbConstBufferT);
+  auto res = absl::MakeConstSpan(reinterpret_cast<const FbCharT*>(buf), size);
+  return LiteRtResult<FbConstBufferT>::FromValue(res);
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,15 +229,16 @@ inline LrtResult<LrtSubgraph> GetSubgraph(LrtModel model) {
 //===----------------------------------------------------------------------===//
 
 // Matches tensor type id, shape and element type for given tensor.
-inline bool MatchRankedTensorType(LrtTensor tensor, LrtElementType element_type,
+inline bool MatchRankedTensorType(LiteRtTensor tensor,
+                                  LiteRtElementType element_type,
                                   llvm::ArrayRef<int32_t> shape) {
-  LrtTensorTypeId type_id;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorTypeId(tensor, &type_id), false);
-  MATCH_EQ(type_id, kLrtRankedTensorType);
+  LiteRtTensorTypeId type_id;
+  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorTypeId(tensor, &type_id), false);
+  MATCH_EQ(type_id, kLiteRtRankedTensorType);
 
-  LrtRankedTensorType ranked_tensor_type;
-  LRT_RETURN_VAL_IF_NOT_OK(GetRankedTensorType(tensor, &ranked_tensor_type),
-                           false);
+  LiteRtRankedTensorType ranked_tensor_type;
+  LITERT_RETURN_VAL_IF_NOT_OK(GetRankedTensorType(tensor, &ranked_tensor_type),
+                              false);
   MATCH_EQ(ranked_tensor_type.element_type, element_type);
   MATCH_EQ(ranked_tensor_type.layout.rank, shape.size());
 
@@ -232,11 +252,11 @@ inline bool MatchRankedTensorType(LrtTensor tensor, LrtElementType element_type,
 // Matches users of given tensor (ordering doesn't matter). If strict is true,
 // `use_info` must have same number of elements as tensor has uses. If not,
 // it must be a subset.
-inline bool MatchTensorHasUses(LrtTensor tensor,
+inline bool MatchTensorHasUses(LiteRtTensor tensor,
                                llvm::ArrayRef<TensorUseInfo> use_info,
                                bool strict = true) {
   // uses are unique so this is sufficient to check for equality.
-  LRT_ASSIGN_OR_RETURN_VAL(auto uses, GetTensorUses(tensor), false);
+  LITERT_ASSIGN_OR_RETURN_VAL(auto uses, GetTensorUses(tensor), false);
   MATCH_TRUE(!strict || (uses.size() == use_info.size()));
 
   llvm::SetVector<TensorUseInfo> unique_uses(uses.begin(), uses.end());
@@ -246,25 +266,25 @@ inline bool MatchTensorHasUses(LrtTensor tensor,
 }
 
 // Matches a tensor with no uses.
-inline bool MatchkTensorNoUses(LrtTensor tensor) {
-  lrt_param_index_t num_uses;
-  lrt_param_index_t* use_user_arg_ind;
-  LrtOpArray users = nullptr;
+inline bool MatchTensorNoUses(LiteRtTensor tensor) {
+  LiteRtParamIndex num_uses;
+  LiteRtParamIndex* use_user_arg_ind;
+  LiteRtOpArray users = nullptr;
 
-  LRT_RETURN_VAL_IF_NOT_OK(
+  LITERT_RETURN_VAL_IF_NOT_OK(
       GetTensorUses(tensor, &num_uses, &users, &use_user_arg_ind), false);
 
   return num_uses == 0;
 }
 
 // Matches a tensors defining op and output indice.
-inline bool MatchTensorDefiningOp(
-    LrtTensor tensor, lrt_param_index_t expected_defining_op_out_ind,
-    LrtOp expected_defining_op) {
-  LrtOp defining_op = nullptr;
-  lrt_param_index_t defining_op_out_ind;
+inline bool MatchTensorDefiningOp(LiteRtTensor tensor,
+                                  LiteRtParamIndex expected_defining_op_out_ind,
+                                  LiteRtOp expected_defining_op) {
+  LiteRtOp defining_op = nullptr;
+  LiteRtParamIndex defining_op_out_ind;
 
-  LRT_RETURN_VAL_IF_NOT_OK(
+  LITERT_RETURN_VAL_IF_NOT_OK(
       GetTensorDefiningOp(tensor, &defining_op, &defining_op_out_ind), false);
   MATCH_EQ(defining_op, expected_defining_op);
 
@@ -273,22 +293,22 @@ inline bool MatchTensorDefiningOp(
 }
 
 // Matches a tensor that is not the output of an op (subgraph inputs/consts).
-inline bool MatchTensorNoDefiningOp(LrtTensor tensor) {
+inline bool MatchTensorNoDefiningOp(LiteRtTensor tensor) {
   return MatchTensorDefiningOp(tensor, 0, nullptr);
 }
 
 // Matches the op code and types of given ops inputs and outputs.
-inline bool MatchOpType(LrtOp op,
+inline bool MatchOpType(LiteRtOp op,
                         llvm::ArrayRef<RankedTypeInfo> input_type_info,
                         llvm::ArrayRef<RankedTypeInfo> output_type_info,
-                        LrtOpCode code) {
-  LrtOpCode actual_code;
-  LRT_RETURN_VAL_IF_NOT_OK(GetOpCode(op, &actual_code), false);
+                        LiteRtOpCode code) {
+  LiteRtOpCode actual_code;
+  LITERT_RETURN_VAL_IF_NOT_OK(GetOpCode(op, &actual_code), false);
   MATCH_EQ(actual_code, code);
 
   const auto exptected_num_inputs = input_type_info.size();
 
-  LRT_ASSIGN_OR_RETURN_VAL(auto inputs, GetOpIns(op), false);
+  LITERT_ASSIGN_OR_RETURN_VAL(auto inputs, GetOpIns(op), false);
   for (int i = 0; i < exptected_num_inputs; ++i) {
     const auto& [type, shape] = input_type_info[i];
     MATCH_TRUE(MatchRankedTensorType(inputs[i], type, shape));
@@ -296,7 +316,7 @@ inline bool MatchOpType(LrtOp op,
 
   const auto expected_num_outputs = output_type_info.size();
 
-  LRT_ASSIGN_OR_RETURN_VAL(auto outputs, GetOpOuts(op), false);
+  LITERT_ASSIGN_OR_RETURN_VAL(auto outputs, GetOpOuts(op), false);
   for (int i = 0; i < expected_num_outputs; ++i) {
     const auto& [type, shape] = output_type_info[i];
     MATCH_TRUE(MatchRankedTensorType(outputs[i], type, shape));
@@ -306,14 +326,14 @@ inline bool MatchOpType(LrtOp op,
 }
 
 // Checks that doubly linked structure of ops <-> tensors is valid.
-inline bool ValidateTopology(llvm::ArrayRef<LrtOp> ops) {
+inline bool ValidateTopology(llvm::ArrayRef<LiteRtOp> ops) {
   for (auto& op : ops) {
-    LRT_ASSIGN_OR_RETURN_VAL(auto inputs, GetOpIns(op), false);
+    LITERT_ASSIGN_OR_RETURN_VAL(auto inputs, GetOpIns(op), false);
     for (auto [input_ind, input] : llvm::enumerate(inputs)) {
       MATCH_TRUE(MatchTensorHasUses(input, {{op, input_ind}}, false));
     }
 
-    LRT_ASSIGN_OR_RETURN_VAL(auto outputs, GetOpOuts(op), false);
+    LITERT_ASSIGN_OR_RETURN_VAL(auto outputs, GetOpOuts(op), false);
     for (auto [output_ind, output] : llvm::enumerate(outputs)) {
       MATCH_TRUE(MatchTensorDefiningOp(output, output_ind, op));
     }
@@ -321,16 +341,16 @@ inline bool ValidateTopology(llvm::ArrayRef<LrtOp> ops) {
   return true;
 }
 
-// Match buffer behind given tensor contains data.
+// Match weights behind given tensor contains data.
 template <typename T>
-inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+inline bool MatchWeights(LiteRtTensor tensor, llvm::ArrayRef<T> expected_data) {
+  LiteRtWeights weights = nullptr;
+  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
   MATCH_TRUE(data != nullptr);
 
   MATCH_EQ(size, expected_data.size() * sizeof(T));
@@ -338,15 +358,15 @@ inline bool MatchBuffer(LrtTensor tensor, llvm::ArrayRef<T> expected_data) {
          expected_data;
 }
 
-// Match given tensor having no (empty) buffer.
-inline bool MatchNoBuffer(LrtTensor tensor) {
-  LrtBuffer buffer = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetTensorBuffer(tensor, &buffer), false);
-  MATCH_TRUE(buffer != nullptr);
+// Match given tensor having no (empty) weights.
+inline bool MatchNoWeights(LiteRtTensor tensor) {
+  LiteRtWeights weights = nullptr;
+  LITERT_RETURN_VAL_IF_NOT_OK(GetTensorWeights(tensor, &weights), false);
+  MATCH_TRUE(weights != nullptr);
 
   size_t size;
   const void* data = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(GetBufferInfo(buffer, &size, &data), false);
+  LITERT_RETURN_VAL_IF_NOT_OK(GetWeightsInfo(weights, &size, &data), false);
 
   return size == 0;
 }

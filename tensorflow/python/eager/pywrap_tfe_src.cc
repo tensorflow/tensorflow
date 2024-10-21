@@ -1039,7 +1039,7 @@ void RaiseFallbackException(const char* message) {
 
 // Format and return `status`' error message with the attached stack trace if
 // available. `status` must have an error.
-std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
+std::string FormatErrorStatusStackTrace(const absl::Status& status) {
   tensorflow::DCheckPyGilState();
   DCHECK(!status.ok());
 
@@ -1116,7 +1116,7 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
 
 }  // namespace tensorflow
 
-int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
+int MaybeRaiseExceptionFromStatus(const absl::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
   const char* msg = absl::StatusMessageAsCStr(status);
@@ -1269,7 +1269,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     Py_INCREF(py_vspace_);
   }
 
-  tensorflow::Status Initialize() {
+  absl::Status Initialize() {
     num_elements_ = PyObject_GetAttrString(py_vspace_, "num_elements_fn");
     if (num_elements_ == nullptr) {
       return absl::InvalidArgumentError("invalid vspace");
@@ -1319,7 +1319,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
-    PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    PyObject* result = PyObject_Call(num_elements_, arglist, nullptr);
     Py_DECREF(arglist);
     if (result == nullptr) {
       // The caller detects whether a python exception has been raised.
@@ -1342,7 +1342,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     PyObject* arglist = Py_BuildValue("(O)", list);
     CHECK(arglist != nullptr);
-    PyObject* result = PyEval_CallObject(aggregate_fn_, arglist);
+    PyObject* result = PyObject_Call(aggregate_fn_, arglist, nullptr);
     Py_DECREF(arglist);
     Py_DECREF(list);
     return result;
@@ -1359,7 +1359,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(ones_fn_, arg_list);
+    PyObject* result = PyObject_Call(ones_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1383,7 +1383,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
       return nullptr;
     }
     PyObject* arg_list = Py_BuildValue("OO", shape, dtype);
-    PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
+    PyObject* result = PyObject_Call(zeros_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
@@ -1397,12 +1397,12 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   PyObject* GraphShape(PyObject* tensor) const {
     PyObject* arg_list = Py_BuildValue("(O)", tensor);
-    PyObject* result = PyEval_CallObject(graph_shape_fn_, arg_list);
+    PyObject* result = PyObject_Call(graph_shape_fn_, arg_list, nullptr);
     Py_DECREF(arg_list);
     return result;
   }
 
-  tensorflow::Status CallBackwardFunction(
+  absl::Status CallBackwardFunction(
       const string& op_type, PyBackwardFunction* backward_function,
       const std::vector<int64_t>& unneeded_gradients,
       absl::Span<PyObject* const> output_gradients,
@@ -2205,7 +2205,7 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
 
     tensorflow::TensorShape tensor_shape;
     int num_dims;
-    tensorflow::Status status = handle->NumDims(&num_dims);
+    absl::Status status = handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
         int64_t dim_size;
@@ -2485,7 +2485,7 @@ bool TapeSetRecordForwardprop(
       input_info.push_back(TapeTensorFromTensor(input_seq_array[i]));
     }
     for (TFE_Py_ForwardAccumulator* accumulator : accumulator_set) {
-      tensorflow::Status status = accumulator->accumulator->Accumulate(
+      absl::Status status = accumulator->accumulator->Accumulate(
           op_type, input_info, output_info, input_ids, input_dtypes,
           forward_function, backward_function_getter, backward_function_killer);
       if (PyErr_Occurred()) return false;  // Don't swallow Python exceptions.
@@ -2519,8 +2519,8 @@ PyObject* TangentsAsPyTuple(const std::vector<PyObject*>& input_tangents) {
   return py_input_tangents;
 }
 
-tensorflow::Status ParseTangentOutputs(
-    PyObject* user_output, std::vector<PyObject*>* output_tangents) {
+absl::Status ParseTangentOutputs(PyObject* user_output,
+                                 std::vector<PyObject*>* output_tangents) {
   if (user_output == Py_None) {
     // No connected gradients.
     return absl::OkStatus();
@@ -2551,11 +2551,11 @@ tensorflow::Status ParseTangentOutputs(
 //
 // `op_name`, `attrs`, `inputs`, and `results` describe the operation for which
 // the forward function is being called.
-tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
-                                   PyObject* inputs, PyObject* results,
-                                   const std::vector<PyObject*>& input_tangents,
-                                   std::vector<PyObject*>* output_tangents,
-                                   bool use_batch) {
+absl::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
+                             PyObject* inputs, PyObject* results,
+                             const std::vector<PyObject*>& input_tangents,
+                             std::vector<PyObject*>* output_tangents,
+                             bool use_batch) {
   if (forward_gradient_function == nullptr) {
     return tensorflow::errors::Internal(
         "No forward gradient function registered.");
@@ -2581,7 +2581,7 @@ tensorflow::Status CallJVPFunction(PyObject* op_name, PyObject* attrs,
 
 // Like CallJVPFunction, but calls a pre-bound forward function.
 // These are passed in from a record_gradient argument.
-tensorflow::Status CallOpSpecificJVPFunction(
+absl::Status CallOpSpecificJVPFunction(
     PyObject* op_specific_forward_function,
     const std::vector<PyObject*>& input_tangents,
     std::vector<PyObject*>* output_tangents) {

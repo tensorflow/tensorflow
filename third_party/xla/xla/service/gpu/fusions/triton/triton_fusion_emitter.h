@@ -65,28 +65,6 @@ struct TritonWrapperResult {
   std::optional<se::ClusterDim> cluster_dim;
 };
 
-// Generate Triton IR inside 'fn'. This uses the given output_tile_sizes
-// and the SymbolicTileAnalysis from the computation. The provided
-// TritonFusionAnalysis and TritonGemmConfig are ignored.
-absl::Status EmitGeneric(mlir::OpBuilder b, absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters);
-
-// Compute the launch dimensions for the given Triton MatMul.
-absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(
-    const TritonFusionAnalysis& analysis, const HloFusionAdaptor& fusion,
-    const TritonGemmConfig& config);
-
-// Use tiling and execution parameters from 'config'. output_tile_sizes is
-// ignored.
-absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
-                        const se::DeviceDescription& device_info,
-                        const HloFusionInstruction* fusion,
-                        mlir::triton::FuncOp fn,
-                        const BlockLevelParameters& block_level_parameters);
-
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 

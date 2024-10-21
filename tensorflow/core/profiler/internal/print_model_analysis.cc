@@ -48,7 +48,7 @@ string RunProfile(const string& command, const string& options,
   }
 
   Options opts;
-  tensorflow::Status s = Options::FromProtoStr(options, &opts);
+  absl::Status s = Options::FromProtoStr(options, &opts);
   if (!s.ok()) {
     absl::FPrintF(stderr, "%s\n", s.ToString());
     return "";

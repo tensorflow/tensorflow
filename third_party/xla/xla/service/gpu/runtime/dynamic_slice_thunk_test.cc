@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/ffi/ffi.h"
@@ -461,8 +462,8 @@ TEST(DynamicSliceThunkTest, SlicedMemcpy) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
@@ -621,8 +622,8 @@ TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 
@@ -1262,8 +1263,8 @@ TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   ThunkSequence seq;
   TF_ASSERT_OK_AND_ASSIGN(
       seq.emplace_back(),
-      CustomCallThunk::Create(Thunk::ThunkInfo(), registration->bundle,
-                              operands, results,
+      CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
+                              registration->bundle, operands, results,
                               /*attributes=*/CustomCallThunk::AttributesMap(),
                               /*called_computation=*/nullptr));
 

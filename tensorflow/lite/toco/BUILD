@@ -519,21 +519,18 @@ tf_cc_test(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "model_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":model_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "toco_flags_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "types_proto_py",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":toco_flags_proto"],
 # )

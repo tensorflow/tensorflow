@@ -38,8 +38,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
-#include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/tests/exhaustive/error_spec.h"
@@ -51,7 +50,7 @@ namespace exhaustive_op_test {
 
 // The primitive type used to compute the reference output.
 constexpr PrimitiveType Ref(PrimitiveType T) {
-  return !primitive_util::IsFloatingPointType(T) || T == F64 ? T : F32;
+  return (!primitive_util::IsFloatingPointType(T) || T == F64) ? T : F32;
 }
 
 // The primitive type of the component of T. If T is not complex, then
@@ -196,6 +195,16 @@ inline ErrorSpec DefaultSpecGenerator<BF16, 1>(xla::bfloat16) {
 }
 
 template <>
+inline ErrorSpec DefaultSpecGenerator<F8E4M3FN, 1>(tsl::float8_e4m3fn) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E5M2, 1>(tsl::float8_e5m2) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
 inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
   double atol = kDefaultAbsoluteToleranceSlackFactor *
                 std::numeric_limits<double>::min();  // NOLINT
@@ -229,6 +238,18 @@ inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
   // epsilon for BF16 is quite large, so a slack factor of 5 suffices.
   double rtol = 2 * std::numeric_limits<bfloat16>::epsilon();
   return ErrorSpec::Builder().abs_err(atol).rel_err(rtol).build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E4M3FN, 2>(tsl::float8_e4m3fn,
+                                                   tsl::float8_e4m3fn) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F8E5M2, 2>(tsl::float8_e5m2,
+                                                 tsl::float8_e5m2) {
+  return ErrorSpec::Builder().strict_signed_zeros().build();
 }
 
 template <PrimitiveType T, size_t N>
@@ -782,7 +803,13 @@ CreateSubnormalExhaustiveRanges() {
   return ret;
 }
 
-inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveU16Ranges() {
+  // The entire U16 range is small enough that we don't need to do any
+  // partitioning.
+  return {{0, std::numeric_limits<uint16_t>::max()}};
+}
+
+inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveU32Ranges() {
   // We break up the 2^32-element space into small-ish chunks to keep peak
   // memory usage low.
   std::vector<std::pair<int64_t, int64_t>> result;

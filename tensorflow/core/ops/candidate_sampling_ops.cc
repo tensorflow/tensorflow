@@ -24,7 +24,7 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-Status CandidateSamplerShapeFn(InferenceContext* c) {
+absl::Status CandidateSamplerShapeFn(InferenceContext* c) {
   int64_t num_sampled;
   TF_RETURN_IF_ERROR(c->GetAttr("num_sampled", &num_sampled));
   int64_t num_true;

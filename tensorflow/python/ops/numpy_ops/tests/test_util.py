@@ -14,7 +14,6 @@
 # ==============================================================================
 """NumPy test utilities."""
 from contextlib import contextmanager
-from distutils.util import strtobool
 import functools
 from functools import partial
 import re
@@ -48,6 +47,14 @@ tree_multimap = nest.map_structure
 
 
 FLAGS = flags.FLAGS
+
+
+# https://danielms.site/zet/2023/pythons-distutil-strtobool-replacement/
+def strtobool(value: str) -> bool:
+  value = value.lower()
+  if value in ('y', 'yes', 'on', '1', 'true', 't'):
+    return True
+  return False
 
 
 # TODO(wangpeng): Remove this flag after broken tests are fixed

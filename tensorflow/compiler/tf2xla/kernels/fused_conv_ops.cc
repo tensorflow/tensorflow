@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/lib/constants.h"
-#include "xla/client/lib/math.h"
+#include "xla/hlo/builder/lib/constants.h"
+#include "xla/hlo/builder/lib/math.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -116,7 +116,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
                                                  : ActivationMode::kRelu;
   }
 
-  Status DoCompile(XlaOpKernelContext* ctx) {
+  absl::Status DoCompile(XlaOpKernelContext* ctx) {
     XlaOp conv_input = ctx->Input(0);
     XlaOp filter = ctx->Input(1);
     XlaOp bias = ctx->Input(2);

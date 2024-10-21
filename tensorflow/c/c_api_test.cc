@@ -59,8 +59,8 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, absl::Status* status);
+absl::Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
 
 namespace {
 
@@ -236,7 +236,7 @@ TEST(CAPI, LibraryLoadFunctions) {
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
   const int64_t n = data.size();
-  Status status;
+  absl::Status status;
   for (const std::vector<int64_t>& dims :
        std::vector<std::vector<int64_t>>{{n}, {1, n}, {n, 1}, {n / 2, 2}}) {
     // Create C++ Tensor
@@ -1450,7 +1450,7 @@ TEST(CAPI, SavedModel) {
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
-  Status status;
+  absl::Status status;
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
   ASSERT_TRUE(status.ok()) << status.message();
 
@@ -2634,7 +2634,7 @@ TEST(CAPI, TestTensorIsNotAligned) {
 
   // Take an unaligned slice.
   Tensor y = x.Slice(1, 13);
-  Status status;
+  absl::Status status;
   TF_Tensor* a = TF_TensorFromTensor(y, &status);
   if (TF_TensorDefaultAlignment() > 0) {
     EXPECT_FALSE(TF_TensorIsAligned(a));

@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -34,19 +35,19 @@ class XLAGPUOpsTest : public HloTestBase {
 };
 
 TEST_F(XLAGPUOpsTest, GetConstraintsForVariables) {
-  auto map = IndexingMap(
-      ParseAffineMap("(d0, d1)[s0, s1] -> (d0+s0, d1+s1)", &mlir_context_),
-      /*dimensions=*/{{Interval{0, 5}}, {Interval{0, 2}}},
-      /*range_vars=*/{{Interval{0, 32}}, {Interval{0, 1024}}}, /*rt_vars=*/{});
-  map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
-                    Interval{0, 1});
-  map.AddConstraint(ParseAffineExpr("s1 mod 4", &mlir_context_),
-                    Interval{0, 2});
-  map.AddConstraint(ParseAffineExpr("s0 + s1", &mlir_context_), Interval{0, 3});
-  map.AddConstraint(ParseAffineExpr("s1 + d1", &mlir_context_), Interval{0, 4});
-  map.AddConstraint(ParseAffineExpr("d1 mod 32", &mlir_context_),
-                    Interval{0, 6});
-
+  auto map = *ParseIndexingMap(R"(
+    (d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
+    domain: d0 in [0, 5],
+    d1 in [0, 2],
+    s0 in [0, 32],
+    s1 in [0, 1024],
+    d1 + s1 in [0, 4],
+    d1 mod 32 in [0, 6],
+    s0 + s1 in [0, 3],
+    s0 mod 4 in [0, 1],
+    s1 mod 4 in [0, 2]
+  )",
+                               &mlir_context_);
   auto constraints_for_variables = GetConstraintsForVariables(map);
   EXPECT_THAT(constraints_for_variables.constraints_for_dims[0],
               UnorderedElementsAre());
@@ -69,10 +70,14 @@ TEST_F(XLAGPUOpsTest, GetConstraintsForVariables) {
 }
 
 TEST_F(XLAGPUOpsTest, GetConstraintsForVariablesEmpty) {
-  auto map = IndexingMap(
-      ParseAffineMap("(d0, d1)[s0, s1] -> (d0+s0, d1+s1)", &mlir_context_),
-      /*dimensions=*/{{Interval{0, 5}}, {Interval{0, 2}}},
-      /*range_vars=*/{{Interval{0, 32}}, {Interval{0, 1024}}}, /*rt_vars=*/{});
+  auto map = *ParseIndexingMap(R"(
+    (d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
+    domain: d0 in [0, 5],
+    d1 in [0, 2],
+    s0 in [0, 32],
+    s1 in [0, 1024],
+  )",
+                               &mlir_context_);
   auto constraints_for_variables = GetConstraintsForVariables(map);
   EXPECT_THAT(constraints_for_variables.constraints_for_dims,
               ElementsAre(IsEmpty(), IsEmpty()));

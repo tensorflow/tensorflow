@@ -121,11 +121,13 @@ cc_library(
         ":ifrt_device_utils",
         ":ifrt_loaded_variable_registry",
         ":ifrt_loaded_variable_utils",
+        ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         ":ifrt_tensor_utils",
         ":sharding_utils",
         ":tf_host_callback",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tfrt:export",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:extract_callback",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
@@ -210,6 +212,27 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_persistent_compilation_cache",
+    srcs = ["ifrt_persistent_compilation_cache.cc"],
+    hdrs = ["ifrt_persistent_compilation_cache.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@local_xla//xla/pjrt:pjrt_executable",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt/hlo:hlo_program",
+        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
+        "@local_xla//xla/tsl/concurrency:ref_count",
+    ],
+)
+
+cc_library(
     name = "ifrt_loaded_variable_registry",
     srcs = ["ifrt_loaded_variable_registry.cc"],
     hdrs = ["ifrt_loaded_variable_registry.h"],
@@ -246,6 +269,7 @@ cc_library(
     deps = [
         ":ifrt_executable_registry",
         ":ifrt_loaded_variable_registry",
+        ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         "//tensorflow/compiler/tf2xla:xla_helpers",
@@ -385,6 +409,7 @@ cc_library(
     ],
     deps = [
         ":ifrt_loaded_variable_registry",
+        ":ifrt_persistent_compilation_cache",
         ":ifrt_restore_tensor_registry",
         ":ifrt_serving_core_selector",
         ":ifrt_serving_executable",

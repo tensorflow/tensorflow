@@ -20,11 +20,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,19 +37,9 @@ namespace gpu {
 namespace {
 
 class LoopTest : public HloTestBase {
- public:
-  void SetUp() override {
-    HloTestBase::SetUp();
-
-    printer_ =
-        AffineMapPrinter({"th_x", "th_y", "th_z", "bl_x", "bl_y", "bl_z"},
-                         {"chunk_id", "unroll_id"});
-  }
-
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  AffineMapPrinter printer_;
   mlir::MLIRContext mlir_context_;
 };
 
@@ -85,8 +76,12 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
 
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
   (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
     (bl_x * 128 + th_x) floordiv 15000,
     ((bl_x * 128 + th_x) floordiv 75) mod 200,
@@ -101,8 +96,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   bl_z in [0, 0],
   chunk_id in [0, 0],
   unroll_id in [0, 3],
-  bl_x * 128 + th_x in [0, 1499999],
-  is_simplified: true
+  bl_x * 128 + th_x in [0, 1499999]
 )"));
 }
 
@@ -128,8 +122,12 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x),
               domain:
               th_x in [0, 19],
@@ -139,14 +137,14 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
               bl_y in [0, 0],
               bl_z in [0, 0],
               chunk_id in [0, 0],
-              unroll_id in [0, 0],
-              is_simplified: true
+              unroll_id in [0, 0]
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
           /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      ToString(*thread_id_to_input_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (th_x),
               domain:
               th_x in [0, 19],
@@ -156,8 +154,7 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
               bl_y in [0, 0],
               bl_z in [0, 0],
               chunk_id in [0, 0],
-              unroll_id in [0, 0],
-              is_simplified: true
+              unroll_id in [0, 0]
             )"));
 }
 
@@ -183,8 +180,12 @@ TEST_F(LoopTest, Broadcast) {
   auto thread_id_to_output_indexing =
       loop_fusion->ComputeThreadIdToOutputIndexing(/*root_index=*/0,
                                                    &mlir_context_);
-  EXPECT_THAT(thread_id_to_output_indexing->ToString(printer_),
-              MatchIndexingString(R"(
+  mlir::SmallVector<std::string> dim_names = {"th_x", "th_y", "th_z",
+                                              "bl_x", "bl_y", "bl_z"};
+  mlir::SmallVector<std::string> range_names = {"chunk_id", "unroll_id"};
+  EXPECT_THAT(
+      ToString(*thread_id_to_output_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
                 (bl_x * 128 + th_x) floordiv 600,
                 ((bl_x * 128 + th_x) floordiv 30) mod 20,
@@ -198,14 +199,14 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 0],
                 chunk_id in [0, 0],
                 unroll_id in [0, 0],
-                bl_x * 128 + th_x in [0, 5999],
-                is_simplified: true
+                bl_x * 128 + th_x in [0, 5999]
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
           /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);
-  EXPECT_THAT(thread_id_to_input_indexing->ToString(printer_),
-              MatchIndexingString(R"(
+  EXPECT_THAT(
+      ToString(*thread_id_to_input_indexing, dim_names, range_names, {}),
+      MatchIndexingString(R"(
               (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] ->
                   (((bl_x * 128 + th_x) floordiv 30) mod 20),
                 domain:
@@ -217,8 +218,7 @@ TEST_F(LoopTest, Broadcast) {
                 bl_z in [0, 0],
                 chunk_id in [0, 0],
                 unroll_id in [0, 0],
-                bl_x * 128 + th_x in [0, 5999],
-                is_simplified: true
+                bl_x * 128 + th_x in [0, 5999]
             )"));
 }
 

@@ -33,7 +33,7 @@ namespace odml {
 namespace {
 
 #define GEN_PASS_DEF_LEGALIZECHLOTOTFLPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 class LegalizeChloToTflPass
     : public impl::LegalizeChloToTflPassBase<LegalizeChloToTflPass> {

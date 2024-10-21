@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 #include "xla/backends/profiler/gpu/mock_cupti.h"
+#include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/utils/time_utils.h"
 
 namespace xla {
 namespace profiler {

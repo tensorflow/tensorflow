@@ -30,16 +30,16 @@ limitations under the License.
 namespace tensorflow {
 
 // Performs a consistency check across the fields of the op_def.
-Status ValidateOpDef(const OpDef& op_def);
+absl::Status ValidateOpDef(const OpDef& op_def);
 
 // Check if an op is deprecated at the given GraphDef version.  If the op is
 // deprecated at a future version, a warning will be logged.
-Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version);
+absl::Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version);
 
 // Validates that attr_value satisfies the type and constraints from attr.
 // REQUIRES: attr has already been validated.
-Status ValidateAttrValue(const AttrValue& attr_value,
-                         const OpDef::AttrDef& attr);
+absl::Status ValidateAttrValue(const AttrValue& attr_value,
+                               const OpDef::AttrDef& attr);
 
 // The following search through op_def for an attr with the indicated name.
 // Returns nullptr if no such attr is found.
@@ -61,19 +61,20 @@ std::string SummarizeOpDef(const OpDef& op_def);
 // Returns an error if new_op is not backwards-compatible with (more
 // accepting than) old_op.
 // REQUIRES: old_op and new_op must pass validation.
-Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op);
+absl::Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op);
 
 // Returns an error if any attr in penultimate_op that is not in old_op
 // has a different default value in new_op.  In general it is not safe
 // to change the default for an attr that has been added to an op.
-Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
-                                   const OpDef& penultimate_op,
-                                   const OpDef& new_op);
+absl::Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
+                                         const OpDef& penultimate_op,
+                                         const OpDef& new_op);
 
 // Returns an error if the default value for any attr is removed or modified
 // in new_op compared to old_op.  Adding new default values is safe, and does
 // not raise an error.
-Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
+absl::Status OpDefAttrDefaultsUnchanged(const OpDef& old_op,
+                                        const OpDef& new_op);
 
 // Remove all docs from *op_def / *op_list.
 void RemoveDescriptionsFromOpDef(OpDef* op_def);

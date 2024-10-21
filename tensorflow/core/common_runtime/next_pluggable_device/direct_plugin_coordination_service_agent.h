@@ -38,7 +38,8 @@ class DirectPluginCoordinationServiceAgent
     return agent_->IsInitialized();
   }
 
-  Status InsertKeyValue(std::string_view key, std::string_view value) override {
+  absl::Status InsertKeyValue(std::string_view key,
+                              std::string_view value) override {
     return agent_->InsertKeyValue(key, value);
   }
 
@@ -55,7 +56,7 @@ class DirectPluginCoordinationServiceAgent
     return agent_->TryGetKeyValue(key);
   }
 
-  Status DeleteKeyValue(std::string_view key) override {
+  absl::Status DeleteKeyValue(std::string_view key) override {
     return agent_->DeleteKeyValue(key);
   }
 

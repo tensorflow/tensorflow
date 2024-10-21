@@ -35,23 +35,24 @@ struct InputLayerInfo {
 };
 
 // Loads a model from disk into a new session.
-Status InitializeSession(int num_threads, const string& graph,
-                         std::unique_ptr<Session>* session,
-                         std::unique_ptr<GraphDef>* graph_def);
+absl::Status InitializeSession(int num_threads, const string& graph,
+                               std::unique_ptr<Session>* session,
+                               std::unique_ptr<GraphDef>* graph_def);
 
 // Does a single run of the model that's been loaded into the given session.
-Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
-                    const std::vector<string>& outputs,
-                    const std::vector<string>& targets, Session* session,
-                    StatSummarizer* stats, int64_t* inference_time_us);
+absl::Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
+                          const std::vector<string>& outputs,
+                          const std::vector<string>& targets, Session* session,
+                          StatSummarizer* stats, int64_t* inference_time_us);
 
 // Runs the model multiple time, keeping track of timing information.
-Status TimeMultipleRuns(double sleep_seconds, int num_runs, double max_time_s,
-                        const std::vector<InputLayerInfo>& inputs,
-                        const std::vector<string>& outputs,
-                        const std::vector<string>& targets, Session* session,
-                        StatSummarizer* stats, int64_t* total_time_us,
-                        int64_t* actual_num_runs);
+absl::Status TimeMultipleRuns(double sleep_seconds, int num_runs,
+                              double max_time_s,
+                              const std::vector<InputLayerInfo>& inputs,
+                              const std::vector<string>& outputs,
+                              const std::vector<string>& targets,
+                              Session* session, StatSummarizer* stats,
+                              int64_t* total_time_us, int64_t* actual_num_runs);
 
 // Handles all setup and argument parsing.
 int Main(int argc, char** argv);

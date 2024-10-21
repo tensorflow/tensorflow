@@ -100,6 +100,8 @@ class GemmAutotuner {
   explicit GemmAutotuner(const AutotuneConfig& autotune_config)
       : autotune_config_(autotune_config) {}
 
+  const AutotuneConfig& config() const { return autotune_config_; }
+
   size_t num_algorithms_left() const { return num_algorithms_left_; }
 
   absl::StatusOr<AutotuneResult> operator()(const HloInstruction* gemm,
@@ -388,20 +390,18 @@ class GemmAutotuner {
                  << best.status();
     return AutotuneResult{};
   }  // GetBestAlgorithm
-};  // GemmAutotuner
+};  // class GemmAutotuner
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.
 absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
-                                      const AutotuneConfig& config,
-                                      size_t* num_algorithms_left) {
+                                      GemmAutotuner& autotuner) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
   GpuBackendConfig gpu_config =
       gemm->backend_config<GpuBackendConfig>().value();
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
 
-  *num_algorithms_left = 0;
   // Degenerate gemms replaced with memzero operation, no need to auto tune it.
   if (backend_config.alpha_real() == 0.0 &&
       backend_config.alpha_imag() == 0.0 && backend_config.beta() == 0.0) {
@@ -409,13 +409,12 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
     return false;
   }
 
+  const AutotuneConfig& config = autotuner.config();
   AutotuneCacheKey key(config.GetModelStr(), *gemm);
-  GemmAutotuner autotuner(config);
   TF_ASSIGN_OR_RETURN(AutotuneResult algorithm,
                       AutotunerUtil::Autotune(
                           gemm, config, [&] { return autotuner(gemm, key); }));
 
-  *num_algorithms_left = autotuner.num_algorithms_left();
   auto old_algorithm = backend_config.selected_algorithm();
   bool update_algorithm =
       IsCublasLtMatmulF8(*gemm) ||
@@ -442,9 +441,8 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
     if (new_algorithm == old_algorithm &&
         backend_config.has_selected_algorithm()) {
-      // We don't need to update the backend config if
-      // the algorithm hasn't changed unless previously
-      // the algorithm wasn't set explicitly.
+      // We don't need to update the backend config if the algorithm was not
+      // changed unless previously the algorithm wasn't set explicitly.
       return false;
     }
 
@@ -457,17 +455,16 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 }
 
 absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                      AutotuneConfig config,
+                                      GemmAutotuner& autotuner,
                                       size_t* num_algorithms_left) {
   bool changed = false;
 
   for (HloInstruction* instr : computation->instructions()) {
     if (IsCublasGemm(*instr)) {
-      size_t num_left;
-      TF_ASSIGN_OR_RETURN(bool result,
-                          RunOnInstruction(instr, config, &num_left));
+      TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, autotuner));
       // Gathering statistics on the algorithms left after tuning (for testing)
-      *num_algorithms_left = std::max(*num_algorithms_left, num_left);
+      *num_algorithms_left =
+          std::max(*num_algorithms_left, autotuner.num_algorithms_left());
       changed |= result;
     }
   }
@@ -487,11 +484,11 @@ absl::StatusOr<bool> GemmAlgorithmPicker::Run(
     VLOG(2) << "GEMM auto-tuning disabled, GemmAlgorithmPicker returning early";
     return false;
   }
-
+  GemmAutotuner autotuner(config_);
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, config_,
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation, autotuner,
                                                       &num_algorithms_left_));
     changed |= result;
   }
