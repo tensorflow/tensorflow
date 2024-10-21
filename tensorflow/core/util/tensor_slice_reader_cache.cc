@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
 
