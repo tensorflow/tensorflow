@@ -377,8 +377,13 @@ class LiteralBase {
   template <typename H, bool kIsLayoutSensitive = true,
             int64_t kByteLimit = std::numeric_limits<int64_t>::max()>
   static H Hash(H state, const LiteralBase& literal) {
-    state =
-        Shape::Hash<H, kIsLayoutSensitive>(std::move(state), literal.shape());
+    // TODO(b/310715511): Shape::Hash is not compatible with operator==.
+    // operator== may return true for two literals with different hashes.
+    // See third_party/tensorflow/compiler/xla/service/hlo_cse.cc
+    // The test failing: //third_party/py/maxtext:train_int8_smoke_test
+    // state =
+    //     Shape::Hash<H, kIsLayoutSensitive>(
+    //         std::move(state), literal.shape());
 
     ShapeUtil::ForEachSubshape(literal.shape(), [&](const Shape& subshape,
                                                     const ShapeIndex& index) {
