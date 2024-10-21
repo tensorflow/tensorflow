@@ -402,6 +402,14 @@ cc_library(
     hdrs = [
         "function_utils.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow/core/data:__pkg__",
+        "//tensorflow/core/data/service:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
+        "//tensorflow/core/kernels/data:__pkg__",
+        "//tensorflow/core/kernels/data/experimental:__pkg__",
+    ],
     deps = [
         ":graph_utils",
         "//tensorflow/core:framework",
@@ -436,6 +444,14 @@ cc_library(
     srcs = ["graph_utils.cc"],
     hdrs = [
         "graph_utils.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//tensorflow/core/data:__pkg__",
+        "//tensorflow/core/data/service:__pkg__",
+        "//tensorflow/core/kernels:__pkg__",
+        "//tensorflow/core/kernels/data:__pkg__",
+        "//tensorflow/core/kernels/data/experimental:__pkg__",
     ],
     deps = [
         "//tensorflow/core:core_cpu",
