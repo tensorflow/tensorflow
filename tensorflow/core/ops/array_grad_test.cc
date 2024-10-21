@@ -16,10 +16,19 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
