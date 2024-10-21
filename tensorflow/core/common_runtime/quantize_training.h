@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_QUANTIZE_TRAINING_H_
 
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 // Rewrites graph for quantized training.
