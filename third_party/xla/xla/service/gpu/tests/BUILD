@@ -882,6 +882,8 @@ cc_library(
     srcs = ["simple_optimization_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
@@ -967,6 +969,18 @@ xla_test(
     srcs = ["nop_custom_call_test.cc"],
     backends = ["gpu"],
     deps = [
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_test(
+    name = "gpu_compiler_e2e_test",
+    srcs = ["gpu_compiler_e2e_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "@local_tsl//tsl/platform:test_main",
     ],
