@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdlib>
 
 #include "Eigen/Core"
+#include "Eigen/src/Core/util/ConfigureVectorization.h"
 
 namespace xla {
 namespace cpu_function_runtime {
