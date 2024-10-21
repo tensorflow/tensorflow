@@ -110,6 +110,10 @@ class SavedModel {
     // True if and only if SavedModel is being loaded to generate AOT results.
     bool aot_generation = false;
 
+    // Infer if the model is converted from a JAX model by traversing the
+    // MetaGraphDef and looking for the `XlaCallModule` op.
+    bool infer_jax_model = false;
+
     GraphExecutionOptions graph_execution_options;
   };
 

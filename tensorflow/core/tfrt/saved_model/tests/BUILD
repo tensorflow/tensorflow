@@ -625,6 +625,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
     ],
