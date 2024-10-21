@@ -37,13 +37,23 @@ def make_tile_tests(options):
       },
       {
           "input_dtype": [tf.float32],
-          "input_shape": [[3, 2, 1]],
+          "input_shape": [[3, 2, 1], [2, 2, 2]],
           "multiplier_dtype": [tf.int32, tf.int64],
           "multiplier_shape": [[3]],
           "fully_quantize": [True],
+          "quant_16x8": [True, False],
           # The input range is used to create representative dataset for both
           # input and multiplier so it needs to be positive.
           "input_range": [(1, 10)],
+      },
+      {
+          "input_dtype": [tf.float32],
+          "input_shape": [[]],
+          "multiplier_dtype": [tf.int32, tf.int64],
+          "multiplier_shape": [[0]],
+          "fully_quantize": [True],
+          "quant_16x8": [True, False],
+          "input_range": [(-10, 10)]
       }
   ]
 
