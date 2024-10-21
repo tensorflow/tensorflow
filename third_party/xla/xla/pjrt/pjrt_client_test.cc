@@ -383,7 +383,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(PjRtClientTest, CopyToDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
-  ASSERT_GT(client->addressable_devices().size(), 1);
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
 
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
@@ -408,7 +410,9 @@ TEST(PjRtClientTest, CopyToDevice) {
 
 TEST(PjRtClientTest, CopyToDeviceAsync) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
-  ASSERT_GT(client->addressable_devices().size(), 1);
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
 
   std::vector<int32_t> data(4, 0);
   Shape shape = ShapeUtil::MakeShape(S32, {4});
@@ -447,7 +451,9 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
 
 TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
-  ASSERT_GT(client->addressable_devices().size(), 1);
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
 
   // Skip non-CPU platforms.
   if (client->platform_id() != CpuId()) {
@@ -493,7 +499,9 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
 
 TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
-  ASSERT_GT(client->addressable_devices().size(), 1);
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "This test requires at least 2 addressable devices.";
+  }
 
   // Skip non-CPU platforms.
   if (client->platform_id() != CpuId()) {
