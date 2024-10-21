@@ -58,6 +58,8 @@ using LayoutCanonicalizationCallback =
 
 // Helper class to maintain a copy-on-write storage of an object of the
 // specified type. Logically Variant<MutableOwned, ImmutableShared>.
+// The class's purpose is to share (shared_ptr) underlying storage (when it's
+// not changed) thus reducing memory footprint.
 template <typename T>
 class CopyOnWrite {
  public:
@@ -137,6 +139,9 @@ class HloModule {
   // - comp_envs must not be null.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
+
+  // You can share a config from other modules by passing
+  // HloModule::shared_config()
   HloModule(const std::string& name,
             std::variant<std::unique_ptr<HloModuleConfig>,
                          std::shared_ptr<const HloModuleConfig>>
