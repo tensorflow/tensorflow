@@ -31,14 +31,14 @@ namespace grappler {
 // In our estimation, we ensure that each node takes at least one nanosecond to
 // execute: therefore the execution times can be used to derive a topological
 // ordering of the graph (at least as long as there is no loop in the graph).
-Status EstimateEarliestExecutionTimes(
+absl::Status EstimateEarliestExecutionTimes(
     const GrapplerItem& item, const Cluster* cluster,
     std::unordered_map<const NodeDef*, Costs::NanoSeconds>* execution_times);
 
 // Compute the time by which the execution of each node must complete to ensure
 // the subsequent nodes can still be executed by the times predicted by the
 // EstimateEarliestExecutionTimes function.
-Status EstimateRequiredTimes(
+absl::Status EstimateRequiredTimes(
     const GrapplerItem& item, const Cluster* cluster,
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
         execution_times,
