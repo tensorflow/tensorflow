@@ -458,17 +458,11 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:  ROOT
 // CHECK-SAME:  s32[4] add(%[[ARG_1]], %[[ARG_2]])
 
-// CHECK:  [[CALLEE_2:%.*]] ([[ARG_3:.*]]: s32[4], [[ARG_4:.*]]: s32[4]) -> s32[4] {
-// CHECK:  %[[ARG_3]] = s32[4] parameter(0)
-// CHECK:  %[[ARG_4]] = s32[4] parameter(1)
-// CHECK:  ROOT
-// CHECK-SAME:  s32[4] add(%[[ARG_3]], %[[ARG_4]])
-
 // CHECK:  ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
 // CHECK:  %[[ARG]] = s32[4] parameter(0)
 // CHECK:  [[CALL_OUT:%.*]] = s32[4] call(%[[ARG]], %[[ARG]]), to_apply=[[CALLEE_1]]
 // CHECK:  ROOT
-// CHECK-SAME:  s32[4] call([[CALL_OUT]], [[CALL_OUT]]), to_apply=[[CALLEE_2]]
+// CHECK-SAME:  s32[4] call([[CALL_OUT]], [[CALL_OUT]]), to_apply=[[CALLEE_1]]
 
 // -----
 
