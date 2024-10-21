@@ -205,15 +205,8 @@ class CoordinationServiceAgent {
   // Delete config keys in the coordination service.
   virtual absl::Status DeleteKeyValue(std::string_view key) = 0;
 
-  // Update the value of a config key.
-  virtual absl::Status UpdateKeyValue(std::string_view key,
-                                      std::string_view value) = 0;
-
   // Register a callback that will be invoked when the key or keys under the key
   // directory are changed (inserted, deleted, or updated).
-  virtual absl::Status StartWatchKey(std::string_view key,
-                                     ChangedKeyValuesCallback on_change) = 0;
-  virtual absl::Status StopWatchKey(std::string_view key) = 0;
 
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
@@ -275,10 +268,6 @@ class CoordinationServiceAgent {
   // Note: different from ReportError, this does not report the error status to
   // remote coordination service.
   virtual void SetError(const absl::Status& error) = 0;
-
-  // Activate the key-value callback watch.
-  virtual absl::Status ActivateWatch(
-      std::string_view, const std::map<std::string, std::string>&) = 0;
 
  private:
   friend class CoordinationServiceRpcHandler;
