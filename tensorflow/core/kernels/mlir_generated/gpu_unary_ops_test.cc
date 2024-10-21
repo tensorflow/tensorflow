@@ -23,8 +23,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
+#include "llvm/ADT/STLExtras.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/mlir_generated/base_ops_test.h"
 #include "tensorflow/core/kernels/mlir_generated/base_unary_ops_test.h"
+#include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
 namespace {
