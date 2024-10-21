@@ -17,11 +17,70 @@ limitations under the License.
 
 #include <algorithm>
 #include <deque>
+#include <queue>
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+void TopologicalOrdering(const Graph& g, const std::function<void(Node*)>& emit,
+                         const NodeScorer& scorer) {
+  std::unordered_map<Node*, int> remaining_incoming_edges;
+  std::unordered_map<Node*, int> position;
+  std::vector<Node*> ready;
+
+  int i = 0;
+  DFS(
+      g, [](Node*) {},
+      [&](Node* n) {
+        auto in_nodes = n->in_nodes();
+        int num_incoming = std::distance(in_nodes.begin(), in_nodes.end());
+        remaining_incoming_edges[n] = num_incoming;
+        if (num_incoming == 0) {
+          ready.push_back(n);
+        }
+        position[n] = i++;
+      });
+
+  Node* previous_node = nullptr;
+  while (!ready.empty()) {
+    // Find the "best" operation to emit. We
+    // (a) only emit nodes that have all their inputs available
+    // (b) honor the priority function (as far as possible)
+    // (c) otherwise preserve DFS order.
+    auto better = [&](Node* a, Node* b) {
+      int a_priority = scorer(previous_node, a);
+      int b_priority = scorer(previous_node, b);
+      if (a_priority != b_priority) {
+        return a_priority > b_priority;
+      }
+      return position[a] < position[b];  // preserve order
+    };
+
+    // Find the best node to emit next. We can't use priority queues here
+    // since the scoring gives different values as previous_node changes.
+    Node* best = nullptr;
+    for (Node* op : ready) {
+      if (best == nullptr || better(op, best)) {
+        best = op;
+      }
+    }
+
+    // Emit the operation and make its results available.
+    emit(best);
+    ready.erase(std::find(ready.begin(), ready.end(), best));
+    previous_node = best;
+
+    for (Node* out : best->out_nodes()) {
+      remaining_incoming_edges[out]--;
+      if (remaining_incoming_edges[out] == 0) {
+        ready.push_back(out);
+      }
+    }
+  }
+}
+
 namespace {
 template <typename T>
 void DFSFromHelper(const Graph& g, gtl::ArraySlice<T> start,
