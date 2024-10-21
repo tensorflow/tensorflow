@@ -26,9 +26,9 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/core/dispatch/dispatch_delegate_kernel.h"
 #include "tensorflow/lite/experimental/lrt/core/dispatch/dispatch_delegate_options.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 
 namespace {
 

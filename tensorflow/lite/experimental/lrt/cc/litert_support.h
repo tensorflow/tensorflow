@@ -15,15 +15,13 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITERT_SUPPORT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITERT_SUPPORT_H_
 
-#include <stdio.h>
-
 #include <cstdint>
-#include <iostream>  // IWYU pragma: keep
 #include <memory>
 #include <variant>
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"  // IWYU pragma: export
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 
@@ -103,8 +101,7 @@ class LiteRtResult {
 #ifdef NDEBUG
 #define _LITERT_D_MSG(msg)
 #else
-#define _LITERT_D_MSG(msg) \
-  std::cerr << msg << " " << __FILE__ << ":" << __LINE__ << "\n";
+#define _LITERT_D_MSG(msg) LITERT_LOG(LITERT_INFO, "%s", msg)
 #endif
 
 #ifdef LITERT_RETURN_STATUS_IF_NOT_OK_MSG
@@ -194,16 +191,16 @@ class LiteRtResult {
 #define LITERT_MOVE_OR_RETURN_RESULT(decl, expr, ty) \
   _MOVE_OR_RETURN_RESULT(decl, expr, ty, _CONCAT_NAME(_result, __COUNTER__))
 
-#define LITERT_ENSURE_SUPPORTED(cond, msg)                          \
-  if (!(cond)) {                                                    \
-    std::cerr << __FILE__ << ":" << __LINE__ << " " << msg << "\n"; \
-    return kLiteRtStatusErrorUnsupported;                           \
+#define LITERT_ENSURE_SUPPORTED(cond, msg) \
+  if (!(cond)) {                           \
+    LITERT_LOG(LITERT_ERROR, "%s", msg);   \
+    return kLiteRtStatusErrorUnsupported;  \
   }
 
-#define LITERT_ENSURE(expr, fail_stat, msg)                         \
-  if (!(expr)) {                                                    \
-    std::cerr << __FILE__ << ":" << __LINE__ << " " << msg << "\n"; \
-    return fail_stat;                                               \
+#define LITERT_ENSURE(expr, fail_stat, msg) \
+  if (!(expr)) {                            \
+    LITERT_LOG(LITERT_ERROR, "%s", msg);    \
+    return fail_stat;                       \
   }
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CC_LITERT_SUPPORT_H_

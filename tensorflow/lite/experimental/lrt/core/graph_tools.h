@@ -21,40 +21,40 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-
-#ifndef NDEBUG
-#include <iostream>
-#endif
-
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 
-#define _D_MATCH_TRUE(v)                                               \
-  {                                                                    \
-    std::cerr << "failed match true " << __FILE__ << __LINE__ << "\n"; \
-    if (!(v)) return false;                                            \
+#define _D_MATCH_TRUE(v)                             \
+  {                                                  \
+    if (!(v)) {                                      \
+      LITERT_LOG(LITERT_ERROR, "Failed MATCH_TRUE"); \
+      return false;                                  \
+    }                                                \
   }
 
-#define _D_MATCH_EQ(lhs, rhs)                                        \
-  {                                                                  \
-    std::cerr << "failed match eq " << __FILE__ << __LINE__ << "\n"; \
-    if (lhs != rhs) return false;                                    \
-  }
-
-#define _MATCH_EQ(lhs, rhs)       \
-  {                               \
-    if (lhs != rhs) return false; \
+#define _D_MATCH_EQ(lhs, rhs)                      \
+  {                                                \
+    if (lhs != rhs) {                              \
+      LITERT_LOG(LITERT_ERROR, "Failed MATCH_EQ"); \
+      return false;                                \
+    }                                              \
   }
 
 #define _MATCH_TRUE(v)      \
   {                         \
     if (!(v)) return false; \
+  }
+
+#define _MATCH_EQ(lhs, rhs)       \
+  {                               \
+    if (lhs != rhs) return false; \
   }
 
 #ifndef NDEBUG

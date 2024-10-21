@@ -29,8 +29,8 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 
 namespace litert {
 

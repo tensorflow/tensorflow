@@ -18,11 +18,11 @@
 
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_op.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/tools/dump.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/graph_mapper.h"
@@ -32,17 +32,14 @@ namespace litert::qnn {
 
 using ::litert::internal::Dump;
 using ::litert::internal::DumpOptions;
-using ::litert::internal::Logger;
 
 // Dump source Op details.
 void DumpLegalization(LiteRtOpT& op) {
-  if (Logger::GetMinimumSeverity() > LITERT_INFO) {
-    return;
-  }
   std::ostringstream dump;
   Dump(op, dump);
   DumpOptions(op, dump);
-  LITERT_LOG(LITERT_INFO, "%s", dump.view());
+  std::string s = dump.str();
+  LITERT_LOG(LITERT_INFO, "%s", s.data());
 }
 
 LiteRtStatus LegalizeSimpleOp(LiteRtOpManager& src, Qnn_OpConfig_t& dest,
