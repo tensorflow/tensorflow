@@ -5,7 +5,7 @@
 #dot_operand_b = #triton_gpu.dot_op<{opIdx=1, parent=#mma, kWidth=2}>
 #dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
 
-module attributes {"triton_gpu.num-warps" = 4 : i32} {
+module attributes {"triton_gpu.num-warps" = 4 : i32,  "triton_gpu.target" = "cuda:80"} {
   // CHECK-LABEL: sparse_dot_to_llvm_ampere
   tt.func @sparse_dot_to_llvm_ampere(%A_dot: tensor<32x32xf16, #dot_operand_a>, %B_dot: tensor<64x32xf16, #dot_operand_b>, %meta_reg: tensor<32x4xi16, #dot_meta_enc>) {
     // CHECK-COUNT-4: mma.sp.sync.aligned.m16n8k32.row.col.f32.f16.f16.f32
