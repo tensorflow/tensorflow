@@ -33,10 +33,10 @@ namespace tensorflow {
 /// filename_suffix. The caller owns a reference to result if the
 /// returned status is ok. The Env object must not be destroyed until
 /// after the returned writer.
-Status CreateSummaryFileWriter(int max_queue, int flush_millis,
-                               const string& logdir,
-                               const string& filename_suffix, Env* env,
-                               SummaryWriterInterface** result);
+absl::Status CreateSummaryFileWriter(int max_queue, int flush_millis,
+                                     const string& logdir,
+                                     const string& filename_suffix, Env* env,
+                                     SummaryWriterInterface** result);
 
 }  // namespace tensorflow
 
