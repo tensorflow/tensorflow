@@ -591,6 +591,7 @@ message DebugOptions {
     CONDITIONALS = 5;
     CUSTOM_CALL = 6;
     CUBLASLT = 7;
+    DYNAMIC_SLICE = 8;
   }
 
   // Determine the types of commands that are recorded into command buffers.

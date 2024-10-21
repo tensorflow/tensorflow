@@ -2004,12 +2004,12 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
       embedded_commands_(std::move(embedded_commands)),
       fake_allocations_(std::move(fake_allocations)) {
   // Zip all arguments together to create a list of SliceDef.
-  for (auto [arg, offsets, orig_shape, sliced_shape, offset_byte_size] :
+  for (auto [arg, offset, orig_shape, sliced_shape, offset_byte_size] :
        llvm::zip_equal(arguments, offsets, orig_shapes, sliced_shapes,
                        offset_byte_sizes)) {
     slices_.push_back(DynamicSliceThunk::SliceDef{
         std::move(arg),
-        std::move(offsets),
+        std::move(offset),
         std::move(orig_shape),
         std::move(sliced_shape),
         std::move(offset_byte_size),
@@ -2135,12 +2135,18 @@ absl::Status DynamicSliceFusionCmd::Record(
     for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
              *slice.offsets, src_shape.dimensions(), dst_shape.dimensions()))) {
       auto [offset, src_dim, dst_dim] = values;
-
       if (uint64_t* const_offset = std::get_if<uint64_t>(&offset)) {
         // Forward slice offsets that are known constant values
         VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
                 << "]: constant offset = " << *const_offset;
         offset_value(argument_idx, offset_idx) = *const_offset;
+
+      } else if (std::holds_alternative<DynamicSliceThunk::LoopIter>(offset)) {
+        // Get slice offset from the current loop iteration.
+        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: loop iteration offset = " << iter;
+        offset_value(argument_idx, offset_idx) = iter;
 
       } else if (DynamicSliceThunk::OffsetArray* offset_array =
                      std::get_if<DynamicSliceThunk::OffsetArray>(&offset)) {
@@ -2182,6 +2188,10 @@ absl::Status DynamicSliceFusionCmd::Record(
       int64_t start_index =
           std::min(std::max(offset_value(argument_idx, offset_idx), int64_t{0}),
                    src_dim - dst_dim);
+      VLOG(2) << "arg idx: " << argument_idx << " offset_idx " << offset_idx
+              << " with offset_value " << offset_value(argument_idx, offset_idx)
+              << " start_idx: " << start_index << " src_dim: " << src_dim
+              << " dst_dim:" << dst_dim;
       slice_starts.push_back(start_index);
     }
 
