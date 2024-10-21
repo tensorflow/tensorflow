@@ -165,7 +165,7 @@ struct AutoShardingOption {
   // Static estimate for iteration count of a while loop, used in the cost
   // model. This estimate is used when we cannot infer an upper bound on the
   // number of iterations in the loop (as implemented in
-  // third_party/tensorflow/compiler/xla/service/while_loop_analysis.h)
+  // third_party/tensorflow/compiler/xla/hlo/analysis/while_loop_analysis.h)
   int64_t loop_iteration_count_estimate = 100;
 
   // Allows the conversion of aliases to followers if their pairwise strategy
