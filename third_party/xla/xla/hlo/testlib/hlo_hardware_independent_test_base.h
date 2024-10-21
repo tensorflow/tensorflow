@@ -216,15 +216,28 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   std::vector<HloInstruction*> FindInstructions(HloModule* module,
                                                 HloOpcode opcode);
 
+  bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
+  void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
+    verifier_layout_sensitive_ = verifier_layout_sensitive;
+  }
+  HloPredicate instruction_can_change_layout_func() const {
+    return instruction_can_change_layout_func_;
+  }
+  void set_instruction_can_change_layout_func(
+      HloPredicate instruction_can_change_layout_func) {
+    instruction_can_change_layout_func_ =
+        std::move(instruction_can_change_layout_func);
+  }
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }
+  void set_hlo_verifier(std::unique_ptr<HloVerifier> hlo_verifier) {
+    hlo_verifier_ = std::move(hlo_verifier);
+  }
+  bool allow_mixed_precision_in_hlo_verifier() const {
+    return allow_mixed_precision_in_hlo_verifier_;
+  }
 
   static std::string TestName();
-
-  bool verifier_layout_sensitive_;
-  bool allow_mixed_precision_in_hlo_verifier_;
-  HloPredicate instruction_can_change_layout_func_;
-  std::unique_ptr<HloVerifier> hlo_verifier_;
 
   // Updates the entry computation layout to match the program shape. Useful
   // when tiling assignment has been run to update the latter and we want those
@@ -238,6 +251,12 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // If there is no mismatch, an empty vector is returned.
   [[nodiscard]] std::vector<int> CompareInputs(const HloModule& module_0,
                                                const HloModule& module_1);
+
+ private:
+  bool verifier_layout_sensitive_;
+  bool allow_mixed_precision_in_hlo_verifier_;
+  HloPredicate instruction_can_change_layout_func_;
+  std::unique_ptr<HloVerifier> hlo_verifier_;
 };
 
 }  // namespace xla
