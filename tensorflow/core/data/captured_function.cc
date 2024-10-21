@@ -608,12 +608,8 @@ absl::Status CapturedFunction::Instantiate(
           }
         }
         if (!composite_device.empty()) {
-          if (composite_devices.find(composite_device) ==
-              composite_devices.end()) {
-            for (int i = 0; i < handles.size(); ++i) {
-              composite_devices[composite_device].push_back(
-                  handles(i).device());
-            }
+          for (int i = 0; i < handles.size(); ++i) {
+            composite_devices[composite_device].push_back(handles(i).device());
           }
           inst_opts.input_devices.push_back(composite_device);
         } else {
