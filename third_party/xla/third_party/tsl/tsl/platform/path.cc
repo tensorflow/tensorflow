@@ -20,6 +20,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+#include "absl/strings/match.h"
+#include "absl/types/span.h"
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #else
@@ -33,7 +36,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
