@@ -38,7 +38,7 @@ TEST_F(EncodeJpegWithVariableQualityTest, FailsForInvalidQuality) {
   AddInputFromArray<uint8>(TensorShape({2, 2, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
   AddInputFromArray<int32>(TensorShape({}), {200});
-  Status status = RunOpKernel();
+  absl::Status status = RunOpKernel();
   EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StartsWith(status.message(), "quality must be in [0,100]"));
 }

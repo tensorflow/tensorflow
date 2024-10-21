@@ -273,7 +273,7 @@ class DecodeImageV2Op : public OpKernel {
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8* {
           buffer_size = height * width * channels;
-          Status status;
+          absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
           // op. We need to make sure to return 4-D shapes when using
           // `DecodeGif`.
@@ -465,7 +465,7 @@ class DecodeImageV2Op : public OpKernel {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
-          Status status;
+          absl::Status status;
           // By the existing API, we support decoding GIF with `decode_jpeg` or
           // with `decode_png` if the GIF is a single-frame GIF (non-animated).
           // We need to make sure to return 3-D shapes when using in this case.
