@@ -459,7 +459,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gather_simplifier",
+        "//xla/hlo/transforms:gather_simplifier",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:matmul_indexing_utils",
         "@com_google_absl//absl/algorithm:container",
