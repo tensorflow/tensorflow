@@ -21,6 +21,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/profile_utils/cpu_utils.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 
