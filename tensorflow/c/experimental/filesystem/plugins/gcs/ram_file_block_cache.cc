@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/cleanup.h"
+#include "tensorflow/c/tf_status.h"
 
 namespace tf_gcs_filesystem {
 
