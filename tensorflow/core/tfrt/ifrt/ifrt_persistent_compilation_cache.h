@@ -63,11 +63,8 @@ class IfrtPersistentCompilationCache {
   // the Tf2HloResult if hits cache. Otherwise, it will call the `value_fn` to
   // generate and return the Tf2HloResult.
   virtual absl::StatusOr<Tf2HloResult> LookupTf2HloResultOrCreate(
-      mlir::ModuleOp mlir_module, absl::string_view main_func,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes,
-      tsl::RCReference<xla::ifrt::DeviceList> device_list,
-      xla::ifrt::Client* client,
-      absl::AnyInvocable<absl::StatusOr<Tf2HloResult>()> value_fn);
+      Tf2HloArg tf2hlo_arg,
+      tsl::RCReference<xla::ifrt::DeviceList> device_list);
 
   virtual bool IsXlaCompilationCacheEnabled() const { return false; }
   virtual bool IsTf2HloCompilationCacheEnabled() const { return false; }
