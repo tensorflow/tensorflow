@@ -7902,7 +7902,7 @@ inline void Conv3DTranspose(
 
   const int spatial_dim_1_padding_before = params.padding_values.depth;
   const int spatial_dim_1_padding_after =
-      params.padding_values.height + params.padding_values.depth_offset;
+      params.padding_values.depth + params.padding_values.depth_offset;
   const int spatial_dim_2_padding_before = params.padding_values.height;
   const int spatial_dim_2_padding_after =
       params.padding_values.height + params.padding_values.height_offset;
