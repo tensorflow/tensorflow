@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 #define TENSORFLOW_CORE_TRANSFORMS_GRAPH_TO_FUNC_GRAPH_TO_FUNC_H_
 
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/status.h"
 
