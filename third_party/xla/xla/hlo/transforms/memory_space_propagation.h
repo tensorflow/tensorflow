@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_MEMORY_SPACE_PROPAGATION_H_
 #define XLA_HLO_TRANSFORMS_MEMORY_SPACE_PROPAGATION_H_
 
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 
 namespace xla {
 
