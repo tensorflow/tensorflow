@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
