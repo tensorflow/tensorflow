@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_COMMAND_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 
@@ -31,6 +37,26 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   // Creates a new ROCm command buffer and the underlying HIP graph.
   static absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> Create(
       Mode mode, GpuExecutor* parent);
+
+  class HipGraphNode final : public GpuGraphNodeInfo {
+   public:
+    explicit HipGraphNode(hipGraphNode_t node_handle,
+                          RocmCommandBuffer* command_buffer)
+        : GpuGraphNodeInfo(node_handle), command_buffer_(command_buffer) {}
+
+    absl::Status UpdateMemsetNode(DeviceMemoryBase destination,
+                                  BitPattern bit_pattern,
+                                  size_t num_elements) override;
+
+    absl::Status UpdateMemcpyD2DNode(DeviceMemoryBase destination,
+                                     DeviceMemoryBase source,
+                                     uint64_t size) override;
+
+    absl::Status UpdateChildNode(const CommandBuffer& nested) override;
+
+   private:
+    RocmCommandBuffer* command_buffer_;
+  };
 
  private:
   RocmCommandBuffer(Mode mode, GpuExecutor* parent, hipGraph_t graph,
@@ -50,7 +76,20 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       hipGraph_t graph) override;
 
+  absl::StatusOr<GpuGraphNodeInfo*> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) override;
+
   GpuExecutor* parent_;
+
+  std::vector<std::unique_ptr<HipGraphNode>> node_storage_;
 };
 
 }  // namespace stream_executor::gpu

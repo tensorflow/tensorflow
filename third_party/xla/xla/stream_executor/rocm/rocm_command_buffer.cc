@@ -15,17 +15,29 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_command_buffer.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "rocm/include/hip/driver_types.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -38,6 +50,50 @@ absl::StatusOr<hipGraph_t> CreateGraph() {
                               "Failed to create HIP graph"));
   VLOG(2) << "Created HIP graph " << graph;
   return graph;
+}
+
+hipDeviceptr_t AsDevicePtr(const DeviceMemoryBase& mem) {
+  return absl::bit_cast<hipDeviceptr_t>(mem.opaque());
+}
+
+struct BitPatternToString {
+  std::string operator()(uint8_t pattern) {
+    return absl::StrCat("u8:", pattern);
+  }
+  std::string operator()(uint16_t pattern) {
+    return absl::StrCat("u16:", pattern);
+  }
+  std::string operator()(uint32_t pattern) {
+    return absl::StrCat("u32:", pattern);
+  }
+};
+
+// Broadcasts a pattern value of 1/2/4 bytes to a 4 byte value.
+struct BitPatternToValue {
+  std::pair<unsigned, unsigned> operator()(uint8_t pattern) {
+    unsigned value = pattern;
+    return {(value << 24) | (value << 16) | (value << 8) | value,
+            /*element_size=*/1};
+  }
+  std::pair<unsigned, unsigned> operator()(uint16_t pattern) {
+    unsigned value = pattern;
+    return {(value << 16) | value, /*element_size=*/2};
+  }
+  std::pair<unsigned, unsigned> operator()(uint32_t pattern) {
+    return {pattern, /*element_size=*/4};
+  }
+};
+
+// Takes a list of GpuGraphNodeInfo instances and converts them to a list of
+// hipGraphNode_t handles.
+std::vector<hipGraphNode_t> AsNodeHandles(
+    absl::Span<const GpuCommandBuffer::GpuGraphNodeInfo* const> nodes) {
+  std::vector<hipGraphNode_t> handles;
+  handles.reserve(nodes.size());
+  for (const GpuCommandBuffer::GpuGraphNodeInfo* node : nodes) {
+    handles.push_back(node->handle);
+  }
+  return handles;
 }
 }  // namespace
 
@@ -84,5 +140,129 @@ RocmCommandBuffer::GetSetWhileConditionKernel() {
 absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
 RocmCommandBuffer::GetNoOpKernel() {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
+}
+
+absl::StatusOr<RocmCommandBuffer::GpuGraphNodeInfo*>
+RocmCommandBuffer::CreateMemsetNode(const Dependencies& dependencies,
+                                    DeviceMemoryBase destination,
+                                    BitPattern bit_pattern,
+                                    size_t num_elements) {
+  VLOG(2) << "Add memset node to a graph " << graph_
+          << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements
+          << "; context: " << parent_->gpu_context()
+          << "; deps: " << dependencies.size();
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  hipMemsetParams params{
+      .dst = AsDevicePtr(destination),
+      .elementSize = element_size,
+      .height = 1,
+      .pitch = 0,  // unused if height is 1
+      .value = value,
+      .width = num_elements,
+  };
+
+  std::vector<hipGraphNode_t> deps = AsNodeHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      ToStatus(wrap::hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
+                                           deps.size(), &params),
+               "Failed to add memset node to a HIP graph"));
+
+  node_storage_.push_back(std::make_unique<HipGraphNode>(node_handle, this));
+  return node_storage_.back().get();
+}
+
+absl::Status RocmCommandBuffer::HipGraphNode::UpdateMemsetNode(
+    DeviceMemoryBase destination, BitPattern bit_pattern, size_t num_elements) {
+  VLOG(2) << "Set memset node params " << handle << " in graph executable "
+          << command_buffer_->exec_ << "; dst: " << destination.opaque()
+          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
+          << "; num_elements: " << num_elements;
+
+  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
+
+  hipMemsetParams params{
+      .dst = AsDevicePtr(destination),
+      .elementSize = element_size,
+      .height = 1,
+      .pitch = 0,  // unused if height is 1
+      .value = value,
+      .width = num_elements,
+  };
+
+  return ToStatus(wrap::hipGraphExecMemsetNodeSetParams(command_buffer_->exec_,
+                                                        handle, &params),
+                  "Failed to set memset node params");
+}
+
+absl::StatusOr<RocmCommandBuffer::GpuGraphNodeInfo*>
+RocmCommandBuffer::CreateMemcpyD2DNode(const Dependencies& dependencies,
+                                       DeviceMemoryBase destination,
+                                       DeviceMemoryBase source, uint64_t size) {
+  VLOG(2) << "Add memcpy d2d node to a graph " << graph_
+          << "; dst: " << destination.opaque() << "; src: " << source.opaque()
+          << "; size: " << size << "; context: " << parent_->gpu_context()
+          << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = AsNodeHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
+                                    deps.size(), AsDevicePtr(destination),
+                                    AsDevicePtr(source), size,
+                                    hipMemcpyDeviceToDevice),
+      "Failed to add memcpy d2d node to a HIP graph"));
+  node_storage_.push_back(std::make_unique<HipGraphNode>(node_handle, this));
+  return node_storage_.back().get();
+}
+
+absl::Status RocmCommandBuffer::HipGraphNode::UpdateMemcpyD2DNode(
+    DeviceMemoryBase destination, DeviceMemoryBase source, uint64_t size) {
+  VLOG(2) << "Set memcpy d2d node params " << handle << " in graph executable "
+          << command_buffer_->exec_ << "; dst: " << destination.opaque()
+          << "; src: " << source.opaque() << "; size: " << size;
+
+  return ToStatus(wrap::hipGraphExecMemcpyNodeSetParams1D(
+                      command_buffer_->exec_, handle, AsDevicePtr(destination),
+                      AsDevicePtr(source), size, hipMemcpyDeviceToDevice),
+                  "Failed to set memcpy d2d node params");
+}
+
+absl::StatusOr<RocmCommandBuffer::GpuGraphNodeInfo*>
+RocmCommandBuffer::CreateChildNode(const Dependencies& dependencies,
+                                   const CommandBuffer& nested) {
+  hipGraph_t child_graph =
+      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+  VLOG(2) << "Create a new node by cloning the child graph " << child_graph
+          << " and add it to " << graph_ << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = AsNodeHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(),
+                                      deps.size(), child_graph),
+      "Failed to create a child graph node and add it to a HIP graph"));
+  node_storage_.push_back(std::make_unique<HipGraphNode>(node_handle, this));
+  return node_storage_.back().get();
+}
+
+absl::Status RocmCommandBuffer::HipGraphNode::UpdateChildNode(
+    const CommandBuffer& nested) {
+  hipGraph_t child_graph =
+      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+
+  VLOG(2) << "Set child node params " << handle << " in graph executable "
+          << command_buffer_->exec_ << "to params contained in " << child_graph;
+
+  return ToStatus(wrap::hipGraphExecChildGraphNodeSetParams(
+                      command_buffer_->exec_, handle, child_graph),
+                  "Failed to set HIP graph child node params");
 }
 }  // namespace stream_executor::gpu
