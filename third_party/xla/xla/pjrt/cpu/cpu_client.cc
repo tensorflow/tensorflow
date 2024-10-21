@@ -390,8 +390,10 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
 
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
   for (int i = 0; i < cpu_device_count; ++i) {
+    int local_device_id =
+        options.task_id > 0 ? options.task_id * cpu_device_count + i : i;
     auto device = std::make_unique<TfrtCpuDevice>(
-        options.process_id, /*local_device_id=*/i,
+        options.process_id, local_device_id,
         options.max_inflight_computations_per_device);
     devices.push_back(std::move(device));
   }
@@ -453,12 +455,7 @@ TfrtCpuClient::TfrtCpuClient(
 
     device->SetClient(this);
     if (device->IsAddressable()) {
-      int idx = device->local_hardware_id().value();
-      if (idx >= addressable_devices_.size()) {
-        addressable_devices_.resize(idx + 1);
-      }
-      CHECK(addressable_devices_[idx] == nullptr) << idx;
-      addressable_devices_[idx] = device.get();
+      addressable_devices_.push_back(device.get());
     }
   }
   for (int idx = 0; idx < addressable_devices_.size(); ++idx) {
