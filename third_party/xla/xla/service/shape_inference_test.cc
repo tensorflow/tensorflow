@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -348,6 +349,17 @@ TEST_F(ShapeInferenceTest, ClampBadShapes) {
   ASSERT_FALSE(ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, f32_,
                                                    vector_64_, vector_32_)
                    .ok());
+}
+
+TEST_F(ShapeInferenceTest, Atan2FailsWithIntegerInput) {
+  const Shape input = ShapeUtil::MakeScalarShape(S8);
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferBinaryOpShape(HloOpcode::kAtan2, input, input, {});
+  EXPECT_THAT(
+      inferred_shape.status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Expected input element type to be "
+                                       "floating or complex for atan2")));
 }
 
 TEST_F(ShapeInferenceTest, Complex) {
