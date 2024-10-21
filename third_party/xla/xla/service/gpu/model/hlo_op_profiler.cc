@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -158,6 +159,9 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
 
   std::unique_ptr<HloModule> module =
       MakeModuleForMeasurements(op, data_type, chain_length);
+  HloVerifier verifier(/*layout_sensitive=*/true,
+                       /*allow_mixed_precision=*/false);
+  TF_RETURN_IF_ERROR(verifier.Run(&*module).status());
 
   std::minstd_rand0 engine;
   // Some operations have dynamic duration that depends on the input values.
