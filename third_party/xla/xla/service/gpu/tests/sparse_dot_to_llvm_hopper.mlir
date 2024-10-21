@@ -8,7 +8,7 @@
 #mma = #triton_gpu.nvidia_mma<{versionMajor = 3, warpsPerCTA = [4, 1], CTAsPerCGA = [1, 1], CTASplitNum = [1, 1], CTAOrder = [0, 1], instrShape = [16, 64, 16]}>
 #dot_meta_enc = #triton_gpu.sparse_dot_meta<{parent=#mma}>
 
-module attributes {"triton_gpu.num-warps" = 4 : i32} {
+module attributes {"triton_gpu.num-warps" = 4 : i32, "triton_gpu.target" = "cuda:90"} {
   // CHECK-LABEL: sparse_dot_to_llvm_hopper
   tt.func @sparse_dot_to_llvm_hopper(%A_alloc: !tt.memdesc<64x32xf16, #shared, #triton_gpu.shared_memory>,
                       %B_alloc: !tt.memdesc<64x64xf16, #shared, #triton_gpu.shared_memory>,
