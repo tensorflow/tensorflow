@@ -584,6 +584,60 @@ TEST_F(HloInstructionTest, ReplaceAllUsesInMultipleOps) {
   EXPECT_THAT(bar->users(), UnorderedElementsAre(add_foobar, exp, tuple));
 }
 
+TEST_F(HloInstructionTest, ReplaceAllUsesWithException) {
+  HloComputation::Builder builder(TestName());
+  auto foo =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "foo"));
+
+  auto exp_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto exp_2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(2, foo->user_count());
+
+  auto* bitcast1 =
+      foo->parent()->AddInstruction(HloInstruction::CreateBitcast(r0f32_, foo));
+  auto* bitcast2 = bitcast1->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(r0f32_, bitcast1));
+  auto* bitcast3 = bitcast2->parent()->AddInstruction(
+      HloInstruction::CreateBitcast(r0f32_, bitcast2));
+
+  EXPECT_EQ(1, bitcast2->user_count());
+
+  // Replace for the case when original producer has more users than new
+  // producer.
+  EXPECT_GT(foo->user_count(), bitcast2->user_count());
+  ASSERT_IS_OK(foo->ReplaceAllUsesWith(bitcast2, /*except=*/bitcast1));
+
+  EXPECT_EQ(1, foo->user_count());
+  EXPECT_EQ(1, bitcast1->user_count());
+  EXPECT_EQ(3, bitcast2->user_count());
+
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(bitcast1));
+  EXPECT_THAT(bitcast2->users(), UnorderedElementsAre(exp_1, exp_2, bitcast3));
+
+  auto exp_3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto exp_4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+  auto exp_5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, foo));
+
+  // Replace for the case when original producer has less users than new
+  // producer.
+  EXPECT_LT(bitcast2->user_count(), foo->user_count());
+  ASSERT_IS_OK(bitcast2->ReplaceAllUsesWith(foo));
+
+  EXPECT_EQ(bitcast2->user_count(), 0);
+  EXPECT_EQ(foo->user_count(), 7);
+  EXPECT_THAT(foo->users(), UnorderedElementsAre(exp_1, exp_2, exp_3, exp_4,
+                                                 exp_5, bitcast1, bitcast3));
+}
+
 // Simple visitor that collects and post-processes each node in the graph.
 class NodeCollectorAndPostProcessor : public DfsHloVisitorWithDefault {
  public:
