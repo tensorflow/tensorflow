@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
