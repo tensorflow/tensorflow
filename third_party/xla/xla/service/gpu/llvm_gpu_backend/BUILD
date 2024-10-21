@@ -110,32 +110,19 @@ cc_library(
 
 cc_library(
     name = "load_ir_module",
-    srcs = ["load_ir_module.cc"],
     hdrs = ["load_ir_module.h"],
     deps = [
-        "@com_google_absl//absl/strings",
+        "//xla/service/gpu/llvm_gpu_backend/default:load_ir_module",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:IRReader",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
 cc_library(
     name = "nvptx_libdevice_path",
-    srcs = ["nvptx_libdevice_path.cc"],
     hdrs = ["nvptx_libdevice_path.h"],
     deps = [
-        ":nvptx_utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "//xla/service/gpu/llvm_gpu_backend/default:nvptx_libdevice_path",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:cuda_root_path",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:path",
     ],
 )
 
