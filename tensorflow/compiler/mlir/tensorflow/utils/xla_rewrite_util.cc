@@ -15,6 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
 
+#include "absl/log/log.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+
 namespace tensorflow {
 mlir::LogicalResult EraseClusterFuncs(
     llvm::MutableArrayRef<mlir::tf_device::ClusterFuncOp> to_be_erased) {

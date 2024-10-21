@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <optional>
 
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 #define DEBUG_TYPE "tf-shape-inference-utils"
 
