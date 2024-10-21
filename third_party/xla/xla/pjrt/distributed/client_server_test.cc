@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
-#include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
@@ -690,6 +689,8 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED);
   }
 }
+
+// TODO(b/XXX): Add some tests.
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
   int num_nodes = 2;

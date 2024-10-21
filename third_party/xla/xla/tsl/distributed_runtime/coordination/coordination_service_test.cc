@@ -1971,4 +1971,14 @@ TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
                                       HasSubstr("test_error_from_task_0"))));
 }
 
+//// TODO(b/XXX): Add test case where register barrier has passed, but
+// the task restarts and registers again - it should fail.
+
+// Cases:
+// - Register twice
+// - same incarnation / different incarnations -- fail!
+// - After register barrier -- fail!
+// - Register barrier and reset task used.
+
+// Also sending heartbeats to a 'restarted' service.
 }  // namespace tsl
