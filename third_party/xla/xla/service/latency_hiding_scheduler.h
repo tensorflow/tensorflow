@@ -216,7 +216,7 @@ class AsyncTracker {
       const HloInstruction& hlo) const;
 
   // Returns resources used (i.e., occupied or released) by this instruction
-  virtual ResourcesVector GetResourcesFromInstruction(
+  absl::Span<const ResourcePair> GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
 
   // Modifies the schedule graph passed as input to add dependencies that are
@@ -299,8 +299,12 @@ class AsyncTracker {
       : get_canonical_async_op_(std::move(func)), config_(config) {}
 
  private:
-  mutable absl::flat_hash_map<const HloComputation*,
-                              absl::flat_hash_map<int64_t, int64_t>>
+  const absl::flat_hash_map<int64_t, int64_t>& RecursivelyComputeResourceMap(
+      const HloComputation* computation) const;
+
+  mutable absl::flat_hash_map<
+      const HloComputation*,
+      std::unique_ptr<absl::flat_hash_map<int64_t, int64_t>>>
       async_in_computation_cache_;
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
 
