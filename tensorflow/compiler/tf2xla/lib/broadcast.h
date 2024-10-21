@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_builder.h"
