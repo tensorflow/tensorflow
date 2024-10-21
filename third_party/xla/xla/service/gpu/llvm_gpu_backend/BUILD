@@ -38,16 +38,12 @@ cc_library(
     hdrs = [
         "gpu_backend_lib.h",
     ],
-    data = if_cuda_is_configured(
-        if_google(
-            ["@local_config_cuda//cuda:runtime_libdevice"],
-        ),
-    ),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":load_ir_module",
+        ":nvptx_libdevice_path",
         ":utils",
         "//xla:status_macros",
         "//xla:types",
@@ -109,15 +105,34 @@ cc_library(
 
 cc_library(
     name = "load_ir_module",
-    srcs = ["load_ir_module.cc"],
     hdrs = ["load_ir_module.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ] + if_google(
+        ["//xla/service/gpu/llvm_gpu_backend/google:load_ir_module"],
+        ["//xla/service/gpu/llvm_gpu_backend/default:load_ir_module"],
+    ),
+)
+
+cc_library(
+    name = "nvptx_libdevice_path",
+    hdrs = ["nvptx_libdevice_path.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ] + if_google(
+        ["//xla/service/gpu/llvm_gpu_backend/google:nvptx_libdevice_path"],
+        ["//xla/service/gpu/llvm_gpu_backend/default:nvptx_libdevice_path"],
+    ),
+)
+
+cc_library(
+    name = "nvptx_utils",
+    srcs = ["nvptx_utils.cc"],
+    hdrs = ["nvptx_utils.h"],
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:IRReader",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:cuda_root_path",
     ],
 )
 
@@ -157,6 +172,17 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
+    name = "nvptx_utils_test",
+    srcs = ["nvptx_utils_test.cc"],
+    deps = [
+        ":nvptx_utils",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
     ],
 )
