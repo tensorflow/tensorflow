@@ -42,9 +42,8 @@ LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle) {
 #endif
 
   if (res == nullptr) {
-    LITERT_LOG(LITERT_ERROR,
-               "Failed to load .so at path: %s, with error:\n\t %s\n", so_path,
-               ::dlerror());
+    LITERT_LOG(LITERT_ERROR, "Failed to load .so at path: %s\n", so_path);
+    LogDlErr();
 
     return kLiteRtStatusErrorDynamicLoading;
   }
@@ -65,9 +64,9 @@ LiteRtStatus MakePluginLibGlobPattern(absl::string_view search_path,
   LITERT_ENSURE(!search_path.ends_with("/"), kLiteRtStatusErrorInvalidArgument,
                 "Search paths must not have trailing slash");
 
-  // NOTE: Compiler plugin shared libraries also have "Plugin" appended
-  // to the standard prefix.
-  constexpr absl::string_view kGlobPluginLibTemplate = "%s/%sPlugin*.so";
+  // NOTE: Compiler plugin shared libraries also have "Plugin" somewhere after
+  // the standard prefix.
+  constexpr absl::string_view kGlobPluginLibTemplate = "%s/%s*Plugin*.so";
   pattern = absl::StrFormat(kGlobPluginLibTemplate, search_path,
                             kLiteRtSharedLibPrefix);
   return kLiteRtStatusOk;

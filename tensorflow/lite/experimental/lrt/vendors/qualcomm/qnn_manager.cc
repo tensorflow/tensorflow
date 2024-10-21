@@ -96,7 +96,10 @@ QnnManager::~QnnManager() {
 }
 
 LiteRtStatus QnnManager::LoadLib(absl::string_view path) {
+  LITERT_LOG(LITERT_INFO, "Loading qnn shared library from \"%s\"",
+             path.data());
   LITERT_RETURN_STATUS_IF_NOT_OK(litert::OpenLib(path, &lib_so_));
+  LITERT_LOG(LITERT_INFO, "Loaded qnn shared library", "");
   return kLiteRtStatusOk;
 }
 

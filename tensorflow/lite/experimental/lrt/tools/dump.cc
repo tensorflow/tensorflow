@@ -251,6 +251,10 @@ void Dump(const LiteRtModelT& model, std::ostream& out) {
 }
 
 void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
+  if (op.option.value == nullptr) {
+    out << "null options\n";
+    return;
+  }
   switch (op.op_code) {
     case kLiteRtOpCodeTflAdd:
       out << "fused_activation_function: "
