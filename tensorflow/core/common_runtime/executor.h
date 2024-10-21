@@ -22,7 +22,11 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/local_executor_params.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
@@ -33,7 +37,10 @@ limitations under the License.
 #include "tensorflow/core/platform/error_logging.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
