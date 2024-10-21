@@ -587,6 +587,13 @@ MlirColumnReductionFusion::MlirColumnReductionFusion(
                   reduction_dimensions_.dimensions[2]};
   vector_size_ = GetVectorSizeForMlir(
       analysis, /*minor_dim=*/input_shape_.back(), WarpSize());
+
+  // We cannot use vector size 8 for f64 column reductions, as that would exceed
+  // the available shared memory.
+  if (first_reduce_->operand(0)->shape().element_type() == F64 &&
+      vector_size_ == 8) {
+    vector_size_ = 4;
+  }
   int64_t num_warps_per_column = WarpSize();
   num_threads_ = {num_warps_per_column, WarpSize()};
   int64_t num_col_elements_per_thread =
