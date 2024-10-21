@@ -48,11 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/local_client.h"
-#include "xla/executable_run_options.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -66,8 +61,14 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tsl/platform/statusor.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
 // in error case, it returns RET instead of void.
@@ -469,6 +470,14 @@ void RunInThreadPoolIfCollectivesPresent(
   }
 }
 
+bool IsAssumeWeightsFrozen() {
+  bool weights_const = false;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ONEDNN_ASSUME_FROZEN_WEIGHTS",
+                                 /*default_value*/ false, &weights_const));
+
+  return weights_const;
+}
+
 }  // namespace
 
 XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
@@ -481,7 +490,9 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
       resources_(resources),
       function_(function),
       platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
-      has_ref_vars_(has_ref_vars) {}
+      has_ref_vars_(has_ref_vars) {
+  is_weights_assume_frozen_ = IsAssumeWeightsFrozen();
+}
 
 void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
@@ -499,6 +510,13 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   xla::PjRtClient* pjrt_client;                // Not owned.
   xla::PjRtLoadedExecutable* pjrt_executable;  // Not owned.
 
+  // Defining new indices which will be treated as constants
+  // we will push_back resource indices in this vector below based on certain
+  // conditions
+  std::vector<int> new_const_indices;
+  new_const_indices.insert(new_const_indices.end(), constants_.begin(),
+                           constants_.end());
+
   // Note that here we assume the shape of the variables don't change between
   // compilation and execution. The locks on the variables are released before
   // compilation so that we can achieve parallel compilation of different batch
@@ -513,12 +531,29 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     absl::Status status = GetVariableInfosFromInputs(
         ctx->resource_manager(), ctx->device(), inputs, resources_,
         &variables_updated, &variable_infos);
+
+    // Insert resource tensor indices
+    // TODO : We insert only resource tensors whose rank is >= 2, as we want to
+    // freeze weights of only conv2d and dot maybe we can find a better way to
+    // identify if tensor is input to dot / conv2d
+
+    if (is_weights_assume_frozen_) {
+      for (auto& var_info : variable_infos) {
+        if (var_info.var() && var_info.var()->is_initialized) {
+          Tensor* t = var_info.var()->tensor();
+          if (t->dims() >= 2) {
+            new_const_indices.push_back(var_info.index());
+          }
+        }
+      }
+    }
+
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
     status = LockVariables(absl::MakeSpan(variable_infos));
     OP_REQUIRES_OK_ASYNC(ctx, status, done);
     auto status_or_xla_compiler_args =
         XlaComputationLaunchContext::BuildXlaCompilerArguments(
-            constants_, inputs, variable_infos,
+            new_const_indices, inputs, variable_infos,
             static_cast<Device*>(ctx->device()));
     OP_REQUIRES_OK_ASYNC(ctx, status_or_xla_compiler_args.status(), done);
     xla_compiler_args = std::move(status_or_xla_compiler_args.value());
