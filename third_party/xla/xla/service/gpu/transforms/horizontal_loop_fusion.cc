@@ -339,52 +339,6 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
       });
 }
 
-// LINT.IfChange
-// Returns an estimate how many computation instructions will be emitted. The
-// logic roughly replicates the logic in `OptimizeLoopsPass` that computes
-// unroll factor.
-int64_t GetInstrUnrollCostOfFusible(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    int64_t cost = 0;
-    for (HloInstruction* instr :
-         instr.fused_instructions_computation()->instructions()) {
-      cost += GetInstrUnrollCostOfFusible(*instr);
-    }
-    return cost;
-  }
-
-  // Instruction that only change indexing do not emit computation.
-  if (instr.opcode() == HloOpcode::kParameter ||
-      instr.opcode() == HloOpcode::kConstant ||
-      instr.opcode() == HloOpcode::kTuple ||
-      instr.opcode() == HloOpcode::kBroadcast ||
-      instr.opcode() == HloOpcode::kBitcast ||
-      instr.opcode() == HloOpcode::kReshape ||
-      instr.opcode() == HloOpcode::kTranspose ||
-      instr.opcode() == HloOpcode::kSlice) {
-    return 0;
-  }
-
-  if (!primitive_util::IsIntegralType(instr.shape().element_type())) {
-    // Integer instructions in math are ok, but many float ops lower to lots
-    // of instructions.
-    switch (instr.opcode()) {
-      case HloOpcode::kAbs:
-      case HloOpcode::kCeil:
-      case HloOpcode::kFloor:
-      case HloOpcode::kRoundNearestAfz:
-      case HloOpcode::kRoundNearestEven:
-      case HloOpcode::kRsqrt:
-      case HloOpcode::kSqrt:
-        return 20;
-      default:
-        break;
-    }
-  }
-  return 1;
-}
-// LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/fusions/transforms/optimize_loops.cc)
-
 // Gets a next span of fusion instructions to be fused.
 absl::Span<HloInstruction*>
 HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
@@ -414,18 +368,10 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     }
   }();
 
-  // LINT.IfChange
-  // `OptimizeLoopsPass` uses max cost of 400 for unrolled loop. We can assume
-  // that the vectorization loop has 4 steps, so the cost of the fusion
-  // shouldn't exceed 100.
-  constexpr int64_t kMaxInstrUnrollCost = 100;
-  // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/fusions/transforms/optimize_loops.cc)
-
   size_t left = pos_;
   size_t right = pos_;
   size_t accum_num_outputs = 0;
   size_t accum_io_size = 0;
-  size_t accum_instr_unroll_cost = 0;
 
   for (; right < fusible_instrs_.size(); ++right) {
     if (GetUniqueOutputTypeOfFusible(*fusible_instrs_[left]) !=
@@ -468,13 +414,6 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     accum_io_size += fusible_instrs_.at(right)->operand_count() + num_outputs;
     if (accum_io_size * 8 >= kMaxCudaParamSize) {
       VLOG(2) << "hit max cuda param size: " << accum_io_size;
-      break;
-    }
-
-    accum_instr_unroll_cost +=
-        GetInstrUnrollCostOfFusible(*fusible_instrs_[right]);
-    if (accum_instr_unroll_cost >= kMaxInstrUnrollCost) {
-      VLOG(2) << "hit max instr unroll cost: " << accum_instr_unroll_cost;
       break;
     }
   }
