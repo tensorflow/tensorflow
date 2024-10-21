@@ -30,6 +30,7 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/ahwb_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/dmabuf_buffer.h"
+#include "tensorflow/lite/experimental/lrt/core/event.h"
 #include "tensorflow/lite/experimental/lrt/core/fastrpc_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/ion_buffer.h"
 #include "tensorflow/lite/experimental/lrt/core/utils.h"
@@ -391,7 +392,7 @@ absl::StatusOr<void*> LiteRtTensorBufferT::Lock(LiteRtEvent event) {
     // Only AHWB supports waiting on an input sync fence when locking the
     // buffer. For all other buffer types we wait here.
     if (buffer_type() != kLiteRtTensorBufferTypeAhwb) {
-      if (auto status = LiteRtEventWait(event, /*timeout_in_ms*/ -1);
+      if (auto status = event->Wait(/*timeout_in_ms*/ -1);
           status != kLiteRtStatusOk) {
         return absl::InternalError("Failed to wait on input event");
       }

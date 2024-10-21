@@ -39,9 +39,8 @@ cc_library(
     }),
     deps = [
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core:logging",
-        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core:utils",
         "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/log:absl_log",
@@ -73,8 +72,7 @@ cc_test(
     deps = [
         ":dispatch_api",
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
-        "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer",
         "//tensorflow/lite/experimental/lrt/core/dispatch",
         "//tensorflow/lite/experimental/lrt/test:common",
         "//tensorflow/lite/experimental/lrt/test:simple_model",

@@ -40,7 +40,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
-        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer",
     ],
 )
 

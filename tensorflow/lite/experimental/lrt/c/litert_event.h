@@ -35,7 +35,7 @@ LiteRtStatus LiteRtEventGetSyncFenceFd(LiteRtEvent event, int* sync_fence_fd);
 // Pass -1 for timeout_in_ms for indefinite wait.
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms);
 
-LiteRtStatus LiteRtEventDestroy(LiteRtEvent event);
+void LiteRtEventDestroy(LiteRtEvent event);
 
 #ifdef __cplusplus
 }

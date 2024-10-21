@@ -24,14 +24,8 @@
 #include <cstring>
 
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/core/event.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
-
-struct LiteRtEventT {
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
-  int fd;
-  bool owns_fd;
-#endif
-};
 
 #if LITERT_HAS_SYNC_FENCE_SUPPORT
 LiteRtStatus LiteRtEventCreateFromSyncFenceFd(int sync_fence_fd, bool owns_fd,
@@ -47,54 +41,7 @@ LiteRtStatus LiteRtEventGetSyncFenceFd(LiteRtEvent event, int* sync_fence_fd) {
 #endif
 
 LiteRtStatus LiteRtEventWait(LiteRtEvent event, int64_t timeout_in_ms) {
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
-  int fd = event->fd;
-
-  struct pollfd fds = {
-      .fd = fd,
-      .events = POLLIN,
-  };
-
-  int ret;
-  do {
-    ret = ::poll(&fds, 1, timeout_in_ms);
-    if (ret == 1) {
-      break;
-    } else if (ret == 0) {
-      LITERT_LOG(LITERT_WARNING, "Timeout expired: %d", timeout_in_ms);
-      return kLiteRtStatusErrorTimeoutExpired;
-    }
-  } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
-
-  if (ret < 0) {
-    LITERT_LOG(LITERT_ERROR, "Error waiting for fence: %s", ::strerror(errno));
-    return kLiteRtStatusErrorRuntimeFailure;
-  }
-
-  return kLiteRtStatusOk;
-
-#else
-  LITERT_LOG(LITERT_ERROR, "LiteRtEventWait not implemented for this platform");
-  return kLiteRtStatusErrorUnsupported;
-#endif
+  return event->Wait(timeout_in_ms);
 }
 
-namespace {
-inline bool IsFdValid(int fd) {
-  return ::fcntl(fd, F_GETFD) != -1 || errno != EBADF;
-}
-}  // namespace
-
-LiteRtStatus LiteRtEventDestroy(LiteRtEvent event) {
-#if LITERT_HAS_SYNC_FENCE_SUPPORT
-  if (event->owns_fd && IsFdValid(event->fd)) {
-    ::close(event->fd);
-  }
-  delete event;
-  return kLiteRtStatusOk;
-#else
-  LITERT_LOG(LITERT_ERROR,
-             "LiteRtEventDestroy not implemented for this platform");
-  return kLiteRtStatusErrorUnsupported;
-#endif
-}
+void LiteRtEventDestroy(LiteRtEvent event) { delete event; }
