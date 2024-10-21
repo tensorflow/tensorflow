@@ -10,3 +10,16 @@ diff --git a/src/ortools/base/file.cc b/src/ortools/base/file.cc
    return absl::Status(absl::StatusCode::kInvalidArgument,
                        absl::StrCat("Could not read from '", filename, "'."));
  }
+diff --git a/src/ortools/base/logging.h b/src/ortools/base/logging.h
+index 7f570f969e..c369fd20c5 100644
+--- a/ortools/base/logging.h
++++ b/ortools/base/logging.h
+@@ -15,7 +15,7 @@
+ #define OR_TOOLS_BASE_LOGGING_H_
+
+ #define ABSL_LOG_INTERNAL_CONDITION_DFATAL ABSL_LOG_INTERNAL_CONDITION_ERROR
+-#define kLogDebugFatal LogSeverity::kError
++// #define kLogDebugFatal LogSeverity::kError
+ #define kDebugFatal kError
+
+ #include "absl/base/log_severity.h"
