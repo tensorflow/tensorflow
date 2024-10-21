@@ -374,11 +374,9 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
   ASSERT_EQ((*result).host_compute_metadata.host_to_device().size(), 0);
 }
 
-// Without passing the right device type, the compilation would fail with an
-// incorrect message. This test is to make sure the message is correct.
-// TODO(b/369199092): figure out a way to directly testing the compilatin pass.
-// This requires setup separate tap filter/project.
-TEST(Tf2HloTest, GpuShouldFailWithWrongDeviceType) {
+// On GPU enabled build, the compilation should pass. On a GPU disabled build,
+// the compilation should fail with a correct error message.
+TEST(Tf2HloTest, GpuCompile) {
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
@@ -417,8 +415,14 @@ TEST(Tf2HloTest, GpuShouldFailWithWrongDeviceType) {
   auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
                                mock_client, compile_metadata,
                                tensorflow::IdentityShapeRepresentationFn());
+#if defined(GOOGLE_CUDA)
+  LOG(INFO) << "GPU compile success";
+  EXPECT_OK(result);
+#else
+  LOG(INFO) << "Non-GPU compile failure";
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
                                HasSubstr("CUDA or ROCM build required")));
+#endif
 }
 
 }  // namespace
