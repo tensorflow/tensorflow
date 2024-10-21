@@ -31,6 +31,7 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Support",
         "@pybind11",
     ],
 )
