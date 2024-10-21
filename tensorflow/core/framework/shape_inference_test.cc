@@ -33,7 +33,6 @@ namespace shape_inference {
 namespace {
 
 using ::tensorflow::testing::StatusIs;
-using ::testing::_;
 using ::testing::AllOf;
 using ::testing::HasSubstr;
 
@@ -123,7 +122,7 @@ static OpDef MakeOpDef(int num_inputs, int num_outputs) {
   for (int i = 0; i < num_outputs; ++i) {
     b.Output(absl::StrCat("o", i, ": float"));
   }
-  CHECK(b.Attr("foo:string").Finalize(&op_reg_data).ok());
+  CHECK_OK(b.Attr("foo:string").Finalize(&op_reg_data));
   return op_reg_data.op_def;
 }
 
@@ -1356,10 +1355,9 @@ TEST_F(ShapeInferenceTest, GetAttr) {
   OpRegistrationData op_reg_data;
   op_reg_data.op_def = MakeOpDef(0, 2);
   NodeDef def;
-  CHECK(NodeDefBuilder("dummy", &op_reg_data.op_def)
-            .Attr("foo", "bar")
-            .Finalize(&def)
-            .ok());
+  CHECK_OK(NodeDefBuilder("dummy", &op_reg_data.op_def)
+               .Attr("foo", "bar")
+               .Finalize(&def));
 
   std::vector<ShapeHandle> empty;
   InferenceContext c(kVersion, def, op_reg_data.op_def, empty, {}, {}, {});
