@@ -22,6 +22,7 @@
 #include <memory>
 #include <variant>
 
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"  // IWYU pragma: keep
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"  // IWYU pragma: export
@@ -35,6 +36,20 @@ typedef absl::Span<const FbCharT> FbConstBufferT;
 
 // Mutable view of flatbuffer's raw buffer type.
 typedef absl::Span<FbCharT> FbBufferT;
+
+// Convenience method to get raw string view from native flatbuffer buffer.
+inline absl::string_view FbBufToStr(FbConstBufferT fb_buf) {
+  auto fb_buf_raw = reinterpret_cast<const char*>(fb_buf.data());
+  const size_t fb_buf_size = fb_buf.size();
+  return absl::string_view(fb_buf_raw, fb_buf_size);
+}
+
+// Mutable version of above.
+inline absl::string_view FbBufToStr(FbBufferT fb_buf) {
+  auto fb_buf_raw = reinterpret_cast<char*>(fb_buf.data());
+  const size_t fb_buf_size = fb_buf.size();
+  return absl::string_view(fb_buf_raw, fb_buf_size);
+}
 
 #define _CONCAT_NAME_IMPL(x, y) x##y
 

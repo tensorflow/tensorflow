@@ -17,18 +17,19 @@
 #define FLATBUFFERS_DEBUG_VERIFICATION_FAILURE
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers  // IWYU pragma: keep
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 #endif
 
 #include <cstddef>
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
-#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
@@ -36,28 +37,13 @@
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/experimental/lrt/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
-// NOLINTBEGIN
-void SetFbVerifyOptions(flatbuffers::Verifier::Options& opts) {
-#ifndef NDEBUG
-  opts.assert = true;
-#endif
-}
-
-LiteRtStatus VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
-  // TODO: b/365299994 - If buffer verification is slow, run only in debug.
-  // Also check file size.
-  flatbuffers::Verifier::Options options;
-  SetFbVerifyOptions(options);
-  flatbuffers::Verifier verifier(buf, buf_size, options);
-  if (!tflite::VerifyModelBuffer(verifier)) {
-    _LITERT_D_MSG("Failed to verify fb");
-    return kLiteRtStatusErrorInvalidFlatbuffer;
-  }
-  return kLiteRtStatusOk;
-}
+using ::litert::BufferRef;
+using ::litert::OwningBufferRef;
+using ::litert::internal::VerifyFlatbuffer;
 
 LiteRtStatus IsOpSupported(const tflite::OperatorT& op) {
   // TODO: b/365299994 - Check for supported options.
@@ -158,12 +144,6 @@ LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
       return kLiteRtStatusErrorUnsupported;
   }
   return kLiteRtStatusOk;
-}
-
-void SetCustomOptions(tflite::OperatorT& op, std::string_view options_data) {
-  const uint8_t* data = reinterpret_cast<const uint8_t*>(options_data.data());
-  op.custom_options.assign(data, data + options_data.size());
-  op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
 }
 
 //===----------------------------------------------------------------------===//
@@ -329,7 +309,9 @@ LiteRtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
 
 LiteRtStatus LoadModel(const uint8_t* buf, size_t buf_size,
                        LiteRtModel* model) {
-  LITERT_RETURN_STATUS_IF_NOT_OK(VerifyFlatbuffer(buf, buf_size));
+  LITERT_ENSURE(VerifyFlatbuffer(buf, buf_size),
+                kLiteRtStatusErrorInvalidFlatbuffer,
+                "Failed to verify flatbuffer");
   return LoadModel(tflite::UnPackModel(buf), model);
 }
 
@@ -342,6 +324,14 @@ LiteRtStatus LoadModelFromFile(const char* path, LiteRtModel* model) {
 
   return LoadModel(reinterpret_cast<const uint8_t*>(alloc->base()),
                    alloc->bytes(), model);
+}
+
+LiteRtResult<UniqueLiteRtModel> LoadModel(BufferRef<uint8_t> serialized) {
+  LiteRtModel model;
+  LITERT_RETURN_RESULT_IF_NOT_OK(
+      LoadModel(serialized.Data(), serialized.Size(), &model),
+      UniqueLiteRtModel);
+  return LiteRtResult<UniqueLiteRtModel>::TakeValue(UniqueLiteRtModel(model));
 }
 
 void ModelDestroy(LiteRtModel model) { delete model; }
@@ -437,8 +427,9 @@ LiteRtStatus ModelRepacker::SerializeOp(
       SetDefaultOptions(target.builtin_options, op->op_code),
       "Failed serializing options");
 
-  if (!op->custom_options.empty()) {
-    SetCustomOptions(target, op->custom_options);
+  if (op->custom_options.Size() != 0) {
+    target.custom_options = op->custom_options.ToVec();
+    target.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
   }
   // TODO: b/365299994 - Support exotic op fields in serialize.
 
@@ -529,31 +520,31 @@ LiteRtStatus AppendMetadata(LiteRtModel model, const void* metadata,
   return kLiteRtStatusOk;
 }
 
-LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
-                            size_t* offset) {
-  // Destroy model before return.
-  UniqueLiteRtModel u_model(model);
-
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(ModelRepacker::Repack(model),
-                                     "Failed to repack model.");
+LiteRtResult<OwningBufferRef<uint8_t>> SerializeModel(UniqueLiteRtModel model) {
+  LITERT_RETURN_RESULT_IF_NOT_OK(ModelRepacker::Repack(model.get()),
+                                 OwningBufferRef<uint8_t>);
 
   flatbuffers::FlatBufferBuilder b;
   auto model_offset = tflite::Model::Pack(b, model->flatbuffer_model.get());
   tflite::FinishModelBuffer(b, model_offset);
 
-  size_t new_buf_size;
-  size_t new_buf_offset;
+  OwningBufferRef<uint8_t> buffer;
+  auto [new_buf, new_size, new_offset] = buffer.GetWeak();
+  new_buf = b.ReleaseRaw(new_size, new_offset);
 
-  uint8_t* new_buf = b.ReleaseRaw(new_buf_size, new_buf_offset);
+  if (!VerifyFlatbuffer(buffer.Span())) {
+    return LiteRtResult<OwningBufferRef<uint8_t>>::FromStatus(
+        kLiteRtStatusErrorInvalidFlatbuffer);
+  }
 
-  LITERT_RETURN_STATUS_IF_NOT_OK_MSG(
-      VerifyFlatbuffer(new_buf + new_buf_offset, new_buf_size - new_buf_offset),
-      "Failed to verify flatbuffer");
+  return LiteRtResult<OwningBufferRef<uint8_t>>::TakeValue(std::move(buffer));
+}
 
-  *buf = new_buf;
-  *size = new_buf_size;
-  *offset = new_buf_offset;
-
+LiteRtStatus SerializeModel(LiteRtModel model, uint8_t** buf, size_t* size,
+                            size_t* offset) {
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto serialized,
+                                 SerializeModel(UniqueLiteRtModel(model)));
+  std::tie(*buf, *size, *offset) = serialized.Release();
   return kLiteRtStatusOk;
 }
 
