@@ -35,7 +35,7 @@ class LiteRtDispatchInvocationContextT {
  public:
   using Ptr = std::unique_ptr<LiteRtDispatchInvocationContextT>;
 
-  ~LiteRtDispatchInvocationContextT() = default;
+  ~LiteRtDispatchInvocationContextT();
 
   static absl::StatusOr<Ptr> Create(
       litert::qnn::QnnManager& qnn_manager,

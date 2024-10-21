@@ -57,6 +57,10 @@ LiteRtDispatchInvocationContextT::LiteRtDispatchInvocationContextT(
       inputs_(context_binary_info.Graphs()[graph_index].Inputs()),
       outputs_(context_binary_info.Graphs()[graph_index].Outputs()) {}
 
+LiteRtDispatchInvocationContextT::~LiteRtDispatchInvocationContextT() {
+  qnn_manager_.FreeContext();
+}
+
 absl::StatusOr<LiteRtDispatchInvocationContextT::Ptr>
 LiteRtDispatchInvocationContextT::Create(
     QnnManager& qnn, LiteRtDispatchDeviceContextT& device_context,
