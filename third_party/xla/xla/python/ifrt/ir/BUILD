@@ -226,3 +226,20 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "init",
+    srcs = ["init.cc"],
+    hdrs = ["init.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
+    deps = [
+        ":ir",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//xla/mlir_hlo:hlo_dialect_registration",
+        "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:register",
+    ],
+)
