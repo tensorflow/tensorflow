@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "tsl/platform/status.h"
 
 namespace xla {
