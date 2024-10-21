@@ -16,23 +16,34 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_COMMAND_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/bit_pattern.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/graph_conditional.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 
 namespace stream_executor::gpu {
 
 // This class implements GpuCommandBuffer for Nvidia GPUs.
-class CudaCommandBuffer : public GpuCommandBuffer {
+class CudaCommandBuffer final : public GpuCommandBuffer {
  public:
   // Creates a new CUDA command buffer and the underlying CUDA graph.
   static absl::StatusOr<std::unique_ptr<CudaCommandBuffer>> Create(
       Mode mode, GpuExecutor* parent);
 
  private:
+  friend class CudaGraphNode;
+
   CudaCommandBuffer(Mode mode, GpuExecutor* parent, CUgraph graph,
                     bool is_owned_graph)
       : GpuCommandBuffer(mode, parent, graph, is_owned_graph),
@@ -50,6 +61,34 @@ class CudaCommandBuffer : public GpuCommandBuffer {
   std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       CUgraph graph) override;
 
+  absl::StatusOr<GpuGraphNodeInfo*> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) override;
+
+  absl::StatusOr<GpuGraphNodeInfo*> CreateBarrierNode(
+      const Dependencies& dependencies) override;
+
+  absl::Status Trace(Stream* stream,
+                     absl::AnyInvocable<absl::Status()> function) override;
+
+  absl::Status LaunchGraph(Stream* stream) override;
+
+  absl::StatusOr<size_t> GetNodeCount() const override;
+
+  absl::StatusOr<GraphConditional*> CreateConditionalHandle() override;
+
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
   SetIfConditionKernel set_if_condition_kernel_;
@@ -60,6 +99,9 @@ class CudaCommandBuffer : public GpuCommandBuffer {
   NoOpKernel noop_kernel_;
 
   GpuExecutor* parent_;
+
+  std::vector<std::unique_ptr<GpuGraphNodeInfo>> node_storage_;
+  std::vector<std::unique_ptr<GraphConditional>> conditionals_;
 };
 
 }  // namespace stream_executor::gpu
