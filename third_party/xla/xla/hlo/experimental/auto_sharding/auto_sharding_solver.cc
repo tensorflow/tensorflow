@@ -750,6 +750,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       LOG(ERROR) << write_status.message();
     }
   }
+  // Invokes the solver request callback for any additional debugging.
+  bool solver_request_callback = false;
+  if (solver_request_callback) {
+    SolverRequestCallback(unscaled_request);
+  }
 #endif
   if (request.enable_output()) {
     solver->EnableOutput();
@@ -772,9 +777,13 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
           << "Deterministic mode: " << request.deterministic_mode() << "\n"
+          << "Minimize departures: " << request.minimize_departures() << "\n"
           << "Module name: " << request.module_name();
   if (request.has_max_cost()) {
     VLOG(0) << "Max cost: " << request.max_cost().coeff();
+  }
+  if (request.has_max_departures()) {
+    VLOG(0) << "Max departures: " << request.max_departures().coeff();
   }
   auto result = SolveAndExtractSolution(request, s, e, overbudget_var,
                                         makespan_var, *solver);

@@ -94,16 +94,17 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override { return absl::OkStatus(); }
+  absl::Status CheckExternalState() const override { return absl::OkStatus(); }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* filenames = nullptr;
     Node* header_bytes = nullptr;
     Node* record_bytes = nullptr;
@@ -130,9 +131,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     explicit UncompressedIterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next record.
@@ -196,8 +197,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
@@ -211,8 +212,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t current_file_index;
       TF_RETURN_IF_ERROR(
@@ -256,9 +257,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     explicit CompressedIterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       static monitoring::CounterCell* bytes_counter =
           metrics::GetTFDataBytesReadCounter(kDatasetType);
       mutex_lock l(mu_);
@@ -283,7 +284,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             }
           } else {
             tstring record;
-            Status s = buffered_input_stream_->ReadNBytes(
+            absl::Status s = buffered_input_stream_->ReadNBytes(
                 dataset()->record_bytes_, &record);
             if (s.ok()) {
               bytes_counter->IncrementBy(dataset()->record_bytes_);
@@ -384,8 +385,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurrentFileIndex,
                                              current_file_index_));
@@ -400,8 +401,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t current_file_index;
       TF_RETURN_IF_ERROR(

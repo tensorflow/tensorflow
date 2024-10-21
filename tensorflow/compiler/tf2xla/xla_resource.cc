@@ -98,7 +98,8 @@ XlaResource::XlaResource(
   }
 }
 
-Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
+absl::Status XlaResource::SetTypeAndShape(DataType type,
+                                          const TensorShape& shape) {
   if (type == DT_INVALID) {
     return errors::InvalidArgument(
         "Attempted to set type of resource '", name_, "'' to an invalid type",
@@ -123,7 +124,7 @@ Status XlaResource::SetTypeAndShape(DataType type, const TensorShape& shape) {
   return absl::OkStatus();
 }
 
-Status XlaResource::SetValue(const xla::XlaOp& value) {
+absl::Status XlaResource::SetValue(const xla::XlaOp& value) {
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
         "Resource '", name_,
@@ -134,7 +135,7 @@ Status XlaResource::SetValue(const xla::XlaOp& value) {
   return absl::OkStatus();
 }
 
-Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
+absl::Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
   is_overwritten_ = true;
   if (type_ == DT_INVALID) {
     return errors::InvalidArgument(
@@ -173,9 +174,9 @@ Status XlaResource::SetZeroValue(xla::XlaBuilder* builder) {
   return absl::OkStatus();
 }
 
-Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
-                                                   xla::XlaBuilder* builder,
-                                                   XlaResource** gradient_out) {
+absl::Status XlaResource::GetOrCreateTensorArrayGradient(
+    const string& source, xla::XlaBuilder* builder,
+    XlaResource** gradient_out) {
   VLOG(2) << "Gradient lookup for resource: " << name_
           << " gradient: " << source;
   TF_RET_CHECK(kind_ == kTensorArray);
@@ -197,7 +198,8 @@ Status XlaResource::GetOrCreateTensorArrayGradient(const string& source,
   return absl::OkStatus();
 }
 
-Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
+absl::Status XlaResource::Pack(xla::XlaOp* pack,
+                               xla::XlaBuilder* builder) const {
   if (tensor_array_gradients_.empty()) {
     *pack = value_;
   } else {
@@ -212,9 +214,9 @@ Status XlaResource::Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const {
   return absl::OkStatus();
 }
 
-Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
-                                const xla::XlaOp& pack,
-                                xla::XlaBuilder* builder) {
+absl::Status XlaResource::SetFromPack(const std::set<string>& gradient_sources,
+                                      const xla::XlaOp& pack,
+                                      xla::XlaBuilder* builder) {
   if (gradient_sources.empty()) {
     if (!initialized()) {
       initial_value_ = pack;

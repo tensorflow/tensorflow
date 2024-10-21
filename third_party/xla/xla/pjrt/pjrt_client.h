@@ -529,12 +529,16 @@ class PjRtClient {
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const = 0;
+      PjRtGlobalDeviceId global_device_id) const {
+    return Unimplemented("LookupDevice is not supported.");
+  }
 
   // Return an addressable PjRtDevice for a given
   // PjRtDevice::local_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const = 0;
+      PjRtLocalDeviceId local_device_id) const {
+    return Unimplemented("LookupAddressableDevice is not supported.");
+  }
 
   // Return all memory spaces owned by the client.
   // The memory spaces are in no particular order.
@@ -564,7 +568,9 @@ class PjRtClient {
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const = 0;
+      int num_replicas, int num_partitions) const {
+    return Unimplemented("GetDefaultDeviceAssignment is not supported.");
+  }
 
   // Returns a device-specific default device assignment for multi-slice system.
   // If num_replicas_per_slice is not defined (nullopt) then we assume that
@@ -585,19 +591,27 @@ class PjRtClient {
   // user-specified or compiler-chosen layouts are requested via the
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
-      PrimitiveType element_type, absl::Span<const int64_t> dims) = 0;
+      PrimitiveType element_type, absl::Span<const int64_t> dims) {
+    return Unimplemented("GetDefaultLayout is not supported.");
+  }
 
   // Returns a backend-specific HLO cost analysis visitor.
   virtual absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
-      const = 0;
+      const {
+    return Unimplemented("GetHloCostAnalysis is not supported.");
+  }
 
   // Compile `computation` with given `options`.
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options) = 0;
+      const XlaComputation& computation, CompileOptions options) {
+    return Unimplemented("Compile with options is not supported.");
+  }
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
-      mlir::ModuleOp module, CompileOptions options) = 0;
+      mlir::ModuleOp module, CompileOptions options) {
+    return Unimplemented("Compile with MLIR Module is not supported.");
+  }
 
   // Deserializes a serialized executable as produced by
   // PjRtExecutable::SerializeExecutable(). `serialized` must have been
@@ -608,7 +622,9 @@ class PjRtClient {
   // implementations related to the PJRT C API.
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   DeserializeExecutable(absl::string_view serialized,
-                        std::optional<CompileOptions> options) = 0;
+                        std::optional<CompileOptions> options) {
+    return Unimplemented("Deserialize is not supported.");
+  }
 
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
@@ -634,7 +650,9 @@ class PjRtClient {
 
   // Creates a buffer on the device without initializing or copying any data.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device) = 0;
+      const Shape& shape, PjRtDevice* device) {
+    return Unimplemented("CreateUnitializedBuffer is not supported.");
+  }
 
   // Creates buffer in the given memory space that carries an error future
   // without allocating memory.
@@ -788,12 +806,19 @@ class PjRtClient {
   // shapes 'shapes'.
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) = 0;
+                                    PjRtDevice* device) {
+    return Unimplemented(
+        "CreateBuffersForAsyncHostToDevice with on host is not implemented.");
+  }
 
   // Variant of CreateBuffersForAsyncHostToDevice with PjRtMemorySpace.
   virtual absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtMemorySpace* memory_space) = 0;
+                                    PjRtMemorySpace* memory_space) {
+    return Unimplemented(
+        "CreateBuffersForAsyncHostToDevice with PjRtMemorySpace is not "
+        "implemented.");
+  }
 
   // Creates a shapeless buffer on the device that can be partitioned into
   // multiple PjRtBuffer. This class is an Arena version of
@@ -886,7 +911,9 @@ class PjRtClient {
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device) = 0;
+      PjRtDevice* device) {
+    return Unimplemented("BufferFromHostBuffer is not implemented.");
+  }
 
   // Variant of BufferFromHostBuffer that takes an optional device layout. It is
   // used when non-compact layout is preferred.
@@ -922,7 +949,9 @@ class PjRtClient {
   // the caller should, for example, wait for GetReadyFuture().Await()
   // completes on the return value before letting literal go out of scope.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device) = 0;
+      const LiteralSlice& literal, PjRtDevice* device) {
+    return Unimplemented("BufferFromHostLiteral is not implemented.");
+  }
 
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtDevice* device,
@@ -974,7 +1003,9 @@ class PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
-      std::optional<std::intptr_t> stream = std::nullopt) = 0;
+      std::optional<std::intptr_t> stream = std::nullopt) {
+    return Unimplemented("CreateViewOfDeviceBuffer is not implemented.");
+  }
 
   // Returns platform-dependent address for the given buffer that is often but
   // not guaranteed to be the physical/device address.
@@ -1002,7 +1033,9 @@ class PjRtClient {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) = 0;
+                              PjRtCrossHostRecvNotifier notifier) {
+    return Unimplemented("MakeCrossHostReceiveBuffers is not implemented.");
+  }
 
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers, as in MakeCrossHostReceiveBuffers above, however
@@ -1036,15 +1069,24 @@ class PjRtClient {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) = 0;
+      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) {
+    return Unimplemented(
+        "MakeCrossHostReceiveBuffersForGather is not implemented.");
+  }
 
   // Create ChannelHandles for XLA send/recv.
-  virtual absl::StatusOr<ChannelHandle> CreateChannelHandle() = 0;
-  virtual absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
+  virtual absl::StatusOr<ChannelHandle> CreateChannelHandle() {
+    return Unimplemented("CreateChannelHandle is not implemented.");
+  }
+  virtual absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
+    return Unimplemented("CreateDeviceToHostChannelHandle is not implemented.");
+  }
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
-  virtual absl::Status Defragment() = 0;
+  virtual absl::Status Defragment() {
+    return Unimplemented("Defragment is not implemented.");
+  }
 
   // If false, this client does not support send/recv host callbacks, and
   // callers should not set the `send_callbacks` and `recv_callbacks` arguments

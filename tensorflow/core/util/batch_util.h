@@ -27,10 +27,11 @@ namespace batch_util {
 // to move the `element` argument into this function, and the implementation
 // may be able to optimize the copy to a move. This is particularly important
 // for DT_STRING tensors.
-Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index);
+absl::Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index);
 
 // Copies the index^th slice of parent (in the 0th dimension) into element.
-Status CopySliceToElement(const Tensor& parent, Tensor* element, int64_t index);
+absl::Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                                int64_t index);
 
 // Copies 'num_slices' contiguous slices from 'src' tensor starting from index
 // 'src_offset' into target tensor 'dst', and places them into slices
@@ -40,31 +41,32 @@ Status CopySliceToElement(const Tensor& parent, Tensor* element, int64_t index);
 // requires cum_prod(src.shape[1:] == cum_prod(dst->shape[1:]). For example if
 // source is of shape [x, 2, 1] and dst is a tensor of shape [y, 1, 2], this
 // function can still proceed successfully.
-Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
-                            int64_t dst_offset, int64_t num_slices,
-                            Tensor* dst);
+absl::Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
+                                  int64_t dst_offset, int64_t num_slices,
+                                  Tensor* dst);
 
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 //
 // NOTE(mrry): The implementation may be able to optimize the copy to a move.
 // This is particularly important for DT_STRING tensors.
-Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64_t index);
+absl::Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element,
+                                     int64_t index);
 
 // Moves `src` Tensor's data in [src_offset, src_offset+num_slices) along
 // the first dimension if possible. Otherwise, copy them into `dst`.
-Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
-                                 int64_t dst_offset, int64_t num_slices,
-                                 Tensor* dst);
+absl::Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
+                                       int64_t dst_offset, int64_t num_slices,
+                                       Tensor* dst);
 
 // Zero-initializes the tensor `element` using the scalar stored in `padding`.
 // Both `element` and `padding` must have matching `dtype`.
-Status SetElementZero(Tensor* element, const Tensor& padding);
+absl::Status SetElementZero(Tensor* element, const Tensor& padding);
 
 // Copies `element` into a (0th dimension) slice of `parent`, assuming
 // the shape of `element` is strictly not larger along any axis than a
 // slice.
-Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
-                                int index);
+absl::Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
+                                      int index);
 
 }  // namespace batch_util
 }  // namespace tensorflow

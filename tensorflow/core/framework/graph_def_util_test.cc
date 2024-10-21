@@ -28,9 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
+absl::Status FinalizeOpDef(const OpDefBuilder& b, OpDef* op_def) {
   OpRegistrationData op_reg_data;
-  const Status s = b.Finalize(&op_reg_data);
+  const absl::Status s = b.Finalize(&op_reg_data);
   *op_def = op_reg_data.op_def;
   return s;
 }

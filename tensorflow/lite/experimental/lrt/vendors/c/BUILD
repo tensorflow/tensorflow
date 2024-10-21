@@ -18,9 +18,30 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_compiler_plugin",
-    hdrs = ["lite_rt_compiler_plugin.h"],
-    deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
+    name = "litert_compiler_plugin",
+    hdrs = ["litert_compiler_plugin.h"],
+    deps = ["//tensorflow/lite/experimental/lrt/c:litert_c_api"],
 )
 
-exports_files(srcs = ["lite_rt_compiler_plugin.h"])
+cc_library(
+    name = "litert_compiler_plugin_api",
+    hdrs = ["litert_compiler_plugin_api.h"],
+    deps = [
+        ":litert_compiler_plugin",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+    ],
+)
+
+cc_library(
+    name = "litert_dispatch_c_api",
+    hdrs = [
+        "litert_dispatch.h",
+        "litert_dispatch_api.h",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+    ],
+)
+
+exports_files(srcs = glob(["litert_*.h"]))

@@ -326,7 +326,8 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // communicator to enable zero-copy collectives.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
+absl::Status MaybeRegisterBuffers(NcclApi* nccl_api,
+                                  se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   NcclApi::NcclCommHandle comm);
 

@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime/conditional_thunk.h"
 #include "xla/service/gpu/runtime/copy_thunk.h"
@@ -205,9 +204,16 @@ static absl::StatusOr<Command> Convert(const ReplicaIdThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
-  return std::make_unique<CustomCallCmd>(thunk.execution_stream_id(),
-                                         thunk.call_target(), thunk.operands(),
-                                         thunk.results(), thunk.opaque());
+  if (auto bundle = thunk.bundle(); bundle.has_value()) {
+    return std::make_unique<CustomCallCmd>(
+        thunk.execution_stream_id(), thunk.target_name(), bundle->execute,
+        thunk.operands(), thunk.results(), thunk.attributes(),
+        /*called_computation=*/nullptr);  // TODO(b/342285364)
+  } else {
+    return std::make_unique<CustomCallCmd>(
+        thunk.execution_stream_id(), thunk.target_name(), thunk.call_target(),
+        thunk.operands(), thunk.results(), thunk.opaque());
+  }
 }
 
 static absl::StatusOr<Command> Convert(const CuDnnThunk& thunk) {

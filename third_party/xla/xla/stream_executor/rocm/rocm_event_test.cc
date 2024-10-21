@@ -22,25 +22,21 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
-using ::tsl::testing::IsOk;
 
 TEST(RocmEventTest, CreateEvent) {
   TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
                           stream_executor::PlatformManager::PlatformWithId(
                               stream_executor::rocm::kROCmPlatformId));
-  RocmExecutor executor{platform, 0};
-  ASSERT_THAT(executor.Init(), IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(RocmEvent event,
-                          RocmEvent::Create(executor.gpu_context(), false));
+  TF_ASSERT_OK_AND_ASSIGN(RocmEvent event, RocmEvent::Create(executor, false));
 
   EXPECT_NE(event.GetHandle(), nullptr);
   EXPECT_EQ(event.PollForStatus(), Event::Status::kComplete);

@@ -16,36 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_CONSTANT_FOLDING_H_
 #define XLA_SERVICE_HLO_CONSTANT_FOLDING_H_
 
-#include <atomic>
-#include <cstdint>
-
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// A pass which performs constant folding in order to avoid unnecessary
-// computation on constants.
-class HloConstantFolding : public HloModulePass {
- public:
-  absl::string_view name() const override { return "constant_folding"; }
-
-  // Run constant folding operations on the given module. Returns whether the
-  // module was changed (constant expressions folded).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  // Number of slow constant-folds we've encountered.  Used for firing
-  // SlowOperationAlarms.
-  static std::atomic<int64_t> slow_op_counter_;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 
 #endif  // XLA_SERVICE_HLO_CONSTANT_FOLDING_H_

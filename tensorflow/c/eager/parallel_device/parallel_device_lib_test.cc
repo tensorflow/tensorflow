@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 
 #include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

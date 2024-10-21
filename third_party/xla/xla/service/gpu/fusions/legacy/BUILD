@@ -13,6 +13,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter",
         "//xla/service/gpu:ir_emitter_context",
@@ -35,6 +36,7 @@ xla_cc_test(
     srcs = ["in_place_dynamic_update_slice_test.cc"],
     deps = [
         ":in_place_dynamic_update_slice",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions",
@@ -97,6 +99,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -137,6 +140,7 @@ xla_cc_test(
     srcs = ["scatter_test.cc"],
     deps = [
         ":scatter",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions",
@@ -147,6 +151,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -215,6 +220,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -225,6 +231,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -284,6 +291,7 @@ xla_cc_test(
     srcs = ["concatenate_test.cc"],
     deps = [
         ":concatenate",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions",
@@ -294,6 +302,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -319,6 +328,7 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:loop_emitter",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -338,6 +348,7 @@ xla_cc_test(
     deps = [
         ":transpose",
         "//xla:status_macros",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions",
@@ -390,6 +401,7 @@ xla_cc_test(
     srcs = ["input_slices_test.cc"],
     deps = [
         ":input_slices",
+        "//xla:xla_proto_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/fusions",

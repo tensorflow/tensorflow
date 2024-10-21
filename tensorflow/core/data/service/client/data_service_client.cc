@@ -89,7 +89,7 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
   task_thread_manager_.reset();
   if (initialized_) {
-    Status s = dispatcher_->ReleaseIterationClient(iteration_client_id_);
+    absl::Status s = dispatcher_->ReleaseIterationClient(iteration_client_id_);
     if (!s.ok()) {
       LOG(WARNING) << "Failed to release iteration client id: " << s;
     }
@@ -102,7 +102,7 @@ DataServiceClient::~DataServiceClient() {
           << iteration_client_id_;
 }
 
-Status DataServiceClient::Initialize(
+absl::Status DataServiceClient::Initialize(
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
     Allocator* allocator) {
   accelerator_device_info_ = accelerator_device_info;
@@ -415,7 +415,7 @@ DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   return CreateGrpcWorkerClient(task_info);
 }
 
-Status DataServiceClient::AddTask(const TaskInfo& task_info)
+absl::Status DataServiceClient::AddTask(const TaskInfo& task_info)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<DataServiceWorkerClient> worker,
                       CreateWorkerClient(task_info));
@@ -458,7 +458,7 @@ void DataServiceClient::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     req.set_target_processing_time_nsec(target_processing_time_nsec);
   }
   ClientHeartbeatResponse resp;
-  Status s = dispatcher_->ClientHeartbeat(req, resp);
+  absl::Status s = dispatcher_->ClientHeartbeat(req, resp);
   if (!s.ok()) {
     if (IsPreemptedError(s)) {
       LOG(WARNING)
@@ -526,7 +526,7 @@ void DataServiceClient::UpdateTasks(const ClientHeartbeatResponse& resp)
       should_finish_iteration_ = false;
       continue;
     }
-    Status s = AddTask(it->second);
+    absl::Status s = AddTask(it->second);
     if (!s.ok()) {
       status_ = s;
       get_next_cv_.notify_all();
@@ -655,9 +655,9 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       VLOG(3) << "Processing task " << task_to_process->info.task_id();
     }
     int64_t deadline_micros = kint64max;
-    Status s = GetElementTraced(task_to_process.get(), deadline_micros,
-                                /*enqueue_result=*/!IsCoordinatedRead(),
-                                allow_skip, result);
+    absl::Status s = GetElementTraced(task_to_process.get(), deadline_micros,
+                                      /*enqueue_result=*/!IsCoordinatedRead(),
+                                      allow_skip, result);
     if (!s.ok()) {
       mutex_lock l(mu_);
       VLOG(1) << "Failed to get element from worker "
@@ -754,8 +754,8 @@ void DataServiceClient::AdvanceTaskIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   }
 }
 
-Status DataServiceClient::TryGetElement(const Task& task, bool allow_skip,
-                                        GetElementResult& result) {
+absl::Status DataServiceClient::TryGetElement(const Task& task, bool allow_skip,
+                                              GetElementResult& result) {
   GetElementRequest req;
   req.set_task_id(task.info.task_id());
   req.set_skipped_previous_round(task.skipped_previous_round);
@@ -797,10 +797,9 @@ void DataServiceClient::ProcessGetElementResponse(
   get_next_cv_.notify_all();
 }
 
-Status DataServiceClient::GetElementTraced(Task* task, int64_t deadline_micros,
-                                           bool enqueue_result, bool allow_skip,
-                                           std::shared_ptr<Result> result)
-    TF_LOCKS_EXCLUDED(mu_) {
+absl::Status DataServiceClient::GetElementTraced(
+    Task* task, int64_t deadline_micros, bool enqueue_result, bool allow_skip,
+    std::shared_ptr<Result> result) TF_LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
   tsl::profiler::TraceMe activity("GetDataServiceElement",
                                   tsl::profiler::TraceMeLevel::kInfo);
@@ -817,15 +816,16 @@ Status DataServiceClient::GetElementTraced(Task* task, int64_t deadline_micros,
            {"round_index", task->round}});
     });
   }
-  Status s =
+  absl::Status s =
       GetElement(task, deadline_micros, enqueue_result, allow_skip, result);
   mutex_lock l(mu_);
   VLOG(3) << "Got an element for task id " << task->info.task_id();
   return s;
 }
 
-Status DataServiceClient::MaybeRemoveTask(Task& task, int64_t deadline_micros,
-                                          Result& result)
+absl::Status DataServiceClient::MaybeRemoveTask(Task& task,
+                                                int64_t deadline_micros,
+                                                Result& result)
     TF_LOCKS_EXCLUDED(mu_) {
   bool removed;
   VLOG(1) << "Requesting task removal for worker " << task.info.worker_address()
@@ -854,13 +854,13 @@ Status DataServiceClient::MaybeRemoveTask(Task& task, int64_t deadline_micros,
   return absl::OkStatus();
 }
 
-Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
-                                     bool enqueue_result, bool allow_skip,
-                                     std::shared_ptr<Result> result)
+absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
+                                           bool enqueue_result, bool allow_skip,
+                                           std::shared_ptr<Result> result)
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult get_element_result;
   while (true) {
-    Status s = TryGetElement(*task, allow_skip, get_element_result);
+    absl::Status s = TryGetElement(*task, allow_skip, get_element_result);
     if (s.ok()) {
       task->num_retries = 0;
       break;

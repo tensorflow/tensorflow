@@ -37,6 +37,7 @@ cc_library(
         ":attribute_importer",
         ":hlo_utils",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "@com_google_absl//absl/status",
@@ -75,6 +76,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -150,11 +152,15 @@ cc_library(
         ":hlo_module_importer",
         "//xla:status_macros",
         "//xla/mlir/utils:error_util",
+        "//xla/mlir_hlo:mhlo_passes",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -190,9 +196,12 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/mlir_hlo",
         "//xla/tsl/lib/core:status_test_util",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -205,6 +214,7 @@ cc_library(
         "stack_location_utils",
         "//xla/hlo/ir:hlo",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -241,6 +251,7 @@ cc_library(
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/service:hlo_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -255,6 +266,7 @@ cc_library(
     srcs = ["translate_registration.cc"],
     deps = [
         ":translate",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TranslateLib",
     ],

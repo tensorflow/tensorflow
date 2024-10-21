@@ -45,5 +45,9 @@ NodeStrategies StrategyShaver::FindShavedStrategies() const {
   return {};  // TODO(moffitt): Implement this.
 }
 
+void SolverRequestCallback(const AutoShardingSolverRequest& request) {
+  // TODO(mofftt): Implement this.
+}
+
 }  // namespace spmd
 }  // namespace xla

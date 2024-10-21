@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/command_buffer_kernels.h"
+
 #include <string_view>
 
 #include "absl/status/statusor.h"
@@ -808,10 +810,6 @@ void* GetSetWhileConditionKernel();
 void* GetNoOpKernel();
 #endif
 
-}  // namespace cuda
-
-namespace gpu {
-
 // TODO(b/362786589): Remove PTX usage when we only support cuda >= 12.4.1
 // See comment at top of this file for why PTX is used for cuda < 12.4.1.
 absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec() {
@@ -880,5 +878,5 @@ absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
   return spec;
 }
 
-}  // namespace gpu
+}  // namespace cuda
 }  // namespace stream_executor

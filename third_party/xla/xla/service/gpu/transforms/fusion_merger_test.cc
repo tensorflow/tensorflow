@@ -41,16 +41,9 @@ namespace {
 namespace m = ::xla::match;
 
 class FusionMergerTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   FusionMerger fusion_merger_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                              ShapeSizeBytesFunction()};
+                              HloCostAnalysis::DefaultShapeSize};
   FusionMergerTest() : HloTestBase() {}
 };
 

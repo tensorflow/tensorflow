@@ -26,8 +26,8 @@ using shape_inference::ShapeHandle;
 namespace {
 
 // Return in <out> the result of making the end of <s> a square matrix.
-Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
-                             ShapeHandle* out) {
+absl::Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
+                                   ShapeHandle* out) {
   ShapeHandle s;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 2, &s));
 
@@ -40,7 +40,7 @@ Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
   return absl::OkStatus();
 }
 
-Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
+absl::Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
   c->set_output(0, out);
@@ -48,7 +48,7 @@ Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
 }
 
 // The first input is [...,K,M] and second input is [...,M,N].
-Status BandedTriangularSolveShapeFn(InferenceContext* c) {
+absl::Status BandedTriangularSolveShapeFn(InferenceContext* c) {
   ShapeHandle lhs;
   ShapeHandle rhs;
 
@@ -92,7 +92,7 @@ Status BandedTriangularSolveShapeFn(InferenceContext* c) {
 
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
 // Output is [...,N,K] or [...,N]. If <square>, then input is [...,M,M].
-Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
+absl::Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
   ShapeHandle lhs;
   ShapeHandle rhs;
   if (square) {
@@ -129,7 +129,7 @@ Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
 
 // The first input is [...,M,M] and second input is [...,M,N].
 // Output is [...,M,N].
-Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
+absl::Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
   ShapeHandle lhs;
   ShapeHandle rhs;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &lhs));
@@ -158,7 +158,7 @@ Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
 // Input is [...,N,N]. Outputs are:
 //   [...,N];[0], if compute_v is false,
 //   [...,N];[...,N,N], if compute_v is true.
-Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
+absl::Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
   DimensionHandle n;
@@ -183,7 +183,7 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
 // Input is [...,N,N].
 // First and second outputs are:
 //   [...,N,N]; [...,N].
-Status LuShapeFn(InferenceContext* c) {
+absl::Status LuShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
 
@@ -209,7 +209,7 @@ Status LuShapeFn(InferenceContext* c) {
 //   [...,M,M]; [...,M,N], if full_matrices is true,
 //   [...,M,P]; [...,P,N], if full_matrices is false,
 // where P = min(M,N).
-Status QrShapeFn(InferenceContext* c) {
+absl::Status QrShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
   DimensionHandle m = c->Dim(input, -2);
@@ -240,7 +240,7 @@ Status QrShapeFn(InferenceContext* c) {
 //   [...,M,M]; [...,N,N], if compute_uv is true and full_matrices is true,
 //   [...,M,P]; [...,N,P], if compute_uv is true and full_matrices is false,
 // where P = min(M,N).
-Status SvdShapeFn(InferenceContext* c) {
+absl::Status SvdShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
   DimensionHandle m = c->Dim(input, -2);
@@ -281,7 +281,7 @@ Status SvdShapeFn(InferenceContext* c) {
 
 // Inputs: [...,1,M], [...,1,M], [...,1,M],[...,M,N].
 // Output is [...,M,N].
-Status TridiagonalMatMulShapeFn(InferenceContext* c) {
+absl::Status TridiagonalMatMulShapeFn(InferenceContext* c) {
   ShapeHandle superdiag;
   ShapeHandle maindiag;
   ShapeHandle subdiag;
@@ -329,7 +329,7 @@ Status TridiagonalMatMulShapeFn(InferenceContext* c) {
 
 // The first input is [...,3,M] and second input is [...,M,K].
 // Output is [...,M,K].
-Status TridiagonalSolveShapeFn(InferenceContext* c) {
+absl::Status TridiagonalSolveShapeFn(InferenceContext* c) {
   ShapeHandle lhs;
   ShapeHandle rhs;
   // Check that rank is at least 2.

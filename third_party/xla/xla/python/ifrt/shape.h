@@ -67,7 +67,13 @@ class Shape {
   // Total number of elements in this shape.
   int64_t num_elements() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Shape& shape) {
+    sink.Append(shape.DebugString());
+  }
 
  private:
   Dimensions dims_;

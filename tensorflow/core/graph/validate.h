@@ -31,21 +31,21 @@ namespace graph {
 // REQUIRES:
 //  * `op_registry` is not nullptr.
 //  * `graph_def` has default attrs filled in (see AddDefaultAttrsToGraphDef()).
-Status ValidateGraphDef(const GraphDef& graph_def,
-                        const OpRegistryInterface& op_registry);
+absl::Status ValidateGraphDef(const GraphDef& graph_def,
+                              const OpRegistryInterface& op_registry);
 
 // Like ValidateGraphDef() except it makes a copy of `graph_def` and calls
 // AddDefaultAttrsToGraphDef() on the copy, removing that requirement from the
 // caller.
-Status ValidateGraphDefAgainstOpRegistry(
+absl::Status ValidateGraphDefAgainstOpRegistry(
     const GraphDef& graph_def, const OpRegistryInterface& op_registry);
 
 // Like ValidateGraphDefAgainstOpRegistry() except it takes an OpList
 // instead of an OpRegistryInterface.  Note that the OpList need not
 // have descriptions, which can be a big space savings, see
 // GetOpListForValidation() below.
-Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
-                                     const OpList& op_list);
+absl::Status ValidateGraphDefAgainstOpList(const GraphDef& graph_def,
+                                           const OpList& op_list);
 
 // Get an OpList from `*op_registry` with all the descriptions removed.
 void GetOpListForValidation(
@@ -57,10 +57,10 @@ void GetOpListForValidation(
 // all been visited, and counts the total number of visited nodes. If there is a
 // cycle, nodes in the cycle will never be visited, and the visited count will
 // be less than the total node count.
-Status ValidateGraphHasNoCycle(const Graph& graph);
+absl::Status ValidateGraphHasNoCycle(const Graph& graph);
 
 // Returns OK if the graph has no duplicate node names.
-Status VerifyNoDuplicateNodeNames(const GraphDef& graph);
+absl::Status VerifyNoDuplicateNodeNames(const GraphDef& graph);
 
 }  // namespace graph
 }  // namespace tensorflow

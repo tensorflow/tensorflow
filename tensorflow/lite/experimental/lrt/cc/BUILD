@@ -18,37 +18,59 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_cc_api",
+    name = "litert_cc_api",
     hdrs = [
-        "lite_rt_support.h",
-        "//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h",
+        "litert_model.h",
+        "litert_support.h",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin.h",
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "@com_google_absl//absl/log:absl_check",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
-    name = "lite_rt_tensor",
-    srcs = ["lite_rt_tensor.cc"],
-    hdrs = ["lite_rt_tensor.h"],
+    name = "litert_tensor_buffer_cc_api",
+    hdrs = [
+        "litert_handle.h",
+        "litert_tensor_buffer.h",
+        "litert_tensor_buffer_requirements.h",
+    ],
     deps = [
-        ":lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "litert_tensor",
+    srcs = ["litert_tensor.cc"],
+    hdrs = ["litert_tensor.h"],
+    deps = [
+        ":litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_test(
-    name = "lite_rt_tensor_test",
-    srcs = ["lite_rt_tensor_test.cc"],
+    name = "litert_tensor_test",
+    srcs = ["litert_tensor_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     deps = [
-        ":lite_rt_tensor",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        ":litert_tensor",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/test:common",
@@ -58,22 +80,25 @@ cc_test(
 )
 
 cc_library(
-    name = "lite_rt_op",
-    srcs = ["lite_rt_op.cc"],
-    hdrs = ["lite_rt_op.h"],
-    deps = ["//tensorflow/lite/experimental/lrt/c:lite_rt_c_api"],
+    name = "litert_op",
+    srcs = ["litert_op.cc"],
+    hdrs = ["litert_op.h"],
+    deps = ["//tensorflow/lite/experimental/lrt/c:litert_c_api"],
 )
 
 cc_test(
-    name = "lite_rt_op_test",
-    srcs = ["lite_rt_op_test.cc"],
+    name = "litert_op_test",
+    srcs = ["litert_op_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
     deps = [
-        ":lite_rt_op",
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        ":litert_op",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/test:common",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-exports_files(srcs = glob(["lite_rt*.h"]))
+exports_files(srcs = glob(["litert_*.h"]))

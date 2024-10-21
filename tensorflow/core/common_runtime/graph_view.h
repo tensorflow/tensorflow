@@ -211,8 +211,8 @@ class GraphView {
   GraphView() : space_(nullptr) {}
   ~GraphView();
 
-  Status Initialize(const Graph* g);
-  Status SetAllocAttrs(const Graph* g, const Device* device);
+  absl::Status Initialize(const Graph* g);
+  absl::Status SetAllocAttrs(const Graph* g, const Device* device);
   void SetScopedAllocatorAttrs(const std::vector<const Node*>& sa_nodes);
 
   // Returns a mutable pointer to the `NodeItem` with the given `id` if it

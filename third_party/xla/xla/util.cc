@@ -465,6 +465,20 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
   absl::c_sort(dimensions.to_dimensions);
   return dimensions;
 }
+
+DimensionVector GetNonContractingDims(
+    int64_t rank, absl::Span<const int64_t> contracting_dim_numbers,
+    absl::Span<const int64_t> batch_dim_numbers) {
+  DimensionVector non_contracting_dim_numbers;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!absl::c_linear_search(contracting_dim_numbers, i) &&
+        !absl::c_linear_search(batch_dim_numbers, i)) {
+      non_contracting_dim_numbers.push_back(i);
+    }
+  }
+  return non_contracting_dim_numbers;
+}
+
 std::string SanitizeFileName(std::string file_name) {
   for (char& c : file_name) {
     if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {

@@ -37,6 +37,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cuda/include/vector_types.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
@@ -44,11 +45,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -191,7 +190,7 @@ static const char *const kCublasNotInitializedExplanation =
 bool CUDABlas::Init() {
   absl::MutexLock lock(&mu_);
 
-  gpu::ScopedActivateContext sac{parent_};
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   cublasStatus_t ret = cublasCreate(&blas_);
   if (ret != CUBLAS_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create cublas handle: " << ToString(ret);
@@ -212,7 +211,7 @@ bool CUDABlas::Init() {
   return true;
 }
 
-CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
+CUDABlas::CUDABlas(StreamExecutor *parent)
     : parent_(CHECK_NOTNULL(parent)),
       blas_(nullptr)
 #if CUDA_VERSION >= 11000
@@ -224,14 +223,14 @@ CUDABlas::CUDABlas(gpu::GpuExecutor *parent)
 
 CUDABlas::~CUDABlas() {
   if (blas_ != nullptr) {
-    gpu::ScopedActivateContext sac{parent_};
+    std::unique_ptr<ActivateContext> activation = parent_->Activate();
     cublasDestroy(blas_);
   }
 }
 
 bool CUDABlas::SetStream(Stream *stream) {
   CHECK(blas_ != nullptr);
-  gpu::ScopedActivateContext sac{parent_};
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
 
   auto handle = (stream != nullptr) ? AsGpuStreamValue(stream) : nullptr;
   if (auto ret = cublasSetStream(blas_, handle); ret != CUBLAS_STATUS_SUCCESS) {
@@ -397,7 +396,7 @@ absl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
     }
   }
 
-  gpu::ScopedActivateContext sac{parent_};
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   ScopedCublasPointerMode pointer_mode{blas_};
   if (!pointer_mode.Init(pointer_mode_host ? CUBLAS_POINTER_MODE_HOST
                                            : CUBLAS_POINTER_MODE_DEVICE)) {
@@ -1398,16 +1397,7 @@ void initialize_cublas() {
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
           kCudaPlatformId, "cuBLAS",
           [](::stream_executor::StreamExecutor *parent) -> blas::BlasSupport * {
-            gpu::GpuExecutor *cuda_executor =
-                dynamic_cast<gpu::GpuExecutor *>(parent);
-            if (cuda_executor == nullptr) {
-              LOG(ERROR)
-                  << "Attempting to initialize an instance of the cuBLAS "
-                  << "support library with a non-CUDA StreamExecutor";
-              return nullptr;
-            }
-
-            CUDABlas *blas = new CUDABlas(cuda_executor);
+            CUDABlas *blas = new CUDABlas(parent);
             if (!blas->Init()) {
               // Note: Init() will log a more specific error.
               delete blas;

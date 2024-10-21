@@ -114,6 +114,21 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_module_test",
+    srcs = ["hlo_module_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/hash",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "backend_config",
     srcs = ["backend_config.cc"],
@@ -166,28 +181,21 @@ cc_library(
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.
 cc_library(
     name = "hlo_reachability",
-    srcs = ["hlo_reachability.cc"],
     hdrs = ["hlo_reachability.h"],
-    deps = [
-        ":hlo",
-        "//xla:types",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/types:span",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_reachability"],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability
+# instead.
 cc_library(
     name = "hlo_dfs_reachability",
-    srcs = ["hlo_dfs_reachability.cc"],
     hdrs = ["hlo_dfs_reachability.h"],
-    deps = [
-        ":hlo",
-        "@com_google_absl//absl/algorithm:container",
-        "@llvm-project//llvm:Support",
-    ],
+    deps = ["//xla/hlo/analysis:hlo_dfs_reachability"],
 )
 
 cc_library(

@@ -101,10 +101,11 @@ InferenceContext::InferenceContext(
 
 InferenceContext::~InferenceContext() {}
 
-Status InferenceContext::Run(
-    const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+absl::Status InferenceContext::Run(
+    const std::function<absl::Status(shape_inference::InferenceContext* c)>&
+        fn) {
   ForgetMerges();
-  Status s = fn(this);
+  absl::Status s = fn(this);
   if (!s.ok()) {
     ForgetMerges();
     return AttachContext(s);
@@ -117,8 +118,8 @@ Status InferenceContext::Run(
   return s;
 }
 
-Status InferenceContext::set_output(StringPiece output_name,
-                                    const std::vector<ShapeHandle>& shapes) {
+absl::Status InferenceContext::set_output(
+    StringPiece output_name, const std::vector<ShapeHandle>& shapes) {
   auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
@@ -136,8 +137,8 @@ Status InferenceContext::set_output(StringPiece output_name,
   return absl::OkStatus();
 }
 
-Status InferenceContext::input(StringPiece input_name,
-                               std::vector<ShapeHandle>* output) const {
+absl::Status InferenceContext::input(StringPiece input_name,
+                                     std::vector<ShapeHandle>* output) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
@@ -150,8 +151,8 @@ Status InferenceContext::input(StringPiece input_name,
   return absl::OkStatus();
 }
 
-Status InferenceContext::output(StringPiece output_name,
-                                std::vector<ShapeHandle>* output) const {
+absl::Status InferenceContext::output(StringPiece output_name,
+                                      std::vector<ShapeHandle>* output) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
@@ -168,7 +169,7 @@ void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes) {
   // TODO(mdan): This is also done at graph construction. Run only here instead?
-  Status s = full_type::SpecializeType(attrs_, op_def, ret_types_);
+  absl::Status s = full_type::SpecializeType(attrs_, op_def, ret_types_);
   if (!s.ok()) {
     construction_status_ = s;
     return;
@@ -189,7 +190,7 @@ void InferenceContext::PreInputInit(
   output_handle_shapes_and_types_.resize(num_outputs);
 }
 
-Status InferenceContext::ExpandOutputs(int new_output_size) {
+absl::Status InferenceContext::ExpandOutputs(int new_output_size) {
   const int outputs_size = outputs_.size();
   if (new_output_size < outputs_size) {
     return errors::InvalidArgument("Trying to reduce number of outputs of op.");
@@ -313,8 +314,8 @@ string InferenceContext::DebugString(
   return strings::StrCat("[", absl::StrJoin(pieces, ","), "]");
 }
 
-Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
-                                  ShapeHandle* out) {
+absl::Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
+                                        ShapeHandle* out) {
   if (rank > kint32max) {
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
@@ -338,8 +339,8 @@ Status InferenceContext::WithRank(ShapeHandle shape, int64_t rank,
                                  existing);
 }
 
-Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64_t rank,
-                                         ShapeHandle* out) {
+absl::Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64_t rank,
+                                               ShapeHandle* out) {
   if (rank > kint32max) {
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
@@ -353,8 +354,8 @@ Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64_t rank,
                                  " but is rank ", existing);
 }
 
-Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64_t rank,
-                                        ShapeHandle* out) {
+absl::Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64_t rank,
+                                              ShapeHandle* out) {
   if (rank > kint32max) {
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
@@ -368,8 +369,8 @@ Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64_t rank,
                                  " but is rank ", existing);
 }
 
-Status InferenceContext::WithValue(DimensionHandle dim, int64_t value,
-                                   DimensionHandle* out) {
+absl::Status InferenceContext::WithValue(DimensionHandle dim, int64_t value,
+                                         DimensionHandle* out) {
   const int64_t existing = Value(dim);
   if (existing == value) {
     *out = dim;
@@ -410,8 +411,8 @@ void InferenceContext::Relax(DimensionHandle d_old, DimensionHandle d_new,
   }
 }
 
-Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
-                               DimensionHandle* out) {
+absl::Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
+                                     DimensionHandle* out) {
   if (d0.SameHandle(d1)) {
     *out = d0;
     return absl::OkStatus();
@@ -433,9 +434,9 @@ Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
   }
 }
 
-Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
-                                     ShapeHandle* s_out,
-                                     ShapeHandle* prefix_out) {
+absl::Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
+                                           ShapeHandle* s_out,
+                                           ShapeHandle* prefix_out) {
   *s_out = *prefix_out = nullptr;
   if (!RankKnown(prefix) || !RankKnown(s)) {
     *s_out = s;
@@ -504,8 +505,8 @@ void InferenceContext::Relax(ShapeHandle s_old, ShapeHandle s_new,
   *out = MakeShape(dims);
 }
 
-Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
-                               ShapeHandle* out) {
+absl::Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
+                                     ShapeHandle* out) {
   if (s0.SameHandle(s1)) {
     *out = s0;
     return absl::OkStatus();
@@ -564,7 +565,7 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
     TF_CHECK_OK(Merge(Dim(s0, i), Dim(s1, i), &dims[i]));
   }
 
-  Status s = ReturnCreatedShape(dims, out);
+  absl::Status s = ReturnCreatedShape(dims, out);
   if (s.ok()) {
     // Merge the new shape with s0. Since s0 and s1 are merged, this implies
     // that s1 and out are also merged.
@@ -573,18 +574,19 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
   return s;
 }
 
-Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
-                                  ShapeHandle* out) {
+absl::Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
+                                        ShapeHandle* out) {
   return Subshape(s, start, std::numeric_limits<int64_t>::max() /* end */, out);
 }
 
-Status InferenceContext::Subshape(ShapeHandle s, int64_t start, int64_t end,
-                                  ShapeHandle* out) {
+absl::Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
+                                        int64_t end, ShapeHandle* out) {
   return Subshape(s, start, end, 1 /* stride */, out);
 }
 
-Status InferenceContext::Subshape(ShapeHandle s, int64_t start, int64_t end,
-                                  int64_t stride, ShapeHandle* out) {
+absl::Status InferenceContext::Subshape(ShapeHandle s, int64_t start,
+                                        int64_t end, int64_t stride,
+                                        ShapeHandle* out) {
   int64_t start_in = start;
   int64_t end_in = end;
 
@@ -643,8 +645,8 @@ Status InferenceContext::Subshape(ShapeHandle s, int64_t start, int64_t end,
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::Concatenate(ShapeHandle s1, ShapeHandle s2,
-                                     ShapeHandle* out) {
+absl::Status InferenceContext::Concatenate(ShapeHandle s1, ShapeHandle s2,
+                                           ShapeHandle* out) {
   if (!RankKnown(s1) || !RankKnown(s2)) {
     return ReturnUnknownShape(out);
   }
@@ -658,8 +660,9 @@ Status InferenceContext::Concatenate(ShapeHandle s1, ShapeHandle s2,
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::ReplaceDim(ShapeHandle s, int64_t dim_index_in,
-                                    DimensionHandle new_dim, ShapeHandle* out) {
+absl::Status InferenceContext::ReplaceDim(ShapeHandle s, int64_t dim_index_in,
+                                          DimensionHandle new_dim,
+                                          ShapeHandle* out) {
   if (!RankKnown(s)) {
     return ReturnUnknownShape(out);
   }
@@ -722,7 +725,8 @@ ShapeHandle InferenceContext::Matrix(DimensionOrConstant dim1,
   return MakeShape({dim1, dim2});
 }
 
-Status InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
+absl::Status
+InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
     int input_idx, ShapeHandle* out) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRankAtMost(input(input_idx), 1, &input_shape));
@@ -741,8 +745,8 @@ Status InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
       input_tensor(input_idx), input_shape, out);
 }
 
-Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
-                                                  ShapeHandle* out) {
+absl::Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
+                                                        ShapeHandle* out) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
@@ -760,15 +764,15 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
       input_tensor(input_idx), input_shape, out);
 }
 
-Status InferenceContext::MakeShapeFromTensor(const Tensor* t,
-                                             ShapeHandle tensor_shape,
-                                             ShapeHandle* out) {
+absl::Status InferenceContext::MakeShapeFromTensor(const Tensor* t,
+                                                   ShapeHandle tensor_shape,
+                                                   ShapeHandle* out) {
   return InternalMakeShapeFromTensor(
       false /* treat_unknown_scalar_tensor_as_unknown_shape */, t, tensor_shape,
       out);
 }
 
-Status InferenceContext::InternalMakeShapeFromTensor(
+absl::Status InferenceContext::InternalMakeShapeFromTensor(
     bool treat_unknown_scalar_tensor_as_unknown_shape, const Tensor* t,
     ShapeHandle tensor_shape, ShapeHandle* out) {
   // Only callers who have set
@@ -880,7 +884,7 @@ Status InferenceContext::InternalMakeShapeFromTensor(
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::MakeShapeFromPartialTensorShape(
+absl::Status InferenceContext::MakeShapeFromPartialTensorShape(
     const PartialTensorShape& partial_shape, ShapeHandle* out) {
   *out = nullptr;
   if (partial_shape.dims() == -1) {
@@ -896,8 +900,8 @@ Status InferenceContext::MakeShapeFromPartialTensorShape(
   return ReturnCreatedShape(dims, out);
 }
 
-Status InferenceContext::MakeShapeFromTensorShape(const TensorShape& shape,
-                                                  ShapeHandle* out) {
+absl::Status InferenceContext::MakeShapeFromTensorShape(
+    const TensorShape& shape, ShapeHandle* out) {
   return MakeShapeFromPartialTensorShape(PartialTensorShape(shape.dim_sizes()),
                                          out);
 }
@@ -915,15 +919,16 @@ TensorShapeProto InferenceContext::ShapeHandleToProto(ShapeHandle handle) {
   return out;
 }
 
-Status InferenceContext::MakeShapeFromShapeProto(const TensorShapeProto& proto,
-                                                 ShapeHandle* out) {
+absl::Status InferenceContext::MakeShapeFromShapeProto(
+    const TensorShapeProto& proto, ShapeHandle* out) {
   *out = nullptr;
   TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(proto));
   PartialTensorShape partial_shape(proto);
   return MakeShapeFromPartialTensorShape(partial_shape, out);
 }
 
-Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t* val) {
+absl::Status InferenceContext::GetScalarFromTensor(const Tensor* t,
+                                                   int64_t* val) {
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 0) {
@@ -945,8 +950,8 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t* val) {
   }
 }
 
-Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
-                                             int64_t* val) {
+absl::Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
+                                                   int64_t* val) {
   // Caller must ensure that <t> is not NULL.
   const int rank = t->dims();
   if (rank != 1) {
@@ -975,7 +980,8 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64_t idx,
 }
 
 // Returns a new dimension whose value is given by a scalar input tensor.
-Status InferenceContext::MakeDimForScalarInput(int idx, DimensionHandle* out) {
+absl::Status InferenceContext::MakeDimForScalarInput(int idx,
+                                                     DimensionHandle* out) {
   int64_t val;
   const Tensor* t = input_tensor(idx);
   if (t == nullptr) {
@@ -991,7 +997,7 @@ Status InferenceContext::MakeDimForScalarInput(int idx, DimensionHandle* out) {
   return absl::OkStatus();
 }
 
-Status InferenceContext::MakeDimForScalarInputWithNegativeIndexing(
+absl::Status InferenceContext::MakeDimForScalarInputWithNegativeIndexing(
     int idx, int input_rank, DimensionHandle* out) {
   int64_t val;
   const Tensor* t = input_tensor(idx);
@@ -1020,9 +1026,10 @@ Status InferenceContext::MakeDimForScalarInputWithNegativeIndexing(
   return absl::OkStatus();
 }
 
-Status InferenceContext::Divide(DimensionHandle dividend,
-                                DimensionOrConstant divisor,
-                                bool evenly_divisible, DimensionHandle* out) {
+absl::Status InferenceContext::Divide(DimensionHandle dividend,
+                                      DimensionOrConstant divisor,
+                                      bool evenly_divisible,
+                                      DimensionHandle* out) {
   const int64_t divisor_value = Value(divisor);
   if (divisor_value == 1) {
     *out = dividend;
@@ -1045,8 +1052,9 @@ Status InferenceContext::Divide(DimensionHandle dividend,
   return absl::OkStatus();
 }
 
-Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
-                             DimensionHandle* out) {
+absl::Status InferenceContext::Add(DimensionHandle first,
+                                   DimensionOrConstant second,
+                                   DimensionHandle* out) {
   const int64_t first_value = Value(first);
   const int64_t second_value = Value(second);
   // Special cases.
@@ -1071,9 +1079,9 @@ Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
   return absl::OkStatus();
 }
 
-Status InferenceContext::Subtract(DimensionHandle first,
-                                  DimensionOrConstant second,
-                                  DimensionHandle* out) {
+absl::Status InferenceContext::Subtract(DimensionHandle first,
+                                        DimensionOrConstant second,
+                                        DimensionHandle* out) {
   const int64_t first_value = Value(first);
   const int64_t second_value = Value(second);
   // Special cases.
@@ -1094,9 +1102,9 @@ Status InferenceContext::Subtract(DimensionHandle first,
   return absl::OkStatus();
 }
 
-Status InferenceContext::Multiply(DimensionHandle first,
-                                  DimensionOrConstant second,
-                                  DimensionHandle* out) {
+absl::Status InferenceContext::Multiply(DimensionHandle first,
+                                        DimensionOrConstant second,
+                                        DimensionHandle* out) {
   const int64_t first_value = Value(first);
   const int64_t second_value = Value(second);
   // Special cases.
@@ -1123,8 +1131,9 @@ Status InferenceContext::Multiply(DimensionHandle first,
   return absl::OkStatus();
 }
 
-Status InferenceContext::Min(DimensionHandle first, DimensionOrConstant second,
-                             DimensionHandle* out) {
+absl::Status InferenceContext::Min(DimensionHandle first,
+                                   DimensionOrConstant second,
+                                   DimensionHandle* out) {
   const int64_t first_value = Value(first);
   const int64_t second_value = Value(second);
   if (first_value == 0) {
@@ -1143,8 +1152,9 @@ Status InferenceContext::Min(DimensionHandle first, DimensionOrConstant second,
   return absl::OkStatus();
 }
 
-Status InferenceContext::Max(DimensionHandle first, DimensionOrConstant second,
-                             DimensionHandle* out) {
+absl::Status InferenceContext::Max(DimensionHandle first,
+                                   DimensionOrConstant second,
+                                   DimensionHandle* out) {
   const int64_t first_value = Value(first);
   const int64_t second_value = Value(second);
   if (first_value == kUnknownDim || second_value == kUnknownDim) {
@@ -1159,7 +1169,7 @@ Status InferenceContext::Max(DimensionHandle first, DimensionOrConstant second,
   return absl::OkStatus();
 }
 
-Status InferenceContext::AttachContext(const Status& status) {
+absl::Status InferenceContext::AttachContext(const absl::Status& status) {
   std::vector<string> input_shapes;
   input_shapes.reserve(inputs_.size());
   for (const ShapeHandle& input_shape : inputs_) {

@@ -30,7 +30,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
+<<<<<<< HEAD
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+=======
+>>>>>>> upstream/master
 
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -329,8 +332,8 @@ class UniqueOpGPU : public AsyncOpKernel {
       const GPUDevice& device = context->eigen_gpu_device();
       int64 uniq_size = (*last_idx_host.data()) + 1;
 
-      se::gpu::ScopedActivateContext scoped_activation{
-          context->op_device_context()->stream()->parent()};
+      std::unique_ptr<se::ActivateContext> scoped_activation =
+          context->op_device_context()->stream()->parent()->Activate();
 
       Tensor unique_input_inds;
       TIndex* unique_input_inds_ptr = nullptr;

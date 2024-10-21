@@ -228,9 +228,9 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
   }
 
  private:
-  Status ValidateInputs(const CSRSparseMatrix& sparse_matrix,
-                        const Tensor& permutation_indices, int* batch_size,
-                        int64_t* num_rows) {
+  absl::Status ValidateInputs(const CSRSparseMatrix& sparse_matrix,
+                              const Tensor& permutation_indices,
+                              int* batch_size, int64_t* num_rows) {
     if (sparse_matrix.dtype() != DataTypeToEnum<T>::value)
       return errors::InvalidArgument(
           "Asked for a CSRSparseMatrix of type ",

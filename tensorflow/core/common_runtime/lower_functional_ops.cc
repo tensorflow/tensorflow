@@ -98,7 +98,7 @@ bool IsPropagatableDevice(StringPiece device_string) {
 
 }  // namespace
 
-Status LowerFunctionalOpsPass::Run(
+absl::Status LowerFunctionalOpsPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (options.partition_graphs != nullptr) {
     return errors::Internal(

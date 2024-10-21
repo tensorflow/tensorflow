@@ -34,8 +34,8 @@ limitations under the License.
 namespace tensorflow {
 
 class NodeDefBuilder;
-typedef std::function<Status(const OpDef&, int, const NodeDef&,
-                             NodeDefBuilder*)>
+typedef std::function<absl::Status(const OpDef&, int, const NodeDef&,
+                                   NodeDefBuilder*)>
     FakeInputFunctor;
 
 // This is a helper for creating a NodeDef.  Automatically sets attrs
@@ -137,7 +137,7 @@ class NodeDefBuilder {
   // and the builder will be left in an undefined state.
   // WARNING: Not all problems are detected!  The resulting NodeDef may
   // not be valid!  Call ValidateNodeDef() from node_def_utils to be sure.
-  Status Finalize(NodeDef* node_def, bool consume = false);
+  absl::Status Finalize(NodeDef* node_def, bool consume = false);
 
   // Accessors for the values set in the constructor.
   const string& node_name() const { return node_def_.name(); }

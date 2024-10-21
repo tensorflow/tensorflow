@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/update_op_cost_in_tfrt_mlir.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -857,9 +858,9 @@ GraphExecutor::ImportClientGraphToMlirModule(
   // Convert the optimized graph to an MLIR module.
   TF_ASSIGN_OR_RETURN(
       auto module,
-      tensorflow::ConvertGraphToMlir(*optimized_graph.graph, /*debug_info=*/{},
-                                     optimized_graph.graph->flib_def(),
-                                     graph_import_config, context));
+      tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
+          *optimized_graph.graph, /*debug_info=*/{},
+          optimized_graph.graph->flib_def(), graph_import_config, context));
 
   return std::make_pair(std::move(*optimized_graph.graph->mutable_flib_def()),
                         std::move(module));

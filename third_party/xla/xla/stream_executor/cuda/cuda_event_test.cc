@@ -41,8 +41,8 @@ TEST(CudaEventTest, CreateEvent) {
                           platform->ExecutorForDevice(0));
   CudaExecutor* cuda_executor = reinterpret_cast<CudaExecutor*>(executor);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      CudaEvent event, CudaEvent::Create(cuda_executor->gpu_context(), false));
+  TF_ASSERT_OK_AND_ASSIGN(CudaEvent event,
+                          CudaEvent::Create(cuda_executor, false));
 
   EXPECT_NE(event.GetHandle(), nullptr);
   EXPECT_EQ(event.PollForStatus(), Event::Status::kComplete);

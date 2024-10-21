@@ -17,11 +17,15 @@ limitations under the License.
 #include <functional>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/platform/errors.h"
 
 namespace xla::gpu {
 
@@ -63,6 +67,13 @@ int64_t ComputeSuggestedCombinerThreshold(
   int32_t slop_factor =
       module.config().debug_options().xla_gpu_memory_limit_slop_factor();
   return base_limit * slop_factor / 100 - peak_memory_bytes;
+}
+
+absl::Status AppendPipelinedInstruction(HloInstruction* instr) {
+  auto config = instr->backend_config<gpu::GpuBackendConfig>();
+  config->mutable_collective_backend_config()->set_is_pipelined(true);
+  TF_RETURN_IF_ERROR(instr->set_backend_config(*config));
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

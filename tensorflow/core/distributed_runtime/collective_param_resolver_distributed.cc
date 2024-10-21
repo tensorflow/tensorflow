@@ -113,7 +113,7 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
   if (cp->run_group_initialization) {
     CompleteGroupDistributed(
         device, &cp->group, cancel_mgr,
-        [this, device, cp, cancel_mgr, done](Status s) {
+        [this, device, cp, cancel_mgr, done](absl::Status s) {
           if (s.ok()) {
             std::vector<DeviceAttributes> devices;
             devices.reserve(cp->group.group_size);
@@ -180,13 +180,13 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   for (int32_t offset : request->subdiv_offset()) {
     cp->instance.impl_details.subdiv_offsets.push_back(offset);
   }
-  StatusCallback done_and_cleanup = [cp, done](const Status& s) {
+  StatusCallback done_and_cleanup = [cp, done](const absl::Status& s) {
     done(s);
     cp->Unref();
   };
   CompleteInstanceDistributed(
       request->device(), cp, cancel_mgr,
-      [this, cp, response, done_and_cleanup](Status status) {
+      [this, cp, response, done_and_cleanup](absl::Status status) {
         if (status.ok()) {
           // Now source_rank should be known, so retrieve it.
           bool created_irec;
@@ -214,7 +214,7 @@ CollectiveParamResolverDistributed::GetCachedGroup(int32_t group_key) {
   return it->second.get();
 }
 
-Status CollectiveParamResolverDistributed::UpdateGroupCache(
+absl::Status CollectiveParamResolverDistributed::UpdateGroupCache(
     const CompleteGroupResponse& resp) {
   // Build a new record from resp.
   std::unique_ptr<GroupRec> gr(new GroupRec);
@@ -295,10 +295,10 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
       return;
     }
     call->Start([this, device, group_params, call, cancel_mgr, abortion_token,
-                 done](const Status& s) {
+                 done](const absl::Status& s) {
       abortion_cancel_mgr_.DeregisterCallback(abortion_token);
       if (s.ok()) {
-        Status status = UpdateGroupCache(call->resp_);
+        absl::Status status = UpdateGroupCache(call->resp_);
         if (status.ok()) {
           CompleteGroupLocal(device, group_params, cancel_mgr, done);
         } else {
@@ -327,7 +327,7 @@ bool CollectiveParamResolverDistributed::InstanceIsCached(
   return instance_it != group_it->second.end();
 }
 
-Status CollectiveParamResolverDistributed::UpdateInstanceCache(
+absl::Status CollectiveParamResolverDistributed::UpdateInstanceCache(
     CollectiveParams* cp, const CompleteInstanceResponse& resp) {
   int32_t source_rank = resp.source_rank();
   bool created_irec;
@@ -384,7 +384,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
       delete call;
       return;
     }
-    call->Start([this, device, cp, call, abortion_token, done](Status s) {
+    call->Start([this, device, cp, call, abortion_token, done](absl::Status s) {
       abortion_cancel_mgr_.DeregisterCallback(abortion_token);
       if (s.ok()) {
         s = UpdateInstanceCache(cp, call->resp_);
@@ -400,7 +400,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   }
 }
 
-void CollectiveParamResolverDistributed::StartAbort(const Status& s) {
+void CollectiveParamResolverDistributed::StartAbort(const absl::Status& s) {
   {
     mutex_lock l(status_mu_);
     if (!status_.ok()) {

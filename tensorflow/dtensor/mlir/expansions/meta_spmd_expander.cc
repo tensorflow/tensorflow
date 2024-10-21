@@ -248,9 +248,9 @@ StatusOr<llvm::DenseMap<int, Layout>> UnpackSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status VerifyPaddedDimensionNotSharded(const Layout& layout,
-                                       mlir::Value pad_input,
-                                       mlir::Value pad_output) {
+absl::Status VerifyPaddedDimensionNotSharded(const Layout& layout,
+                                             mlir::Value pad_input,
+                                             mlir::Value pad_output) {
   auto input_type = mlir::dyn_cast<mlir::RankedTensorType>(pad_input.getType());
   auto output_type =
       mlir::dyn_cast<mlir::RankedTensorType>(pad_output.getType());
@@ -350,8 +350,8 @@ StatusOr<llvm::DenseMap<int, Layout>> PadSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status VerifyTileOperandLayout(const Layout& operand_layout,
-                               llvm::ArrayRef<int64_t> static_multiples) {
+absl::Status VerifyTileOperandLayout(const Layout& operand_layout,
+                                     llvm::ArrayRef<int64_t> static_multiples) {
   for (const auto& tensor_dim_and_multiple :
        llvm::enumerate(static_multiples)) {
     const auto& index = tensor_dim_and_multiple.index();
@@ -962,9 +962,9 @@ TransposeSPMDExpander::ComputeLayoutBackward(
 
 namespace {
 
-Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
-                           const absl::optional<Layout>& output_layout,
-                           const int axis, mlir::TF::OneHotOp& one_hot) {
+absl::Status RelayoutOneHotInput(const absl::optional<Layout>& input_layout,
+                                 const absl::optional<Layout>& output_layout,
+                                 const int axis, mlir::TF::OneHotOp& one_hot) {
   if (!input_layout || !output_layout)
     return errors::InvalidArgument(
         "layout for tf.OneHot operation inputs and outputs must be known before"

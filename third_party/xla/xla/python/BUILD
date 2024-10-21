@@ -335,6 +335,7 @@ cc_library(
     deps = [
         ":aggregate_profile",
         ":callback",
+        ":guard_lib",
         ":nb_absl_span",
         ":nb_class_ptr",
         ":nb_helpers",
@@ -343,7 +344,6 @@ cc_library(
         ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":traceback",
-        ":transfer_guard_lib",
         ":types",
         ":util",
         ":xplane_to_profile_instructions",
@@ -707,6 +707,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:private"],
     deps = [
+        ":guard_lib",
         ":jax_jit",
         ":nb_helpers",
         ":nb_numpy",
@@ -714,7 +715,6 @@ cc_library(
         ":python_ref_manager",
         ":pytree",
         ":traceback",
-        ":transfer_guard_lib",
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
@@ -945,11 +945,8 @@ cc_library(
     deps = [
         ":aggregate_profile",
         ":profiler_utils",
-        ":py_client",
-        ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
@@ -961,6 +958,7 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "//xla/python/profiler:profile_data_lib",
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",
         "//xla/tsl/profiler/rpc/client:profiler_client_impl",
@@ -974,9 +972,9 @@ cc_library(
 )
 
 cc_library(
-    name = "transfer_guard_lib",
-    srcs = ["transfer_guard_lib.cc"],
-    hdrs = ["transfer_guard_lib.h"],
+    name = "guard_lib",
+    srcs = ["guard_lib.cc"],
+    hdrs = ["guard_lib.h"],
     compatible_with = [],
     copts = [
         "-fexceptions",
@@ -986,7 +984,9 @@ cc_library(
     visibility = [":friends"],
     deps = [
         # placeholder for index annotation deps
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@nanobind",
         "//xla:util",
@@ -1203,6 +1203,7 @@ tsl_pybind_extension(
     deps = [
         ":custom_call_sharding",
         ":dlpack",
+        ":guard_lib",
         ":jax_jit",
         ":logging",
         ":mlir",
@@ -1219,7 +1220,6 @@ tsl_pybind_extension(
         ":pytree",
         ":refine_polymorphic_shapes",
         ":traceback",
-        ":transfer_guard_lib",
         ":types",
         ":util",
         ":weakref_lru_cache",

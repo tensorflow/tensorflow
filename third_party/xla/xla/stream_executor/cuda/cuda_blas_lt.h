@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
 namespace stream_executor {
@@ -149,7 +149,7 @@ class BlasLt : public gpu::BlasLt {
     bool must_swap_operands_;
   };  // class MatmulPlan
 
-  explicit BlasLt(gpu::GpuExecutor* parent)
+  explicit BlasLt(StreamExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
 
   absl::Status Init() override;
@@ -160,7 +160,7 @@ class BlasLt : public gpu::BlasLt {
   ~BlasLt() override = default;
 
  private:
-  gpu::GpuExecutor* parent_;
+  StreamExecutor* parent_;
   mutable absl::Mutex mu_;
   Owned<cublasLtHandle_t> blas_lt_ ABSL_GUARDED_BY(mu_);
 };

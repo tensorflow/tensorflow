@@ -996,8 +996,7 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
 // Simplified copy of translateLLVMToLLVMIR which in addition takes
 // path to libdevice directly as an argument.
 absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
-    llvm::LLVMContext* llvmContext, mlir::ModuleOp module,
-    absl::string_view libdevice_path) {
+    llvm::LLVMContext* llvmContext, mlir::ModuleOp module) {
   mlir::DialectRegistry registry;
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
@@ -1261,8 +1260,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   if (emit_kernel) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<llvm::Module> ll_triton_module,
-        TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module,
-                              GetLibdevicePath(hlo_config, device_info)));
+        TranslateLLVMToLLVMIR(&llvm_module->getContext(), triton_module));
     VLogModule(5, *ll_triton_module);
     if (should_verify) {
       VerifyModule(*ll_triton_module);

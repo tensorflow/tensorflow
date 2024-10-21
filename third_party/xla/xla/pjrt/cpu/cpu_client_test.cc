@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
-#include "xla/service/hlo.pb.h"
-#include "xla/types.h"
-#include "xla/xla_data.pb.h"
-
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -29,6 +25,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -45,12 +42,14 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
@@ -155,7 +154,8 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
 
   CpuClientOptions cpu_options;
   cpu_options.cpu_device_count = 1;
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(cpu_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetTfrtCpuClient(std::move(cpu_options)));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 

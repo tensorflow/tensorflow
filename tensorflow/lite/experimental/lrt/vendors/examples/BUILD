@@ -12,26 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/lite/experimental/lrt/build_common:lite_rt_build_defs.bzl", "lite_rt_dynamic_lib")
+load("//tensorflow/lite/experimental/lrt/build_common:litert_build_defs.bzl", "litert_dynamic_lib")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
 )
 
-lite_rt_dynamic_lib(
+litert_dynamic_lib(
     name = "example_plugin",
     srcs = ["example_plugin.cc"],
-    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:lite_rt_compiler_plugin.h"],
-    export_lrt_only = True,
+    hdrs = ["//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin.h"],
+    export_litert_only = True,
     linkstatic = 1,
     shared_lib_name = "example_plugin_so",
-    so_name = "libLrtPlugin_ExampleSocManufacturer_ExampleSocModel.so",
+    so_name = "libLiteRtPlugin_ExampleSocManufacturer_ExampleSocModel.so",
     visibility = ["//tensorflow/lite/experimental/lrt:__subpackages__"],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/lite/experimental/lrt/core:model",
     ],
 )
 
@@ -40,10 +41,11 @@ cc_test(
     srcs = [
         "example_plugin_test.cc",
     ],
+    data = ["//tensorflow/lite/experimental/lrt/test:tflite_test_data"],
     deps = [
         ":example_plugin",  # buildcleaner: keep
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/test:common",

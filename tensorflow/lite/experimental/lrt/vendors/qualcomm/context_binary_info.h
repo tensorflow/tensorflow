@@ -20,12 +20,12 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_tensor.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 class GraphInfo {
@@ -62,6 +62,6 @@ class ContextBinaryInfo {
 };
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_CONTEXT_BINARY_INFO_H_

@@ -47,14 +47,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -593,9 +592,10 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 }
 
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    stream_executor::CudaComputeCapability cc, gpu::Context* context,
+    stream_executor::CudaComputeCapability cc,
+    stream_executor::StreamExecutor* executor,
     std::vector<CubinOrPTXImage> images) {
-  gpu::ScopedActivateContext activation(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   CUlinkState link_state;
   CUjit_option options[] = {CU_JIT_TARGET};

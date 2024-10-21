@@ -55,9 +55,8 @@ class MockGpuExecutor : public GpuExecutor {
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, LoadKernel,
               (const MultiKernelLoaderSpec& spec), (override));
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
-  MOCK_METHOD(absl::Status, LoadModule,
-              (const MultiModuleLoaderSpec& spec, ModuleHandle* module_handle),
-              (override));
+  MOCK_METHOD(absl::StatusOr<ModuleHandle>, LoadModule,
+              (const MultiModuleLoaderSpec& spec), (override));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>,
               CreateOrShareConstant,
               (Stream * stream, absl::Span<const uint8_t> content), (override));
@@ -85,7 +84,6 @@ class MockGpuExecutor : public GpuExecutor {
                uint64_t size),
               (override));
   MOCK_METHOD(void, DeallocateStream, (Stream * stream), (override));
-  MOCK_METHOD(absl::Status, BlockHostUntilDone, (Stream * stream), (override));
   MOCK_METHOD(absl::Status, EnablePeerAccessTo, (StreamExecutor * other),
               (override));
   MOCK_METHOD(bool, CanEnablePeerAccessTo, (StreamExecutor * other),
@@ -117,8 +115,7 @@ class MockGpuExecutor : public GpuExecutor {
 
   MOCK_METHOD(void, UnloadKernel, (const Kernel* kernel));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<EventBasedTimer>>,
-              CreateEventBasedTimer,
-              (GpuStream * stream, bool use_delay_kernel));
+              CreateEventBasedTimer, (Stream * stream, bool use_delay_kernel));
   MOCK_METHOD(absl::Status, TrimGraphMemory, ());
 };
 

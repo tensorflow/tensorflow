@@ -25,3 +25,13 @@ func.func @contians_InfeedDequeueTuple(%arg0: tensor<i32>, %arg1: tensor<i32>, %
   }
   return %0#0, %0#1 : tensor<i32>, tensor<i32>
 }
+
+// -----
+func.func @graph_contains_v1_control_flow() {
+  tf_executor.graph {
+    // expected-warning @+1 {{ is v1 control flow op which is not supported in TF2XLA MLIR Bridge.}}
+    %control = tf_executor.ControlTrigger {}
+    tf_executor.fetch
+  }
+  func.return
+}

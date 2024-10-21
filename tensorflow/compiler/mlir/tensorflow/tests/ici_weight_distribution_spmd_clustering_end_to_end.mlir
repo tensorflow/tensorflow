@@ -4,21 +4,21 @@
 // CHECK  %0 = "tf.TPUCompilationResult"() {_tpu_compilation_status = "cluster__train_helper", device = ""} : () -> tensor<!tf_type.string>
 // CHECK  %1 = "tf.ReadVariableOp"(%arg3) : (tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) -> tensor<128x1024xf32>
 // CHECK  %2 = "tf.ReadVariableOp"(%arg4) : (tensor<*x!tf_type.resource<tensor<1024xf32>>>) -> tensor<1024xf32>
-// CHECK  %cst = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK  %cst_0 = "tf.Const"() <{value = dense<[128, 1024]> : tensor<2xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
-// CHECK  %3 = "tf.Fill"(%cst_0, %cst) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<128x1024xf32>
-// CHECK  %cst_1 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
-// CHECK  %cst_2 = "tf.Const"() <{value = dense<1024> : tensor<1xi64>}> {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<1xi64>
-// CHECK  %4 = "tf.Fill"(%cst_2, %cst_1) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<1xi64>, tensor<f32>) -> tensor<1024xf32>
+// CHECK  %cst = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK  %cst_0 = "tf.Const"() <{value = dense<[128, 1024]> : tensor<2xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<2xi64>
+// CHECK  %3 = "tf.Fill"(%cst_0, %cst) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<2xi64>, tensor<f32>) -> tensor<128x1024xf32>
+// CHECK  %cst_1 = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
+// CHECK  %cst_2 = "tf.Const"() <{value = dense<1024> : tensor<1xi64>}> {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<1xi64>
+// CHECK  %4 = "tf.Fill"(%cst_2, %cst_1) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<1xi64>, tensor<f32>) -> tensor<1024xf32>
 // CHECK  %5:2 = tf_device.replicate([%1, %3] as %arg22: tensor<128x1024xf32>, [%2, %4] as %arg23: tensor<1024xf32>) {n = 2 : i32} {
 // CHECK    %8 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-// CHECK      %11 = "tf.Identity"(%arg22) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
+// CHECK      %11 = "tf.Identity"(%arg22) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<128x1024xf32>) -> tensor<128x1024xf32>
 // CHECK      tf_device.return %11 : tensor<128x1024xf32>
-// CHECK    }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<128x1024xf32>
+// CHECK    }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<128x1024xf32>
 // CHECK    %9 = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
-// CHECK      %11 = "tf.Identity"(%arg23) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<1024xf32>) -> tensor<1024xf32>
+// CHECK      %11 = "tf.Identity"(%arg23) {_ici_weight_distribution_mlir_bridge_marker = true} : (tensor<1024xf32>) -> tensor<1024xf32>
 // CHECK      tf_device.return %11 : tensor<1024xf32>
-// CHECK    }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<1024xf32>
+// CHECK    }) {_ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<1024xf32>
 // CHECK    %10 = "tf_device.cluster_func"(%8, %9) <{func = @_func}> {_dynamic_arg_index = [], _has_manual_control_dependencies = true, _replication_info = "cluster__train_helper", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0], host_compute_core = [], input_sharding_configuration = ["\08\03\1A\01\04\22\04\00\01\02\03", ""], num_cores_per_replica = 4 : i64, output_sharding_configuration = [""], padding_map = [], step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\02\02\02\01\10\04\18\02\22 \00\00\00\00\00\01\00\00\01\00\00\00\01\01\00\00\00\00\01\00\00\01\01\00\01\00\01\00\01\01\01\00*\02\08\01", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<128x1024xf32>, tensor<1024xf32>) -> tensor<*xf32>
 // CHECK    tf_device.return %10 : tensor<*xf32>
 // CHECK  }

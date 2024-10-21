@@ -94,6 +94,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kTranspose:
     // Other special ops.
     case HloOpcode::kBitcast:
+    case HloOpcode::kReducePrecision:
       return true;
     // Elementwise ops.
     case HloOpcode::kAdd:

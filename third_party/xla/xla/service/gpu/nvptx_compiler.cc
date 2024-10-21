@@ -46,13 +46,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/convert_mover.h"
-#include "xla/service/dot_dimension_merger.h"
 #include "xla/service/dump.h"
-#include "xla/service/float_normalization.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
@@ -83,15 +87,11 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/reshape_mover.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -1004,8 +1004,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context(),
-                    cubin_images);
+  return LinkGpuAsm(cc, stream_exec, cubin_images);
 }
 
 }  // namespace gpu

@@ -145,9 +145,6 @@ ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
       execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()),
       pending_sink_nodes(executor->sink().size()),
       abort(false) {
-  DCHECK(runner == nullptr || static_cast<bool>(*runner))
-      << "`runner` must be nullptr or a valid TaskRunner";
-
   NodeStorage* node = nodes.data();
   for (const NodeDef& node_def : executor->nodes_defs()) {
     new (node++) Node(node_def);
@@ -223,10 +220,19 @@ ThunkExecutor::ExecuteSequential(const Thunk::ExecuteParams& params) {
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
       auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
       execute_event.AndThen([this, &params, it, event](absl::Status status) {
+        Thunk::TaskRunner* runner = params.task_runner;
+
         if (ABSL_PREDICT_FALSE(!status.ok())) {
           event.SetError(std::move(status));
-        } else {
+        } else if (!runner || runner->current_worker_id()) {
+          // Resume execution in the current thread if we are already running
+          // on a thread managed by the task runner.
           ResumeExecuteSequential(it + 1, params, std::move(event));
+        } else {
+          // Resume execution in the task runner to avoid thread "leaks".
+          (*runner)([this, &params, it, event = std::move(event)] {
+            ResumeExecuteSequential(it + 1, params, std::move(event));
+          });
         }
       });
       return event;
@@ -260,10 +266,19 @@ void ThunkExecutor::ResumeExecuteSequential(
     if (ABSL_PREDICT_FALSE(!execute_event.IsAvailable())) {
       execute_event.AndThen(
           [this, &params, it, event = std::move(event)](absl::Status status) {
+            Thunk::TaskRunner* runner = params.task_runner;
+
             if (ABSL_PREDICT_FALSE(!status.ok())) {
               event.SetError(std::move(status));
-            } else {
+            } else if (!runner || runner->current_worker_id()) {
+              // Resume execution in the current thread if we are already
+              // running on a thread managed by the task runner.
               ResumeExecuteSequential(it + 1, params, std::move(event));
+            } else {
+              // Resume execution in the task runner to avoid thread "leaks".
+              (*runner)([this, &params, it, event = std::move(event)] {
+                ResumeExecuteSequential(it + 1, params, std::move(event));
+              });
             }
           });
       return;
@@ -345,12 +360,27 @@ void ThunkExecutor::Execute(ExecuteState* state,
                                       : params.session.Join()]() mutable {
             state->executor->ProcessOutEdges(state, execute_event, node,
                                              ready_queue);
+
             // If ready queue is empty, it might mean that we have completed an
             // execution and destroyed the `state`, so we make sure we don't
             // touch `state` if we don't have to.
-            if (ABSL_PREDICT_TRUE(!ready_queue.Empty())) {
+            if (ABSL_PREDICT_FALSE(ready_queue.Empty())) {
+              return;
+            }
+
+            Thunk::TaskRunner* runner = state->runner;
+            if (!runner || runner->current_worker_id()) {
+              // Resume execution in the current thread if we are already
+              // running on a thread managed by the task runner.
               state->executor->Execute(state, params, std::move(ready_queue),
                                        std::move(lock));
+            } else {
+              // Resume execution in the task runner to avoid thread "leaks".
+              (*runner)([state, &params, ready_queue = std::move(ready_queue),
+                         lock = std::move(lock)] {
+                state->executor->Execute(state, params, std::move(ready_queue),
+                                         std::move(lock));
+              });
             }
           });
     }
@@ -379,7 +409,7 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
 
     // Execute half of the ready queue nodes in the task runner.
     (*state->runner)([&params, state, ready_queue = ready_queue.PopHalf(),
-                      lock = std::move(task_runner_lock)]() mutable {
+                      lock = std::move(task_runner_lock)] {
       state->executor->Execute(state, params, std::move(ready_queue),
                                std::move(lock));
     });

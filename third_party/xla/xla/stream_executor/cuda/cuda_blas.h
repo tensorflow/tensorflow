@@ -31,15 +31,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-
-class Stream;
-
-namespace gpu {
-class GpuExecutor;
-}  // namespace gpu
-
 namespace cuda {
 
 // BLAS plugin for CUDA platform via cuBLAS library.
@@ -54,7 +49,7 @@ namespace cuda {
 // Thread-safe post-initialization.
 class CUDABlas : public blas::BlasSupport {
  public:
-  explicit CUDABlas(gpu::GpuExecutor *parent);
+  explicit CUDABlas(StreamExecutor *parent);
 
   // Allocates a cuBLAS handle.
   bool Init();
@@ -113,9 +108,9 @@ class CUDABlas : public blas::BlasSupport {
   // Guards the cuBLAS handle for this device.
   mutable absl::Mutex mu_;
 
-  // GpuExecutor which instantiated this CUDABlas.
+  // StreamExecutor which instantiated this CUDABlas.
   // Immutable post-initialization.
-  gpu::GpuExecutor *parent_;
+  StreamExecutor *parent_;
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);

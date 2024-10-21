@@ -103,14 +103,14 @@ class XlaResource {
 
   // Sets the type and shape of the resource. The type and shape of a resource
   // must not change once the variable has been initialized.
-  Status SetTypeAndShape(DataType type, const TensorShape& shape);
+  absl::Status SetTypeAndShape(DataType type, const TensorShape& shape);
 
   // Sets the current value of the resource. Returns an error if the type is not
   // set to a valid value.
-  Status SetValue(const xla::XlaOp& value);
+  absl::Status SetValue(const xla::XlaOp& value);
 
   // Sets the current value of the resource to an all-zero value.
-  Status SetZeroValue(xla::XlaBuilder* builder);
+  absl::Status SetZeroValue(xla::XlaBuilder* builder);
 
   // Sets the representational shape of the resource on device.
   void SetRepresentationShape(const xla::Shape& shape) {
@@ -121,16 +121,16 @@ class XlaResource {
   // exist. The call target must be an initialized TensorArray resource. A
   // TensorArray can have multiple named gradients; see the operator
   // documentation for TensorArrayGradV3 for details.
-  Status GetOrCreateTensorArrayGradient(const string& source,
-                                        xla::XlaBuilder* builder,
-                                        XlaResource** gradient_out);
+  absl::Status GetOrCreateTensorArrayGradient(const string& source,
+                                              xla::XlaBuilder* builder,
+                                              XlaResource** gradient_out);
 
   // Packs a resource into a single XLA value `pack`, suitable for use as
   // an XlaCompiler::Argument. For non-TensorArrays or TensorArrays without
   // gradients, sets `*pack` to `value`.
   // For TensorArrays with gradients, packs the value and its gradient values in
   // a tuple; the gradients values are packed in order by source name.
-  Status Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const;
+  absl::Status Pack(xla::XlaOp* pack, xla::XlaBuilder* builder) const;
 
   // Updates the resource with values from `pack`. If `gradient_sources` is
   // non-empty, treats `pack` as a tuple that represents a TensorArray and
@@ -138,8 +138,8 @@ class XlaResource {
   // If `reset_initial_values` is true, sets the initial_values as well as the
   // values.
   // Opposite of Pack().
-  Status SetFromPack(const std::set<string>& gradient_sources,
-                     const xla::XlaOp& pack, xla::XlaBuilder* builder);
+  absl::Status SetFromPack(const std::set<string>& gradient_sources,
+                           const xla::XlaOp& pack, xla::XlaBuilder* builder);
 
   bool IsOverwritten() { return is_overwritten_; }
 

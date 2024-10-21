@@ -16,17 +16,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
 
-#include <memory>
-
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
+
+// This class implements EventBasedTimer for CUDA devices.
 class CudaTimer : public EventBasedTimer {
  public:
   ~CudaTimer() override;
@@ -39,17 +39,17 @@ class CudaTimer : public EventBasedTimer {
     kDelayKernel,
     kEventBased,
   };
-  static absl::StatusOr<CudaTimer> Create(Context* context, GpuStream* stream,
-                                          TimerType timer_type);
+  static absl::StatusOr<CudaTimer> Create(StreamExecutor* executor,
+                                          Stream* stream, TimerType timer_type);
 
  private:
-  CudaTimer(Context* context, CudaEvent start_event, CudaEvent stop_event,
-            GpuStream* stream, GpuSemaphore semaphore);
+  CudaTimer(StreamExecutor* executor, CudaEvent start_event,
+            CudaEvent stop_event, Stream* stream, GpuSemaphore semaphore);
 
   GpuSemaphore semaphore_;
   bool is_stopped_ = false;
-  Context* context_;
-  GpuStream* stream_;
+  StreamExecutor* executor_;
+  Stream* stream_;
   CudaEvent start_event_;
   CudaEvent stop_event_;
 };

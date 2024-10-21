@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 

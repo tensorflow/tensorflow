@@ -19,30 +19,28 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_dispatch_api.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/lrt_dispatch_device_context.h"
-#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/lrt_dispatch_invocation_context.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer_requirements.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch_api.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/litert_dispatch_device_context.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/dispatch/litert_dispatch_invocation_context.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
 namespace {
 
-using ::lrt::qnn::QnnManager;
-using ::lrt::qnn::SetupAll;
+using ::litert::qnn::QnnManager;
 
 static constexpr const int VERSION_MAJOR = 0;
 static constexpr const int VERSION_MINOR = 1;
 static constexpr const int VERSION_PATCH = 0;
 
-QnnManager& Qnn() {
-  static QnnManager qnn_manager;
-  return qnn_manager;
-}
+static std::unique_ptr<QnnManager> TheQnnManager;
+
+QnnManager& Qnn() { return *TheQnnManager; }
 
 char BuildId[256];
 
@@ -50,23 +48,27 @@ char BuildId[256];
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LrtStatus Initialize() {
-  LRT_RETURN_STATUS_IF_NOT_OK(SetupAll(/*soc_model=*/std::nullopt, Qnn(),
-                                       /*load_system=*/true,
-                                       /*load_context=*/false));
+LiteRtStatus Initialize() {
+  auto configs = QnnManager::DefaultBackendConfigs();
+  if (auto qnn_manager = QnnManager::Create(configs); !qnn_manager.ok()) {
+    ABSL_LOG(ERROR) << qnn_manager.status();
+    return kLiteRtStatusErrorRuntimeFailure;
+  } else {
+    std::swap(TheQnnManager, *qnn_manager);
+  }
 
   Qnn_ApiVersion_t qnn_api_version;
   if (auto status = Qnn().Api()->backendGetApiVersion(&qnn_api_version);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get QNN API version: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
   const char* build_id;
   if (auto status = Qnn().Api()->backendGetBuildId(&build_id);
       status != QNN_SUCCESS) {
     ABSL_LOG(ERROR) << "Failed to get QNN build ID: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
   snprintf(BuildId, sizeof(BuildId),
@@ -78,169 +80,170 @@ LrtStatus Initialize() {
            qnn_api_version.coreApiVersion.patch, build_id);
   BuildId[sizeof(BuildId) - 1] = 0;
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus GetVendorId(const char** vendor_id) {
+LiteRtStatus GetVendorId(const char** vendor_id) {
   *vendor_id = "Qualcomm";
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus GetBuildId(const char** build_id) {
+LiteRtStatus GetBuildId(const char** build_id) {
   *build_id = BuildId;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus GetCapabilities(int* capabilities) {
-  *capabilities = kLrtDispatchCapabilitiesBasic;
-  return kLrtStatusOk;
+LiteRtStatus GetCapabilities(int* capabilities) {
+  *capabilities = kLiteRtDispatchCapabilitiesBasic;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus DeviceContextCreate(LrtDispatchDeviceContext* device_context) {
-  if (auto status_or = LrtDispatchDeviceContextT::Create(Qnn());
+LiteRtStatus DeviceContextCreate(LiteRtDispatchDeviceContext* device_context) {
+  if (auto status_or = LiteRtDispatchDeviceContextT::Create(Qnn());
       status_or.ok()) {
     *device_context = status_or->release();
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   } else {
     ABSL_LOG(ERROR) << "Failed to create device context: "
                     << status_or.status();
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 }
 
-LrtStatus DeviceContextDestroy(LrtDispatchDeviceContext device_context) {
+LiteRtStatus DeviceContextDestroy(LiteRtDispatchDeviceContext device_context) {
   delete device_context;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus GetInputRequirements(
-    LrtDispatchInvocationContext invocation_context, int input_index,
-    const LrtRankedTensorType* tensor_type,
-    LrtTensorBufferRequirements* tensor_buffer_requirements) {
+LiteRtStatus GetInputRequirements(
+    LiteRtDispatchInvocationContext invocation_context, int input_index,
+    const LiteRtRankedTensorType* tensor_type,
+    LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetInputRequirements(input_index, *tensor_type);
       requirements.ok()) {
     *tensor_buffer_requirements = *requirements;
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   } else {
     ABSL_LOG(ERROR) << "Failed to get tensor buffer requirements: "
                     << requirements.status();
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 }
 
-LrtStatus GetOutputRequirements(
-    LrtDispatchInvocationContext invocation_context, int output_index,
-    const LrtRankedTensorType* tensor_type,
-    LrtTensorBufferRequirements* tensor_buffer_requirements) {
+LiteRtStatus GetOutputRequirements(
+    LiteRtDispatchInvocationContext invocation_context, int output_index,
+    const LiteRtRankedTensorType* tensor_type,
+    LiteRtTensorBufferRequirements* tensor_buffer_requirements) {
   if (auto requirements =
           invocation_context->GetOutputRequirements(output_index, *tensor_type);
       requirements.ok()) {
     *tensor_buffer_requirements = *requirements;
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   } else {
     ABSL_LOG(ERROR) << "Failed to get tensor buffer requirements: "
                     << requirements.status();
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 }
 
-LrtStatus RegisterTensorBuffer(LrtDispatchDeviceContext device_context,
-                               LrtTensorBuffer buffer,
-                               LrtTensorBufferHandle* tensor_buffer_handle) {
+LiteRtStatus RegisterTensorBuffer(
+    LiteRtDispatchDeviceContext device_context, LiteRtTensorBuffer buffer,
+    LiteRtTensorBufferHandle* tensor_buffer_handle) {
   if (auto status = device_context->RegisterTensorBuffer(buffer);
       !status.ok()) {
     ABSL_LOG(ERROR) << "Failed to register buffer: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   } else {
     *tensor_buffer_handle = *status;
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   }
 }
 
-LrtStatus UnregisterTensorBuffer(LrtDispatchDeviceContext device_context,
-                                 LrtTensorBufferHandle handle) {
+LiteRtStatus UnregisterTensorBuffer(LiteRtDispatchDeviceContext device_context,
+                                    LiteRtTensorBufferHandle handle) {
   if (auto status = device_context->UnregisterTensorBuffer(handle);
       !status.ok()) {
     ABSL_LOG(ERROR) << "Failed to unregister buffer: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   } else {
-    return kLrtStatusOk;
+    return kLiteRtStatusOk;
   }
 }
 
-LrtStatus InvocationContextCreate(
-    LrtDispatchDeviceContext device_context,
-    LrtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
+LiteRtStatus InvocationContextCreate(
+    LiteRtDispatchDeviceContext device_context,
+    LiteRtDispatchExecutableType exec_type, const void* exec_bytecode_ptr,
     size_t exec_bytecode_size, const char* function_name, int num_inputs,
-    int num_outputs, LrtDispatchInvocationContext* invocation_context) {
-  auto context = LrtDispatchInvocationContextT::Create(
+    int num_outputs, LiteRtDispatchInvocationContext* invocation_context) {
+  auto context = LiteRtDispatchInvocationContextT::Create(
       Qnn(), *device_context, exec_bytecode_ptr, exec_bytecode_size,
       function_name);
   if (!context.ok()) {
     ABSL_LOG(ERROR) << "Failed to create context from context binary: "
                     << context.status();
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
   *invocation_context = context->release();
-  return kLrtStatusOk;
+  device_context->SetInvocationContext(*invocation_context);
+  return kLiteRtStatusOk;
 }
 
-LrtStatus InvocationContextDestroy(
-    LrtDispatchInvocationContext invocation_context) {
+LiteRtStatus InvocationContextDestroy(
+    LiteRtDispatchInvocationContext invocation_context) {
   delete invocation_context;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus AttachInput(LrtDispatchInvocationContext invocation_context,
-                      int graph_input_index,
-                      LrtTensorBufferHandle tensor_buffer_handle) {
+LiteRtStatus AttachInput(LiteRtDispatchInvocationContext invocation_context,
+                         int graph_input_index,
+                         LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->AttachInput(graph_input_index,
                                                     tensor_buffer_handle);
       !status.ok()) {
     ABSL_LOG(ERROR) << "Failed to attach input buffer: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus AttachOutput(LrtDispatchInvocationContext invocation_context,
-                       int graph_output_index,
-                       LrtTensorBufferHandle tensor_buffer_handle) {
+LiteRtStatus AttachOutput(LiteRtDispatchInvocationContext invocation_context,
+                          int graph_output_index,
+                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   if (auto status = invocation_context->AttachOutput(graph_output_index,
                                                      tensor_buffer_handle);
       !status.ok()) {
     ABSL_LOG(ERROR) << "Failed to attach output buffer: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus DetachInput(LrtDispatchInvocationContext invocation_context,
-                      int graph_input_index,
-                      LrtTensorBufferHandle tensor_buffer_handle) {
+LiteRtStatus DetachInput(LiteRtDispatchInvocationContext invocation_context,
+                         int graph_input_index,
+                         LiteRtTensorBufferHandle tensor_buffer_handle) {
   // Nothing to do here.
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus DetachOutput(LrtDispatchInvocationContext invocation_context,
-                       int graph_output_index,
-                       LrtTensorBufferHandle tensor_buffer_handle) {
+LiteRtStatus DetachOutput(LiteRtDispatchInvocationContext invocation_context,
+                          int graph_output_index,
+                          LiteRtTensorBufferHandle tensor_buffer_handle) {
   // Nothing to do here.
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus Invoke(LrtDispatchInvocationContext invocation_context) {
+LiteRtStatus Invoke(LiteRtDispatchInvocationContext invocation_context) {
   if (auto status = invocation_context->Execute(); !status.ok()) {
     ABSL_LOG(ERROR) << "Failed to execute invocation context: " << status;
-    return kLrtStatusErrorRuntimeFailure;
+    return kLiteRtStatusErrorRuntimeFailure;
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
 // /////////////////////////////////////////////////////////////////////////////
 
-LrtDispatchInterface TheInterface = {
+LiteRtDispatchInterface TheInterface = {
     /*.initialize=*/Initialize,
     /*.get_vendor_id=*/GetVendorId,
     /*.get_build_id=*/GetBuildId,
@@ -260,7 +263,7 @@ LrtDispatchInterface TheInterface = {
     /*.invoke=*/Invoke,
 };
 
-LrtDispatchApi TheApi = {
+LiteRtDispatchApi TheApi = {
     /*.version=*/{/*.major=*/VERSION_MAJOR,
                   /*.minor=*/VERSION_MINOR,
                   /*.patch=*/VERSION_PATCH},
@@ -271,7 +274,7 @@ LrtDispatchApi TheApi = {
 
 }  // namespace
 
-LrtStatus LrtDispatchGetApi(LrtDispatchApi* api) {
+LiteRtStatus LiteRtDispatchGetApi(LiteRtDispatchApi* api) {
   *api = TheApi;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }

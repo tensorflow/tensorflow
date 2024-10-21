@@ -235,10 +235,10 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
 // and attached to a "compile" operation, whose result is fed to an "execute"
 // operation. The kernel for these operations is responsible to lower the
 // encapsulated graph to a particular device.
-Status MlirBridgePass::Run(const std::string& function_name,
-                           const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph,
-                           const FunctionLibraryDefinition& function_library) {
+absl::Status MlirBridgePass::Run(
+    const std::string& function_name, const ConfigProto& config_proto,
+    mlir::ModuleOp module, const Graph& graph,
+    const FunctionLibraryDefinition& function_library) {
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
@@ -362,8 +362,8 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   }
 }
 
-Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
-                                   mlir::ModuleOp module) {
+absl::Status MlirBridgeV1CompatPass::Run(
+    const GraphOptimizationPassOptions& options, mlir::ModuleOp module) {
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 

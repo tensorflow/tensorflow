@@ -68,14 +68,9 @@ namespace {
 
 using ::testing::ContainerEq;
 using ::testing::HasSubstr;
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
 
 int64_t SizeFunction(const BufferValue& value) {
-  return ShapeSize(value.shape());
+  return HloCostAnalysis::DefaultShapeSize(value.shape());
 }
 
 int64_t ReservedScopedMemoryFn(
@@ -284,7 +279,6 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     cost_analysis_options_.alternate_mem_bandwidth_bytes_per_second = 128;
     cost_analysis_options_.async_copy_bandwidth_bytes_per_second = 32;
     cost_analysis_options_.pipeline_overhead_window_size_mib = 1;
-    options.shape_size = ShapeSize;
     options.set_flops_per_second(16);
     options.set_bytes_per_second(32);
     options.set_transcendentals_per_second(16);

@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "xla/service/gather_expander.h"
 
+#include <cstdint>
+#include <iterator>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/while_util.h"
@@ -107,11 +112,65 @@ absl::StatusOr<HloInstruction*> AdjustBatchDimsInAccumulator(
   return ExpandFirstDimIntoNDims(accumulator, batch_dim_bounds);
 }
 
-// Expand an index vector from the start_indices tensor into a vector that can
+// Generates the HLO to calculate the implicit and explicit batch dimension
+// indices and returns the explicit batch dimension to the HLO indices in the
+// order of major to minor.
+std::vector<HloInstruction*> GenerateExplicitBatchDimIndices(
+    const Shape& start_indices_shape, const GatherDimensionNumbers& dim_numbers,
+    HloInstruction* induction_var) {
+  if (dim_numbers.operand_batching_dims().empty()) {
+    return {};
+  }
+
+  int64_t index_vector_dim = dim_numbers.index_vector_dim();
+  int64_t rank = start_indices_shape.dimensions_size();
+  int64_t num_batch_dims = (rank == index_vector_dim) ? rank : rank - 1;
+  HloComputation* computation = induction_var->parent();
+  HloInstruction* divident = induction_var;
+  const Shape& shape = induction_var->shape();
+
+  absl::Span<const int64_t> start_indices_batching_dims =
+      dim_numbers.start_indices_batching_dims();
+  std::vector<HloInstruction*> explicit_batch_dim_indices(
+      start_indices_batching_dims.size());
+
+  for (int64_t i = start_indices_shape.dimensions_size() - 1; i >= 0; i--) {
+    if (i == index_vector_dim) {
+      continue;
+    }
+    auto it = absl::c_find(start_indices_batching_dims, i);
+    num_batch_dims--;  // Reuse the variable to count remaining batch dims.
+    if (num_batch_dims == 0) {
+      if (it != start_indices_batching_dims.end()) {
+        // Avoid generating a remainder that just returns the divident itself.
+        explicit_batch_dim_indices[it - start_indices_batching_dims.begin()] =
+            divident;
+      }
+      break;
+    }
+
+    HloInstruction* divisor =
+        computation->AddInstruction(HloInstruction::CreateConstant(
+            LiteralUtil::CreateR0<int32_t>(start_indices_shape.dimensions(i))));
+    if (it != start_indices_batching_dims.end()) {
+      explicit_batch_dim_indices[it - start_indices_batching_dims.begin()] =
+          computation->AddInstruction(HloInstruction::CreateBinary(
+              shape, HloOpcode::kRemainder, divident, divisor));
+    }
+
+    divident = computation->AddInstruction(HloInstruction::CreateBinary(
+        shape, HloOpcode::kDivide, divident, divisor));
+  }
+
+  return explicit_batch_dim_indices;
+}
+
+// Expands an index vector from the start_indices tensor into a vector that can
 // be used to dynamic-slice out of the gather operand.
 absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
-    HloInstruction* index_vector, const GatherDimensionNumbers& dim_numbers,
-    int64_t operand_rank) {
+    const Shape& start_indices_shape, HloInstruction* index_vector,
+    const GatherDimensionNumbers& dim_numbers, int64_t operand_rank,
+    HloInstruction* induction_var) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
 
@@ -129,7 +188,10 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
   // We extract out individual components from the smaller index and concatenate
   // them (interspersing zeros as needed) into the larger index.
   std::vector<HloInstruction*> expanded_index_components;
-
+  std::vector<HloInstruction*> explicit_batch_dim_indices =
+      GenerateExplicitBatchDimIndices(start_indices_shape, dim_numbers,
+                                      induction_var);
+  int64_t seen_explicit_batch_dims = 0;
   for (int i = 0; i < operand_rank; i++) {
     int64_t index_vector_dim_index =
         FindIndex(dim_numbers.start_index_map(), i);
@@ -141,11 +203,32 @@ absl::StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
                        /*strides=*/{1}));
       expanded_index_components.push_back(component_to_concat);
     } else {
-      expanded_index_components.push_back(zero);
+      if (absl::c_linear_search(dim_numbers.operand_batching_dims(), i)) {
+        expanded_index_components.push_back(MakeBroadcastHlo(
+            explicit_batch_dim_indices[seen_explicit_batch_dims++],
+            /*broadcast_dimensions=*/{},
+            /*result_shape_bounds=*/{1}));
+      } else {
+        expanded_index_components.push_back(zero);
+      }
     }
   }
 
   return MakeConcatHlo(expanded_index_components, /*dimension=*/0);
+}
+
+// Returns the dimensions in a slice that are either collapsed or corresponding
+// to an operand batching dimension.
+std::vector<int64_t> GetDegeneratedSliceDims(
+    const GatherDimensionNumbers& dim_numbers) {
+  absl::Span<const int64_t> collapsed_slice_dims =
+      dim_numbers.collapsed_slice_dims();
+  absl::Span<const int64_t> batching_dims = dim_numbers.operand_batching_dims();
+  std::vector<int64_t> removed_dims;
+  removed_dims.reserve(collapsed_slice_dims.size() + batching_dims.size());
+  absl::c_copy(collapsed_slice_dims, std::back_inserter(removed_dims));
+  absl::c_copy(batching_dims, std::back_inserter(removed_dims));
+  return removed_dims;
 }
 
 // This generates the body of the while that implements the main data movement
@@ -158,11 +241,11 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
   HloInstruction* const operand = incoming_loop_state[0];
   HloInstruction* const start_indices = incoming_loop_state[1];
   HloInstruction* const output_accumulator = incoming_loop_state[2];
+  const Shape& orig_start_indices_shape = gather.operand(1)->shape();
 
   bool has_scalar_indices = start_indices->shape().dimensions_size() == 1;
-  CHECK_EQ(has_scalar_indices,
-           dim_numbers.index_vector_dim() ==
-               gather.operand(1)->shape().dimensions_size());
+  CHECK_EQ(has_scalar_indices, dim_numbers.index_vector_dim() ==
+                                   orig_start_indices_shape.dimensions_size());
 
   HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
@@ -195,10 +278,10 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
                         ElideDegenerateDims(index_vector_2d, {0}));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * gathered_slice_start,
-      ExpandIndexVectorIntoOperandSpace(index_vector, dim_numbers,
-                                        operand->shape().dimensions_size()));
+  TF_ASSIGN_OR_RETURN(HloInstruction * gathered_slice_start,
+                      ExpandIndexVectorIntoOperandSpace(
+                          orig_start_indices_shape, index_vector, dim_numbers,
+                          operand->shape().dimensions_size(), induction_var));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * gathered_slice,
                       MakeDynamicSliceHlo(operand, gathered_slice_start,
@@ -206,7 +289,8 @@ absl::StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_with_dims_collapsed,
-      ElideDegenerateDims(gathered_slice, dim_numbers.collapsed_slice_dims()));
+      ElideDegenerateDims(gathered_slice,
+                          GetDegeneratedSliceDims(dim_numbers)));
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction* const gathered_slice_for_update,
@@ -239,7 +323,8 @@ HloInstruction* CreateGatherLoopAccumulatorInitValue(
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
   accumulator_state_shape_dims.push_back(gather_loop_trip_count);
   for (int64_t i = 0; i < slice_sizes.size(); i++) {
-    if (!absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
+    if (!absl::c_linear_search(dim_numbers.collapsed_slice_dims(), i) &&
+        !absl::c_linear_search(dim_numbers.operand_batching_dims(), i)) {
       accumulator_state_shape_dims.push_back(slice_sizes[i]);
     }
   }
@@ -336,7 +421,7 @@ absl::StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
       return MakeScalarLike(gather_instr, 0);
     }
     Shape broadcast_operand_shape = ShapeUtil::DeleteDimensions(
-        gather_instr->gather_dimension_numbers().collapsed_slice_dims(),
+        GetDegeneratedSliceDims(gather_instr->gather_dimension_numbers()),
         gather_instr->operand(0)->shape());
     TF_ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
                         MakeReshapeHlo(broadcast_operand_shape,

@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_fft.h"
 
 #include <complex>
+#include <memory>
 
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
@@ -44,13 +44,13 @@ namespace wrap {
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                      \
-  struct WrapperShim__##__name {                                 \
-    template <typename... Args>                                  \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) { \
-      ScopedActivateContext sac{parent};                         \
-      return ::__name(args...);                                  \
-    }                                                            \
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                             \
+  struct WrapperShim__##__name {                                        \
+    template <typename... Args>                                         \
+    hipfftResult operator()(StreamExecutor *parent, Args... args) {     \
+      std::unique_ptr<ActivateContext> activation = parent->Activate(); \
+      return ::__name(args...);                                         \
+    }                                                                   \
   } __name;
 
 #else
@@ -76,8 +76,8 @@ namespace wrap {
       return f;                                                          \
     }                                                                    \
     template <typename... Args>                                          \
-    hipfftResult operator()(GpuExecutor *parent, Args... args) {         \
-      ScopedActivateContext sac{parent};                                 \
+    hipfftResult operator()(StreamExecutor *parent, Args... args) {      \
+      std::unique_ptr<ActivateContext> activation = parent->Activate();  \
       return DynLoad()(args...);                                         \
     }                                                                    \
   } __name;                                                              \
@@ -142,7 +142,7 @@ hipfftType ROCMFftType(fft::Type type) {
 }
 
 // Associates the given stream with the given rocFFT plan.
-bool SetStream(GpuExecutor *parent, hipfftHandle plan, Stream *stream) {
+bool SetStream(StreamExecutor *parent, hipfftHandle plan, Stream *stream) {
   auto ret = wrap::hipfftSetStream(parent, plan, AsGpuStreamValue(stream));
   if (ret != HIPFFT_SUCCESS) {
     LOG(ERROR) << "failed to run rocFFT routine hipfftSetStream: " << ret;
@@ -154,7 +154,7 @@ bool SetStream(GpuExecutor *parent, hipfftHandle plan, Stream *stream) {
 }  // namespace
 
 absl::Status ROCMFftPlan::Initialize(
-    GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
+    StreamExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
     uint64_t *input_embed, uint64_t input_stride, uint64_t input_distance,
     uint64_t *output_embed, uint64_t output_stride, uint64_t output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
@@ -315,7 +315,7 @@ absl::Status ROCMFftPlan::Initialize(
   return absl::OkStatus();
 }
 
-absl::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
+absl::Status ROCMFftPlan::Initialize(StreamExecutor *parent, Stream *stream,
                                      int rank, uint64_t *elem_count,
                                      fft::Type type,
                                      ScratchAllocator *scratch_allocator) {
@@ -512,16 +512,7 @@ void initialize_rocfft() {
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
             rocm::kROCmPlatformId, "rocFFT",
             [](StreamExecutor *parent) -> fft::FftSupport * {
-              gpu::GpuExecutor *rocm_executor =
-                  dynamic_cast<gpu::GpuExecutor *>(parent);
-              if (rocm_executor == nullptr) {
-                LOG(ERROR)
-                    << "Attempting to initialize an instance of the rocFFT "
-                    << "support library with a non-ROCM StreamExecutor";
-                return nullptr;
-              }
-
-              return new gpu::ROCMFft(rocm_executor);
+              return new gpu::ROCMFft(parent);
             });
     if (!status.ok()) {
       LOG(ERROR) << "Unable to register rocFFT factory: " << status.message();

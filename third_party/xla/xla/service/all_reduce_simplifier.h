@@ -30,9 +30,6 @@ namespace xla {
 // replaced by a multiply with the replica count.
 class AllReduceSimplifier : public HloModulePass {
  public:
-  explicit AllReduceSimplifier(int64_t replica_count)
-      : replica_count_(replica_count) {}
-  ~AllReduceSimplifier() override = default;
   absl::string_view name() const override { return "all-reduce-simp"; }
 
   // Run all-reduce simplification on the given computation. Returns whether the
@@ -41,9 +38,6 @@ class AllReduceSimplifier : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  int64_t replica_count_;
 };
 
 }  // namespace xla

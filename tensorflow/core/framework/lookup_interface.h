@@ -47,8 +47,8 @@ class LookupInterface : public ResourceBase {
   //   fails.
   // - In addition, other implementations may provide another non-OK status
   //   specific to their failure modes.
-  virtual Status Find(OpKernelContext* ctx, const Tensor& keys, Tensor* values,
-                      const Tensor& default_value) = 0;
+  virtual absl::Status Find(OpKernelContext* ctx, const Tensor& keys,
+                            Tensor* values, const Tensor& default_value) = 0;
 
   // Inserts elements into the table. Each element of the key tensor is
   // associated with the corresponding element in the value tensor.
@@ -61,8 +61,8 @@ class LookupInterface : public ResourceBase {
   // - InvalidArgument: if any of the preconditions on the lookup key or value
   //   fails.
   // - Unimplemented: if the table does not support insertions.
-  virtual Status Insert(OpKernelContext* ctx, const Tensor& keys,
-                        const Tensor& values) = 0;
+  virtual absl::Status Insert(OpKernelContext* ctx, const Tensor& keys,
+                              const Tensor& values) = 0;
 
   // Removes elements from the table.
   // This method is only implemented in mutable tables that can be updated over
@@ -73,7 +73,7 @@ class LookupInterface : public ResourceBase {
   // - OK: when the remove finishes successfully.
   // - InvalidArgument: if any of the preconditions on the lookup key fails.
   // - Unimplemented: if the table does not support removals.
-  virtual Status Remove(OpKernelContext* ctx, const Tensor& keys) = 0;
+  virtual absl::Status Remove(OpKernelContext* ctx, const Tensor& keys) = 0;
 
   // Returns the number of elements in the table.
   virtual size_t size() const = 0;
@@ -82,14 +82,14 @@ class LookupInterface : public ResourceBase {
   // Note that the shape of the tensors is completely up to the implementation
   // of the table and can be different than the tensors used for the Insert
   // function above.
-  virtual Status ExportValues(OpKernelContext* ctx) = 0;
+  virtual absl::Status ExportValues(OpKernelContext* ctx) = 0;
 
   // Imports previously exported keys and values.
   // As mentioned above, the shape of the keys and values tensors are determined
   // by the ExportValues function above and can be different than for the
   // Insert function.
-  virtual Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                              const Tensor& values) = 0;
+  virtual absl::Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
+                                    const Tensor& values) = 0;
 
   // Returns the data type of the key.
   virtual DataType key_dtype() const = 0;
@@ -110,19 +110,19 @@ class LookupInterface : public ResourceBase {
   // - DataType of the tensor values equals to the table value_dtype
   // - the values tensor has the required shape given keys and the tables's
   //   value shape.
-  virtual Status CheckKeyAndValueTensorsForInsert(const Tensor& keys,
-                                                  const Tensor& values);
+  virtual absl::Status CheckKeyAndValueTensorsForInsert(const Tensor& keys,
+                                                        const Tensor& values);
 
   // Similar to the function above but instead checks eligibility for the Import
   // function.
-  virtual Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
-                                                  const Tensor& values);
+  virtual absl::Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
+                                                        const Tensor& values);
 
   // Check format of the key tensor for the Remove function.
   // Returns OK if all the following requirements are satisfied, otherwise it
   // returns InvalidArgument:
   // - DataType of the tensor keys equals to the table key_dtype
-  virtual Status CheckKeyTensorForRemove(const Tensor& keys);
+  virtual absl::Status CheckKeyTensorForRemove(const Tensor& keys);
 
   // Check the arguments of a find operation. Returns OK if all the following
   // requirements are satisfied, otherwise it returns InvalidArgument:
@@ -130,7 +130,8 @@ class LookupInterface : public ResourceBase {
   // - DataType of the tensor default_value equals to the table value_dtype
   // - the default_value tensor has the required shape given keys and the
   //   tables's value shape.
-  Status CheckFindArguments(const Tensor& keys, const Tensor& default_value);
+  absl::Status CheckFindArguments(const Tensor& keys,
+                                  const Tensor& default_value);
 
   string DebugString() const override {
     return strings::StrCat("A lookup table of size: ", size());
@@ -147,14 +148,14 @@ class LookupInterface : public ResourceBase {
 
   // Makes sure that the key and value tensor DataType's match the table
   // key_dtype and value_dtype.
-  Status CheckKeyAndValueTypes(const Tensor& keys, const Tensor& values);
+  absl::Status CheckKeyAndValueTypes(const Tensor& keys, const Tensor& values);
 
   // Makes sure that the provided shape is consistent with the table keys shape.
-  Status CheckKeyShape(const TensorShape& shape);
+  absl::Status CheckKeyShape(const TensorShape& shape);
 
  private:
-  Status CheckKeyAndValueTensorsHelper(const Tensor& keys,
-                                       const Tensor& values);
+  absl::Status CheckKeyAndValueTensorsHelper(const Tensor& keys,
+                                             const Tensor& values);
 };
 
 }  // namespace lookup

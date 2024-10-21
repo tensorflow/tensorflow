@@ -18,18 +18,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/cuda_collectives.h"
-#include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
-/* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
-    Context* context, uint64_t bytes) {
+/* static */ absl::StatusOr<void *> CudaCollectives::CollectiveMemoryAllocate(
+    StreamExecutor *executor, uint64_t bytes) {
   if (bytes == 0) return nullptr;
   return absl::FailedPreconditionError("XLA was compiled without NCCL support");
 }
 
 /* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
-    Context* context, void* location) {
+    StreamExecutor *executor, void *location) {
   return absl::FailedPreconditionError("XLA was compiled without NCCL support");
 }
 

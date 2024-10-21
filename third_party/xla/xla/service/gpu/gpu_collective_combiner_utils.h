@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -38,6 +40,12 @@ int64_t ComputeSuggestedCombinerThreshold(
                                               int64_t*)>
         scheduler,
     HloOpcode collective_opcode, int64_t pointer_size);
+
+// Adds information that `instr` has been pipelined to the
+// `CollectiveBackendInfo`. It is up to the caller to decide when to invoke
+// this.
+absl::Status AppendPipelinedInstruction(HloInstruction* instr);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_GPU_COLLECTIVE_COMBINER_UTILS_H_

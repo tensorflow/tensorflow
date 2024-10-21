@@ -13,32 +13,36 @@
 
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/lrt/test/common.h"
+#include "tensorflow/lite/experimental/lrt/vendors/qualcomm/tools/dump.h"
 
 namespace {
 
-using ::lrt::qnn::QnnManager;
-using ::lrt::qnn::SetupAll;
+using ::litert::qnn::QnnManager;
+using ::litert::qnn::internal::Dump;
+using ::testing::HasSubstr;
 
 // NOTE: This tests that all of the dynamic loading works properly and
 // the QNN SDK instance can be properly initialized and destroyed.
 
-TEST(QnnSdkTest, SetupQnnManager) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(SetupAll(/*soc_model=*/std::nullopt, qnn));
+TEST(QnnManagerTest, SetupQnnManager) {
+  auto configs = QnnManager::DefaultBackendConfigs();
+  auto qnn = QnnManager::Create(configs);
+  ASSERT_TRUE(qnn.ok());
 }
 
-TEST(QnnSdkTest, SetupQnnManagerWithSystem) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(
-      SetupAll(/*soc_model=*/std::nullopt, qnn, /*load_system=*/true));
-}
+TEST(QnnManagerTest, Dump) {
+  auto configs = QnnManager::DefaultBackendConfigs();
+  auto qnn = QnnManager::Create(configs);
+  ASSERT_TRUE(qnn.ok());
 
-TEST(QnnSdkTest, SetupQnnManagerWithContext) {
-  QnnManager qnn;
-  ASSERT_STATUS_OK(SetupAll(/*soc_model=*/std::nullopt, qnn,
-                            /*load_system=*/false, /*load_context=*/true));
+  std::ostringstream dump;
+  Dump(**qnn, dump);
+
+  EXPECT_THAT(dump.str(), HasSubstr("< QnnInterface_t >"));
+  EXPECT_THAT(dump.str(), HasSubstr("< QnnSystemInterface_t >"));
 }
 
 }  // namespace

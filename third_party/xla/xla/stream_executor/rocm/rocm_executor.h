@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <variant>
 
@@ -32,6 +31,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
@@ -40,10 +41,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -62,6 +61,7 @@ class RocmExecutor : public GpuExecutor {
   RocmExecutor(Platform* platform, int device_ordinal)
       : GpuExecutor(platform, device_ordinal) {}
   ~RocmExecutor() override;
+  std::unique_ptr<ActivateContext> Activate() override;
 
   absl::Status Init() override;
   blas::BlasSupport* AsBlas() override;
@@ -75,16 +75,18 @@ class RocmExecutor : public GpuExecutor {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const MultiKernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
-  absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
-                          ModuleHandle* module_handle) override;
+  absl::StatusOr<ModuleHandle> LoadModule(
+      const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
   absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
+  absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
+      const DeviceMemoryBase& location) override;
   void Deallocate(DeviceMemoryBase* mem) override;
   bool SynchronizeAllActivity() override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
-      GpuStream* stream, bool use_delay_kernel) override;
+      Stream* stream, bool use_delay_kernel) override;
   absl::StatusOr<DeviceMemoryBase> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
@@ -96,7 +98,6 @@ class RocmExecutor : public GpuExecutor {
                                  uint64_t size) override;
   absl::Status TrimGraphMemory() override;
   void DeallocateStream(Stream* stream) override;
-  absl::Status BlockHostUntilDone(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
@@ -127,34 +128,20 @@ class RocmExecutor : public GpuExecutor {
   CreateDeviceDescription(int device_ordinal);
 
  private:
-  // Collects metadata for the specified kernel.
-  absl::Status GetKernelMetadata(GpuKernel* rocm_kernel,
-                                 KernelMetadata* kernel_metadata);
-
   // Loads a module in HSACO format.
-  absl::Status LoadModuleFromHsaco(const char* hsaco, hipModule_t* module)
+  absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
-  bool UnloadGpuBinary(const void* gpu_binary)
+  bool UnloadGpuBinary(ModuleHandle module_handle)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Creates a GpuEvent for the given stream.
   absl::StatusOr<std::unique_ptr<RocmEvent>> CreateGpuEvent(bool allow_timing);
 
-  // Guards the on-disk-module mapping.
-  absl::Mutex disk_modules_mu_;
-
-  // Mapping from filename to hipModule_t, if it was already retrieved.
-  // Multiple hipFunction_ts are usually obtained from a single
-  // hipModule_t so we attempt to hit in this mapping first, before
-  // retrieving it.
-  std::map<std::string, hipModule_t> disk_modules_
-      ABSL_GUARDED_BY(disk_modules_mu_);
-
   // Guards the in-memory-module mapping.
   absl::Mutex in_memory_modules_mu_;
 
-  std::map<const char*, hipModule_t> in_memory_modules_
+  absl::flat_hash_map<ModuleHandle, hipModule_t> in_memory_modules_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   absl::Mutex shared_constants_mu_;
@@ -165,10 +152,11 @@ class RocmExecutor : public GpuExecutor {
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU binary. Many kernels may load the same binary.
-  std::unordered_map<const Kernel*, const void*> kernel_to_gpu_binary_
+  absl::flat_hash_map<const Kernel*, ModuleHandle> kernel_to_gpu_binary_
       ABSL_GUARDED_BY(in_memory_modules_mu_);
-  // GPU binary (PTX or CUBIN or HSACO) -> {module, reference count}.
-  std::unordered_map<const void*, std::pair<hipModule_t, uint64_t>>
+
+  // Loaded GPU binary handle -> {module, reference count}.
+  absl::flat_hash_map<ModuleHandle, std::pair<hipModule_t, uint64_t>>
       gpu_binary_to_module_ ABSL_GUARDED_BY(in_memory_modules_mu_);
 
   // Handle for the ROCm device being operated on. Immutable

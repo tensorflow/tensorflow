@@ -191,6 +191,51 @@ tf_xla_combined_py_test(
         # go/keep-sorted end
     ],
 )
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_e",
+    size = "medium",
+    timeout = "long",
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_cuda_asan",  # times out in individual tests
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  # times out consistently from 2023-08-24
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":adagrad_da_test_lib",
+        ":adam_test_lib",
+        ":argminmax_test_lib",
+        ":listdiff_op_test_lib",
+        ":slice_ops_test_lib",
+        ":unary_ops_test_lib",
+        # go/keep-sorted end
+    ],
+)
+
+tf_xla_combined_py_test(
+    name = "combined_ops_test_f",
+    size = "medium",
+    timeout = "long",
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
+    package = "tensorflow.compiler.tests",
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    tests = [
+        # go/keep-sorted start
+        ":add_n_test_lib",
+        ":cond_test_lib",
+        ":while_test_lib",
+        # go/keep-sorted end
+    ],
+)
 #LINT.ThenChange(:individual_tests)
 
 #LINT.IfChange(individual_tests)
@@ -242,6 +287,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -263,6 +309,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -289,6 +336,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -310,6 +358,7 @@ tf_xla_py_strict_test(
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  # times out consistently from 2023-08-24
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -450,6 +499,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -925,6 +975,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1037,6 +1088,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1790,6 +1842,7 @@ tf_xla_py_strict_test(
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  #times out
+        "notap",
     ],
     deps = [
         ":xla_test",
@@ -1873,6 +1926,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "notap",
     ],
     deps = [
         ":xla_test",

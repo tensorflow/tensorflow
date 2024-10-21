@@ -18,43 +18,44 @@
 
 #include "absl/log/absl_check.h"
 #include "absl/types/span.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_tensor.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_tensor.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
-using ::lrt::LrtTensorManager;
+using ::litert::LiteRtTensorManager;
 
 namespace {
 
-LrtStatus LegalizeElementType(LrtElementType src, Qnn_DataType_t& dest) {
+LiteRtStatus LegalizeElementType(LiteRtElementType src, Qnn_DataType_t& dest) {
   switch (src) {
-    case kLrtElementTypeFloat32:
+    case kLiteRtElementTypeFloat32:
       dest = QNN_DATATYPE_FLOAT_32;
-      return kLrtStatusOk;
+      return kLiteRtStatusOk;
     default:
-      return kLrtStatusErrorUnsupported;
+      return kLiteRtStatusErrorUnsupported;
       // TODO: Finish legalizing datatypes.
   }
 }
 
-LrtStatus LegalizeShapeInfo(const LrtTensorManager& src, Qnn_Tensor_t& dest) {
-  LRT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
+LiteRtStatus LegalizeShapeInfo(const LiteRtTensorManager& src,
+                               Qnn_Tensor_t& dest) {
+  LITERT_ENSURE_SUPPORTED(!src.HasStrides(), "Strides not yet supported");
 
   dest.v2.rank = src.Rank();
   dest.v2.dimensions = new uint32_t[dest.v2.rank];
   for (int i = 0; i < dest.v2.rank; ++i) {
     const auto src_dim = src.Dims()[i];
-    LRT_ENSURE(src_dim >= 1, kLrtStatusErrorInvalidArgument,
-               "Cannot pass dim < 1 to QNN Tensor.");
+    LITERT_ENSURE(src_dim >= 1, kLiteRtStatusErrorInvalidArgument,
+                  "Cannot pass dim < 1 to QNN Tensor.");
 
     dest.v2.dimensions[i] = src.Dims()[i];
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
 void FreeTensorDims(Qnn_Tensor_t& tensor) {
@@ -116,24 +117,24 @@ uint32_t MoveToId(Qnn_Tensor_t& tensor) {
   return id;
 }
 
-LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest) {
+LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest) {
   ResetTensor(dest);
 
-  LrtTensorManager::Unique src_tensor;
-  LRT_RETURN_STATUS_IF_NOT_OK(
-      LrtTensorManager::MakeFromTensor(src, src_tensor));
+  LiteRtTensorManager::Unique src_tensor;
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      LiteRtTensorManager::MakeFromTensor(src, src_tensor));
 
-  LRT_RETURN_STATUS_IF_NOT_OK(
+  LITERT_RETURN_STATUS_IF_NOT_OK(
       LegalizeElementType(src_tensor->ElementType(), dest.v2.dataType));
 
-  LRT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
 
   const bool is_subgraph_in = src_tensor->IsSubgraphInput();
   const bool is_subgraph_out = src_tensor->IsSubgraphOutput();
 
-  LRT_ENSURE(!(is_subgraph_in && is_subgraph_out),
-             kLrtStatusErrorInvalidArgument,
-             "Malformed tensor, cannot be both subgraph in and out.");
+  LITERT_ENSURE(!(is_subgraph_in && is_subgraph_out),
+                kLiteRtStatusErrorInvalidArgument,
+                "Malformed tensor, cannot be both subgraph in and out.");
 
   if (is_subgraph_in) {
     SetInputTensorAttrs(dest);
@@ -142,7 +143,7 @@ LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest) {
     SetOutputTensorAttrs(dest);
   }
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn

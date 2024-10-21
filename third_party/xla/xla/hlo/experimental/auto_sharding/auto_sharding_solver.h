@@ -128,6 +128,8 @@ class StrategyShaver {
 // Note: This does not include checks for valid variable aliasing yet.
 absl::Status ValidateRequest(const AutoShardingSolverRequest& request);
 
+void SolverRequestCallback(const AutoShardingSolverRequest& request);
+
 }  // namespace spmd
 }  // namespace xla
 

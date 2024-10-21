@@ -41,12 +41,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-constexpr int64_t kPointerSize = 8;
-
-int64_t ShapeSize(const Shape& shape) {
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
 // This test suite tests the HLO cost analysis by first building a computation
 // using the client computation builder and running the HloCostAnalysis that
 // returns the number of floating point and transcendental operations in the
@@ -146,7 +140,7 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -180,7 +174,7 @@ TEST_F(HloCostAnalysisTest, DotGeneral) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -216,7 +210,7 @@ TEST_F(HloCostAnalysisTest, DotGeneral2) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -246,7 +240,7 @@ TEST_F(HloCostAnalysisTest, DotGeneral3) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -273,7 +267,7 @@ TEST_F(HloCostAnalysisTest, Map) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -303,7 +297,7 @@ TEST_F(HloCostAnalysisTest, Convolution) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -345,7 +339,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionSame) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -380,7 +374,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -403,7 +397,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -426,7 +420,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -455,7 +449,7 @@ TEST_F(HloCostAnalysisTest, Reduce) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -480,7 +474,7 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -507,7 +501,7 @@ TEST_F(HloCostAnalysisTest, ReduceWindowWithOverlaps) {
   int n_output_elements = 3 * 4;
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(root->Accept(&analysis));
 
   // Each of the output elements are generated from reducing [4x5] elements.
@@ -539,7 +533,7 @@ ENTRY fusion.50 {
 }
 )";
   auto hlo_module = ParseAndReturnUnverifiedModule(hlo_text).value();
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
   EXPECT_EQ(analysis.flop_count(), (2 * 3 * 1024) + (1024 - 1));
@@ -571,7 +565,7 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -597,7 +591,7 @@ TEST_F(HloCostAnalysisTest, SelectAndScatter) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -619,7 +613,7 @@ TEST_F(HloCostAnalysisTest, Broadcast) {
   XlaBuilder b("broadcast");
   Broadcast(ConstantR0<float>(&b, 42), {10, 7});
   auto hlo_module = BuildHloGraph(&b);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
   EXPECT_EQ(analysis.flop_count(), 0);
@@ -635,8 +629,8 @@ TEST_F(HloCostAnalysisTest, BroadcastCountMultipleInputAccesses) {
   XlaBuilder b("broadcast");
   Broadcast(ConstantR0<float>(&b, 42), {10, 7});
   auto hlo_module = BuildHloGraph(&b);
-  HloCostAnalysis analysis(HloCostAnalysis::Options{
-      .shape_size = ShapeSize, .count_multiple_input_accesses = true});
+  HloCostAnalysis analysis(
+      HloCostAnalysis::Options{.count_multiple_input_accesses = true});
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
   EXPECT_EQ(analysis.flop_count(), 0);
@@ -661,7 +655,7 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -672,7 +666,7 @@ TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
 }
 
 TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
-  HloCostAnalysis conv_analysis(ShapeSize);
+  HloCostAnalysis conv_analysis;
   {
     XlaBuilder builder("conv_looking_matmul");
     auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
@@ -685,7 +679,7 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
         &conv_analysis));
   }
 
-  HloCostAnalysis matmul_analysis(ShapeSize);
+  HloCostAnalysis matmul_analysis;
   {
     XlaBuilder builder("matmul");
     auto lhs =
@@ -716,7 +710,7 @@ TEST_F(HloCostAnalysisTest, LatencyBoundedOptimalTime) {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   const HloInstruction* add = module->entry_computation()->root_instruction();
-  HloCostAnalysis::Options options{ShapeSize};
+  HloCostAnalysis::Options options;
   const float clock_cycle_seconds = 10.0f;
   options.set_flops_per_second(1024);
   options.set_bytes_per_second(1024);
@@ -756,7 +750,7 @@ TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_fusion_module_str));
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
@@ -773,7 +767,7 @@ TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto dus_module,
                           ParseAndReturnVerifiedModule(hlo_dus_module_str));
-  HloCostAnalysis dus_analysis(ShapeSize);
+  HloCostAnalysis dus_analysis;
   auto dus = dus_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(dus->Accept(&dus_analysis));
   EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 0);
@@ -832,7 +826,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
     // The time given these rates at i == 0 is exactly even among the properties
     // at 1.0 seconds. For other values, one of the rates is slower so that it
     // becomes the bottleneck.
-    HloCostAnalysis::Options options{ShapeSize};
+    HloCostAnalysis::Options options;
     options.set_flops_per_second(16 * (i == 1 ? 1 / 2.0 : 1.0));
     options.set_transcendentals_per_second(4 * (i == 2 ? 1 / 4.0 : 1.0));
     options.set_bytes_per_second(64 * (i == 3 ? 1 / 8.0 : 1.0));
@@ -899,13 +893,13 @@ ENTRY temp {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
                           ParseAndReturnVerifiedModule(nested_fusion_text));
-  HloCostAnalysis nested_analysis(ShapeSize);
+  HloCostAnalysis nested_analysis;
   auto* nested_root =
       nested_fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(nested_root->Accept(&nested_analysis));
   TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
                           ParseAndReturnVerifiedModule(fusion_text));
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
   // The nested fusion should only access the bytes size amount of the parameter
@@ -967,13 +961,13 @@ ENTRY temp {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto nested_fusion_module,
                           ParseAndReturnVerifiedModule(nested_fusion_text));
-  HloCostAnalysis nested_analysis(ShapeSize);
+  HloCostAnalysis nested_analysis;
   auto* nested_root =
       nested_fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(nested_root->Accept(&nested_analysis));
   TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
                           ParseAndReturnVerifiedModule(fusion_text));
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
   // The nested fusion should only access the bytes size amount of the parameter
@@ -1010,7 +1004,7 @@ ENTRY temp {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
   EXPECT_EQ(1073741824, fusion_analysis.bytes_accessed(*fusion_root));
@@ -1044,7 +1038,7 @@ ENTRY temp {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto fusion_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   auto* fusion_root = fusion_module->entry_computation()->root_instruction();
   ASSERT_IS_OK(fusion_root->Accept(&fusion_analysis));
   EXPECT_EQ(1610612736, fusion_analysis.bytes_accessed(*fusion_root));
@@ -1083,7 +1077,7 @@ TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
   auto* fusion = computation->CreateFusionInstruction(
       {tuple2, sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
 
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.flop_count(), 16);
@@ -1137,7 +1131,7 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   auto* fusion = computation->CreateFusionInstruction(
       {add, broadcast}, HloInstruction::FusionKind::kLoop);
 
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.flop_count(), 120);
@@ -1177,7 +1171,7 @@ ENTRY entry {
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion), sizeof(float) * 3 * 2 * 3);
@@ -1212,7 +1206,7 @@ ENTRY entry {
 
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis fusion_analysis(ShapeSize);
+  HloCostAnalysis fusion_analysis;
   ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
 
   EXPECT_EQ(fusion_analysis.bytes_accessed(*fusion), sizeof(float) * 2 * 2 * 4);
@@ -1244,15 +1238,18 @@ ENTRY e {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(root->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 3);
   // 2-element tuple (pointers) + its 3-element shape #0
-  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 2 * kPointerSize + 3);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0),
+            2 * HloCostAnalysis::kDefaultPointerSize + 3);
   // Same as above + non-scalar constant c1 + output.
-  EXPECT_EQ(analysis.bytes_accessed(*root), 2 * kPointerSize + 3 + 3 + 3);
-  EXPECT_EQ(analysis.bytes_accessed(), 2 * kPointerSize + 3 + 3 + 3);
+  EXPECT_EQ(analysis.bytes_accessed(*root),
+            2 * HloCostAnalysis::kDefaultPointerSize + 3 + 3 + 3);
+  EXPECT_EQ(analysis.bytes_accessed(),
+            2 * HloCostAnalysis::kDefaultPointerSize + 3 + 3 + 3);
 }
 
 TEST_F(FusionCostAnalysis, InfeedOutfeed) {
@@ -1278,7 +1275,7 @@ ENTRY entry {
   HloInstruction* outfeed =
       module->entry_computation()->GetInstructionWithName("outfeed");
 
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(infeed->Accept(&analysis));
   ASSERT_IS_OK(outfeed->Accept(&analysis));
 
@@ -1313,7 +1310,7 @@ ENTRY entry {
 
   HloInstruction* all_reduce = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis all_reduce_analysis(ShapeSize);
+  HloCostAnalysis all_reduce_analysis;
   ASSERT_IS_OK(all_reduce->Accept(&all_reduce_analysis));
 
   EXPECT_EQ(all_reduce_analysis.bytes_accessed(*all_reduce),
@@ -1327,7 +1324,7 @@ ENTRY entry {
 }
 
 TEST_F(HloCostAnalysisTest, TupleCost) {
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
 
   XlaBuilder builder("tuple");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {123}), "x");
@@ -1340,17 +1337,19 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
 
   EXPECT_EQ(analysis.flop_count(), 0);
   EXPECT_EQ(analysis.transcendental_count(), 0);
-  EXPECT_EQ(analysis.bytes_accessed(), kPointerSize * 2);
+  EXPECT_EQ(analysis.bytes_accessed(),
+            HloCostAnalysis::kDefaultPointerSize * 2);
 
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 0);
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), 0);
-  EXPECT_EQ(analysis.output_bytes_accessed(*root), kPointerSize * 2);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root),
+            HloCostAnalysis::kDefaultPointerSize * 2);
 }
 
 using DomainCostAnalysis = HloTestBase;
 TEST_F(DomainCostAnalysis, DomainCost) {
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
 
   HloComputation::Builder builder("domain");
   auto x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1392,7 +1391,7 @@ TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
 
   // Run HLO cost analysis.
   auto hlo_module = BuildHloGraph(&builder);
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1407,7 +1406,7 @@ TEST_F(HloCostAnalysisTest, Slice) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1427,7 +1426,7 @@ TEST_F(HloCostAnalysisTest, DynamicSlice) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1449,7 +1448,7 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1481,7 +1480,7 @@ TEST_F(HloCostAnalysisTest, Gather) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1513,7 +1512,7 @@ TEST_F(HloCostAnalysisTest, GatherBatchingDims) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1545,7 +1544,7 @@ TEST_F(HloCostAnalysisTest, Scatter) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1580,7 +1579,7 @@ TEST_F(HloCostAnalysisTest, ScatterBatchingDims) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1628,7 +1627,7 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
@@ -1648,7 +1647,7 @@ TEST_F(HloCostAnalysisTest, GetShapeSizeIgnoreUnsupportedShape) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() =
       LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_COMPRESSED});
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   EXPECT_TRUE(LayoutUtil::IsSparseArray(shape));
   EXPECT_EQ(0, analysis.GetShapeSize(shape));
 }
@@ -1676,7 +1675,7 @@ ENTRY e {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
   ASSERT_IS_OK(root->Accept(&analysis));
 
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 10000);
@@ -1703,7 +1702,7 @@ TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {neg, mul, add}, HloInstruction::FusionKind::kLoop);
 
-  HloCostAnalysis::Options options{ShapeSize};
+  HloCostAnalysis::Options options;
   HloCostAnalysis analysis(options);
   ASSERT_IS_OK(fusion->Accept(&analysis));
 
@@ -1769,7 +1768,7 @@ ENTRY e {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
 
-  HloCostAnalysis modified_analysis(ShapeSize);
+  HloCostAnalysis modified_analysis;
   ASSERT_IS_OK(root->Accept(&modified_analysis));
   HloInstruction* fusion_root =
       root->called_computations()[0]->root_instruction();
@@ -1784,7 +1783,7 @@ ENTRY e {
       module->entry_computation()->ComputeProgramShape());
   ASSERT_IS_OK(modified_analysis.RevisitInstruction(root));
 
-  HloCostAnalysis unmodified_analysis(ShapeSize);
+  HloCostAnalysis unmodified_analysis;
   ASSERT_IS_OK(root->Accept(&unmodified_analysis));
 
   EXPECT_FLOAT_EQ(modified_analysis.operand_utilization(*fusion_root, 0), 0.2);
@@ -1814,7 +1813,7 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   HloInstruction* root = module->entry_computation()->root_instruction();
-  HloCostAnalysis analysis(ShapeSize);
+  HloCostAnalysis analysis;
 
   // add_computation is shared by two reductions - r0 and r1.
   // Removing/revisiting one of them should not affect the other one.

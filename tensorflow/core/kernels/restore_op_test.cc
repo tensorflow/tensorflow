@@ -87,7 +87,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
 
     absl::InlinedVector<TensorValue, 4> inputs;
 
-    Status status;
+    absl::Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));
@@ -391,7 +391,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
 
     absl::InlinedVector<TensorValue, 4> inputs;
 
-    Status status;
+    absl::Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                                 cpu_allocator(), save,
                                                 TF_GRAPH_DEF_VERSION, &status));

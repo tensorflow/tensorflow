@@ -16,23 +16,24 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_collectives.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
+#include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor::gpu {
 
 /* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
-    Context* context, uint64_t bytes) {
+    StreamExecutor* executor, uint64_t bytes) {
   if (bytes == 0) return nullptr;
 
-  ScopedActivateContext activated(context);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
@@ -43,14 +44,14 @@ namespace stream_executor::gpu {
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
         ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
-  VLOG(2) << "Allocated collective memory " << ptr << " for context " << context
-          << " of " << bytes << " bytes";
+  VLOG(2) << "Allocated collective memory " << ptr << " for executor "
+          << executor << " of " << bytes << " bytes";
   return ptr;
 }
 
 /* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
-    Context* context, void* location) {
-  ScopedActivateContext activation(context);
+    StreamExecutor* executor, void* location) {
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
 
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
@@ -60,8 +61,8 @@ namespace stream_executor::gpu {
         location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
 
-  VLOG(2) << "Deallocated collective memory " << location << " for context "
-          << context;
+  VLOG(2) << "Deallocated collective memory " << location << " for executor "
+          << executor;
   return absl::OkStatus();
 }
 

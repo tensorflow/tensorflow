@@ -161,6 +161,22 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  absl::flat_hash_map<int, std::string> memories;
+  for (auto* device : client->devices()) {
+    for (auto* memory_space : device->memory_spaces()) {
+      std::string debug_string(memory_space->DebugString());
+      auto [it, inserted] = memories.insert({memory_space->id(), debug_string});
+      EXPECT_TRUE(inserted) << "Duplicate ids for memory spaces '" << it->second
+                            << "' and '" << debug_string << "'";
+    }
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));

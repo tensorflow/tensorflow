@@ -103,6 +103,7 @@ class IfrtServingExecutable {
   }
 
  private:
+  friend class IfrtBackendCompilerTest;
   // In memory cache key.
   struct Key {
     std::vector<tensorflow::TensorShape> input_shapes;

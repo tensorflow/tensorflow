@@ -32,9 +32,17 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+<<<<<<< HEAD
 #include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
 #include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
+=======
+#include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+>>>>>>> upstream/master
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"  // IWYU pragma: keep
@@ -150,7 +158,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
           << "Failed to retain context: " << GetCudaErrorMessage(result);
   }
 
-  gpu::ScopedActivateContext scoped_activation{stream_exec_};
+  std::unique_ptr<ActivateContext> scoped_activation = stream_exec_->Activate();
 
   // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
@@ -336,7 +344,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   if (stats_) {
     lock.lock();
   }
-  gpu::ScopedActivateContext scoped_activation{stream_exec_};
+  std::unique_ptr<ActivateContext> scoped_activation = stream_exec_->Activate();
   void* ptr = nullptr;
   auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
                                         num_bytes, pool_, cuda_stream_);
@@ -406,7 +414,8 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
       VLOG(1) << "Ignoring CUDA error: " << GetCudaErrorMessage(result);
     } else {
       size_t free, total;
-      gpu::ScopedActivateContext scoped_activation{stream_exec_};
+      std::unique_ptr<ActivateContext> scoped_activation =
+          stream_exec_->Activate();
       cuMemGetInfo(&free, &total);
       LOG(ERROR) << "cudaFreeAsync failed to free " << ptr << ": "
                  << GetCudaErrorMessage(result)

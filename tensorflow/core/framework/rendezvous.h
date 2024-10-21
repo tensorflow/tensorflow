@@ -89,8 +89,8 @@ class RendezvousInterface {
   // Send/Recv on the same worker.
   //
   // Send() never blocks.
-  virtual Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
-                      const bool is_dead) = 0;
+  virtual absl::Status Send(const ParsedKey& key, const Args& args,
+                            const Tensor& val, const bool is_dead) = 0;
 
   // Callback provided by a tensor consumer waiting on the rendezvous.
   // It will be invoked when the tensor is available, or when a non-OK
@@ -98,7 +98,7 @@ class RendezvousInterface {
   // two Rendezvous::Args, one provided by the sender, the other by the
   // receiver, which may be needed when a non-CPU device is in use
   // by either side.
-  typedef std::function<void(const Status&, const Args&, const Args&,
+  typedef std::function<void(const absl::Status&, const Args&, const Args&,
                              const Tensor&, const bool)>
       DoneCallback;
 
@@ -106,16 +106,16 @@ class RendezvousInterface {
                          DoneCallback done) = 0;
 
   // Synchronous wrapper for RecvAsync.
-  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
-              bool* is_dead, int64_t timeout_ms);
-  Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
-              bool* is_dead);
+  absl::Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+                    bool* is_dead, int64_t timeout_ms);
+  absl::Status Recv(const ParsedKey& key, const Args& args, Tensor* val,
+                    bool* is_dead);
 
   // Aborts all pending and future Send/Recv with the given "status".
   //
   // StartAbort() does not wait for ongoing calls to finish.
   // REQUIRES: !status.ok()
-  virtual void StartAbort(const Status& status) = 0;
+  virtual void StartAbort(const absl::Status& status) = 0;
 
   virtual ~RendezvousInterface();
 
@@ -135,22 +135,23 @@ class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
     // Default to a factory that evaluates to false.
     Factory() : valid_(false) {}
 
-    explicit Factory(std::function<Status(const int64_t, const DeviceMgr*,
-                                          tsl::core::RefCountPtr<Rendezvous>*)>
-                         create_fn)
+    explicit Factory(
+        std::function<absl::Status(const int64_t, const DeviceMgr*,
+                                   tsl::core::RefCountPtr<Rendezvous>*)>
+            create_fn)
         : valid_(true), create_fn_(std::move(create_fn)) {}
 
     explicit operator bool() const { return valid_; }
 
-    Status operator()(const int64_t step_id, const DeviceMgr* device_mgr,
-                      tsl::core::RefCountPtr<Rendezvous>* rendez) const {
+    absl::Status operator()(const int64_t step_id, const DeviceMgr* device_mgr,
+                            tsl::core::RefCountPtr<Rendezvous>* rendez) const {
       return create_fn_(step_id, device_mgr, rendez);
     }
 
    private:
     bool valid_;
-    std::function<Status(const int64_t, const DeviceMgr*,
-                         tsl::core::RefCountPtr<Rendezvous>*)>
+    std::function<absl::Status(const int64_t, const DeviceMgr*,
+                               tsl::core::RefCountPtr<Rendezvous>*)>
         create_fn_;
   };
 
@@ -163,7 +164,7 @@ class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
                                const std::string& name,
                                const FrameAndIter& frame_iter);
 
-  static Status ParseKey(StringPiece key, ParsedKey* out);
+  static absl::Status ParseKey(StringPiece key, ParsedKey* out);
 };
 
 // Returns a Rendezvous instance that is limited to use only by

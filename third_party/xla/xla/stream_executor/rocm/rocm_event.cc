@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_event.h"
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
@@ -24,9 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "tsl/platform/errors.h"
@@ -35,9 +35,9 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 namespace {
-absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
+absl::Status WaitStreamOnEvent(StreamExecutor *executor, hipStream_t stream,
                                hipEvent_t event) {
-  ScopedActivateContext activation{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(
       ToStatus(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
                "could not wait stream on event"));
@@ -45,7 +45,8 @@ absl::Status WaitStreamOnEvent(Context* context, hipStream_t stream,
 }
 
 enum class EventFlags { kDefault, kDisableTiming };
-absl::StatusOr<hipEvent_t> InitEvent(Context* context, EventFlags flags) {
+absl::StatusOr<hipEvent_t> InitEvent(StreamExecutor *executor,
+                                     EventFlags flags) {
   int hipflags;
   switch (flags) {
     case EventFlags::kDefault:
@@ -58,7 +59,7 @@ absl::StatusOr<hipEvent_t> InitEvent(Context* context, EventFlags flags) {
       LOG(FATAL) << "impossible event flags: " << int(hipflags);
   }
 
-  ScopedActivateContext activated{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipEvent_t event;
   hipError_t res = wrap::hipEventCreateWithFlags(&event, hipflags);
 
@@ -73,25 +74,25 @@ absl::StatusOr<hipEvent_t> InitEvent(Context* context, EventFlags flags) {
       absl::StrCat("could not create ROCM event: ", ToString(res)));
 }
 
-void DestroyEvent(Context* context, hipEvent_t event) {
+void DestroyEvent(StreamExecutor *executor, hipEvent_t event) {
   if (event == nullptr) {
     return;
   }
 
-  ScopedActivateContext activated{context};
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipError_t res = wrap::hipEventDestroy(event);
 
   if (res != hipSuccess) {
     LOG(ERROR) << absl::StrFormat(
         "error destroying ROCM event in device %d: %s",
-        context->device_ordinal(), ToString(res));
+        executor->device_ordinal(), ToString(res));
   }
 }
 
 }  // namespace
 
 Event::Status RocmEvent::PollForStatus() {
-  ScopedActivateContext activated(context_);
+  std::unique_ptr<ActivateContext> activated = executor_->Activate();
   hipError_t res = wrap::hipEventQuery(handle_);
 
   if (res == hipSuccess) {
@@ -104,25 +105,25 @@ Event::Status RocmEvent::PollForStatus() {
 }
 
 absl::Status RocmEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
-  return WaitStreamOnEvent(context_, absl::bit_cast<hipStream_t>(stream),
+  return WaitStreamOnEvent(executor_, absl::bit_cast<hipStream_t>(stream),
                            handle_);
 }
 
-absl::StatusOr<RocmEvent> RocmEvent::Create(Context* context,
+absl::StatusOr<RocmEvent> RocmEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
   TF_ASSIGN_OR_RETURN(
       hipEvent_t event_handle,
-      InitEvent(context, allow_timing ? EventFlags::kDefault
-                                      : EventFlags::kDisableTiming));
+      InitEvent(executor, allow_timing ? EventFlags::kDefault
+                                       : EventFlags::kDisableTiming));
 
-  return RocmEvent(context, event_handle);
+  return RocmEvent(executor, event_handle);
 }
 
-RocmEvent::~RocmEvent() { DestroyEvent(context_, handle_); }
+RocmEvent::~RocmEvent() { DestroyEvent(executor_, handle_); }
 
-RocmEvent::RocmEvent(RocmEvent&& other)
-    : context_(other.context_), handle_(other.handle_) {
-  other.context_ = nullptr;
+RocmEvent::RocmEvent(RocmEvent &&other)
+    : executor_(other.executor_), handle_(other.handle_) {
+  other.executor_ = nullptr;
   other.handle_ = nullptr;
 }
 
@@ -131,11 +132,11 @@ RocmEvent& RocmEvent::operator=(RocmEvent&& other) {
     return *this;
   }
 
-  DestroyEvent(context_, handle_);
+  DestroyEvent(executor_, handle_);
 
-  context_ = other.context_;
+  executor_ = other.executor_;
   handle_ = other.handle_;
-  other.context_ = nullptr;
+  other.executor_ = nullptr;
   other.handle_ = nullptr;
   return *this;
 }

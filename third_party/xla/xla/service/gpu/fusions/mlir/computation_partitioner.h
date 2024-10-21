@@ -23,14 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/util.h"
 
@@ -43,13 +40,6 @@ struct EpilogueSpecification {
   static EpilogueSpecification FromIdentityIndexing(
       const HloInstruction* hero, const HloInstruction* root,
       mlir::MLIRContext* mlir_context);
-  // Creates an epilogue with the raw thread/block/symbol indices, as defined
-  // by the fusion's thread->output mapping.
-  static EpilogueSpecification FromOutputIndexing(
-      const HloFusionAnalysis& analysis,
-      const std::vector<const HloInstruction*>& heroes,
-      const std::vector<const HloInstruction*>& roots,
-      const KernelFusionInterface& fusion, mlir::MLIRContext* mlir_context);
 
   std::vector<const HloInstruction*> heroes;
   std::vector<const HloInstruction*> roots;

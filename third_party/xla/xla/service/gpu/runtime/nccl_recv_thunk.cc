@@ -96,7 +96,7 @@ absl::Status NcclRecvThunk::RunNcclCollective(
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode);
   ;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
                                           comm_wrapper.comm_handle));
 
   const std::optional<int64_t> source_id = source_target.source;

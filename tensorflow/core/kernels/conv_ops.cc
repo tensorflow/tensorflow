@@ -39,6 +39,7 @@ typedef Eigen::GpuDevice GPUDevice;
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
   } while (false)
 
+<<<<<<< HEAD
 bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 #if TENSORFLOW_USE_ROCM
    bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
@@ -51,6 +52,10 @@ bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 
 Status InitConv2DParameters(const OpKernelConstruction* context,
                             Conv2DParameters* params) {
+=======
+absl::Status InitConv2DParameters(const OpKernelConstruction* context,
+                                  Conv2DParameters* params) {
+>>>>>>> upstream/master
   TF_RETURN_IF_ERROR(context->GetAttr("dilations", &params->dilations));
   TF_RETURN_IF_ERROR(context->GetAttr("strides", &params->strides));
   TF_RETURN_IF_ERROR(context->GetAttr("padding", &params->padding));
@@ -104,9 +109,9 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   return absl::OkStatus();
 }
 
-Status ComputeConv2DDimension(const Conv2DParameters& params,
-                              const Tensor& input, const Tensor& filter,
-                              Conv2DDimensions* dimensions) {
+absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
+                                    const Tensor& input, const Tensor& filter,
+                                    Conv2DDimensions* dimensions) {
   int required_dims =
       params.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
   // Check that 2D convolution input and filter have exactly required_dims.

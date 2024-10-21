@@ -167,7 +167,7 @@ class GraphConstructor {
   typedef absl::Span<const NodeDef* const> NodeDefSlice;
 
   // versions, library, and debug_info may be nullptr
-  static Status Construct(
+  static absl::Status Construct(
       const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
       const FunctionDefLibrary* library, const GraphDebugInfo* debug_info,
       Graph* g, ShapeRefiner* refiner,
@@ -175,7 +175,7 @@ class GraphConstructor {
       std::vector<Node*>* return_nodes,
       std::vector<SafeTensorId>* missing_unused_input_map_keys);
 
-  static Status Construct(
+  static absl::Status Construct(
       const Options& opts, GraphDef&& graph_def, Graph* g,
       ShapeRefiner* refiner, std::vector<std::pair<Node*, int>>* return_tensors,
       std::vector<Node*>* return_nodes,
@@ -197,7 +197,7 @@ class GraphConstructor {
 
   virtual ~GraphConstructor() {}
 
-  Status TryImport() {
+  absl::Status TryImport() {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
     TF_RETURN_IF_ERROR(ValidateInputMapAndControlDependencies());
     TF_RETURN_IF_ERROR(BuildNodeIndex());
@@ -218,16 +218,16 @@ class GraphConstructor {
   }
 
  private:
-  Status EnsureNoNameCollisions();
-  Status ValidateInputMapAndControlDependencies();
-  Status BuildNodeIndex();
-  Status InitFromEdges();
-  Status Convert();
-  Status AddBackEdges();
-  Status UpdateVersionDef();
-  Status PopulateReturnTensors();
-  Status PopulateReturnNodes();
-  Status PopulateMissingUnusedInputMapKeys();
+  absl::Status EnsureNoNameCollisions();
+  absl::Status ValidateInputMapAndControlDependencies();
+  absl::Status BuildNodeIndex();
+  absl::Status InitFromEdges();
+  absl::Status Convert();
+  absl::Status AddBackEdges();
+  absl::Status UpdateVersionDef();
+  absl::Status PopulateReturnTensors();
+  absl::Status PopulateReturnNodes();
+  absl::Status PopulateMissingUnusedInputMapKeys();
 
   FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
       const FunctionDefLibrary& library) const;
@@ -241,12 +241,13 @@ class GraphConstructor {
            std::vector<bool>* is_on_cur_branch,
            absl::flat_hash_set<int>* unvisited,
            const std::vector<absl::string_view>& node_names);
-  Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
-  Status ValidateColocationConstraints(const NodeDef& node_def);
-  Status MakeNode(NodeDef&& node_def, Node** node);
-  Status MakeEdge(Node* src, int output_index, Node* dst, int input_index);
-  Status ValidateShape(Node* node);
-  Status ModifyNodeDefForImport(NodeDef* node_def);
+  absl::Status IsNodeFullyMapped(const NodeDef& node_def, bool* is_node_mapped);
+  absl::Status ValidateColocationConstraints(const NodeDef& node_def);
+  absl::Status MakeNode(NodeDef&& node_def, Node** node);
+  absl::Status MakeEdge(Node* src, int output_index, Node* dst,
+                        int input_index);
+  absl::Status ValidateShape(Node* node);
+  absl::Status ModifyNodeDefForImport(NodeDef* node_def);
   // Modifies node_def's inputs according to opts_.input_map.
   // input_already_exists is a pre-initialized vector of length
   // node_def->input_size(). This function will mark inputs that are remapped to
@@ -495,10 +496,10 @@ bool ForwardCompatibilityWindowPassed(const VersionDef& versions) {
   return (versions.producer() - TF_GRAPH_DEF_VERSION) > 21;
 }
 
-Status MaybeAppendVersionWarning(const VersionDef* versions,
-                                 const Status& import_status) {
+absl::Status MaybeAppendVersionWarning(const VersionDef* versions,
+                                       const absl::Status& import_status) {
   if (versions && ForwardCompatibilityWindowPassed(*versions)) {
-    return Status(
+    return absl::Status(
         import_status.code(),
         absl::StrCat(
             "Converting GraphDef to Graph has failed with an error: '",
@@ -516,7 +517,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
   return import_status;
 }
 
-/* static */ Status GraphConstructor::Construct(
+/* static */ absl::Status GraphConstructor::Construct(
     const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
     const FunctionDefLibrary* library, const GraphDebugInfo* debug_info,
     Graph* g, ShapeRefiner* refiner,
@@ -531,7 +532,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
   NodeDefCopyingGraphConstructor c(opts, node_defs, versions, library,
                                    debug_info, g, refiner, return_tensors,
                                    return_nodes, missing_unused_input_map_keys);
-  Status s = c.TryImport();
+  absl::Status s = c.TryImport();
   if (!s.ok()) {
     c.Undo();
     s = MaybeAppendVersionWarning(versions, s);
@@ -539,7 +540,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
   return s;
 }
 
-/* static */ Status GraphConstructor::Construct(
+/* static */ absl::Status GraphConstructor::Construct(
     const Options& opts, GraphDef&& graph_def, Graph* g, ShapeRefiner* refiner,
     std::vector<std::pair<Node*, int>>* return_tensors,
     std::vector<Node*>* return_nodes,
@@ -551,7 +552,7 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
   NodeDefMovingGraphConstructor c(opts, std::move(graph_def), g, refiner,
                                   return_tensors, return_nodes,
                                   missing_unused_input_map_keys);
-  Status s = c.TryImport();
+  absl::Status s = c.TryImport();
   if (!s.ok()) {
     c.Undo();
     s = MaybeAppendVersionWarning(&version_def, s);
@@ -604,7 +605,7 @@ void AddPrefixes(StringPiece node_name,
   }
 }
 
-Status GraphConstructor::EnsureNoNameCollisions() {
+absl::Status GraphConstructor::EnsureNoNameCollisions() {
   existing_nodes_.reserve(g_->num_nodes());
   // Populate existing_nodes_ and existing_prefixes_.
   for (Node* n : g_->nodes()) {
@@ -646,7 +647,7 @@ Status GraphConstructor::EnsureNoNameCollisions() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::ValidateInputMapAndControlDependencies() {
+absl::Status GraphConstructor::ValidateInputMapAndControlDependencies() {
   for (const auto& mapping : opts_.input_map) {
     TensorId src = mapping.first;
     TensorId dst = mapping.second;
@@ -673,7 +674,7 @@ Status GraphConstructor::ValidateInputMapAndControlDependencies() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::BuildNodeIndex() {
+absl::Status GraphConstructor::BuildNodeIndex() {
   // Validate the node names and add them to gdef_nodes_ and gdef_prefixes_.
   for (int n = 0; n < node_def_count(); ++n) {
     const NodeDef& node_def = get_node_def(n);
@@ -717,7 +718,7 @@ Status GraphConstructor::BuildNodeIndex() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::InitFromEdges() {
+absl::Status GraphConstructor::InitFromEdges() {
   const int num_nodes = node_def_count();
   pending_count_.reserve(num_nodes);
   outputs_.resize(num_nodes);
@@ -784,7 +785,7 @@ Status GraphConstructor::InitFromEdges() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::ValidateColocationConstraints(
+absl::Status GraphConstructor::ValidateColocationConstraints(
     const NodeDef& node_def) {
   if (!opts_.validate_colocation_constraints || !opts_.importing)
     return absl::OkStatus();
@@ -802,9 +803,9 @@ Status GraphConstructor::ValidateColocationConstraints(
   return absl::OkStatus();
 }
 
-Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
+absl::Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
   // Add the node to the graph.
-  Status status;
+  absl::Status status;
   *node = g_->AddNode(std::move(node_def), &status);
   if (!status.ok()) return status;
   if (opts_.expect_device_spec ||
@@ -814,7 +815,7 @@ Status GraphConstructor::MakeNode(NodeDef&& node_def, Node** node) {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::ValidateShape(Node* node) {
+absl::Status GraphConstructor::ValidateShape(Node* node) {
   if (!opts_.importing || !opts_.validate_shape) return absl::OkStatus();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
   // For nodes with the _output_shapes attribute, override the shape.
@@ -845,7 +846,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   for (int i = 0; i < node->num_outputs(); ++i) {
     const TensorShapeProto& p = *shape_attrs[i];
     shape_inference::ShapeHandle h;
-    Status s = ic->MakeShapeFromShapeProto(p, &h);
+    absl::Status s = ic->MakeShapeFromShapeProto(p, &h);
     if (!s.ok()) {
       return errors::InvalidArgument("Node '", node->name(), " has an invalid ",
                                      kAttrName, " attribute (shape #", i,
@@ -863,7 +864,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
+absl::Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def->op(), &op_def));
   AddDefaultsToNodeDef(*op_def, node_def);
@@ -1076,8 +1077,8 @@ string GraphConstructor::FindUniqueName(StringPiece original_name) {
   return name;
 }
 
-Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
-                                           bool* is_node_mapped) {
+absl::Status GraphConstructor::IsNodeFullyMapped(const NodeDef& node_def,
+                                                 bool* is_node_mapped) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def.op(), &op_def));
   for (int i = 0; i < op_def->output_arg_size(); ++i) {
@@ -1161,7 +1162,7 @@ GraphConstructor::CreateStackTracesForFunctionDefLibrary(
   }
 }
 
-Status GraphConstructor::Convert() {
+absl::Status GraphConstructor::Convert() {
   if (debug_info() != nullptr) {
     traces_ = LoadTracesFromDebugInfo(*debug_info());
   }
@@ -1364,7 +1365,7 @@ Status GraphConstructor::Convert() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::AddBackEdges() {
+absl::Status GraphConstructor::AddBackEdges() {
   // Add the back edges after all nodes are created.
   for (const auto& e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
@@ -1381,7 +1382,7 @@ Status GraphConstructor::AddBackEdges() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::UpdateVersionDef() {
+absl::Status GraphConstructor::UpdateVersionDef() {
   if (versions() == nullptr) return absl::OkStatus();
 
   if (!opts_.importing) {
@@ -1407,7 +1408,7 @@ Status GraphConstructor::UpdateVersionDef() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::PopulateReturnTensors() {
+absl::Status GraphConstructor::PopulateReturnTensors() {
   if (opts_.return_tensors.empty()) return absl::OkStatus();
   for (const TensorId& id : opts_.return_tensors) {
     auto iter = opts_.input_map.find(id);
@@ -1438,7 +1439,7 @@ Status GraphConstructor::PopulateReturnTensors() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::PopulateReturnNodes() {
+absl::Status GraphConstructor::PopulateReturnNodes() {
   if (opts_.return_nodes.empty()) return absl::OkStatus();
   for (StringPiece name : opts_.return_nodes) {
     auto iter = gdef_nodes_.find(name);
@@ -1451,7 +1452,7 @@ Status GraphConstructor::PopulateReturnNodes() {
   return absl::OkStatus();
 }
 
-Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
+absl::Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
   if (missing_unused_input_map_keys_ == nullptr) return absl::OkStatus();
   for (const auto& input_map_pair : opts_.input_map) {
     TensorId key = input_map_pair.first;
@@ -1489,8 +1490,8 @@ void GraphConstructor::Undo() {
   g_->set_versions(original_versions_);
 }
 
-Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
-                                  int input_index) {
+absl::Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
+                                        int input_index) {
   if (output_index >= src->num_outputs()) {
     return errors::InvalidArgument(
         "Output ", output_index, " of node ", src->name(),
@@ -1515,8 +1516,8 @@ Status GraphConstructor::MakeEdge(Node* src, int output_index, Node* dst,
 }
 }  // namespace
 
-Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                              const GraphDef& gdef, Graph* g) {
+absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                    const GraphDef& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
   return GraphConstructor::Construct(
       opts, gdef.node(), &gdef.versions(), &gdef.library(), &gdef.debug_info(),
@@ -1524,8 +1525,8 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
       /*missing_unused_input_map_keys=*/nullptr);
 }
 
-Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
-                              GraphDef&& gdef, Graph* g) {
+absl::Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                    GraphDef&& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
   return GraphConstructor::Construct(opts, std::move(gdef), g, &refiner,
                                      /*return_tensors=*/nullptr,
@@ -1533,9 +1534,9 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      /*missing_unused_input_map_keys=*/nullptr);
 }
 
-Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
-                              absl::Span<const NodeDef> nodes, Graph* g,
-                              const GraphDebugInfo* debug_info) {
+absl::Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
+                                    absl::Span<const NodeDef> nodes, Graph* g,
+                                    const GraphDebugInfo* debug_info) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, g->op_registry());
   // TODO(irving): Copy will go away once NodeInfo exists
   std::vector<const NodeDef*> node_defs;
@@ -1550,9 +1551,10 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
                                      /*missing_unused_input_map_keys=*/nullptr);
 }
 
-Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
-                      Graph* g, ShapeRefiner* refiner,
-                      ImportGraphDefResults* results) {
+absl::Status ImportGraphDef(const ImportGraphDefOptions& opts,
+                            const GraphDef& gdef, Graph* g,
+                            ShapeRefiner* refiner,
+                            ImportGraphDefResults* results) {
   if (!opts.return_tensors.empty()) {
     if (results == nullptr) {
       return errors::InvalidArgument(

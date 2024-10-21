@@ -318,33 +318,6 @@ class CStreamExecutor : public StreamExecutorCommon {
     return StatusFromTF_Status(c_status.get());
   }
 
-  absl::Status BlockHostUntilDone(Stream* stream) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-
-    // If `block_host_until_done` is set, use it.
-    if (stream_executor_->block_host_until_done != nullptr) {
-      stream_executor_->block_host_until_done(&device_, stream_handle,
-                                              c_status.get());
-      return StatusFromTF_Status(c_status.get());
-    }
-    // Create and record an event and then wait for it.
-    SP_Event event_handle;
-    stream_executor_->create_event(&device_, &event_handle, c_status.get());
-    TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
-    stream_executor_->record_event(&device_, stream_handle, event_handle,
-                                   c_status.get());
-    absl::Status s = StatusFromTF_Status(c_status.get());
-    if (!s.ok()) {
-      stream_executor_->destroy_event(&device_, event_handle);
-      return s;
-    }
-    stream_executor_->block_host_for_event(&device_, event_handle,
-                                           c_status.get());
-    stream_executor_->destroy_event(&device_, event_handle);
-    return StatusFromTF_Status(c_status.get());
-  }
-
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
     return tsl::errors::Unimplemented(
         "EnablePeerAccessTo is not supported by pluggable device.");

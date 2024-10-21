@@ -423,13 +423,9 @@ TEST(ElementWise, RsqrtCloseTo0Int8) {
               ElementsAreArray(ArrayFloatNear(expected_output, kInputScale)));
 }
 
-TEST(ElementWise, RsqrtNanInt8) {
+TEST(ElementWise, RsqrtNegativeInt8) {
   const std::vector<float> input_data = {15., 46., 78.,  142.,
                                          1.,  17., -49., 113.};
-  std::vector<float> expected_output(input_data.size());
-  for (int i = 0; i < expected_output.size(); i++) {
-    expected_output[i] = 1.f / std::sqrt(input_data[i]);
-  }
   float kInputScale = 142.0 / 127.0;
   float kOutputScale = 1.0 / 255.0;
   int32_t input_zero_point = 0;
@@ -484,24 +480,12 @@ TEST(ElementWise, RsqrtInt16) {
       ElementsAreArray(ArrayFloatNear(expected_output, kQuantizedTolerance)));
 }
 
-TEST(ElementWise, RsqrtNanInt16) {
-  const float input_min = -0.8f;
-  const float input_max = 0.8f;
-
-  const float output_min = -2.4f;
-  const float output_max = 2.4f;
-
-  const float kQuantizedTolerance =
-      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
-
+TEST(ElementWise, RsqrtNegativeInt16) {
   ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
                                 {TensorType_INT16, {1, 1, 4, 1}, -10, 10},
                                 {TensorType_INT16, {1, 1, 4, 1}, -10, 10});
   m.QuantizeAndPopulate<int16_t>(m.input(), {-1, 0, -4, -9});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.ExtractDequantVector<int16_t>(m.output()),
-              ElementsAreArray(
-                  ArrayFloatNear({10, 9.82452, 10, 10}, kQuantizedTolerance)));
+  ASSERT_EQ(m.Invoke(), kTfLiteError);
 }
 
 TEST(ElementWise, Square) {

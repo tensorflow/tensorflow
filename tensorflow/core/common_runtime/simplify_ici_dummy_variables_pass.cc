@@ -50,7 +50,7 @@ namespace {
 constexpr absl::string_view kTpuExecute = "TPUExecute";
 constexpr absl::string_view kParallelExecuteIds = "_parallel_execution_ids";
 const char kICIWeightDistributionMlirBridgeMarker[] =
-    "ici_weight_distribution_mlir_bridge_marker";
+    "_ici_weight_distribution_mlir_bridge_marker";
 
 // Get the new op name which is used to replace the old op, the new op name
 // contains the index of the input and the task id of the TPUExecute node.
@@ -262,7 +262,7 @@ bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
   return true;
 }
 
-Status SimplifyIciDummyVariablesPass::Run(
+absl::Status SimplifyIciDummyVariablesPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (!ShouldRunPass(options)) {
     return absl::OkStatus();

@@ -709,3 +709,15 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
+// -----
+
+func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
+  %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi4>
+  %extracted = tensor.extract %arg0[%arg1] : tensor<3xi4>
+  %extracted_0 = tensor.extract %cst[%arg1] : tensor<3xi4>
+  %0 = arith.addi %extracted, %extracted_0 : i4
+  return %0 : i4
+}
+// CHECK: llvm.mlir.global private constant
+// CHECK-SAME: dense<[18, 48]>
+// CHECK-LABEL: @int4_constant

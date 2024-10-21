@@ -37,6 +37,7 @@ from typing import (
 
 import numpy as np
 
+from . import guard_lib
 from . import ifrt_programs
 from . import ifrt_proxy
 from . import jax_jit
@@ -409,6 +410,10 @@ class HloSharding:
   def manual() -> HloSharding: ...
   @staticmethod
   def unknown() -> HloSharding: ...
+  @staticmethod
+  def subgroup_with_device_ordering(
+      tile_assignment: np.ndarray,
+      subgroup_types: Sequence[OpSharding.Type]) -> HloSharding: ...
   def __eq__(self, other: HloSharding) -> bool: ...
   def __hash__(self) -> int: ...
   def __repr__(self) -> str: ...
@@ -880,6 +885,7 @@ class NamedSharding(Sharding):
       memory_kind: Optional[str] = None,
       _parsed_pspec: Any = None,
       _manual_axes: frozenset[Any] = frozenset(),
+      _logical_device_ids: tuple[int, ...] | None = None,
   ): ...
   mesh: Any
   spec: Any
@@ -887,6 +893,7 @@ class NamedSharding(Sharding):
   _parsed_pspec: Any
   _internal_device_list: DeviceList
   _manual_axes: frozenset[Any]
+  _logical_device_ids: tuple[int, ...] | None
 
 class SingleDeviceSharding(Sharding):
   def __init__(self, device: Device, *, memory_kind: Optional[str] = None): ...

@@ -26,7 +26,7 @@ constexpr uint32 kTensorboardSqliteApplicationId = 0xfeedabee;
 ///
 /// If they are already created, this has no effect. If schema
 /// migrations are necessary, they will be performed with logging.
-Status SetupTensorboardSqliteDb(Sqlite* db);
+absl::Status SetupTensorboardSqliteDb(Sqlite* db);
 
 }  // namespace tensorflow
 

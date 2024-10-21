@@ -24,7 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ValidatePluggableDeviceMachineManager(const string& platform_name) {
+absl::Status ValidatePluggableDeviceMachineManager(
+    const string& platform_name) {
   return se::PlatformManager::PlatformWithName(platform_name).status();
 }
 

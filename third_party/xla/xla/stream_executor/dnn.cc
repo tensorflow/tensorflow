@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/util.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace stream_executor {
@@ -298,19 +299,6 @@ absl::Status DnnSupport::DoPoolBackward(
                         workspace_allocator);
 }
 
-std::string QuantizedActivationModeString(QuantizedActivationMode mode) {
-  switch (mode) {
-    case dnn::QuantizedActivationMode::k8Bit:
-      return "uint8";
-    case dnn::QuantizedActivationMode::k16Bit:
-      return "uint16";
-    case dnn::QuantizedActivationMode::k32Bit:
-      return "int32";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
-}
-
 std::string ActivationModeString(ActivationMode mode) {
   switch (mode) {
     case ActivationMode::kNone:
@@ -333,17 +321,6 @@ std::string ActivationModeString(ActivationMode mode) {
       return "leakyrelu";
     default:
       return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
-}
-
-std::string ElementwiseOperationString(ElementwiseOperation op) {
-  switch (op) {
-    case ElementwiseOperation::kAdd:
-      return "add";
-    case ElementwiseOperation::kMultiply:
-      return "multiply";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(op));
   }
 }
 
@@ -402,17 +379,6 @@ std::string PadAlignmentString(PadAlignment alignment) {
 
 std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
   return str << PadAlignmentString(alignment);
-}
-
-std::string ShortPoolingModeString(PoolingMode mode) {
-  switch (mode) {
-    case PoolingMode::kMaximum:
-      return "Max";
-    case PoolingMode::kAverage:
-      return "Avg";
-    default:
-      return absl::StrCat("unknown: ", static_cast<int32_t>(mode));
-  }
 }
 
 struct ConvDimIndices {
@@ -629,16 +595,9 @@ std::string TensorDescriptor::ToString() const {
 
 absl::StatusOr<std::vector<int64_t>>
 MatmulTensorDescriptor::GetNonContractingDims() const {
-  std::vector<int64_t> non_contracting_dims;
-  for (int64_t dim = 0; dim < tensor_.dimensions().size(); ++dim) {
-    bool is_batch = absl::c_count(batch_dimension_numbers_, dim) != 0;
-    bool is_contracting = absl::c_count(contracting_dim_, dim) != 0;
-    if (is_batch && is_contracting)
-      return absl::InternalError(
-          "A dimension cannot be both a batch dimension and a contracting "
-          "dimension.");
-    if (!(is_batch || is_contracting)) non_contracting_dims.push_back(dim);
-  }
+  auto nc = xla::GetNonContractingDims(
+      tensor_.dimensions().size(), contracting_dim_, batch_dimension_numbers_);
+  std::vector<int64_t> non_contracting_dims(nc.begin(), nc.end());
 
   if (batch_dimension_numbers_.size() + contracting_dim_.size() +
           non_contracting_dims.size() !=
@@ -779,13 +738,6 @@ std::vector<int64_t> BatchDescriptor::vectorized_strides(
   return ReorderDims(phys_strides, this->layout(), layout);
 }
 
-void BatchDescriptor::CloneFrom(const BatchDescriptor& other) {
-  tensor_ = other.tensor_;
-  value_max_ = other.value_max_;
-  value_min_ = other.value_min_;
-  quantized_activation_mode_ = other.quantized_activation_mode_;
-}
-
 std::string BatchDescriptor::ToString() const {
   std::string spatial;
   for (int i = 0; i < ndims(); i++) {
@@ -848,34 +800,6 @@ int64_t BatchDescriptor::NodesAcrossFeatureMaps() const {
   return NodesPerFeatureMap() * feature_map_count();
 }
 
-int64_t BatchDescriptor::ElementCount() const {
-  return count() * feature_map_count() * NodesPerFeatureMap();
-}
-
-int64_t BatchDescriptor::FullyConnectedWeightCount(
-    const BatchDescriptor& input, const BatchDescriptor& output) {
-  return input.NodesAcrossFeatureMaps() * output.NodesAcrossFeatureMaps();
-}
-
-int64_t BatchDescriptor::FullyConnectedBiasCount(
-    const BatchDescriptor& output) {
-  return output.NodesAcrossFeatureMaps();
-}
-
-BatchDescriptor BatchDescriptor::DepthConcatenateOutputDescriptor(
-    absl::Span<const dnn::BatchDescriptor> inputs) {
-  if (inputs.empty()) {
-    return BatchDescriptor();
-  }
-  int feature_map_count = 0;
-  for (const auto& dimensions : inputs) {
-    feature_map_count += dimensions.feature_map_count();
-  }
-  BatchDescriptor output = inputs[0];
-  output.set_feature_map_count(feature_map_count);
-  return output;
-}
-
 TensorDescriptorProto BatchDescriptor::ToProto(DataType data_type) const {
   CHECK_EQ(0.0, value_max_);
   CHECK_EQ(0.0, value_min_);
@@ -897,10 +821,6 @@ FilterDescriptor::FilterDescriptor() : FilterDescriptor(/*ndims=*/2) {}
 
 FilterDescriptor::~FilterDescriptor() {}
 
-void FilterDescriptor::CloneFrom(const FilterDescriptor& other) {
-  tensor_ = other.tensor_;
-}
-
 std::string FilterDescriptor::ToString() const {
   std::string desc = absl::StrFormat(
       "{output_feature_map_count: %d input_feature_map_count: %d "
@@ -913,45 +833,6 @@ std::string FilterDescriptor::ToString() const {
   absl::StrAppend(&desc, "}");
 
   return desc;
-}
-
-std::string FilterDescriptor::ToShortString() const {
-  // All the constituent strings are less than 15 characters, so the
-  // small string optimization ensures that there will be at most one
-  // heap memory allocation.
-  std::string od = absl::StrCat("od", output_feature_map_count());
-  std::string id = absl::StrCat("id", input_feature_map_count());
-
-  std::string spatial = "s";
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&spatial, "%d ", input_filter_dims()[i]);
-  }
-
-  switch (layout()) {
-    case FilterLayout::kOutputInputYX:
-      return absl::StrCat(od, id, spatial);
-    case FilterLayout::kOutputYXInput:
-      return absl::StrCat(od, spatial, id);
-    case FilterLayout::kOutputInputYX4:
-    case FilterLayout::kOutputInputYX32:
-    case FilterLayout::kOutputInputYX32_CudnnReordered:
-      return absl::StrCat(od, id, spatial, "(VECT_C)");
-    case FilterLayout::kInputYXOutput:
-      return absl::StrCat(id, spatial, od);
-    case FilterLayout::kYXInputOutput:
-      return absl::StrCat(spatial, id, od);
-    default:
-      LOG(FATAL) << "Unknown layout " << static_cast<int32_t>(layout());
-      return "";  // Avoid return warning (unreachable)
-  }
-}
-
-int64_t FilterDescriptor::ComputeWeightCount() const {
-  int64_t ret = output_feature_map_count() * input_feature_map_count();
-  for (int i = 0; i < ndims(); i++) {
-    ret *= input_filter_dims()[i];
-  }
-  return ret;
 }
 
 std::vector<int64_t> FilterDescriptor::full_dims(
@@ -1033,21 +914,6 @@ std::string ConvolutionDescriptor::ToString() const {
       padding, PadAlignmentString(pad_alignment()), strides, dilations);
 }
 
-std::string ConvolutionDescriptor::ToShortString() const {
-  std::string desc;
-  for (int i = 0; i < ndims(); i++) {
-    if (i > 0) absl::StrAppend(&desc, "_");
-    absl::StrAppendFormat(&desc, "p%d:%d", i, padding()[i]);
-  }
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&desc, "_s%d:%d", i, strides()[i]);
-  }
-  for (int i = 0; i < ndims(); i++) {
-    absl::StrAppendFormat(&desc, "_d%d:%d", i, dilations()[i]);
-  }
-  return desc;
-}
-
 // -- PoolingDescriptor
 
 PoolingDescriptor::PoolingDescriptor(int ndims)
@@ -1060,45 +926,6 @@ PoolingDescriptor::PoolingDescriptor(int ndims)
 
 PoolingDescriptor::PoolingDescriptor() : PoolingDescriptor(/*ndims=*/2) {}
 
-void PoolingDescriptor::CloneFrom(const PoolingDescriptor& other) {
-  mode_ = other.mode_;
-  ndims_ = other.ndims_;
-  window_ = other.window_;
-  padding_ = other.padding_;
-  strides_ = other.strides_;
-  propagate_nans_ = other.propagate_nans_;
-}
-
-std::string PoolingDescriptor::ToString() const {
-  const char* mode_string =
-      mode_ == dnn::PoolingMode::kMaximum ? "kMaximum" : "kAverage";
-
-  std::string window, strides, padding;
-  for (int i = 0; i < ndims_; i++) {
-    absl::StrAppendFormat(&window, "%d ", window_[i]);
-    absl::StrAppendFormat(&strides, "%d ", strides_[i]);
-    absl::StrAppendFormat(&padding, "%d", padding_[i]);
-  }
-
-  const char* propagate_string = propagate_nans_ ? "Yes" : "No";
-
-  return absl::StrFormat(
-      "{mode: %s window: %s strides: %s padding: %s propagate NaNs: %s}",
-      mode_string, window, strides, padding, propagate_string);
-}
-
-std::string PoolingDescriptor::ToShortString() const {
-  std::string window, strides, padding;
-  for (int i = 0; i < ndims_; i++) {
-    absl::StrAppendFormat(&window, "_w%d:%d", i, window_[i]);
-    absl::StrAppendFormat(&strides, "_s%d:%d", i, strides_[i]);
-    absl::StrAppendFormat(&padding, "_p%d:%d", i, padding_[i]);
-  }
-  return absl::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
-                      window, strides, padding,
-                      propagate_nans_ ? "propagate_nans" : "ignore_nans");
-}
-
 // -- NormalizeDescriptor
 
 NormalizeDescriptor::NormalizeDescriptor()
@@ -1108,28 +935,6 @@ NormalizeDescriptor::NormalizeDescriptor()
       beta_(0.0),
       wrap_around_(false),
       segment_size_(0) {}
-
-void NormalizeDescriptor::CloneFrom(const NormalizeDescriptor& other) {
-  bias_ = other.bias_;
-  range_ = other.range_;
-  alpha_ = other.alpha_;
-  beta_ = other.beta_;
-  wrap_around_ = other.wrap_around_;
-  segment_size_ = other.segment_size_;
-}
-
-std::string NormalizeDescriptor::ToString() const {
-  return absl::StrFormat(
-      "{bias: %f range: %d alpha: %f beta: %f wrap_around: %d "
-      "segment_size: %d}",
-      bias_, range_, alpha_, beta_, wrap_around_, segment_size_);
-}
-
-std::string NormalizeDescriptor::ToShortString() const {
-  return absl::StrCat("bias:", bias_, "_range:", range_, "_alpha:", alpha_,
-                      "_beta:", beta_, "_wrap:", wrap_around_,
-                      "_size:", segment_size_);
-}
 
 bool DnnSupport::IsStatusOk(const absl::Status& status, bool report_error) {
   if (status.ok()) {

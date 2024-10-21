@@ -179,6 +179,7 @@ cc_library(
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:matmul_indexing_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:target_util",
         "//xla/service/gpu:triton_fusion_analysis",
@@ -318,13 +319,35 @@ cc_library(
 )
 
 td_library(
-    name = "xla_triton_ops_td_files",
-    srcs = ["xla_triton_ops.td"],
+    name = "xla_triton_td_files",
+    srcs = glob(["*.td"]),
     includes = ["."],
     deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
     ],
+)
+
+gentbl_cc_library(
+    name = "xla_triton_dialect_inc_gen",
+    strip_include_prefix = ".",
+    tbl_outs = [
+        (
+            [
+                "-gen-dialect-decls",
+            ],
+            "xla_triton_dialect.h.inc",
+        ),
+        (
+            [
+                "-gen-dialect-defs",
+            ],
+            "xla_triton_dialect.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "xla_triton_dialect.td",
+    deps = [":xla_triton_td_files"],
 )
 
 gentbl_cc_library(
@@ -334,35 +357,20 @@ gentbl_cc_library(
         (
             [
                 "-gen-op-decls",
-                "-dialect=triton_xla",
             ],
             "xla_triton_ops.h.inc",
         ),
         (
             [
                 "-gen-op-defs",
-                "-dialect=triton_xla",
             ],
             "xla_triton_ops.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=triton_xla",
-            ],
-            "xla_triton_dialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=triton_xla",
-            ],
-            "xla_triton_dialect.cc.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_triton_ops.td",
     deps = [
+        ":xla_triton_td_files",
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
@@ -371,10 +379,11 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "xla_triton_ops",
+    name = "xla_triton",
     srcs = ["xla_triton_ops.cc"],
     hdrs = ["xla_triton_ops.h"],
     deps = [
+        ":xla_triton_dialect_inc_gen",
         ":xla_triton_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:BytecodeOpInterface",
@@ -392,9 +401,11 @@ cc_library(
 xla_test(
     name = "triton_fusion_emitter_device_legacy_test",
     srcs = if_gpu_is_configured(["triton_fusion_emitter_device_legacy_test.cc"]),
+    # TODO(b/372714955): Fix the memory leak!
     backend_args = if_google(
         {
             "gpu_h100": ["--heap_check="],
+            "gpu_a100": ["--heap_check="],
         },
         {},
     ),
@@ -409,15 +420,14 @@ xla_test(
         "cuda-only", #TODO(rocm): weekly-sync 24-10-01
     ],
     deps = [
-        ":kernel_name_tracer",
         ":triton_fusion_emitter",
         ":triton_test_utils",
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:backend_configs_cc",
@@ -425,10 +435,8 @@ xla_test(
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/tests:filecheck",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ir_headers",
@@ -438,6 +446,48 @@ xla_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_test(
+    name = "dot_algorithms_test",
+    srcs = if_gpu_is_configured(["dot_algorithms_test.cc"]),
+    backend_args = if_google(
+        {
+            "gpu_h100": ["--heap_check="],
+        },
+        {},
+    ),
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_amd_any",
+    ],
+    tags = [
+        "no_mac",
+    ],
+    deps = [
+        ":kernel_name_tracer",
+        ":triton_test_utils",
+        "//xla:autotuning_proto_cc",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],

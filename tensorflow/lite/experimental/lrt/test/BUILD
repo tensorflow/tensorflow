@@ -48,15 +48,16 @@ cc_library(
     hdrs = [
         "common.h",
     ],
-    data = [":tflite_test_data"],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:litert_model_init",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@flatbuffers//:runtime_cc",
         "@local_tsl//tsl/platform",
     ],
 )
@@ -69,9 +70,27 @@ cc_library(
     ],
     data = [
         "testdata/simple_model.tflite",
+        "testdata/simple_model_google_tensor.bin",
         "testdata/simple_model_qualcomm.bin",
     ],
     deps = [
-        "//tensorflow/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+    ],
+)
+
+cc_library(
+    name = "simple_model_npu",
+    testonly = 1,
+    srcs = [],
+    hdrs = [
+        "testdata/simple_model_test_vectors.h",
+    ],
+    data = [
+        "testdata/simple_model_google_tensor.bin",
+        "testdata/simple_model_npu.tflite",
+        "testdata/simple_model_qualcomm.bin",
+    ],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
     ],
 )

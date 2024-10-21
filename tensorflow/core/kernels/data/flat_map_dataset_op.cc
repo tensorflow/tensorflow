@@ -130,12 +130,13 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     return *cardinality;
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
@@ -150,9 +151,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
     std::vector<Node*> other_arguments;
@@ -181,7 +182,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       input_ckpt_ = std::make_unique<MemoryCheckpoint>(ctx->id_registry());
       TF_RETURN_IF_ERROR(
@@ -190,9 +191,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       if (ctx->index_mapper()) {
         return Get(ctx, out_tensors, end_of_sequence);
       }
@@ -253,8 +254,9 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       // LINT.ThenChange(:SkipInternal)
     }
 
-    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
-                        bool* end_of_sequence, int* num_skipped) override {
+    absl::Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                              bool* end_of_sequence,
+                              int* num_skipped) override {
       // LINT.IfChange(SkipInternal)
       mutex_lock l(mu_);
       *num_skipped = 0;
@@ -418,8 +420,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           {model::MakeNonTunableParameter(kCycleLength, /*value=*/1)});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override
         TF_LOCKS_EXCLUDED(mu_) {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
@@ -446,8 +448,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override
         TF_LOCKS_EXCLUDED(mu_) {
       if (ctx->restored_element_count().has_value()) {
         return RestoreForGlobalShuffle(ctx, reader);
@@ -482,8 +484,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreForGlobalShuffle(IteratorContext* ctx,
-                                   IteratorStateReader* reader)
+    absl::Status RestoreForGlobalShuffle(IteratorContext* ctx,
+                                         IteratorStateReader* reader)
         TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       element_count_ = *ctx->restored_element_count();
@@ -530,8 +532,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
-                                             bool is_get_next)
+    absl::Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
+                                                   bool is_get_next)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // NOTE: We intentionally ignore resource modeling outside GetNext().
       std::shared_ptr<model::Node> node = is_get_next ? model_node() : nullptr;
@@ -540,8 +542,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           prefix(), &current_element_iterator_, node);
     }
 
-    Status RestoreCurrentElementIterator(IteratorContext* ctx,
-                                         IteratorStateReader* reader)
+    absl::Status RestoreCurrentElementIterator(IteratorContext* ctx,
+                                               IteratorStateReader* reader)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (ctx->symbolic_checkpoint()) {
         return RestoreCurrentElementIteratorSymbolic(ctx, reader);
@@ -567,8 +569,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreCurrentElementIteratorSymbolic(IteratorContext* ctx,
-                                                 IteratorStateReader* reader)
+    absl::Status RestoreCurrentElementIteratorSymbolic(
+        IteratorContext* ctx, IteratorStateReader* reader)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       bool end_of_sequence;
       auto input_ctx = std::make_unique<IteratorContext>(*ctx);
