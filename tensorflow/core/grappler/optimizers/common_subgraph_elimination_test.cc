@@ -60,7 +60,7 @@ TEST_F(CommonSubgraphEliminationTest, NoOp) {
 
   CommonSubgraphElimination optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  absl::Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   VerifyGraphsMatch(item.graph, output, __LINE__);
 }
