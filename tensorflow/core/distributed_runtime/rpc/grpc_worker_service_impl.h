@@ -25,9 +25,14 @@ limitations under the License.
 #include "grpcpp/impl/codegen/stub_options.h"
 #include "grpcpp/impl/codegen/sync_stream.h"
 #include "grpcpp/support/byte_buffer.h"
-
+#include "absl/log/log.h"
+#include "third_party/grpc/include/grpcpp/impl/serialization_traits.h"
+#include "third_party/grpc/include/grpcpp/impl/service_type.h"
+#include "third_party/grpc/include/grpcpp/support/byte_buffer.h"
+#include "third_party/grpc/include/grpcpp/support/status.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace grpc {
