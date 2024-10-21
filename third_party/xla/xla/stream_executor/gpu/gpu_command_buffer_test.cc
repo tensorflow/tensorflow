@@ -78,9 +78,19 @@ using AddI32Ptrs3 = TypedKernelFactory<internal::Ptrs3<int32_t>>;
 static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
 static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
+GpuGraphNodeHandle GetHandle(const GpuCommandBuffer::GpuGraphNodeInfo* node) {
+  return node->handle;
+}
+
+GpuGraphNodeHandle GetHandle(
+    const GpuCommandBuffer::GpuGraphBarrierInfo& barrier) {
+  return barrier.node->handle;
+}
+
 template <typename Info>
 static std::vector<GpuGraphNodeHandle> Deps(Info info) {
-  if (auto deps = GpuDriver::GraphNodeGetDependencies(info.handle); deps.ok()) {
+  if (auto deps = GpuDriver::GraphNodeGetDependencies(GetHandle(info));
+      deps.ok()) {
     return *deps;
   }
   return {GpuGraphNodeHandle(0xDEADBEEF)};
@@ -88,7 +98,7 @@ static std::vector<GpuGraphNodeHandle> Deps(Info info) {
 
 template <typename... Infos>
 static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
-  return {info.handle...};
+  return {GetHandle(info)...};
 }
 
 // Some of the tests rely on CUDA 12.3+ features.
@@ -431,13 +441,13 @@ TEST(GpuCommandBufferTest, Barriers) {
 
   // Second barrier reuses first memset node.
   EXPECT_FALSE(barriers[1].is_barrier_node);
-  EXPECT_EQ(barriers[1].handle, nodes[0].handle);
+  EXPECT_EQ(barriers[1].node, nodes[0]);
 
   // Third and fourth barriers reuse second memset node.
   EXPECT_FALSE(barriers[2].is_barrier_node);
   EXPECT_FALSE(barriers[3].is_barrier_node);
-  EXPECT_EQ(barriers[2].handle, nodes[1].handle);
-  EXPECT_EQ(barriers[3].handle, nodes[1].handle);
+  EXPECT_EQ(barriers[2].node, nodes[1]);
+  EXPECT_EQ(barriers[3].node, nodes[1]);
 
   // Fifth and sixth barriers are barrier nodes.
   EXPECT_TRUE(barriers[4].is_barrier_node);
@@ -594,8 +604,8 @@ TEST(GpuCommandBufferTest, ExecutionScopeBarriers) {
   EXPECT_TRUE(barriers2[0].is_barrier_node && barriers2[1].is_barrier_node);
 
   // All scopes share a broadcasted barrier.
-  EXPECT_TRUE(barriers0[1].handle == barriers1[1].handle);
-  EXPECT_TRUE(barriers1[1].handle == barriers2[1].handle);
+  EXPECT_EQ(barriers0[1].node, barriers1[1].node);
+  EXPECT_EQ(barriers1[1].node, barriers2[1].node);
 
   EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
   EXPECT_EQ(Deps(barriers1[0]), ExpectedDeps(nodes1[0], nodes1[1]));
@@ -1484,13 +1494,13 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   ASSERT_EQ(barriers1.size(), 3);
 
   EXPECT_EQ(Deps(barriers0[0]), ExpectedDeps(nodes0[0], nodes0[1]));
-  EXPECT_EQ(barriers0[0].handle, barriers0[1].handle);
+  EXPECT_EQ(barriers0[0].node, barriers0[1].node);
 
-  EXPECT_EQ(barriers1[0].handle, nodes1[0].handle);
-  EXPECT_EQ(barriers1[1].handle, nodes1[1].handle);
+  EXPECT_EQ(barriers1[0].node, nodes1[0]);
+  EXPECT_EQ(barriers1[1].node, nodes1[1]);
 
   // s0 and s1 share broadcasted barrier.
-  EXPECT_TRUE(barriers0[2].handle == barriers1[2].handle);
+  EXPECT_EQ(barriers0[2].node, barriers1[2].node);
   EXPECT_EQ(Deps(barriers0[2]), ExpectedDeps(barriers0[1], nodes1[1]));
 
   // TODO(b/326284532): Add a test for bit pattern update.
