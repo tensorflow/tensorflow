@@ -468,7 +468,7 @@ xla_cc_test(
     deps = [
         ":collective_send_recv_combiner",
         "//xla/hlo/ir:hlo",
-        "//xla/tests:filecheck",
+        "//xla/hlo/testlib:filecheck",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

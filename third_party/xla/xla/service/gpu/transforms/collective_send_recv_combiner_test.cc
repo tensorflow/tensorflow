@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/filecheck.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
@@ -30,9 +30,6 @@ namespace xla {
 namespace {
 
 using CollectiveSendRecvCombinerTest = HloTestBase;
-
-// TODO: b/372132451 - add unit test in collective send/recv combiner to check
-// control dependencies
 
 TEST_F(CollectiveSendRecvCombinerTest, TransformedNoFrontEndAttr) {
   const char* kHloStr = R"(
@@ -51,22 +48,43 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedNoFrontEndAttr) {
   CollectiveSendRecvCombiner combiner;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
-  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
-     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
-     CHECK: %[[RECV_START:.*]] = token[] after-all()
-     CHECK: %[[RECV_ASYNC:.*]] = ((token[]), (f32[], u32[], token[]), s32[]) 
-      recv-start(token[] %[[RECV_START:.*]]), channel_id=1
-     CHECK: %[[RECV_DONE:.*]] = (f32[], u32[], token[])
-      recv-done(((token[]), (f32[], u32[], token[]), s32[]) %[[RECV_ASYNC:.*]])
-     CHECK: ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], u32[], token[])
-      %[[RECV_DONE:.*]]), index=0
-     CHECK: %[[DATA:.*]] = f32[] constant(5)
-     CHECK: %[[SEND_ASYNC:.*]] = ((f32[], token[]), (f32[], u32[], token[]), s32[])
-      send-start(f32[] %[[DATA]], token[] %[[RECV_ASYNC:.*]])
-     CHECK: %[[SEND_DONE:.*]] = (f32[], u32[], token[])
-      send-done(((f32[], token[]), (f32[], u32[], token[]), s32[]) %[[SEND_ASYNC:.*]])
-  )")
-                  .value());
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: %[[WRAPPED_SEND_RECV:.*]]
+      (param0: f32[], param1: token[], param2: token[]) ->
+      ((f32[], u32[], token[]), (f32[], u32[], token[])) {
+
+    CHECK: %[[PARAM0:.*]] = f32[] parameter(0)
+    CHECK: %[[PARAM1:.*]] = token[] parameter(1)
+    CHECK: %[[SEND1:.*]] = (f32[], u32[], token[]) send(f32[] %[[PARAM0:.*]],
+      token[] %[[PARAM1:.*]]), channel_id=1
+    CHECK: %[[PARAM2:.*]] = token[] parameter(2)
+    CHECK: %[[RECV1:.*]] = (f32[], u32[], token[])
+      recv(token[] %[[PARAM2:.*]]), channel_id=1
+    CHECK: ROOT %[[OUT:.*]] = ((f32[], u32[], token[]),
+      (f32[], u32[], token[])) tuple((f32[], u32[], token[])
+      %[[SEND1:.*]], (f32[], u32[], token[]) %[[RECV1:.*]])
+
+    CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
+    CHECK: %[[DATA:.*]] = f32[] constant(5)
+    CHECK: %[[RECV_START:.*]] = token[] after-all()
+    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[])
+      async-start(f32[] %[[DATA:.*]], token[] %[[RECV_START:.*]],
+      token[] %[[RECV_START:.*]]), calls=%[[WRAPPED_SEND_RECV:.*]]
+    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]),
+      (f32[], u32[], token[])) async-done(((f32[], token[], token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) %[[TUPLE_START:.*]])
+    CHECK %[[GTE2:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]),
+      (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=1
+    CHECK %[[GTE3:.*]] = f32[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=0
+    CHECK %[[GTE4:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=2
+    CHECK %[[TUPLE1:.*]] = (f32[], token[]) tuple(f32[] %[[GTE3:.*]], token[] %[[GTE4:.*]])
+    CHECK ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], token[]) %[[TUPLE1:.*]]), index=0
+    CHECK %[[GTE:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=0
+    CHECK %[[GTE1:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE:.*]]), index=2
+  )"));
 }
 
 TEST_F(CollectiveSendRecvCombinerTest, TrivialNoTransform) {
@@ -143,22 +161,144 @@ TEST_F(CollectiveSendRecvCombinerTest, TransformedWithControlDependency) {
   CollectiveSendRecvCombiner combiner;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
   EXPECT_TRUE(changed);
-  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
-     CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
-     CHECK: %[[DATA:.*]] = f32[] constant(5)
-     CHECK: %[[RECV_START:.*]] = token[] after-all()
-     CHECK: %[[SEND_ASYNC:.*]] = ((f32[], token[]), (f32[], u32[], token[]), s32[])
-      send-start(f32[] %[[DATA]], token[] %[[RECV_START:.*]])
-     CHECK: %[[RECV_ASYNC:.*]] = ((token[]), (f32[], u32[], token[]), s32[])
-      recv-start(token[] %[[RECV_START:.*]]), channel_id=1
-     CHECK: %[[RECV_DONE:.*]] = (f32[], u32[], token[])
-      recv-done(((token[]), (f32[], u32[], token[]), s32[]) %[[RECV_ASYNC:.*]])
-     CHECK: ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], u32[], token[])
-      %[[RECV_DONE:.*]]), index=0
-     CHECK: %[[SEND_DONE:.*]] = (f32[], u32[], token[])
-      send-done(((f32[], token[]), (f32[], u32[], token[]), s32[]) %[[SEND_ASYNC:.*]])
-  )")
-                  .value());
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: %[[WRAPPED_SEND_RECV:.*]]
+      (param0: f32[], param1: token[], param2: token[]) ->
+      ((f32[], u32[], token[]), (f32[], u32[], token[])) {
+
+    CHECK: %[[PARAM0:.*]] = f32[] parameter(0)
+    CHECK: %[[PARAM1:.*]] = token[] parameter(1)
+    CHECK: %[[SEND1:.*]] = (f32[], u32[], token[]) send(f32[] %[[PARAM0:.*]],
+      token[] %[[PARAM1:.*]]), channel_id=1
+    CHECK: %[[PARAM2:.*]] = token[] parameter(2)
+    CHECK: %[[RECV1:.*]] = (f32[], u32[], token[])
+      recv(token[] %[[PARAM2:.*]]), channel_id=1
+    CHECK: ROOT %[[OUT:.*]] = ((f32[], u32[], token[]),
+      (f32[], u32[], token[])) tuple((f32[], u32[], token[])
+      %[[SEND1:.*]], (f32[], u32[], token[]) %[[RECV1:.*]])
+
+    CHECK: ENTRY %[[MAIN:.*]] () -> f32[] {
+    CHECK: %[[DATA:.*]] = f32[] constant(5)
+    CHECK: %[[RECV_START:.*]] = token[] after-all()
+    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[])
+      async-start(f32[] %[[DATA:.*]], token[] %[[RECV_START:.*]],
+      token[] %[[RECV_START:.*]]), calls=%[[WRAPPED_SEND_RECV:.*]]
+    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]),
+      (f32[], u32[], token[])) async-done(((f32[], token[], token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[])), s32[]) %[[TUPLE_START:.*]])
+    CHECK %[[GTE2:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]),
+      (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=1
+    CHECK %[[GTE3:.*]] = f32[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=0
+    CHECK %[[GTE4:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=2
+    CHECK %[[TUPLE1:.*]] = (f32[], token[]) tuple(f32[] %[[GTE3:.*]], token[] %[[GTE4:.*]]),
+      control-predecessors={%[[TUPLE_START:.*]]}
+    CHECK ROOT %[[OUT:.*]] = f32[] get-tuple-element((f32[], token[]) %[[TUPLE1:.*]]), index=0
+    CHECK %[[GTE:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=0
+    CHECK %[[GTE1:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE:.*]]), index=2
+  )"));
+}
+
+TEST_F(CollectiveSendRecvCombinerTest, TransformedWithMultipleSendRecv) {
+  const char* kHloStr = R"(
+  ENTRY main {
+    data-1 = f32[] constant(1)
+    data-2 = f32[] constant(2)
+    after-all-1 = token[] after-all()
+    send-1 = (f32[], u32[], token[]) send(data-1, after-all-1), channel_id=1
+    recv-1 = (f32[], u32[], token[]) recv(after-all-1), channel_id=1
+    after-all-2 = token[] after-all()
+    send-2 = (f32[], u32[], token[]) send(data-2, after-all-2), channel_id=2
+    recv-2 = (f32[], u32[], token[]) recv(after-all-2), channel_id=2
+    send-done-1 = token[] send-done(send-1), channel_id=1
+    recv-done-1 = (f32[], token[]) recv-done(recv-1), channel_id=1,
+      control-predecessors={send-1}
+    send-done-2 = token[] send-done(send-2), channel_id=2
+    recv-done-2 = (f32[], token[]) recv-done(recv-2), channel_id=2,
+      control-predecessors={send-2}
+    data-out-1 = f32[] get-tuple-element(recv-done-1), index=0
+    data-out-2 = f32[] get-tuple-element(recv-done-2), index=0
+    ROOT out = (f32[], f32[]) tuple(data-out-1, data-out-2)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule((kHloStr)));
+  CollectiveSendRecvCombiner combiner;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combiner.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: %[[WRAPPED_SEND_RECV:.*]] (param0: f32[], param1: token[],
+      param2: f32[], param3: token[], param4: token[], param5: token[]) ->
+      ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[])) {
+    CHECK: %[[PARAM0:.*]] = f32[] parameter(0)
+    CHECK: %[[PARAM1:.*]] = token[] parameter(1)
+    CHECK: %[[SEND1:.*]] = (f32[], u32[], token[]) send(f32[] %[[PARAM0:.*]],
+      token[] %[[PARAM1:.*]]), channel_id=1
+    CHECK: %[[PARAM2:.*]] = f32[] parameter(2)
+    CHECK: %[[PARAM3:.*]] = token[] parameter(3)
+    CHECK: %[[SEND2:.*]] = (f32[], u32[], token[]) send(f32[] %[[PARAM2:.*]],
+      token[] %[[PARAM3:.*]]), channel_id=2
+    CHECK: %[[PARAM4:.*]] = token[] parameter(4)
+    CHECK: %[[RECV1:.*]] = (f32[], u32[], token[])
+      recv(token[] %[[PARAM4:.*]]), channel_id=1
+    CHECK: %[[PARAM5:.*]] = token[] parameter(5)
+    CHECK: %[[RECV2:.*]] = (f32[], u32[], token[])
+      recv(token[] %[[PARAM5:.*]]), channel_id=2
+    CHECK: ROOT %[[OUT:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[]))
+      tuple((f32[], u32[], token[]) %[[SEND1:.*]], (f32[], u32[], token[]) %[[SEND2:.*]],
+      (f32[], u32[], token[]) %[[RECV1:.*]], (f32[], u32[], token[]) %[[RECV2:.*]])
+
+    CHECK: ENTRY %[[MAIN:.*]] () -> (f32[], f32[]) {
+    CHECK: %[[DATA1:.*]] = f32[] constant(1)
+    CHECK: %[[AFTER_ALL1:.*]] = token[] after-all()
+    CHECK: %[[DATA2:.*]] = f32[] constant(2)
+    CHECK: %[[AFTER_ALL2:.*]] = token[] after-all()
+    CHECK: %[[TUPLE_START:.*]] = ((f32[], token[], f32[], token[], token[],
+      /*index=5*/token[]), ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])), s32[])
+      async-start(f32[] %[[DATA1:.*]], token[] %[[AFTER_ALL1:.*]],
+      f32[] %[[DATA2:.*]], token[] %[[AFTER_ALL2:.*]], token[] %[[AFTER_ALL1:.*]],
+      /*index=5*/token[] %[[AFTER_ALL2:.*]]), calls=%[[WRAPPED_SEND_RECV:.*]]
+    CHECK: %[[TUPLE_DONE:.*]] = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[]))
+      async-done(((f32[], token[], f32[], token[], token[], /*index=5*/token[]),
+      ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[])), s32[]) %[[TUPLE_START:.*]])
+    CHECK %[[GTE4:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=2
+    CHECK %[[GTE5:.*]] = f32[]
+      get-tuple-element((f32[], u32[], token[]) %[[GTE4:.*]]), index=0
+    CHECK %[[GTE6:.*]] = token[]
+      get-tuple-element((f32[], u32[], token[]) %[[GTE4:.*]]), index=2
+    CHECK %[[[TUPLE1:.*]]]] = (f32[], token[]) tuple(f32[] %[[GTE5:.*]],
+      token[] %[[GTE6:.*]]), control-predecessors={%[[TUPLE_START:.*]]]}
+    CHECK %[[DATA_OUT1:.*]]] = f32[] get-tuple-element((f32[], token[])
+      %[[TUPLE1:.*]]), index=0
+    CHECK %[[GTE7:.*]]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=3
+    CHECK %[[GTE8:.*]] = f32[]
+      get-tuple-element((f32[], u32[], token[]) %[[GTE7:.*]]), index=0
+    CHECK %[[GTE9:.*]]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE7:.*]]), index=2
+    CHECK %[[TUPLE2:.*]] = (f32[], token[]) tuple(f32[] %[[GTE8:.*]], token[] %[[GTE9:.*]]),
+      control-predecessors={%[[TUPLE_START:.*]]}
+    CHECK %[[DATA_OUT2:.*]] = f32[] get-tuple-element((f32[], token[]) %[[TUPLE2:.*]]), index=0
+    CHECK ROOT %[[OUT:.*]] = (f32[], f32[]) tuple(f32[] %[[DATA_OUT1:.*]], f32[] %[[DATA_OUT2:.*]])
+    CHECK %[[GTE:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]]), index=0
+    CHECK %[[GTE1:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE:.*]]]), index=2
+    CHECK %[[GTE2:.*]] = (f32[], u32[], token[])
+      get-tuple-element(((f32[], u32[], token[]), (f32[], u32[], token[]),
+      (f32[], u32[], token[]), (f32[], u32[], token[])) %[[TUPLE_DONE:.*]]), index=1
+    CHECK %[[GTE3:.*]] = token[] get-tuple-element((f32[], u32[], token[]) %[[GTE2:.*]]), index=2
+  )"));
 }
 }  // namespace
 }  // namespace xla
