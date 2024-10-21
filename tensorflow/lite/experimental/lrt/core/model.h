@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
 
+#include <cstdint>
 #include <list>
 #include <vector>
 
@@ -22,6 +23,7 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 //
@@ -71,8 +73,7 @@ struct LiteRtOpT {
 
   LiteRtOpCode op_code;
 
-  // This is a placeholder to be used by just custom ops for now.
-  std::string custom_options;
+  litert::OwningBufferRef<uint8_t> custom_options;
 
   tflite::BuiltinOptionsUnion option;
 };
@@ -125,7 +126,8 @@ struct LiteRtModelT {
 
   // Look up metadata by key, getting a view of its buffer as a string
   // if it exists.
-  LiteRtResult<FbBufferT> FindMetadata(absl::string_view key) const;
+  LiteRtResult<litert::MutableBufferRef<uint8_t>> FindMetadata(
+      absl::string_view key) const;
 };
 
 //

@@ -23,7 +23,10 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+
+using ::litert::MutableBufferRef;
 
 //
 // Model
@@ -55,10 +58,9 @@ LiteRtStatus GetModelMainSubgraph(LiteRtModel model,
 LiteRtStatus LiteRtModelGetMetadata(LiteRtModel model, const char* metadata_key,
                                     const void** metadata_buffer,
                                     size_t* metadata_buffer_size) {
-  LITERT_ASSIGN_OR_RETURN_STATUS(auto m_buffer_view,
-                                 model->FindMetadata(metadata_key));
-  *metadata_buffer = m_buffer_view.data();
-  *metadata_buffer_size = m_buffer_view.size();
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto m_buf, model->FindMetadata(metadata_key));
+  *metadata_buffer = m_buf.Data();
+  *metadata_buffer_size = m_buf.Size();
   return kLiteRtStatusOk;
 }
 
@@ -73,9 +75,9 @@ LiteRtStatus PushOp(LiteRtOpList op_list, LiteRtOp op) {
   return kLiteRtStatusOk;
 }
 
-LiteRtResult<FbBufferT> LiteRtModelT::FindMetadata(
+LiteRtResult<MutableBufferRef<uint8_t>> LiteRtModelT::FindMetadata(
     const absl::string_view key) const {
-  using ResT = LiteRtResult<FbBufferT>;
+  using ResT = LiteRtResult<MutableBufferRef<uint8_t>>;
 
   tflite::MetadataT* fb_metadata = nullptr;
   for (auto& m : flatbuffer_model->metadata) {
@@ -95,7 +97,7 @@ LiteRtResult<FbBufferT> LiteRtModelT::FindMetadata(
   tflite::BufferT* m_buffer = flatbuffer_model->buffers.at(m_buffer_idx).get();
 
   return ResT::FromValue(
-      absl::MakeSpan(m_buffer->data.data(), m_buffer->data.size()));
+      MutableBufferRef(m_buffer->data.data(), m_buffer->data.size()));
 }
 
 //
