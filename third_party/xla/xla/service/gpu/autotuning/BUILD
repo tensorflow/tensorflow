@@ -79,7 +79,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/lib/core:bits",

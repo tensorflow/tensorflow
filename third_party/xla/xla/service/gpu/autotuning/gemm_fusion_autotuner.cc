@@ -93,7 +93,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/util/proto/proto_utils.h"
@@ -1095,13 +1094,6 @@ absl::StatusOr<std::vector<AutotuneResult>> GemmFusionAutotunerImpl::Profile(
     return absl::StrFormat("XlaAutotunerMeasurement:#hlo_op=%s#",
                            fusion.name());
   });
-  se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator;
-  if (allocator == nullptr) {
-    owned_allocator =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec);
-    allocator = owned_allocator.get();
-  }
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
 
   const HloInstruction& root = *fusion_computation->root_instruction();
