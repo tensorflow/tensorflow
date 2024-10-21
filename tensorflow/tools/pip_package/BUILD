@@ -270,6 +270,17 @@ tf_wheel(
         ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
+    platform_name = select({
+        "@platforms//os:osx": "macosx",
+        "@platforms//os:macos": "macosx",
+        "@platforms//os:windows": "win",
+        "@platforms//os:linux": "linux",
+    }),
+    platform_tag = select({
+        "@platforms//cpu:aarch64": "arm64",
+        "@platforms//cpu:arm64": "arm64",
+        "@platforms//cpu:x86_64": "x86_64",
+    }),
     source_files = [
         "MANIFEST.in",
         "//tensorflow/tools/pip_package:THIRD_PARTY_NOTICES.txt",
