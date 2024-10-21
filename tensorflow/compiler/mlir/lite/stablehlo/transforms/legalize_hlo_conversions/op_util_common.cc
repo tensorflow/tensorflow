@@ -68,7 +68,7 @@ llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
   return llvm::SmallVector<int64_t, 4>(attr.getValues<int64_t>());
 }
 
-llvm::SmallVector<DimPadding, 2> ResolvePadding(
+llvm::SmallVector<DimPadding, 4> ResolvePadding(
     int64_t rank, std::optional<mlir::DenseIntElementsAttr> opt_padding) {
   llvm::SmallVector<DimPadding, 4> res;
   if (!opt_padding.has_value()) {
