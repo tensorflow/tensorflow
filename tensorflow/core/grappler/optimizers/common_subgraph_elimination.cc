@@ -171,7 +171,8 @@ bool CommonSubgraphElimination::CanDedup(const NodeDef& node) const {
   return IsFreeOfSideEffect(node);
 }
 
-Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
+absl::Status CommonSubgraphElimination::DedupComputations(
+    GraphDef* optimized_graph) {
   CanonicalizeGraph(optimized_graph);
 
   GraphTopologyView graph_view;
@@ -273,9 +274,9 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
   return absl::OkStatus();
 }
 
-Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,
-                                           const GrapplerItem& item,
-                                           GraphDef* optimized_graph) {
+absl::Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,
+                                                 const GrapplerItem& item,
+                                                 GraphDef* optimized_graph) {
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
