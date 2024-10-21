@@ -29,8 +29,8 @@ namespace tensorflow {
 
 namespace {
 
-Status BuildNoopNode(const Node& source, StringPiece name, const string& device,
-                     Graph* graph, Node** node) {
+absl::Status BuildNoopNode(const Node& source, StringPiece name,
+                           const string& device, Graph* graph, Node** node) {
   NodeDefBuilder builder(name, "NoOp", NodeDebugInfo(source));
   if (!device.empty()) {
     builder.Device(device);
@@ -45,10 +45,10 @@ Status BuildNoopNode(const Node& source, StringPiece name, const string& device,
   return absl::OkStatus();
 }
 
-Status BuildIdentityNNode(const Node& source, StringPiece name,
-                          const string& device, Graph* graph,
-                          std::vector<NodeDefBuilder::NodeOut>& inputs,
-                          Node** node) {
+absl::Status BuildIdentityNNode(const Node& source, StringPiece name,
+                                const string& device, Graph* graph,
+                                std::vector<NodeDefBuilder::NodeOut>& inputs,
+                                Node** node) {
   NodeDefBuilder builder(name, "IdentityN", NodeDebugInfo(source));
   if (!device.empty()) {
     builder.Device(device);
@@ -65,10 +65,10 @@ Status BuildIdentityNNode(const Node& source, StringPiece name,
   return absl::OkStatus();
 }
 
-Status BuildIdentityNode(const Node& source, StringPiece name,
-                         const string& device, Graph* graph,
-                         std::vector<NodeDefBuilder::NodeOut>& inputs,
-                         Node** node) {
+absl::Status BuildIdentityNode(const Node& source, StringPiece name,
+                               const string& device, Graph* graph,
+                               std::vector<NodeDefBuilder::NodeOut>& inputs,
+                               Node** node) {
   NodeDefBuilder builder(name, "Identity", NodeDebugInfo(source));
   if (!device.empty()) {
     builder.Device(device);
@@ -143,8 +143,8 @@ class DeviceLookup {
 
 }  // namespace
 
-Status OptimizeCrossHostControlOutputEdges(Graph* graph,
-                                           int cross_host_edges_threshold) {
+absl::Status OptimizeCrossHostControlOutputEdges(
+    Graph* graph, int cross_host_edges_threshold) {
   TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
 
   for (Node* n : graph->op_nodes()) {
@@ -199,8 +199,8 @@ Status OptimizeCrossHostControlOutputEdges(Graph* graph,
   return absl::OkStatus();
 }
 
-Status OptimizeCrossHostDataOutputEdges(Graph* graph,
-                                        int cross_host_edges_threshold) {
+absl::Status OptimizeCrossHostDataOutputEdges(Graph* graph,
+                                              int cross_host_edges_threshold) {
   TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
 
   for (Node* n : graph->op_nodes()) {
@@ -297,8 +297,8 @@ Status OptimizeCrossHostDataOutputEdges(Graph* graph,
   return absl::OkStatus();
 }
 
-Status OptimizeCrossHostControlInputEdges(Graph* graph,
-                                          int cross_host_edges_threshold) {
+absl::Status OptimizeCrossHostControlInputEdges(
+    Graph* graph, int cross_host_edges_threshold) {
   TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
 
   absl::flat_hash_map<Node*, std::vector<const Edge*>> node_control_input_edges;
