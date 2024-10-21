@@ -19,7 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
