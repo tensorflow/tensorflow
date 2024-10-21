@@ -38,7 +38,8 @@ using ::testing::HasSubstr;
 class CollectiveSelectFolderTest : public HloTestBase {
  public:
   absl::Status ExpectNoTranform(std::string_view hlo_template) {
-    return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(), false)
+    return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(),
+                                 /*expect_change=*/false)
         .status();
   }
 };
@@ -251,6 +252,23 @@ TEST_F(CollectiveSelectFolderTest, SelectNoBroadcastTransform) {
                              {"$pairs", "{{3,0}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
+}
+
+TEST_F(CollectiveSelectFolderTest, NegatedPredicate_NotTransformed) {
+  const absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY computation {
+      data_1 = f32[16] parameter(0)
+      data_2 = f32[16] parameter(1)
+      c3 = u32[] constant(3)
+      partition_id = u32[] partition-id()
+      predicate = pred[] compare(partition_id, c3), direction=EQ
+      negated_predicate = pred[] not(predicate)
+      selected_data = f32[16] select(negated_predicate, data_1, data_2)
+      ROOT result_data = f32[16] collective-permute(selected_data), source_target_pairs={{3,0}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK(ExpectNoTranform(kHlo));
 }
 
 TEST_F(CollectiveSelectFolderTest, ReplicaIdChannelIdMismatch_NotTransformed) {
