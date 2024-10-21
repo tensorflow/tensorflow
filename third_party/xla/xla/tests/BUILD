@@ -421,8 +421,8 @@ xla_test(
         "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
-        "//xla/service:despecializer",
-        "//xla/service:float_normalization",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms:float_normalization",
     ],
 )
 
@@ -441,8 +441,8 @@ xla_test(
         "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
-        "//xla/service:despecializer",
-        "//xla/service:float_normalization",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms:float_normalization",
     ],
 )
 
@@ -466,8 +466,8 @@ xla_test(
         "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
-        "//xla/service:despecializer",
-        "//xla/service:float_normalization",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms:float_normalization",
         "@com_google_absl//absl/algorithm:container",
     ],
 )
@@ -846,8 +846,8 @@ cc_library(
         "//xla:status_macros",
         "//xla:test",
         "//xla/hlo/builder:xla_computation",
-        "//xla/service:despecializer",
-        "//xla/service:float_normalization",
+        "//xla/hlo/transforms:despecializer",
+        "//xla/hlo/transforms:float_normalization",
     ],
 )
 
@@ -2119,8 +2119,8 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:rng_bit_generator_expander",
-        "//xla/service:rng_expander",
+        "//xla/hlo/transforms:rng_bit_generator_expander",
+        "//xla/hlo/transforms:rng_expander",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -2433,8 +2433,8 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms:hlo_dce",
         "//xla/service:collective_pipeliner",
-        "//xla/service:hlo_dce",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
