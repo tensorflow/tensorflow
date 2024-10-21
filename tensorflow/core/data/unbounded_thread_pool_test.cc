@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/framework/thread_factory.h"
 #include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
