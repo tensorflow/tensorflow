@@ -312,8 +312,8 @@ TEST_F(LoaderTest, NegativeShapeDimension) {
 
   const string export_dir = io::JoinPath(testing::TensorFlowSrcRoot(),
                                          kTestFuzzGeneratedNegativeShape);
-  Status st = LoadSavedModel(session_options, run_options, export_dir,
-                             {kSavedModelTagServe}, &bundle);
+  absl::Status st = LoadSavedModel(session_options, run_options, export_dir,
+                                   {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_NE(st.message().find("initializes from a tensor with -1 elements"),
             std::string::npos);
