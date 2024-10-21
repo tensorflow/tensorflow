@@ -117,6 +117,38 @@ class Stat {
   HighPrecisionValueType squared_sum_ = 0;
 };
 
+// A `StatWithPercentiles` inherited from `Stat`, also keeps track of the
+// values added and can be used to compute the percentile values.
+template <typename HighPrecisionValueType = double>
+class StatWithPercentiles : public Stat<int64_t, HighPrecisionValueType> {
+ public:
+  void UpdateStat(int64_t v) {
+    Stat<int64_t, HighPrecisionValueType>::UpdateStat(v);
+    values_.push_back(v);
+  }
+
+  // Returns the percentile value.
+  int64_t percentile(int percentile) const {
+    if (this->count() == 0) {
+      return std::numeric_limits<int>::quiet_NaN();
+    }
+    std::vector<int64_t> values = values_;
+    std::nth_element(values.begin(),
+                     values.begin() + values.size() * percentile / 100,
+                     values.end());
+    return values[values_.size() * percentile / 100];
+  }
+
+  void OutputToStream(std::ostream* stream) const {
+    Stat<int64_t, HighPrecisionValueType>::OutputToStream(stream);
+    *stream << " p10=" << percentile(10) << " median=" << percentile(50)
+            << " p90=" << percentile(90);
+  }
+
+ private:
+  std::vector<int64_t> values_;
+};
+
 // A StatsCalculator assists in performance analysis of Graph executions.
 //
 // It summarizes time spent executing (on GPU/CPU), memory used etc for
