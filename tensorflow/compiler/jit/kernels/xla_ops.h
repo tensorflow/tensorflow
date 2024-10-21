@@ -24,11 +24,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
