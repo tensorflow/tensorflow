@@ -21,11 +21,8 @@ REGISTER7(BinaryOp, CPU, "Equal", functor::equal_to, float, Eigen::half, double,
 REGISTER8(BinaryOp, CPU, "Equal", functor::equal_to, uint16, uint32, uint64,
           qint8, qint16, quint8, quint16, qint32);
 REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<float>("T"),
-    ApproximateEqualOp<CPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<double>("T"),
-    ApproximateEqualOp<CPUDevice, double>);
+    Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<T>("T"),
+    ApproximateEqualOp<CPUDevice, T>);
 
 REGISTER_KERNEL_BUILDER(Name("Equal")
                             .Device(DEVICE_DEFAULT)
@@ -42,11 +39,8 @@ REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
 #endif
 REGISTER(BinaryOp, GPU, "Equal", functor::equal_to, bfloat16);
 REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    ApproximateEqualOp<GPUDevice, float>);
-REGISTER_KERNEL_BUILDER(
-    Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<double>("T"),
-    ApproximateEqualOp<GPUDevice, double>);
+    Name("ApproximateEqual").Device(DEVICE_GPU).TypeConstraint<T>("T"),
+    ApproximateEqualOp<GPUDevice, T>);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
