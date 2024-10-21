@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package tsl.profiler;
 
-option cc_enable_arenas = true;
 option java_outer_classname = "TraceEventsProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
