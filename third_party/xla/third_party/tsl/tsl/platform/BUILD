@@ -161,7 +161,26 @@ cc_library(
         "file_system_helper.h",
         "threadpool.h",
     ],
-    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]),
+    deps = tf_windows_aware_platform_deps("env") + if_static([":env_impl"]) + [
+        ":cord",
+        ":env_time",
+        ":errors",
+        ":file_statistics",
+        ":macros",
+        ":mutex",
+        ":platform",
+        ":platform_port",
+        ":protobuf",
+        ":status",
+        ":statusor",
+        ":stringpiece",
+        ":threadpool_interface",
+        ":types",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -208,6 +227,7 @@ cc_library(
         ":status",
         ":str_util",
         ":strcat",
+        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -1514,6 +1534,7 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
