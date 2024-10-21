@@ -20,7 +20,7 @@
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 
 namespace litert {
 

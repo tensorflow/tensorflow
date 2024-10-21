@@ -23,10 +23,10 @@
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_event.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_tensor_buffer_requirements.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/c/litert_dispatch_api.h"
 
 #define INVOKE_FUNC(function, ...)                                \

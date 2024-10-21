@@ -20,11 +20,11 @@
 #include "absl/strings/string_view.h"
 #include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_op.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/graph_mapper.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/legalizations/util.h"
 

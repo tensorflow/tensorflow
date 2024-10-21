@@ -24,7 +24,7 @@
 #include <cstring>
 
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 
 LiteRtStatus LiteRtEventT::Wait(int64_t timeout_in_ms) {
 #if LITERT_HAS_SYNC_FENCE_SUPPORT

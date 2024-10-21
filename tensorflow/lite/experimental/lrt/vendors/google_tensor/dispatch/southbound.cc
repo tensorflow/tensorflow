@@ -16,18 +16,13 @@
 
 #include <dlfcn.h>
 
-#include <memory>
-#include <optional>
-#include <string>
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
-
-#define Load(H, S)                                               \
-  H = reinterpret_cast<decltype(&S)>(::dlsym(dlib_handle_, #S)); \
-  if (!H) {                                                      \
-    ABSL_LOG(WARNING) << "Failed to load symbol " << #S << ": "  \
-                      << ::dlerror();                            \
+#define Load(H, S)                                                 \
+  H = reinterpret_cast<decltype(&S)>(::dlsym(dlib_handle_, #S));   \
+  if (!H) {                                                        \
+    LITERT_LOG(LITERT_WARNING, "Failed to load symbol %s: %s", #S, \
+               ::dlerror());                                       \
   }
 
 namespace litert {
@@ -139,7 +134,7 @@ absl::Status Southbound::LoadSymbols(
   Load(thr_functions_->thr_vendor_set_system_attribute_int64,
        thrVendorSetSystemAttributeInt64);
 
-  ABSL_LOG(INFO) << "SouthBound symbols loaded.";
+  LITERT_LOG(LITERT_INFO, "SouthBound symbols loaded");
   return {};
 }
 

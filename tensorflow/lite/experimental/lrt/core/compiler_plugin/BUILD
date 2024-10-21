@@ -18,14 +18,30 @@ package(
 )
 
 cc_library(
-    name = "compiler_plugin",
-    srcs = ["compiler_plugin.cc"],
+    name = "compiler_plugin_hdr",
     hdrs = ["compiler_plugin.h"],
     deps = [
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
         "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
         "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
-        "//tensorflow/lite/experimental/lrt/core:logging",
+        "//tensorflow/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin_api",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "compiler_plugin",
+    srcs = ["compiler_plugin.cc"],
+    hdrs = ["compiler_plugin.h"],
+    deps = [
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
         "//tensorflow/lite/experimental/lrt/core:model",
         "//tensorflow/lite/experimental/lrt/vendors/c:litert_compiler_plugin_api",
         "@com_google_absl//absl/container:inlined_vector",
@@ -83,6 +99,7 @@ cc_test(
     ],
     deps = [
         ":algo",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:graph_tools",
         "//tensorflow/lite/experimental/lrt/core:model",

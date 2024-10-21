@@ -26,6 +26,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
-        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/lrt/vendors/qualcomm:qnn_manager_hdr",
     ],
 )

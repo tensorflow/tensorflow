@@ -42,6 +42,22 @@ litert_lib(
     ],
 )
 
+cc_library(
+    name = "qnn_manager_hdr",
+    hdrs = ["qnn_manager.h"],
+    deps = [
+        ":common",
+        ":qnn_log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
+    ],
+)
+
 litert_lib_with_qnn(
     name = "qnn_manager",
     srcs = [
@@ -63,9 +79,9 @@ litert_lib_with_qnn(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/core:api_internal",
         "//tensorflow/lite/experimental/lrt/core:dynamic_loading",
-        "//tensorflow/lite/experimental/lrt/core:logging",
     ],
 )
 

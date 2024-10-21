@@ -18,14 +18,14 @@
 
 #include <memory>
 
-#include "absl/log/absl_log.h"
 #include "absl/status/statusor.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 
 LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   if (!thr_graphs_.empty()) {
     auto thr_graph_delete = southbound_.thr_functions().thr_graph_delete;
     if (!thr_graph_delete) {
-      ABSL_LOG(ERROR) << "thr_graph_delete not found";
+      LITERT_LOG(LITERT_ERROR, "thr_graph_delete not found");
     } else {
       for (auto* thr_graph : thr_graphs_) {
         thr_graph_delete(thr_graph);
@@ -36,7 +36,7 @@ LiteRtDispatchDeviceContextT::~LiteRtDispatchDeviceContextT() {
   if (thr_context_) {
     auto thr_context_delete = southbound_.thr_functions().thr_context_delete;
     if (!thr_context_delete) {
-      ABSL_LOG(ERROR) << "thr_context_delete not found";
+      LITERT_LOG(LITERT_ERROR, "thr_context_delete not found");
     } else {
       thr_context_delete(thr_context_);
     }

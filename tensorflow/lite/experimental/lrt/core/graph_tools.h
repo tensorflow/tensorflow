@@ -20,6 +20,7 @@
 #include <tuple>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 
 #ifndef NDEBUG
@@ -35,21 +36,20 @@
 #include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 
-#define _D_MATCH_TRUE(v)                                               \
-  {                                                                    \
-    std::cerr << "failed match true " << __FILE__ << __LINE__ << "\n"; \
-    if (!(v)) return false;                                            \
+#define _D_MATCH_TRUE(v)                             \
+  {                                                  \
+    if (!(v)) {                                      \
+      LITERT_LOG(LITERT_ERROR, "Failed MATCH_TRUE"); \
+      return false;                                  \
+    }                                                \
   }
 
-#define _D_MATCH_EQ(lhs, rhs)                                        \
-  {                                                                  \
-    std::cerr << "failed match eq " << __FILE__ << __LINE__ << "\n"; \
-    if (lhs != rhs) return false;                                    \
-  }
-
-#define _MATCH_EQ(lhs, rhs)       \
-  {                               \
-    if (lhs != rhs) return false; \
+#define _D_MATCH_EQ(lhs, rhs)                      \
+  {                                                \
+    if (lhs != rhs) {                              \
+      LITERT_LOG(LITERT_ERROR, "Failed MATCH_EQ"); \
+      return false;                                \
+    }                                              \
   }
 
 #define _MATCH_TRUE(v)      \
@@ -57,6 +57,10 @@
     if (!(v)) return false; \
   }
 
+#define _MATCH_EQ(lhs, rhs)       \
+  {                               \
+    if (lhs != rhs) return false; \
+  }
 #ifndef NDEBUG
 #define MATCH_EQ(lhs, rhs) _D_MATCH_EQ(lhs, rhs)
 #define MATCH_TRUE(v) _D_MATCH_TRUE(v)

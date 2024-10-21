@@ -39,11 +39,10 @@ cc_library(
     }),
     deps = [
         "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
         "//tensorflow/lite/experimental/lrt/c:litert_tensor_buffer",
-        "//tensorflow/lite/experimental/lrt/core:logging",
         "//tensorflow/lite/experimental/lrt/core:utils",
         "//tensorflow/lite/experimental/lrt/vendors/c:litert_dispatch_c_api",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

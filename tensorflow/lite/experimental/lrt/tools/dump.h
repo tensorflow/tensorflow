@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_TOOLS_DUMP_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_TOOLS_DUMP_H_
 
+#include <iostream>
 #include <istream>
 #include <ostream>
 

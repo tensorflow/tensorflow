@@ -18,9 +18,36 @@ package(
 )
 
 cc_library(
+    name = "litert_logging",
+    srcs = [
+        "litert_logging.cc",
+    ],
+    hdrs = [
+        "litert_logging.h",
+    ],
+    deps = [
+        ":litert_c_api",
+        "//tensorflow/lite:minimal_logging",
+    ],
+)
+
+cc_test(
+    name = "litert_logging_test",
+    srcs = [
+        "litert_logging_test.cc",
+    ],
+    deps = [
+        ":litert_c_api",
+        ":litert_logging",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "litert_c_api",
     hdrs = [
         "litert_common.h",
+        "litert_logging.h",
         "litert_model.h",
         "litert_op_code.h",
         "litert_options.h",
@@ -46,7 +73,7 @@ cc_library(
     ],
     deps = [
         ":litert_c_api",
-        "//tensorflow/lite/experimental/lrt/core:logging",
+        ":litert_logging",
         "//tensorflow/lite/experimental/lrt/core:tensor_buffer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -30,10 +30,9 @@
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
 #include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_logging.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"
-#include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_log.h"
 
