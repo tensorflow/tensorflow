@@ -19,8 +19,16 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tsl/platform/status.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfd {
