@@ -78,6 +78,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_lexer",
+        "//xla/hlo/utils:copy_on_write",
         "//xla/service:compilation_environments",
         "//xla/service:computation_layout",
         "//xla/service:computation_placer_hdr",
