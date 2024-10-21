@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "third_party/absl/strings/ascii.h"
 
 namespace mlir {
 namespace mhlo {
@@ -48,7 +49,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     enum EquationVariable { kIsLhs, kIsRhs, kIsResult };
     EquationVariable currentVariable = kIsLhs;
     while (index < equation.size()) {
-      if (std::isalpha(equation[index])) {
+      if (absl::ascii_isalpha(equation[index])) {
         if (currentVariable == kIsLhs) {
           lhsTokens.push_back(equation[index]);
         } else if (currentVariable == kIsRhs) {

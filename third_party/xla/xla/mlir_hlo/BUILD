@@ -435,6 +435,7 @@ cc_library(
         ":stablehlo_legalize_to_hlo",
         ":type_conversion",
         ":unfuse_batch_norm",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
