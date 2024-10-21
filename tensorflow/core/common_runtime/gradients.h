@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GRADIENTS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GRADIENTS_H_
 
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
