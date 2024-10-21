@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_PACK_BUILDER_H_
 #include <vector>
 
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/op_builder.h"
 
 namespace tflite {
