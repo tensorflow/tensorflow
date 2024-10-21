@@ -68,7 +68,7 @@ class ExtractExampleParserConfigurationTest : public ::testing::Test {
 TEST_F(ExtractExampleParserConfigurationTest, OpNotFound) {
   std::vector<FixedLenFeature> dense_vec;
   std::vector<VarLenFeature> sparse_vec;
-  Status status = ExtractExampleParserConfiguration(
+  absl::Status status = ExtractExampleParserConfiguration(
       graph_def_, "BlarseExample/ParseExample", session_.get(), &dense_vec,
       &sparse_vec);
 
@@ -83,7 +83,7 @@ TEST_F(ExtractExampleParserConfigurationTest, InconsistentAttrNsparse) {
   auto mutable_attr = node->mutable_attr();
   (*mutable_attr)["Nsparse"].set_i(3);
 
-  Status status = ExtractExampleParserConfiguration(
+  absl::Status status = ExtractExampleParserConfiguration(
       graph_def_, "ParseExample/ParseExample", session_.get(), &dense_vec,
       &sparse_vec);
 
@@ -98,7 +98,7 @@ TEST_F(ExtractExampleParserConfigurationTest, InconsistentAttrNdense) {
   auto mutable_attr = node->mutable_attr();
   (*mutable_attr)["Ndense"].set_i(2);
 
-  Status status = ExtractExampleParserConfiguration(
+  absl::Status status = ExtractExampleParserConfiguration(
       graph_def_, "ParseExample/ParseExample", session_.get(), &dense_vec,
       &sparse_vec);
 
@@ -108,7 +108,7 @@ TEST_F(ExtractExampleParserConfigurationTest, InconsistentAttrNdense) {
 TEST_F(ExtractExampleParserConfigurationTest, Basic) {
   std::vector<FixedLenFeature> dense_vec;
   std::vector<VarLenFeature> sparse_vec;
-  Status status = ExtractExampleParserConfiguration(
+  absl::Status status = ExtractExampleParserConfiguration(
       graph_def_, "ParseExample/ParseExample", session_.get(), &dense_vec,
       &sparse_vec);
 
