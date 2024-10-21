@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
@@ -1244,6 +1245,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // pinned when their layout has the alternate memory space before MSA runs.
   bool IsIntervalPinnedToAlternateMemory(
       const MsaBufferInterval& interval) const;
+
+  // A convenience debugging method that returns true if the prefetch context
+  // matches the described producer and consumer.
+  bool MatchesPrefetchContext(const PrefetchContext& context,
+                              absl::string_view producer_name,
+                              ShapeIndex producer_shape_index,
+                              absl::string_view consumer_name) const;
 
   AllocationSequence* allocations_;
   const Options& options_;

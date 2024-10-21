@@ -465,6 +465,16 @@ bool MsaAlgorithm::IsIntervalPinnedToAlternateMemory(
          shape.layout().memory_space() == options_.alternate_memory_space;
 }
 
+bool MsaAlgorithm::MatchesPrefetchContext(
+    const PrefetchContext& context, absl::string_view producer_name,
+    ShapeIndex producer_shape_index, absl::string_view consumer_name) const {
+  return context.request->use->hlo_use.instruction->name() == consumer_name &&
+         context.request->allocation_value->defining_position()
+                 .instruction->name() == producer_name &&
+         context.request->allocation_value->defining_position().index ==
+             producer_shape_index;
+}
+
 MsaAlgorithm::MsaAlgorithm(AllocationSequence* allocations,
                            const Options& options,
                            const HloAliasAnalysis& alias_analysis,

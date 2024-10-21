@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
@@ -539,6 +540,17 @@ class ParentAllocation final : public Allocation {
  private:
   const Allocation& original_allocation_;
   HloInstruction* calling_instruction_;
+};
+
+// A class with some utility functions that are useful in debugging.
+struct AllocationSequenceDebugging {
+  // Developers can call this method to log all the allocations in alternate
+  // memory, at a given instruction time.
+  //
+  // REQUIRED:
+  // - This method is intended to be called before MSA modifies the HloModule.
+  static void LogAltMemAllocationsAt(const AllocationSequence& allocations,
+                                     int64_t time);
 };
 
 }  // namespace xla::memory_space_assignment

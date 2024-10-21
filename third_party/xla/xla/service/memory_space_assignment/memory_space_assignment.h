@@ -298,7 +298,11 @@ class MemorySpaceAssignment {
 
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
-  absl::Status VerifyAndExportHeapSimulatorTrace();
+  //
+  // If alt_mem_bytes_occupied is not null, it will be populated with the number
+  // of bytes occupied in the alternate memory space at each instruction time.
+  absl::Status VerifyAndExportHeapSimulatorTrace(
+      std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
  protected:
   // Main driver of the memory space assignment pass.

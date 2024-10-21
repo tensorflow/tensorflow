@@ -59,6 +59,13 @@ struct OutstandingAsyncCopyLike {
 // A wrapper class around runtime simulator.
 class RuntimeSimulator {
  public:
+  // A struct that captures an instructions elapsed time and the amount of time
+  // we estimate default memory bandwidth to be idle, during that instruction.
+  struct ElapsedAndIdleTimes {
+    float elapsed_time;
+    float idle_default_memory_bandwidth_time;
+  };
+
   explicit RuntimeSimulator(CostAnalysis* cost_analysis,
                             int64_t alternate_memory_space)
       : cost_analysis_(cost_analysis),
@@ -93,8 +100,12 @@ class RuntimeSimulator {
   // there is spare bandwidth to simulate async memory accesses to default
   // memory. If we get to an async copy like done, we must wait until it
   // finishes (potentially waiting for copies issued before it to finish.
-  float SimulateElapsedTime(const HloModule* hlo_module,
-                            const AllocationSequence& allocations);
+  //
+  // alt_mem_bytes_occupied is a vector of the amount of alt mem bytes allocated
+  // at any given instruction. It may be null.
+  float SimulateElapsedTime(
+      const HloModule* hlo_module, const AllocationSequence& allocations,
+      const std::vector<int64_t>* alt_mem_bytes_occupied = nullptr);
 
   // This is an auxiliary function for simulating the execution
   // time for executing a copy-done instruction. It returns the
@@ -125,7 +136,7 @@ class RuntimeSimulator {
   // Aside from returning the elapsed time, this function also updates the
   // outstanding memory request queues, by draining them when the compute
   // instruction is not occupying bandwidth.
-  float SimulateComputeInstruction(
+  ElapsedAndIdleTimes SimulateComputeInstruction(
       const HloInstruction* compute_instruction,
       absl::Span<const std::pair<int64_t, ShapeIndex>>
           operands_in_alternate_memory,
@@ -152,7 +163,9 @@ class RuntimeSimulator {
   // the memory access queues in a given amount of time (seconds). If both
   // outstanding_*_default_queues are non-empty, they share bandwidth. If one of
   // the queues is empty and the other is not, it gets the full bandwdith.
-  void ProcessAsyncCopyLikesInIdleTime(float time);
+  //
+  // Returns the remaining idle time after processing async-copy-likes.
+  float ProcessAsyncCopyLikesInIdleTime(float time);
 
   int64_t alternate_memory_space_;
   std::list<OutstandingAsyncCopyLike> outstanding_read_default_queue_;

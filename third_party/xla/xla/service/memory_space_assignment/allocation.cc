@@ -1015,4 +1015,73 @@ std::vector<Allocation*> GetAllocationSequenceInRawPointers(
   return allocations_in_raw_pointers;
 }
 
+namespace {
+
+struct AllocationSummary {
+  static void Add(const Allocation& allocation,
+                  std::vector<AllocationSummary>& data) {
+    if (!allocation.is_sliced_copy_allocation()) {
+      std::string name = allocation.defining_position().ToString();
+      if (allocation.cross_program_prefetch_index().has_value()) {
+        absl::StrAppend(&name, " (xprogram prefetch)");
+      }
+      data.push_back(AllocationSummary{allocation.chunk(),
+                                       allocation.start_time(),
+                                       allocation.end_time(), name});
+      return;
+    }
+    const SlicedCopyAllocation& sliced_copy_allocation =
+        dynamic_cast<const SlicedCopyAllocation&>(allocation);
+    for (int i = 0;
+         i < sliced_copy_allocation.slice_details_sorted_by_start_time().size();
+         ++i) {
+      std::string name = absl::StrCat(
+          sliced_copy_allocation.defining_position().ToString(), " (slice ", i,
+          (sliced_copy_allocation.cross_program_prefetch_index().has_value()
+               ? ", xprogram prefetch"
+               : ""),
+          ")");
+      const SlicedCopyAllocation::SliceDetail& slice_detail =
+          sliced_copy_allocation.slice_details_sorted_by_start_time()[i];
+      data.push_back(AllocationSummary{
+          slice_detail.slice_decision.chunk,
+          ExclusiveToInclusiveStartTime(
+              slice_detail.slice_decision.exclusive_start_time),
+          sliced_copy_allocation.end_time(), name});
+    }
+  }
+
+  HeapSimulator::Chunk chunk;
+  int64_t start_time_inclusive;
+  int64_t end_time_inclusive;
+  std::string name;
+};
+
+}  // namespace
+
+void AllocationSequenceDebugging::LogAltMemAllocationsAt(
+    const AllocationSequence& allocations, int64_t time) {
+  std::vector<AllocationSummary> data_vector;
+  for (const std::unique_ptr<Allocation>& allocation : allocations) {
+    if (allocation->start_time() <= time && allocation->end_time() >= time &&
+        allocation->is_in_alternate_mem()) {
+      AllocationSummary::Add(*allocation, data_vector);
+    }
+  }
+  absl::c_sort(data_vector,
+               [](const AllocationSummary& a, const AllocationSummary& b) {
+                 if (a.chunk.offset != b.chunk.offset) {
+                   return a.chunk.offset < b.chunk.offset;
+                 }
+                 return a.start_time_inclusive < b.start_time_inclusive;
+               });
+  LOG(INFO) << "Live allocations in alternate mem at instruction time " << time
+            << " (before MSA alters the graph):";
+  for (const AllocationSummary& data : data_vector) {
+    LOG(INFO) << "Alt mem allocation in chunk " << data.chunk.ToString()
+              << " during [" << data.start_time_inclusive << ","
+              << data.end_time_inclusive << "], holding " << data.name;
+  }
+}
+
 }  // namespace xla::memory_space_assignment
