@@ -1,0 +1,38 @@
+--- a/python/triton/language/core.py
++++ b/python/triton/language/core.py
+@@ -770,7 +770,7 @@ class tensor(_value):
+ 
+     @builtin
+     def __add__(self, other, _builder=None):
+-        return add(self, other, sanitize_overflow=True, _builder=_builder)
++        return add(self, other, sanitize_overflow=False, _builder=_builder)
+ 
+     @builtin
+     def __radd__(self, other, _builder=None):
+@@ -786,7 +786,7 @@ class tensor(_value):
+ 
+     @builtin
+     def __mul__(self, other, _builder=None):
+-        return mul(self, other, sanitize_overflow=True, _builder=_builder)
++        return mul(self, other, sanitize_overflow=False, _builder=_builder)
+ 
+     @builtin
+     def __rmul__(self, other, _builder=None):
+@@ -1883,7 +1883,7 @@ def where(condition, x, y, _builder=None
+ 
+ 
+ @builtin
+-def add(x, y, sanitize_overflow: constexpr = True, _builder=None):
++def add(x, y, sanitize_overflow: constexpr = False, _builder=None):
+     x = _unwrap_if_constexpr(x)
+     y = _unwrap_if_constexpr(y)
+     x = semantic.to_tensor(x, _builder)
+@@ -1901,7 +1901,7 @@ def sub(x, y, sanitize_overflow: constex
+ 
+ 
+ @builtin
+-def mul(x, y, sanitize_overflow: constexpr = True, _builder=None):
++def mul(x, y, sanitize_overflow: constexpr = False, _builder=None):
+     x = _unwrap_if_constexpr(x)
+     y = _unwrap_if_constexpr(y)
+     x = semantic.to_tensor(x, _builder)
