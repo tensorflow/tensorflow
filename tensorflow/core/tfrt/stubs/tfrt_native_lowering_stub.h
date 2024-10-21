@@ -20,10 +20,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
-#include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -38,7 +36,6 @@ class TfrtNativeLoweringStub {
   virtual void AddSyncContext(
       mlrt::ExecutionContext& execution_context, HostContext& host_context,
       tensorflow::tfrt_stub::SyncResourceState* sync_state) {}
-  virtual void AddNativeLoweringPasses(mlir::OpPassManager* pass_manager) {}
   virtual absl::StatusOr<
       std::shared_ptr<tensorflow::tfrt_stub::ExecutableContext>>
   BuildExecutableContext(mlir::ModuleOp module,
@@ -53,8 +50,6 @@ void RegisterTfrtNativeLoweringStub(
 void AddSyncContext(mlrt::ExecutionContext& execution_context,
                     tfrt::HostContext& host_context,
                     tensorflow::tfrt_stub::SyncResourceState* sync_state);
-
-void AddNativeLoweringPasses(mlir::OpPassManager* pass_manager);
 
 absl::StatusOr<std::shared_ptr<tensorflow::tfrt_stub::ExecutableContext>>
 BuildExecutableContext(mlir::ModuleOp module,
