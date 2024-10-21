@@ -78,7 +78,7 @@ cc_library(
         "@local_xla//xla/tsl/profiler:xla_profiler_backends",
         "@local_xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
-    ]),
+    ]) + ["//tensorflow/c/experimental/pluggable_profiler:__pkg__"],
     deps = [
         ":profiler_interface",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
