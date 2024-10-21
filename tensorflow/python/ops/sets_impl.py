@@ -31,6 +31,52 @@ _VALID_DTYPES = frozenset([
 @dispatch.add_dispatch_support
 def set_size(a, validate_indices=True):
   """Compute number of unique elements along last dimension of `a`.
+  
+Examples:
+
+```python
+import tensorflow as tf
+import collections
+
+# Represent the following array of sets as a sparse tensor:
+# a = np.array([[{5, 8}, {30}], [{14}, {5, 26}]])
+a = collections.OrderedDict([
+    ((0, 0, 0), 5),
+    ((0, 0, 1), 8),
+    ((0, 1, 0), 30),
+    ((1, 0, 0), 14),
+    ((1, 1, 0), 5),
+    ((1, 1, 1), 26),
+])
+a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                             dense_shape=[2,2,2])
+
+# Calculate the size of each set
+set_sizes = tf.sets.size(a)
+print(set_sizes)
+# Output: tf.Tensor(
+#                   [[2 1]
+#                    [1 2]], shape=(2, 2), dtype=int32)
+
+# b = np.array([[{11}, {}], [{24}, {15, 36, 7, 18}]])
+b = collections.OrderedDict([
+    ((0, 0, 0), 11),
+    ((1, 0, 0), 24),
+    ((1, 1, 0), 15),
+    ((1, 1, 1), 36),
+    ((1, 1, 2), 7),
+    ((1, 1, 3), 18),
+])
+b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                             dense_shape=[2, 2, 4])
+
+# Calculate the size of each set
+set_sizes = tf.sets.size(b)
+print(set_sizes)
+# Output: tf.Tensor(
+#                   [[1 0]
+#                    [1 4]], shape=(2, 2), dtype=int32)
+```
 
   Args:
     a: `SparseTensor`, with indices sorted in row-major order.
