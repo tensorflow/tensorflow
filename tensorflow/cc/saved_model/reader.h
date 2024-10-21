@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace tensorflow {
-Status ReadSavedModel(absl::string_view export_dir,
-                      SavedModel* saved_model_proto);
+absl::Status ReadSavedModel(absl::string_view export_dir,
+                            SavedModel* saved_model_proto);
 
 // Finds and returns the MetaGraphDef (within the provided SavedModel) that
 // matches the given set of tags. The lifetime of the returned MetaGraphDef is
@@ -45,12 +45,12 @@ absl::StatusOr<MetaGraphDef*> FindMetaGraphDef(
 // finds the MetaGraphDef that matches the given set of tags and writes it to
 // the `meta_graph_def` parameter. Returns a failure status when the SavedModel
 // file does not exist or no MetaGraphDef matches the tags.
-Status ReadMetaGraphDefFromSavedModel(absl::string_view export_dir,
-                                      const std::unordered_set<string>& tags,
-                                      MetaGraphDef* meta_graph_def);
+absl::Status ReadMetaGraphDefFromSavedModel(
+    absl::string_view export_dir, const std::unordered_set<string>& tags,
+    MetaGraphDef* meta_graph_def);
 
 // Store debug info from the SavedModel export dir.
-Status ReadSavedModelDebugInfoIfPresent(
+absl::Status ReadSavedModelDebugInfoIfPresent(
     absl::string_view export_dir,
     std::unique_ptr<GraphDebugInfo>* debug_info_proto);
 
