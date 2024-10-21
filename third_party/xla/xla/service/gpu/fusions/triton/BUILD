@@ -94,6 +94,7 @@ cc_library(
         "//xla/service/gpu/fusions/ir:xla_gpu",
         "//xla/service/gpu/fusions/mlir:elemental_hlo_to_mlir",
         "//xla/service/gpu/fusions/transforms:passes",
+        "//xla/service/gpu/fusions/triton:xla_triton",
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/gpu/model:indexing_analysis",
         "//xla/service/gpu/model:symbolic_tile_analysis",
@@ -184,6 +185,7 @@ cc_library(
         "//xla/service/gpu:target_util",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu:triton_tiling_propagation",
+        "//xla/service/gpu/fusions/triton:xla_triton",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
@@ -292,6 +294,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        ":xla_triton",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:GPUCommonTransforms",

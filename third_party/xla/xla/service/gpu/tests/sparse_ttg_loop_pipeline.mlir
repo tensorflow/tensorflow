@@ -1,4 +1,4 @@
-// RUN: triton-opt %s -split-input-file -tritongpu-pipeline=num-stages=3 | FileCheck %s
+// RUN: xla-opt %s -split-input-file -tritongpu-pipeline=num-stages=3 | FileCheck %s
 
 #blocked = #triton_gpu.blocked<{sizePerThread = [1, 4], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
 #sliced = #triton_gpu.slice<{parent=#blocked, dim=0}>
@@ -41,7 +41,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
     %loop:4 = scf.for %iv = %lb to %ub step %step iter_args(%a_ptr = %a_ptr_init, %b_ptr = %b_ptr_init, %c = %c_init, %meta_ptr = %meta_ptr_init)
         -> (tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<128x128xf32, #mma>, tensor<128x4x!tt.ptr<i16>, #blocked>) {
       // CHECK-COUNT-3: triton_gpu.local_load
-      // CHECK: triton_gpu.sparse_dot
+      // CHECK: triton_xla.sparse_dot
       // CHECK-COUNT-3: triton_gpu.async_copy_global_to_local
       %a_ = tt.load %a_ptr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<128x32x!tt.ptr<f16>, #blocked>
       %a = triton_gpu.convert_layout %a_ : tensor<128x32xf16, #blocked> -> tensor<128x32xf16, #dot_operand_a>
@@ -49,7 +49,7 @@ module attributes {"triton_gpu.num-warps" = 4 : i32} {
       %b = triton_gpu.convert_layout %b_ : tensor<64x128xf16, #blocked> -> tensor<64x128xf16, #dot_operand_b>
       %meta_ = tt.load %meta_ptr {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : tensor<128x4x!tt.ptr<i16>, #blocked>
       %meta = triton_gpu.convert_layout %meta_ : tensor<128x4xi16, #blocked> -> tensor<128x4xi16, #dot_meta_enc>
-      %d = triton_gpu.sparse_dot %a, %b, %c, %meta : tensor<128x32xf16, #dot_operand_a> meta tensor<128x4xi16, #dot_meta_enc> * tensor<64x128xf16, #dot_operand_b> -> tensor<128x128xf32, #mma>
+      %d = triton_xla.sparse_dot %a, %b, %c, %meta : tensor<128x32xf16, #dot_operand_a> meta tensor<128x4xi16, #dot_meta_enc> * tensor<64x128xf16, #dot_operand_b> -> tensor<128x128xf32, #mma>
 
       %a_ptr_next = tt.addptr %a_ptr, %a_off : tensor<128x32x!tt.ptr<f16>, #blocked>, tensor<128x32xi32, #blocked>
       %b_ptr_next = tt.addptr %b_ptr, %b_off : tensor<64x128x!tt.ptr<f16>, #blocked>, tensor<64x128xi32, #blocked>
