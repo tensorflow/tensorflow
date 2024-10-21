@@ -1895,7 +1895,11 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
             }
           }
         }
-
+        // Skip bitcast
+        if (in_place_input_source != nullptr &&
+            in_place_input_source->opcode() == HloOpcode::kBitcast) {
+          in_place_input_source = in_place_input_source->operand(0);
+        }
         if (in_place_input_source != nullptr &&
             in_place_input_source->opcode() == HloOpcode::kParameter) {
           in_place_input_output_pairs.emplace_back(
