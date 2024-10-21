@@ -43,6 +43,7 @@ class LowerTrivialPass : public impl::LowerTrivialPassBase<LowerTrivialPass> {
     PopulateXlaCpuTypeConversionAndLegality(converter, target);
 
     mlir::RewritePatternSet patterns(&getContext());
+    PopulateXlaCpuConversionPatterns(patterns);
 
     // Add conversion patterns for function signatures.
     mlir::populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
@@ -51,6 +52,7 @@ class LowerTrivialPass : public impl::LowerTrivialPassBase<LowerTrivialPass> {
     // Set up basic legality constraints.
     target.addLegalOp<mlir::ModuleOp>();
     target.addLegalDialect<mlir::func::FuncDialect>();
+    target.addLegalDialect<mlir::LLVM::LLVMDialect>();
 
     // Add dynamic legality constraints to apply conversions defined above.
     target.addDynamicallyLegalOp<mlir::func::FuncOp>(
