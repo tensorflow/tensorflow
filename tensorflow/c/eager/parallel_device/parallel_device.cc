@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace parallel_device {
