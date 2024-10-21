@@ -34,6 +34,8 @@
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/lrt/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/tools/dump.h"
 #include "tensorflow/lite/experimental/lrt/tools/tool_display.h"
@@ -44,7 +46,7 @@ using ::litert::internal::CompilerPlugin;
 using ::litert::internal::Dump;
 using ::litert::internal::GroupPartitions;
 using ::litert::internal::OutlinePartition;
-using ::litert::testing::VerifyFlatbuffer;
+using ::litert::internal::VerifyFlatbuffer;
 using ::litert::tools::ApplyPluginRun;
 
 #define _ENSURE_CONFIG(expr)                    \
@@ -192,30 +194,18 @@ LiteRtResult<UniqueLiteRtModel> LoadModel(Context* ctx) {
 LiteRtStatus SerializeModel(Context* ctx, UniqueLiteRtModel model) {
   ctx->Dump().Start("Serialize Model");
 
-  uint8_t* buf;
-  size_t size;
-  size_t offset;
-  if (SerializeModel(model.release(), &buf, &size, &offset) !=
-      kLiteRtStatusOk) {
-    delete[] buf;
-    ctx->Dump().Fail();
-    return kLiteRtStatusErrorSerialization;
-  }
+  OwningBufferRef<uint8_t> buf;
+  auto [data, size, offset] = buf.GetWeak();
 
-  auto out_buf = buf + offset;
-  const size_t out_size = size - offset;
-  if (!VerifyFlatbuffer(out_buf, out_size)) {
-    ctx->Dump().Labeled() << "Failed to verify flatbuffer\n";
-    ctx->Dump().Fail();
-    delete[] buf;
-    return kLiteRtStatusErrorInvalidFlatbuffer;
-  }
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      SerializeModel(model.release(), &data, &size, &offset));
+  LITERT_ENSURE(VerifyFlatbuffer(buf.Span()),
+                kLiteRtStatusErrorInvalidFlatbuffer,
+                "Failed to verify flatbuffer.");
 
-  ctx->Out().write(reinterpret_cast<const char*>(out_buf), out_size);
-  ctx->Dump().Labeled() << absl::StreamFormat(
-      "Serialized a model of size: %lu\n", out_size);
-
-  delete[] buf;
+  buf.WriteStr(ctx->Out());
+  ctx->Dump().Labeled() << "Serialized a model... ";
+  buf.Dump(ctx->Dump().Display());
 
   ctx->Dump().Done();
   return kLiteRtStatusOk;
@@ -434,28 +424,33 @@ LiteRtStatus Apply(Context* ctx) {
   LITERT_ENSURE_SUPPORTED(model->subgraphs.size() == kNumInputSubgraphs,
                           "Only single subgraph models currently supported.");
 
+  // Query plugin for compilable ops and slice partitions out of the graph,
+  // replacing use with single custom op..
   auto custom_ops = ApplyPartition(ctx, *model, plugin);
   LITERT_ENSURE(!custom_ops.empty(), kLiteRtStatusErrorGraphModification,
                 "Failed to partiion graph.");
-
+  // All new subgraphs to be compiled are appended to the model's subgraphs.
   std::vector<LiteRtSubgraph> compilation_input;
   for (auto it = model->subgraphs.begin() + kNumInputSubgraphs;
        it < model->subgraphs.end(); ++it) {
     compilation_input.push_back(&*it);
   }
 
+  // Call compilation method on the plugin.
   std::stringstream compilation_out;
   ApplyPluginRun::OutStreamT out = ctx->SwapOut(compilation_out);
   LITERT_MOVE_OR_RETURN_STATUS(
       auto call_info, CompilePartitions(ctx, compilation_input, plugin));
+
+  // Update custom op info the it's respective entry point info from the plugin.
   LITERT_ENSURE(call_info.size() == custom_ops.size(),
                 kLiteRtStatusErrorCompilationr,
                 "Failed to verify entry point information.");
-
   auto call_it = call_info.begin();
   auto custom_op_it = custom_ops.begin();
   for (; call_it < call_info.end() && custom_op_it < custom_ops.end();) {
-    (*custom_op_it)->custom_options.swap(*call_it);
+    (*custom_op_it)->custom_options =
+        OwningBufferRef<uint8_t>(*call_it->c_str());
     ++call_it;
     ++custom_op_it;
   }

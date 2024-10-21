@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cstddef>
-#include <cstdint>
 // NOLINTNEXTLINE
 #include <filesystem>
 #include <fstream>
@@ -31,31 +29,32 @@
 #include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
+#include "tensorflow/lite/experimental/lrt/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
 
 using ::graph_tools::GetMetadata;
-using ::litert::testing::VerifyFlatbuffer;
+using ::litert::BufferRef;
+using ::litert::OwningBufferRef;
+using ::litert::internal::VerifyFlatbuffer;
 
 inline UniqueLiteRtModel LoadModelThroughRoundTrip(std::string_view path) {
   auto model = litert::testing::LoadTestFileModel(path);
 
-  uint8_t* buf = nullptr;
-  size_t buf_size;
-  size_t offset;
+  OwningBufferRef buf;
+  auto [data, size, offset] = buf.GetWeak();
 
   LITERT_CHECK_STATUS_OK_MSG(
-      SerializeModel(model.release(), &buf, &buf_size, &offset),
+      SerializeModel(model.release(), &data, &size, &offset),
       "Failed to serialize model");
 
   // Reload model.
   LiteRtModel result = nullptr;
-  LITERT_CHECK_STATUS_OK_MSG(
-      LoadModel(buf + offset, buf_size - offset, &result),
-      "Failed to re load model");
-  delete[] buf;
+  LITERT_CHECK_STATUS_OK_MSG(LoadModel(buf.Data(), buf.Size(), &result),
+                             "Failed to re load model");
 
   return UniqueLiteRtModel(result);
 }
@@ -107,13 +106,11 @@ TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
 TEST(TestSerializeModel, TestAllocations) {
   auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
 
-  uint8_t* buf = nullptr;
-  size_t buf_size;
-  size_t offset;
+  OwningBufferRef buf;
+  auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
-
-  delete[] buf;
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  EXPECT_TRUE(VerifyFlatbuffer(data + offset, size - offset));
 }
 
 TEST(TestSerializeModel, TestMetadata) {
@@ -126,18 +123,15 @@ TEST(TestSerializeModel, TestMetadata) {
                                   kMetadataData.size(), kMetadataName.data()));
   ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
                           GetMetadata(model.get(), kMetadataName));
-  EXPECT_EQ(absl::string_view(reinterpret_cast<const char*>(m_buffer.data()),
-                              m_buffer.size()),
-            kMetadataData);
+  EXPECT_EQ(m_buffer.StrView(), kMetadataData);
 
-  uint8_t* buf = nullptr;
-  size_t buf_size;
-  size_t offset;
+  OwningBufferRef buf;
+  auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
-  EXPECT_TRUE(VerifyFlatbuffer(buf + offset, buf_size - offset));
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  EXPECT_TRUE(VerifyFlatbuffer(buf.Span()));
 
-  auto new_model = tflite::UnPackModel(buf + offset);
+  auto new_model = tflite::UnPackModel(buf.Data());
 
   ASSERT_NE(new_model, nullptr);
   ASSERT_GT(new_model->metadata.size(), 0);
@@ -155,14 +149,10 @@ TEST(TestSerializeModel, TestMetadata) {
 
   tflite::BufferT* metadata_buffer =
       new_model->buffers.at(fb_metadata->buffer).get();
+  BufferRef metadata_buf(metadata_buffer->data.data(),
+                         metadata_buffer->data.size());
 
-  absl::string_view fb_metadata_data(
-      reinterpret_cast<const char*>(metadata_buffer->data.data()),
-      metadata_buffer->data.size());
-
-  EXPECT_EQ(fb_metadata_data, kMetadataData);
-
-  delete[] buf;
+  EXPECT_EQ(metadata_buf.StrView(), kMetadataData);
 }
 
 TEST(TestSerializeModel, TestCustomOpCode) {
@@ -171,14 +161,12 @@ TEST(TestSerializeModel, TestCustomOpCode) {
   constexpr static std::string_view kCustomCode = "MyCustomCode";
   ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
 
-  uint8_t* buf = nullptr;
-  size_t buf_size;
-  size_t offset;
+  OwningBufferRef buf;
+  auto [data, size, offset] = buf.GetWeak();
 
-  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
-  EXPECT_TRUE(VerifyFlatbuffer(buf + offset, buf_size - offset));
-
-  auto new_model = tflite::UnPackModel(buf + offset);
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &data, &size, &offset));
+  EXPECT_TRUE(VerifyFlatbuffer(buf.Span()));
+  auto new_model = tflite::UnPackModel(buf.Data());
 
   tflite::OperatorCodeT* custom_op_code = nullptr;
   for (auto& c : new_model->operator_codes) {
@@ -190,8 +178,6 @@ TEST(TestSerializeModel, TestCustomOpCode) {
   ASSERT_NE(custom_op_code, nullptr);
   ASSERT_EQ(custom_op_code->custom_code, kCustomCode);
   ASSERT_EQ(custom_op_code->builtin_code, tflite::BuiltinOperator_CUSTOM);
-
-  delete[] buf;
 }
 
 TEST_P(TestWithPath, TestConstructDestroy) {
