@@ -21,9 +21,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
@@ -1198,7 +1199,8 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Operator* op,
                                            const SubGraph* subgraph,
                                            const Model* model) {
-  OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
+  OpSignature op_sig =
+      tflite_migration::GetOpSignature(op_code, op, subgraph, model);
   // Offline compatibility assumes enhanced broadcast is enabled.
   auto status = CheckGpuDelegateCompatibility(
       op_sig, GpuCompatibilityFlags::kEnhancedBroadcast);

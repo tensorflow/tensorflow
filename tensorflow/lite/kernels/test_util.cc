@@ -33,6 +33,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
-#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 #include "tsl/platform/logging.h"
 
@@ -326,7 +326,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                               subgraphs_flatbuffer, description, buffers));
 
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
-  UpdateOpVersion(buffer_pointer);
+  tflite_migration::UpdateOpVersion(buffer_pointer);
 
   use_simple_allocator |=
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
