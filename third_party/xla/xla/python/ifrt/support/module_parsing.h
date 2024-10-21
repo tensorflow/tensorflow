@@ -26,6 +26,10 @@ namespace xla {
 namespace ifrt {
 namespace support {
 
+// Initializes the given MLIR dialect registry with dialects that are required
+// by IFRT IR passes.
+void InitializeMlirDialectRegistry(mlir::DialectRegistry& registry);
+
 // Registers all dialects required by IFRT IR modules.
 void RegisterMlirDialects(mlir::MLIRContext& context);
 
