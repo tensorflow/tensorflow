@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_COLLECTIVES_ASYNC_COLLECTIVE_CREATOR_H_
 #define XLA_HLO_TRANSFORMS_COLLECTIVES_ASYNC_COLLECTIVE_CREATOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -51,6 +52,7 @@ class AsyncCollectiveCreator : public HloModulePass {
       return std::vector<Shape>{};
     };
     int64_t all_reduce_min_threshold_in_bytes = 0;
+    int64_t all_gather_min_threshold_in_bytes = 0;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}
