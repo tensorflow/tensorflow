@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
