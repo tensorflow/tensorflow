@@ -25,12 +25,15 @@
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_serialize.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
+using ::graph_tools::GetMetadata;
 using ::litert::tools::ApplyPlugin;
 using ::litert::tools::ApplyPluginRun;
 using ::testing::HasSubstr;
@@ -156,9 +159,16 @@ TEST(TestApplyPluginTool, TestApply) {
   UniqueLiteRtModel u_model(model);
   EXPECT_EQ(model->subgraphs.size(), 1);
 
-  ASSERT_RESULT_OK_ASSIGN(auto metadata_buffer,
-                          u_model->FindMetadata(kSocManufacturer));
-  EXPECT_GE(metadata_buffer.Size(), 0);
+  ASSERT_RESULT_OK_ASSIGN(auto byte_code_buffer,
+                          GetMetadata(model, kLiteRtMetadataByteCodeKey));
+  EXPECT_THAT(byte_code_buffer.StrView(), HasSubstr("Partition_0_with_1_muls"));
+
+  ASSERT_RESULT_OK_ASSIGN(auto tag_buffer,
+                          GetMetadata(model, kLiteRtBuildTagKey));
+  EXPECT_EQ(tag_buffer.StrView(),
+            "soc_man:ExampleSocManufacturer,soc_model:ExampleSocModel,"
+            "serialization_strategy:"
+            "METADATA");
 }
 
 }  // namespace
