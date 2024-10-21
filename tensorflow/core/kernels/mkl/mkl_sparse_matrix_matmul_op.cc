@@ -195,8 +195,8 @@ class MklSparseMatrixMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
 
       // Execute the actual matmul.
       matmul_prim->Execute(
-          cpu_stream, lhs_data, rhs_data, output_data, scratch_pad.Get(),
-          nullptr, nullptr,
+          cpu_stream, lhs_data, rhs_data, output_data, matmul_params,
+          scratch_pad.Get(), {},
           sparse_matrix_a->col_indices().flat<int32_t>().data(),
           sparse_matrix_a->row_pointers().flat<int32_t>().data());
     } catch (dnnl::error& e) {
