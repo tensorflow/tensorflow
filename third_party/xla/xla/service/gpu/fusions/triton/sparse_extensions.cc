@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/gpu/fusions/triton/passes.h"
+#include "xla/service/gpu/fusions/triton/xla_triton_ops.h"
 #include "triton/Analysis/Allocation.h"
 #include "triton/Analysis/Membar.h"
 #include "triton/Conversion/TritonGPUToLLVM/TypeConverter.h"
@@ -111,11 +113,11 @@ constexpr int kMetaElementsPerPackedValue = 16 / kMetaElementsBitSize;
 constexpr int kColumnsPerCtaTile = kTileSize / kMetaElementsPerPackedValue;
 
 struct SparseAddEncoding
-    : public OpConversionPattern<triton::gpu::SparseDotOp> {
-  using OpConversionPattern<triton::gpu::SparseDotOp>::OpConversionPattern;
+    : public OpConversionPattern<triton::xla::SparseDotOp> {
+  using OpConversionPattern<triton::xla::SparseDotOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
+      triton::xla::SparseDotOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     RankedTensorType op_type = cast<RankedTensorType>(op.getType());
 
@@ -183,16 +185,16 @@ struct SparseAddEncoding
     Attribute a_meta_encoding = a_meta_type.getEncoding();
     if (!a_meta_encoding) return failure();
     Value a_meta = adaptor.getAMeta();
-    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(a_meta_encoding)) {
+    if (!isa<triton::xla::SparseDotMetaEncodingAttr>(a_meta_encoding)) {
       Attribute new_encoding =
-          triton::gpu::SparseDotMetaEncodingAttr::get(getContext(), d_encoding);
+          triton::xla::SparseDotMetaEncodingAttr::get(getContext(), d_encoding);
       auto tensor_type = RankedTensorType::get(
           a_meta_type.getShape(), a_meta_type.getElementType(), new_encoding);
       a_meta = rewriter.create<triton::gpu::ConvertLayoutOp>(
           a_meta.getLoc(), tensor_type, a_meta);
     }
 
-    auto new_op = rewriter.replaceOpWithNewOp<triton::gpu::SparseDotOp>(
+    auto new_op = rewriter.replaceOpWithNewOp<triton::xla::SparseDotOp>(
         op, return_type, a, b, c, a_meta);
     for (const NamedAttribute attr : op->getAttrs()) {
       if (!new_op->hasAttr(attr.getName()))
@@ -215,8 +217,8 @@ struct SparseAddEncodingPass
     auto pattern = std::make_unique<SparseAddEncoding>(type_converter, context);
     RewritePatternSet patterns(context, std::move(pattern));
     TritonGPUConversionTarget target(*context, type_converter);
-    target.addDynamicallyLegalOp<triton::gpu::SparseDotOp>(
-        [](triton::gpu::SparseDotOp op) {
+    target.addDynamicallyLegalOp<triton::xla::SparseDotOp>(
+        [](triton::xla::SparseDotOp op) {
           return op.getAMeta().getType().getEncoding() != nullptr;
         });
     if (failed(applyPartialConversion(getOperation(), target,
@@ -227,7 +229,7 @@ struct SparseAddEncodingPass
 
 class SparseBlockedToMMA : public RewritePattern {
   using ConvertLayoutOp = triton::gpu::ConvertLayoutOp;
-  using SparseDotOp = triton::gpu::SparseDotOp;
+  using SparseDotOp = triton::xla::SparseDotOp;
   using NvidiaMmaEncodingAttr = triton::gpu::NvidiaMmaEncodingAttr;
 
  public:
@@ -262,7 +264,7 @@ class SparseBlockedToMMA : public RewritePattern {
     auto instr_shape =
         mmaVersionToInstrShape(version_major, ret_shape_per_cta,
                                cast<RankedTensorType>(a.getType()), num_warps);
-    auto warps_per_tile = getWarpsPerTile(
+    auto warps_per_tile = mlir::triton::gpu::getWarpsPerTile(
         dot_op, ret_shape_per_cta, version_major, num_warps, instr_shape);
     NvidiaMmaEncodingAttr mma_enc =
         NvidiaMmaEncodingAttr::get(context, version_major, /*versionMinor=*/0,
@@ -312,7 +314,7 @@ class SparseBlockedToMMA : public RewritePattern {
     auto meta_type = cast<RankedTensorType>(meta.getType());
     meta_type = RankedTensorType::get(
         meta_type.getShape(), meta_type.getElementType(),
-        triton::gpu::SparseDotMetaEncodingAttr::get(context, mma_enc));
+        triton::xla::SparseDotMetaEncodingAttr::get(context, mma_enc));
     meta = rewriter.create<ConvertLayoutOp>(meta.getLoc(), meta_type, meta);
 
     // convert dot instruction
@@ -358,7 +360,7 @@ struct SparseRemoveLayoutConversionPass
       }
       auto dst_type = cast<RankedTensorType>(op.getType());
       // Skip if the destination is not a sparse dot meta.
-      if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(
+      if (!isa<triton::xla::SparseDotMetaEncodingAttr>(
               dst_type.getEncoding())) {
         return;
       }
@@ -393,7 +395,7 @@ class SparseLocalLoadToLLVM
     if (!isa<triton::gpu::SharedEncodingAttr>(src_ty.getEncoding()))
       return failure();
     RankedTensorType dst_ty = op.getType();
-    if (!isa<triton::gpu::SparseDotMetaEncodingAttr>(dst_ty.getEncoding()))
+    if (!isa<triton::xla::SparseDotMetaEncodingAttr>(dst_ty.getEncoding()))
       return failure();
     return lowerSharedToSparseMeta(op, adaptor, rewriter);
   }
@@ -404,7 +406,7 @@ class SparseLocalLoadToLLVM
       triton::gpu::LocalLoadOp op, triton::gpu::LocalLoadOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const {
     auto loc = op.getLoc();
-    auto load_sparse_encoding = cast<triton::gpu::SparseDotMetaEncodingAttr>(
+    auto load_sparse_encoding = cast<triton::xla::SparseDotMetaEncodingAttr>(
         cast<RankedTensorType>(op.getResult().getType()).getEncoding());
 
     // Calculate tile size as number of mask elements (4xi4).
@@ -488,7 +490,7 @@ class SparseLocalLoadToLLVM
 bool IsLocalLoadWithSparseEncoding(Operation *op) {
   auto local_load = mlir::dyn_cast<triton::gpu::LocalLoadOp>(op);
   if (!local_load) return false;
-  return isa<triton::gpu::SparseDotMetaEncodingAttr>(
+  return isa<triton::xla::SparseDotMetaEncodingAttr>(
       local_load.getType().getEncoding());
 }
 
@@ -513,7 +515,7 @@ struct SparseLocalLoadToLLVMPass
                            arith::ArithDialect>();
     target.addDynamicallyLegalOp<triton::gpu::LocalLoadOp>(
         [](triton::gpu::LocalLoadOp op) {
-          return !isa<triton::gpu::SparseDotMetaEncodingAttr>(
+          return !isa<triton::xla::SparseDotMetaEncodingAttr>(
               op.getType().getEncoding());
         });
     LowerToLLVMOptions option(context);
@@ -559,8 +561,8 @@ std::string getMmaSpPtxInstruction(Type type) {
   llvm::report_fatal_error("Unsupported SparseDotOp operand type");
 }
 
-LogicalResult convertSparseMMA(triton::gpu::SparseDotOp op,
-                               triton::gpu::SparseDotOp::Adaptor adaptor,
+LogicalResult convertSparseMMA(triton::xla::SparseDotOp op,
+                               triton::xla::SparseDotOp::Adaptor adaptor,
                                const LLVMTypeConverter *typeConverter,
                                ConversionPatternRewriter &rewriter) {
   // Get number of repetitions across the dimensions.
@@ -690,8 +692,8 @@ Value smemDescriptor(int a, int b, ConversionPatternRewriter &rewriter,
   return add(baseDesc, off_);
 }
 
-LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
-                                 triton::gpu::SparseDotOp::Adaptor adaptor,
+LogicalResult convertSparseWGMMA(triton::xla::SparseDotOp op,
+                                 triton::xla::SparseDotOp::Adaptor adaptor,
                                  const LLVMTypeConverter *typeConverter,
                                  ConversionPatternRewriter &rewriter,
                                  Value thread) {
@@ -822,8 +824,8 @@ LogicalResult convertSparseWGMMA(triton::gpu::SparseDotOp op,
 
 // ----- Dispatch based on architecture.
 
-LogicalResult rewriteSparseDotOp(triton::gpu::SparseDotOp op,
-                                 triton::gpu::SparseDotOp::Adaptor adaptor,
+LogicalResult rewriteSparseDotOp(triton::xla::SparseDotOp op,
+                                 triton::xla::SparseDotOp::Adaptor adaptor,
                                  const LLVMTypeConverter *typeConverter,
                                  ConversionPatternRewriter &rewriter) {
   auto resultTy = cast<RankedTensorType>(op.getResult().getType());
@@ -843,12 +845,12 @@ LogicalResult rewriteSparseDotOp(triton::gpu::SparseDotOp op,
 }
 
 struct SparseDotOpConversion
-    : public ConvertOpToLLVMPattern<triton::gpu::SparseDotOp> {
+    : public ConvertOpToLLVMPattern<triton::xla::SparseDotOp> {
   using ConvertOpToLLVMPattern<
-      triton::gpu::SparseDotOp>::ConvertOpToLLVMPattern;
+      triton::xla::SparseDotOp>::ConvertOpToLLVMPattern;
 
   LogicalResult matchAndRewrite(
-      triton::gpu::SparseDotOp op, OpAdaptor adaptor,
+      triton::xla::SparseDotOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     return rewriteSparseDotOp(op, adaptor, getTypeConverter(), rewriter);
   }
@@ -861,7 +863,7 @@ struct SparseDotOpToLLVMPass
     ConversionTarget target(*context);
     target.addLegalDialect<LLVM::LLVMDialect, NVVM::NVVMDialect,
                            arith::ArithDialect, ttn::NVGPUDialect>();
-    target.addIllegalOp<triton::gpu::SparseDotOp>();
+    target.addIllegalOp<triton::xla::SparseDotOp>();
     target.addIllegalDialect<mlir::gpu::GPUDialect>();
     LowerToLLVMOptions option(context);
     TritonGPUToLLVMTypeConverter typeConverter(context, option);
