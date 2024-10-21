@@ -13,6 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/run_handler.h"
@@ -21,14 +31,12 @@ limitations under the License.
 #include <vector>
 
 #define EIGEN_USE_THREADS
-#include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
