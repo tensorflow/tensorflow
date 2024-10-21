@@ -370,11 +370,6 @@ bool operator==(const PtrVec<T>& a, const PtrVec<T>& b) {
   return std::equal(a_data, a_data + a.size(), b_data, b_data + b.size());
 }
 
-template <typename T>
-bool operator!=(const PtrVec<T>& a, const PtrVec<T>& b) {
-  return !(a == b);
-}
-
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_PTRVEC_H_
