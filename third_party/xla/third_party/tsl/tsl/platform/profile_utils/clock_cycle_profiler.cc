@@ -17,6 +17,11 @@ limitations under the License.
 
 #include <chrono>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tsl/platform/profile_utils/cpu_utils.h"
+#include "tsl/platform/types.h"
+
 namespace tsl {
 
 void ClockCycleProfiler::DumpStatistics(const string& tag) {
