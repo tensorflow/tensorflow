@@ -227,7 +227,7 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
-  Status s = RunOpKernel();
+  absl::Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(
       absl::StrContains(s.message(), "output dimensions must be positive"))
