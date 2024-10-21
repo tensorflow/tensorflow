@@ -268,7 +268,6 @@ HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(AsyncStart);
-HLO_MATCHER(AsyncUpdate);
 HLO_MATCHER(AsyncDone);
 HLO_MATCHER(AllGather);
 HLO_MATCHER(AllGatherStart);
@@ -280,14 +279,10 @@ HLO_MATCHER(AllToAll);
 HLO_MATCHER(And);
 HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Bitcast);
-HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
-HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
-HLO_MATCHER(CollectiveBroadcast);
 HLO_MATCHER(CollectivePermute);
-HLO_MATCHER(CollectivePermuteStart);
 HLO_MATCHER(CollectivePermuteDone);
 HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
@@ -301,20 +296,16 @@ HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
-HLO_MATCHER(Erf);
 HLO_MATCHER(Exp);
 HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Gather);
-HLO_MATCHER(GetDimensionSize);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(Iota);
 HLO_MATCHER(IsFinite);
-HLO_MATCHER(Log);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
-HLO_MATCHER(Minimum);
 HLO_MATCHER(Multiply);
 HLO_MATCHER(Negate);
 HLO_MATCHER(Not);
@@ -326,7 +317,6 @@ HLO_MATCHER(Power);
 HLO_MATCHER(Recv);
 HLO_MATCHER(RecvDone);
 HLO_MATCHER(Reduce);
-HLO_MATCHER(ReducePrecision);
 HLO_MATCHER(ReduceScatter);
 HLO_MATCHER(ReduceWindow);
 HLO_MATCHER(Remainder);
@@ -335,26 +325,19 @@ HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
 HLO_MATCHER(RngBitGenerator);
-HLO_MATCHER(RngGetAndUpdateState);
 HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
 HLO_MATCHER(Send);
 HLO_MATCHER(SendDone);
-HLO_MATCHER(SetDimensionSize);
 HLO_MATCHER(ShiftLeft);
-HLO_MATCHER(ShiftRightArithmetic);
-HLO_MATCHER(ShiftRightLogical);
-HLO_MATCHER(Sign);
 HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);
-HLO_MATCHER(Tan);
 HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(Tuple);
 HLO_MATCHER(While);
-HLO_MATCHER(Xor);
 HLO_MATCHER(OptimizationBarrier);
 
 #define HLO_MATCHER_VECTOR_OPERANDS(opcode)                              \
@@ -395,11 +378,6 @@ template <typename... M>
 inline ::testing::Matcher<const ::xla::HloInstruction*> Ne(M... operands) {
   return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
       ComparisonDirection::kNe, {operands...}));
-}
-template <typename... M>
-inline ::testing::Matcher<const ::xla::HloInstruction*> Ge(M... operands) {
-  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
-      ComparisonDirection::kGe, {operands...}));
 }
 template <typename... M>
 inline ::testing::Matcher<const ::xla::HloInstruction*> Gt(M... operands) {
@@ -577,15 +555,6 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Metadata(
 
 #undef HLO_MATCHER
 }  // namespace opcode_matchers
-
-// Helper to convert smart to raw pointers for matching.
-template <typename Container>
-std::vector<const HloInstruction*> Pointers(const Container& container) {
-  std::vector<const HloInstruction*> result;
-  result.reserve(container.size());
-  for (const auto& entry : container) result.push_back(entry.get());
-  return result;
-}
 
 }  // namespace testing
 
