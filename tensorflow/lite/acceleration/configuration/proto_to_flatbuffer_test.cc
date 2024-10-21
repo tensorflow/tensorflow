@@ -241,5 +241,27 @@ TEST(ConversionTest, MtkNeuronSettings) {
             kInferenceAbortTimeMs);
 }
 
+TEST(ConversionTest, IntelOpenVINOSettings) {
+  // Define the fields to be tested.
+  const bool kAllowFp16 = true;
+
+  // Create the proto settings.
+  proto::TFLiteSettings input_settings;
+  auto* intel_openvino_settings =
+      input_settings.mutable_intel_openvino_settings();
+  intel_openvino_settings->set_allow_fp16_precision_for_fp32(kAllowFp16);
+  flatbuffers::FlatBufferBuilder flatbuffers_builder;
+
+  // Convert.
+  auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder);
+
+  // Verify the conversion results.
+  const auto* output_intel_openvino_settings =
+      output_settings->intel_openvino_settings();
+  ASSERT_NE(output_intel_openvino_settings, nullptr);
+
+  EXPECT_EQ(output_intel_openvino_settings->allow_fp16_precision_for_fp32(),
+            kAllowFp16);
+}
 }  // namespace
 }  // namespace tflite
