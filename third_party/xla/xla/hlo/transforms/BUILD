@@ -2116,6 +2116,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -2157,6 +2158,7 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:hlo_verifier",
         "//xla/service:host_memory_offload_annotations_hdr",
+        "//xla/service:host_offload_utils",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/tsl/lib/core:status_test_util",
@@ -2176,6 +2178,7 @@ cc_library(
     srcs = ["host_offloading_prepare.cc"],
     hdrs = ["host_offloading_prepare.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
