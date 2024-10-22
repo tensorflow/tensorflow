@@ -110,14 +110,14 @@ LiteRtDispatchDelegateOptions* LiteRtDispatchDelegateOptionsCreateDefault() {
 }
 
 TfLiteStatus LiteRtDispatchDelegateOptionsAddOption(
-    LiteRtDispatchDelegateOptions* options, const char* key,
-    const char* value) {
-  if (!options || !key || !value) {
+    LiteRtDispatchDelegateOptions* options, const char* option_name,
+    const char* option_value) {
+  if (!options || !option_name || !option_value) {
     LITERT_LOG(LITERT_ERROR, "Null input");
     return kTfLiteError;
   }
 
-  options->AddOption(key, value);
+  options->AddOption(option_name, option_value);
   return kTfLiteOk;
 }
 

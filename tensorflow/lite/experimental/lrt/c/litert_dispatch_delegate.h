@@ -36,7 +36,7 @@ typedef struct LiteRtDispatchDelegateOptions LiteRtDispatchDelegateOptions;
 // Returns DispatchDelegateOptions populated with default values.
 LiteRtDispatchDelegateOptions* LiteRtDispatchDelegateOptionsCreateDefault();
 
-TfLiteStatus LiteRtDispatchDelegateOptionsAdd(
+TfLiteStatus LiteRtDispatchDelegateOptionsAddOption(
     LiteRtDispatchDelegateOptions* options, const char* option_name,
     const char* option_value);
 
