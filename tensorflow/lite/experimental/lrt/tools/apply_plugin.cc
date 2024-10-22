@@ -34,6 +34,7 @@
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/algo.h"
 #include "tensorflow/lite/experimental/lrt/core/compiler_plugin/compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_serialize.h"
 #include "tensorflow/lite/experimental/lrt/core/util/buffer_ref.h"
 #include "tensorflow/lite/experimental/lrt/core/util/flatbuffer_tools.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
@@ -419,7 +420,6 @@ LiteRtStatus ValidateApplyRun(const ApplyPluginRun& run) {
 LiteRtStatus Apply(Context* ctx) {
   LITERT_MOVE_OR_RETURN_STATUS(auto model, LoadModel(ctx));
   LITERT_MOVE_OR_RETURN_STATUS(auto plugin, LoadPlugin(ctx));
-  ctx->Dump().Labeled() << "Loaded assets\n";
   static constexpr size_t kNumInputSubgraphs = 1;
   LITERT_ENSURE_SUPPORTED(model->subgraphs.size() == kNumInputSubgraphs,
                           "Only single subgraph models currently supported.");
@@ -457,9 +457,10 @@ LiteRtStatus Apply(Context* ctx) {
 
   model->subgraphs.resize(kNumInputSubgraphs);
 
-  LITERT_RETURN_STATUS_IF_NOT_OK(AppendMetadata(
-      model.get(), compilation_out.str().data(), compilation_out.str().size(),
-      plugin.SocManufacturer().data()));
+  LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtModelAddByteCodeMetadata(
+      model.get(), plugin.SocManufacturer().data(),
+      plugin.SocModels().front().data(), compilation_out.str().data(),
+      compilation_out.str().size()));
 
   ctx->SwapOut(out);
   LITERT_RETURN_STATUS_IF_NOT_OK(SerializeModel(ctx, std::move(model)));

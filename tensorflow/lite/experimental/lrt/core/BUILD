@@ -33,6 +33,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/core/c:c_api_types",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -50,7 +51,6 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
-        "//tensorflow/lite/experimental/lrt/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -68,10 +68,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
-        "//tensorflow/lite/experimental/lrt/core/util:flatbuffer_tools",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -92,6 +90,42 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/log:check",
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "litert_model_serialize",
+    srcs = ["litert_model_serialize.cc"],
+    hdrs = ["litert_model_serialize.h"],
+    deps = [
+        ":litert_model_init",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_test(
+    name = "litert_model_serialize_test",
+    srcs = ["litert_model_serialize_test.cc"],
+    data = [
+        "//tensorflow/lite/experimental/lrt/test:tflite_test_data",
+    ],
+    deps = [
+        ":graph_tools",
+        ":litert_model_init",
+        ":litert_model_serialize",
+        ":model",
+        "//tensorflow/lite/experimental/lrt/c:litert_c_api",
+        "//tensorflow/lite/experimental/lrt/c:litert_logging",
+        "//tensorflow/lite/experimental/lrt/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
+        "//tensorflow/lite/experimental/lrt/core/util:flatbuffer_tools",
+        "//tensorflow/lite/experimental/lrt/test:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -146,9 +180,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/experimental/lrt/core/util:buffer_ref",
-        "//tensorflow/lite/experimental/lrt/core/util:flatbuffer_tools",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )

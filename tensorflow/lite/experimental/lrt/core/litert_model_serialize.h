@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_LITERT_MODEL_SERIALIZE_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_LITERT_MODEL_SERIALIZE_H_
 
 #include <stddef.h>
 
@@ -51,7 +51,7 @@ static const char kLiteRtMetadataByteCodeKey[] = "LiteRtNpuByteCode";
 
 //===----------------------------------------------------------------------===//
 //
-//                                        << EXPERIMENTAL BYTE CODE PACKING >>
+//                                                     << BYTE CODE PACKING >>
 //
 // Strategies for packaging LiteRtCompilerPlugin compilation output with the
 // flatbuffer. These are different short-term approaches used for testing and/or
@@ -88,15 +88,15 @@ static const char kLiteRtMetadataByteCodeKey[] = "LiteRtNpuByteCode";
 //
 //===----------------------------------------------------------------------===//
 
-// [EXPERIMENTAL] (see above) Adds NPU bytecode and build tag to metadata.
+// Adds NPU bytecode and build tag to metadata.
 // Registers the "custom_code".
-LiteRtStatus LiteRttModelAddByteCodeMetadata(LiteRtModel model,
-                                             const char* soc_manufacturer,
-                                             const char* soc_model,
-                                             const void* byte_code,
-                                             size_t byte_code_size);
+LiteRtStatus LiteRtModelAddByteCodeMetadata(LiteRtModel model,
+                                            const char* soc_manufacturer,
+                                            const char* soc_model,
+                                            const void* byte_code,
+                                            size_t byte_code_size);
 
-// [EXPERIMENTAL] (see above) Preps the model for future post processing step. A
+// Preps the model for future post processing step. A
 // string with parts parseable as size_t (offset, size) is set in the metadata.
 // A future step will find the prefix of this string and
 // replace the size_t portions with the actual offset and size
@@ -105,12 +105,10 @@ LiteRtStatus LiteRttModelAddByteCodeMetadata(LiteRtModel model,
 // characters. Also populates build tag and registers "custom_code".
 LiteRtStatus LiteRtModelPrepareForByteCodeAppend(LiteRtModel model,
                                                  const char* soc_manufacturer,
-                                                 const char* soc_model,
-                                                 const void* byte_code,
-                                                 size_t byte_code_size);
+                                                 const char* soc_model);
 
 #ifdef __cplusplus
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_EXPERIMENTAL_LITERT_MODEL_SERIALIZE_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_LITERT_MODEL_SERIALIZE_H_
