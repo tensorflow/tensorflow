@@ -410,7 +410,7 @@ XLA_TEST_F(CollectiveOpsTest,
   std::vector<int64_t> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 
-  HloRunner::ReplicatedExecuteOptions opts;
+  HloRunnerInterface::ReplicatedExecuteOptions opts;
   opts.num_replicas = devices.size();
   opts.use_threads = true;
   opts.arguments.push_back(&input_literal);
@@ -420,7 +420,7 @@ XLA_TEST_F(CollectiveOpsTest,
   for (int64_t i = 0; i < kNumThreads * kRunsPerThread; ++i) {
     pool.Schedule([&] {
       TF_ASSERT_OK(
-          test_runner_.ExecuteReplicated(executable.get(), opts, &device_assn)
+          ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
               .status());
       done.DecrementCount();
     });

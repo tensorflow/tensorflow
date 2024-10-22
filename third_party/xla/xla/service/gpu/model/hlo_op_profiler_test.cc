@@ -30,7 +30,7 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
 #ifndef GOOGLE_CUDA
   GTEST_SKIP() << "Not built with --config=cuda";
 #endif
-  HloOpProfiler profiler(test_runner_);
+  HloOpProfiler profiler(test_runner_as_hlo_runner());
   // f32 is fast but measurable.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, F32)
                 .value()
