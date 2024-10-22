@@ -192,10 +192,10 @@ std::tuple<Value, Value> GetI4IndexAndNibble(Value linear_index,
 }
 
 mlir::LLVM::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
-                            Value linear_index, mlir::ImplicitLocOpBuilder& b,
-                            Type element_type = nullptr) {
-  if (!element_type) {
-    element_type = tensor.getType().getElementType();
+                            Value linear_index, mlir::ImplicitLocOpBuilder& b) {
+  Type element_type = tensor.getType().getElementType();
+  if (element_type == b.getI4Type()) {
+    element_type = b.getI8Type();
   }
   auto ptr = mlir::LLVM::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
@@ -224,12 +224,11 @@ struct RewriteTensorExtract : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
     Type element_type = op.getTensor().getType().getElementType();
     Value is_low_nibble = nullptr;
     if (element_type == rewriter.getI4Type()) {
-      element_type = rewriter.getI8Type();
       std::tie(linear_index, is_low_nibble) =
           GetI4IndexAndNibble(linear_index, b);
     }
 
-    auto gep = CreateGep(op.getTensor(), linear_index, b, element_type);
+    auto gep = CreateGep(op.getTensor(), linear_index, b);
     auto load =
         rewriter
             .create<mlir::LLVM::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
@@ -284,14 +283,12 @@ struct RewriteTransferRead
     if (vector_type.getElementType().isInteger(1)) {
       vector_type = vector_type.cloneWith(std::nullopt, b.getI8Type());
     }
-    mlir::Type gep_element_type = vector_type.getElementType();
     if (op.getVectorType().getElementType().isInteger(4)) {
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      gep_element_type = b.getI8Type();
     }
-    auto gep = CreateGep(source, linear_index, b, gep_element_type);
+    auto gep = CreateGep(source, linear_index, b);
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
@@ -332,12 +329,11 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     Value is_low_nibble = nullptr;
 
     if (element_type == rewriter.getI4Type()) {
-      element_type = rewriter.getI8Type();
       std::tie(linear_index, is_low_nibble) =
           GetI4IndexAndNibble(linear_index, b);
     }
 
-    auto gep = CreateGep(tensor_dest, linear_index, b, element_type);
+    auto gep = CreateGep(tensor_dest, linear_index, b);
     auto scalar_value = op.getScalar();
 
     if (is_low_nibble) {
@@ -386,7 +382,6 @@ struct RewriteTransferWrite
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
-    auto element_type = tensor_dest.getType().getElementType();
 
     mlir::Value vector_value = op.getVector();
     if (op.getVectorType().getElementType().isInteger(1)) {
@@ -398,12 +393,11 @@ struct RewriteTransferWrite
       linear_index = b.create<arith::ShRUIOp>(
           linear_index,
           b.create<arith::ConstantIntOp>(1, linear_index.getType()));
-      element_type = rewriter.getI8Type();
       // LLVM and XLA pack i4s in opposite order, so we have to reshuffle the
       // elements.
       vector_value = PermutePairsInVector(vector_value, b);
     }
-    auto gep = CreateGep(tensor_dest, linear_index, b, element_type);
+    auto gep = CreateGep(tensor_dest, linear_index, b);
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
