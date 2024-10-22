@@ -20,8 +20,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_alias_analysis.h"
 
 namespace xla {
 
