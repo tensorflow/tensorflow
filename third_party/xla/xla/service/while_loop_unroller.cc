@@ -514,11 +514,29 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
 
-  // The shape's broadcast_dim must be exactly equal to the loop trip count.
   if (operand->shape().dimensions(dynamic_index) != config.trip_count) {
-    VLOG(3) << "The shape's broadcast_dim must be exactly equal to the loop "
-               "trip count.";
+    VLOG(3) << "The dynamic_index dimension size of the operand must be equal "
+               "to the loop trip count.";
     return std::nullopt;
+  }
+
+  if (opcode == HloOpcode::kDynamicSlice) {
+    const Shape& result_shape = instr->shape();
+    if (result_shape.dimensions(dynamic_index) != 1) {
+      VLOG(3) << "The slice size on the dynamic_index dimension must be 1.";
+      return std::nullopt;
+    }
+
+    const Shape& operand_shape = operand->shape();
+    CHECK_EQ(result_shape.dimensions_size(), operand_shape.dimensions_size());
+    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+      if (i != dynamic_index &&
+          result_shape.dimensions(i) != operand_shape.dimensions(i)) {
+        VLOG(3) << "The slice sizes must match the operand-shape on "
+                   "non-dynamic-index dimensions.";
+        return std::nullopt;
+      }
+    }
   }
 
   return dynamic_index;
