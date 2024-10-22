@@ -6955,8 +6955,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
 TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
   // This test is without layouts so we have to set the verifier to be layout
   // insensitive.
-  verifier_layout_sensitive_ = false;
-  instruction_can_change_layout_func_ = {};
+  set_verifier_layout_sensitive(false);
+  set_instruction_can_change_layout_func({});
 
   const char* hlo_string = R"(
     HloModule module
@@ -8715,8 +8715,8 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
 TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   // This test is without layouts so we have to set the verifier to be layout
   // insensitive.
-  verifier_layout_sensitive_ = false;
-  instruction_can_change_layout_func_ = {};
+  set_verifier_layout_sensitive(false);
+  set_instruction_can_change_layout_func({});
 
   Shape shape = ShapeUtil::MakeShape(F32, {});
   shape.clear_layout();
@@ -12081,8 +12081,8 @@ TEST_F(AlgebraicSimplifierTest, PreserveSharding) {
 
 // Move parameter from the LHS of a dot to the RHS.
 TEST_F(AlgebraicSimplifierTest, SwapDotOperands) {
-  verifier_layout_sensitive_ = false;
-  instruction_can_change_layout_func_ = {};
+  set_verifier_layout_sensitive(false);
+  set_instruction_can_change_layout_func({});
   const std::string hlo_string = R"(
 HloModule main
 

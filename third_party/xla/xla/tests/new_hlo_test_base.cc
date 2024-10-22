@@ -106,10 +106,10 @@ NewHloTestBase::NewHloTestBase(
 std::unique_ptr<VerifiedHloModule> NewHloTestBase::CreateNewVerifiedModule(
     const std::string& name, const int64_t replica_count) {
   return std::make_unique<VerifiedHloModule>(
-      name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_,
+      name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive(),
+      allow_mixed_precision_in_hlo_verifier(),
       test_runner_->device_shape_size_fn(),
-      instruction_can_change_layout_func_);
+      instruction_can_change_layout_func());
 }
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -124,10 +124,10 @@ absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 NewHloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                              const HloModuleConfig& config) {
   auto module = std::make_unique<VerifiedHloModule>(
-      TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_,
+      TestName(), config, verifier_layout_sensitive(),
+      allow_mixed_precision_in_hlo_verifier(),
       test_runner_->device_shape_size_fn(),
-      instruction_can_change_layout_func_);
+      instruction_can_change_layout_func());
   TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   UpdateEntryComputationLayout(module.get());
   return std::move(module);
@@ -304,7 +304,7 @@ absl::StatusOr<std::vector<Literal>> NewHloTestBase::ExecuteReplicated(
     const std::function<void(HloModule*)>& test_preprocessor) {
   const std::vector<Literal> fake_arguments =
       MakeFakeArguments(module.get()).value();
-  if (const absl::StatusOr<bool> change = hlo_verifier_->Run(module.get());
+  if (const absl::StatusOr<bool> change = verifier().Run(module.get());
       !change.ok()) {
     return ::testing::AssertionFailure() << change.status();
   }
@@ -737,7 +737,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloTestBase::MakeReferenceModule(
           "reference preprocessor must not modify the program shape");
     }
   }
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(reference_module.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(reference_module.get()).status());
   return std::move(reference_module);
 }
 
@@ -748,7 +748,7 @@ NewHloTestBase::RunAndCompareInternal(
     const std::optional<ErrorSpec>& error, const bool run_hlo_passes,
     const std::function<void(HloModule*)>& reference_preprocessor,
     const std::function<void(HloModule*)>& test_preprocessor) {
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(module.get()).status());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> reference_module,
                       MakeReferenceModule(*module, reference_preprocessor));
   if (test_preprocessor != nullptr) {
@@ -774,8 +774,8 @@ NewHloTestBase::RunAndCompareTwoModulesInternalReplicated(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const HloRunnerInterface::ReplicatedExecuteOptions options,
     const std::optional<ErrorSpec>& error) {
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_0.get()).status());
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_1.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Execute the two modules.
   TF_ASSIGN_OR_RETURN(auto test_0, test_runner_->ExecuteReplicated(
@@ -798,8 +798,8 @@ NewHloTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const absl::Span<Literal* const> arguments,
     const std::optional<ErrorSpec>& error, bool run_hlo_passes) {
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_0.get()).status());
-  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_1.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(module_0.get()).status());
+  TF_RETURN_IF_ERROR(verifier().Run(module_1.get()).status());
 
   // Execute the two modules.
   TF_ASSIGN_OR_RETURN(
