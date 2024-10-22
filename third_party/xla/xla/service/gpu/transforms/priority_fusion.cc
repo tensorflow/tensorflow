@@ -90,8 +90,8 @@ bool IsFusible(const HloInstruction& instr) {
   // Other non-elementwise ops also supported by elemental fusion.
   switch (instr.opcode()) {
     case HloOpcode::kFusion:
-      return instr.fusion_kind() != HloInstruction::FusionKind::kCustom;
-
+      return IsGenericTritonFusion(instr) ||
+             instr.fusion_kind() != HloInstruction::FusionKind::kCustom;
     case HloOpcode::kCopy:
     case HloOpcode::kIota:
     case HloOpcode::kConstant:
@@ -267,8 +267,7 @@ class PriorityFusionQueue {
   }
 
   absl::Status UpdatePerformanceModelCache(HloInstruction* producer) {
-    bool is_triton_fusion = IsGenericTritonFusion(*producer);
-    if (!IsFusible(*producer) && !is_triton_fusion) {
+    if (!IsFusible(*producer)) {
       return absl::OkStatus();
     }
 
@@ -277,7 +276,7 @@ class PriorityFusionQueue {
     }
 
     EstimateRunTimeData runtime_data;
-    if (is_triton_fusion) {
+    if (IsGenericTritonFusion(*producer)) {
       TF_ASSIGN_OR_RETURN(
           runtime_data,
           gpu_indexing_performance_model_.EstimateRunTimeForTriton(producer));
@@ -541,6 +540,10 @@ class PriorityFusionQueue {
   }
 
   FusionDecision IsTritonSupported(const HloInstruction& instruction) {
+    if (IsGenericTritonFusion(instruction)) {
+      return FusionDecision::Allow();
+    }
+
     if (instruction.opcode() != HloOpcode::kFusion) {
       return IsTritonSupportedInstruction(
           instruction, device_info_->gpu_compute_capability());
@@ -611,24 +614,12 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("triton softmax fusion is not enabled");
     }
 
-    if (IsGenericTritonFusion(*producer)) {
-      if (!IsFusible(*consumer)) {
-        return FusionDecision::Forbid("the consumer is not fusible");
-      }
+    if (auto fusion_decision = IsTritonSupported(*producer); !fusion_decision) {
+      return fusion_decision;
+    }
 
-      if (auto fusion_decision = IsTritonSupported(*consumer);
-          !fusion_decision) {
-        return fusion_decision;
-      }
-    } else {
-      if (!IsFusible(*producer)) {
-        return FusionDecision::Forbid("the producer is not fusible");
-      }
-
-      if (auto fusion_decision = IsTritonSupported(*producer);
-          !fusion_decision) {
-        return fusion_decision;
-      }
+    if (auto fusion_decision = IsTritonSupported(*consumer); !fusion_decision) {
+      return fusion_decision;
     }
 
     TiledRunTimeDataOrError tiled_run_time_data_or_error =
@@ -655,16 +646,16 @@ class PriorityFusionQueue {
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
-    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer)) {
-      return CanFuseTriton(producer, consumer);
-    }
-
     if (!IsFusible(*producer)) {
       return FusionDecision::Forbid("the producer is not fusible");
     }
 
     if (!IsFusible(*consumer)) {
       return FusionDecision::Forbid("the consumer is not fusible");
+    }
+
+    if (IsGenericTritonFusion(*producer) || IsGenericTritonFusion(*consumer)) {
+      return CanFuseTriton(producer, consumer);
     }
 
     if (consumer->opcode() == HloOpcode::kBitcast) {
