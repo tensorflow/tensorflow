@@ -51,10 +51,7 @@ xla_cc_binary(
         "//xla/service/cpu:cpu_transfer_manager",
         "//xla/stream_executor/host:host_platform",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
