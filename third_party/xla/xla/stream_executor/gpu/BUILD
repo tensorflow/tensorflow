@@ -176,7 +176,10 @@ gpu_only_cc_library(
 gpu_only_cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
-    hdrs = ["gpu_command_buffer.h"],
+    hdrs = [
+        "gpu_command_buffer.h",
+        "gpu_graph_node.h",
+    ],
     local_defines = if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
@@ -184,14 +187,16 @@ gpu_only_cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
-        ":gpu_stream",
         ":gpu_types_header",
         "//xla:util",
         "//xla/stream_executor",
+        "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
@@ -208,9 +213,7 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
