@@ -2232,9 +2232,10 @@ void MsaAlgorithm::AddRequiredAssignmentsForColocatedIntervals(
 void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     absl::Span<const MsaBufferInterval* const> colocated_intervals,
     std::vector<AllocationValue>& allocation_values) {
+  std::vector<AllocationValue> new_allocation_values;
   // Create AllocationValues for all the colocated intervals.
   for (const auto& colocated_interval : colocated_intervals) {
-    CreateAllocationValues(*colocated_interval, allocation_values);
+    CreateAllocationValues(*colocated_interval, new_allocation_values);
   }
   // Go through the AllocationValues and delete the ones that have the identical
   // defining instruction and use instructions. This is useful for async
@@ -2252,22 +2253,23 @@ void MsaAlgorithm::CreateAllocationValuesFromColocatedIntervals(
     }
     return instruction_vector;
   };
-  for (int i = 0; i < allocation_values.size() - 1; ++i) {
-    for (int j = i + 1; j < allocation_values.size(); ++j) {
-      const AllocationValue& allocation_value_1 = allocation_values[i];
-      const AllocationValue& allocation_value_2 = allocation_values[j];
+  for (int i = 0; i < new_allocation_values.size() - 1; ++i) {
+    for (int j = i + 1; j < new_allocation_values.size(); ++j) {
+      const AllocationValue& allocation_value_1 = new_allocation_values[i];
+      const AllocationValue& allocation_value_2 = new_allocation_values[j];
       if (create_instruction_vector(allocation_value_1) ==
           create_instruction_vector(allocation_value_2)) {
         VLOG(3) << "Allocation values " << allocation_value_1.ToShortString()
                 << " and " << allocation_value_2.ToShortString()
                 << " are equivalent, deleting the second one.";
-        allocation_values.erase(allocation_values.begin() + j);
+        new_allocation_values.erase(new_allocation_values.begin() + j);
         --j;
       }
     }
   }
 
-  FindAliases(&allocation_values);
+  FindAliases(&new_allocation_values);
+  absl::c_move(new_allocation_values, std::back_inserter(allocation_values));
 }
 
 bool MsaAlgorithm::RequiresNoCopyAlternateMemAllocation(
@@ -2704,14 +2706,16 @@ MsaAlgorithm::AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   // alternate memory.
   if (!IsUseAllowedInAlternateMemory(updates_allocation_value, hlo_use)) {
     if (require_no_copy_alternate_mem_allocation) {
-      LOG(WARNING) << "The value " << allocation_value.value()->ToShortString()
+      LOG(WARNING) << "The value "
+                   << updates_allocation_value.value()->ToShortString()
                    << " is pre-colored for alternate memory but the use "
                    << hlo_use.ToString()
                    << " is not allowed in the alternate memory. Respecting the "
                       "color but this may break things later in compilation.";
     } else {
-      AddRequiredAssignment(allocation_value.value(), hlo_use.instruction,
-                            MemorySpace::kDefault, use_time);
+      AddRequiredAssignment(updates_allocation_value.value(),
+                            hlo_use.instruction, MemorySpace::kDefault,
+                            use_time);
     }
   } else if (previous_use != nullptr) {
     // We allow buffers in alternate memory that are passed into
@@ -4387,7 +4391,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // Find required assignment both for the use and its aliases. If they are both
   // non-nullopt, then make sure they require the same assignment.
   auto required_assignment_at_end = RequiredMemoryAssignmentAt(
-      request.allocation_value->value(), request.end_time);
+      request.updates_allocation_value->value(), request.end_time);
   auto aliased_required_assignment_at_end =
       AliasedRequiredAssignmentForUse(*request.use);
   if (required_assignment_at_end != aliased_required_assignment_at_end) {
