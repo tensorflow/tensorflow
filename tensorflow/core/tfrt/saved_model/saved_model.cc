@@ -98,6 +98,10 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
+constexpr absl::string_view kXlaCallModuleOpName = "XlaCallModule";
+// TODO(b/374165187): Use enums for model types.
+constexpr absl::string_view kJaxModelLabel = "JAX";
+constexpr absl::string_view kUnknownModelLabel = "UNKNOWN";
 
 auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
@@ -110,6 +114,11 @@ auto* use_backend_compiler_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/use_backend_compiler_count",
     "The total number of instances that use injected backend compiler.",
     "model_name", "model_version", "use_backend_compiler");
+
+auto* inferred_model_type_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/inferred_model_type",
+    "Count of SavedModels with their inferred model types (best-effort).",
+    "model_name", "model_version", "inferred_model_type");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -384,6 +393,20 @@ bool AotPackageExists(absl::string_view saved_model_dir) {
   return env->FileExists(aot_package_path).ok() &&
          env->FileExists(aot_mlir_path).ok() &&
          env->FileExists(aot_bef_path).ok();
+}
+
+std::string GetInferredModelType(const MetaGraphDef& meta_graph_def) {
+  bool found_xla_call_module_op = false;
+  for (const auto& function : meta_graph_def.graph_def().library().function()) {
+    for (const auto& node : function.node_def()) {
+      if (node.name() == kXlaCallModuleOpName) {
+        found_xla_call_module_op = true;
+        break;
+      }
+    }
+  }
+  return std::string(found_xla_call_module_op ? kJaxModelLabel
+                                              : kUnknownModelLabel);
 }
 
 }  // namespace
@@ -755,6 +778,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
         ->tf_xla_persistent_cache_read_only = true;
     LOG(INFO) << "Set persistent cache directory to "
               << persistent_cache_directory << ", and set it to read-only.";
+  }
+
+  if (options.infer_model_type) {
+    inferred_model_type_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  GetInferredModelType(meta_graph_def))
+        ->IncrementBy(1);
   }
 
   if (options.graph_execution_options.use_ifrt) {
