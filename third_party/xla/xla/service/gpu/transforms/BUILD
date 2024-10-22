@@ -344,9 +344,11 @@ cc_library(
     hdrs = ["all_gather_dynamic_slice_simplifier.h"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:op_expander_pass",
         "//xla/service:collective_opt_utils",
-        "//xla/service:hlo_creation_utils",
-        "//xla/service:op_expander_pass",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
