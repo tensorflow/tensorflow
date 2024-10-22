@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_MODULE_H_
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -29,8 +30,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -38,14 +41,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/iterator_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
