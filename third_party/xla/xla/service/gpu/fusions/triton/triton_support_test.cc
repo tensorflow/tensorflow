@@ -86,6 +86,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kXor:
     case HloOpcode::kNot:
       return type == PRED || pu::IsIntegralType(type);
+    case HloOpcode::kAtan2:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -120,7 +121,6 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
       return pu::IsSignedIntegralType(type) || pu::IsFloatingPointType(type) ||
              pu::IsComplexType(type);
     case HloOpcode::kPower:
-    case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:

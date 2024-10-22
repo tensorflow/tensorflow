@@ -1232,6 +1232,14 @@ ShapeInference::InferElementwiseBinaryOpShape(
     }
   }
 
+  if (operation == HloOpcode::kAtan2 && !ShapeUtil::ElementIsFloating(lhs) &&
+      !ShapeUtil::ElementIsComplex(lhs)) {
+    return InvalidArgument(
+        "Expected input element type to be floating or complex for %s "
+        "operation; got %s.",
+        HloOpcodeString(operation), PrimitiveType_Name(lhs.element_type()));
+  }
+
   if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs) &&
       !lhs.is_unbounded_dynamic() && !rhs.is_unbounded_dynamic()) {
     // If the shapes are the same other than layout, the output shape is the
