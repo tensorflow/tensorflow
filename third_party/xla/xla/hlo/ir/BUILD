@@ -185,20 +185,17 @@ cc_library(
     ],
 )
 
-# Deprecated, use
-# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.
 cc_library(
     name = "hlo_reachability",
     hdrs = ["hlo_reachability.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_reachability instead.",
     deps = ["//xla/hlo/analysis:hlo_reachability"],
 )
 
-# Deprecated, use
-# //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability
-# instead.
 cc_library(
     name = "hlo_dfs_reachability",
     hdrs = ["hlo_dfs_reachability.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/analysis:hlo_dfs_reachability instead.",
     deps = ["//xla/hlo/analysis:hlo_dfs_reachability"],
 )
 

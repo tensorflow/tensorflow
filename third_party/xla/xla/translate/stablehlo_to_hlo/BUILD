@@ -10,11 +10,10 @@ package(
     licenses = ["notice"],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/translate/stablehlo_to_hlo:translate #
-# instead.
 cc_library(
     name = "translate",
     hdrs = ["translate.h"],
+    deprecation = "This library is deprecated. Use //third_party/tensorflow/compiler/xla/hlo/translate/stablehlo_to_hlo:translate instead.",
     deps = [
         "//xla/hlo/translate/stablehlo_to_hlo:translate",
     ],
