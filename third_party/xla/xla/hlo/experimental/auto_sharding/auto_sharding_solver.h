@@ -76,6 +76,9 @@ struct AutoShardingEvaluation {
   // The (raw) total makespan, i.e., not scaled by the makespan coefficient.
   double total_makespan = 0.0;
 
+  // The maximum total memory over all time steps.
+  double max_total_memory = 0.0;
+
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
