@@ -766,10 +766,6 @@ xla_test(
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
-    tags = [
-        "config-cuda-only",
-        "cuda-only",
-    ],
     deps = [
         ":xla_compile_lib",
         "//xla:util",
