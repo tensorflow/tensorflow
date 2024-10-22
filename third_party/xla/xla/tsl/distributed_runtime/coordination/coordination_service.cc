@@ -272,6 +272,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // When task state becomes ERROR, propagate this status to other CONNECTED
     // tasks in the cluster.
 
+    explicit TaskState(absl::string_view task) { task_name_ = task; }
+
     CoordinatedTaskState GetState() { return state_; }
     absl::Status GetStatus() { return status_; }
     uint64_t GetTaskIncarnation() { return task_incarnation_; }
@@ -296,6 +298,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     bool IsDisconnectedBeyondGracePeriod();
 
    private:
+    std::string task_name_;
     // Incarnation ID for CPU:0 on remote task.
     uint64_t task_incarnation_ = 0;
 
@@ -416,8 +419,11 @@ absl::Status CoordinationServiceStandaloneImpl::TaskState::RecordHeartbeat(
   if (!status_.ok()) return status_;
   if (task_incarnation != task_incarnation_) {
     return MakeCoordinationError(absl::AbortedError(absl::StrCat(
-        "Incarnation ID mismatch: expecting ", task_incarnation_, " but got ",
-        task_incarnation, ". This means the remote task has restarted.")));
+        task_name_, "Heartbeat: Incarnation ID mismatch: expecting ",
+        task_incarnation_, " but got ", task_incarnation,
+        ". The task has restarted and likely crashed earlier - check for any "
+        "earlier errors or any scheduler events (e.g. preemption, eviction) to "
+        "debug further.")));
   }
   absl::MutexLock l(&last_heartbeat_mu_);
   last_heartbeat_us_ = Env::Default()->NowMicros();
@@ -477,7 +483,7 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
   for (const auto& job : config.coordinated_job_list()) {
     for (int i = 0; i < job.num_tasks(); ++i) {
       const std::string task_name = GetTaskName(job.name(), i);
-      cluster_state_.emplace(task_name, std::make_unique<TaskState>());
+      cluster_state_.emplace(task_name, std::make_unique<TaskState>(task_name));
     }
   }
   StartCheckStaleness();
@@ -503,7 +509,9 @@ void CoordinationServiceStandaloneImpl::CheckHeartbeatTimeout() {
                        " heartbeat timeout. This indicates that the "
                        "remote task has failed, got preempted, or "
                        "crashed unexpectedly. Check the task logs "
-                       "for an earlier error to debug further.")));
+                       "for an earlier error or scheduler events (e.g. "
+                       "preemption, eviction) to debug further.")));
+
       SetTaskError(task_name, status);
       if (ServiceHasStopped()) {
         // Setting the task to error may cause service to stop (e.g. task is
@@ -520,8 +528,9 @@ void CoordinationServiceStandaloneImpl::CheckHeartbeatTimeout() {
             absl::StrCat("The following tasks are unhealthy (stopped sending "
                          "heartbeats):\n",
                          absl::StrJoin(stale_task_names, "\n"),
-                         "\nCheck the task logs for an earlier error to debug "
-                         "further.")));
+                         "\nThe tasks have crashed. Check the task logs for an "
+                         "earlier error, or scheduler events (e.g. preemption, "
+                         "eviction) to debug further.")));
     PropagateError(heartbeat_timeout_error);
   }
 }
@@ -665,8 +674,9 @@ absl::Status CoordinationServiceStandaloneImpl::RegisterTask(
         task_name,
         " failed. This usually implies an earlier error that caused "
         "coordination service to shut down before the workers disconnect "
-        "gracefully. Check the task leader's logs for an earlier error to "
-        "debug the root cause.")));
+        "gracefully. Check the task leader's logs for an earlier error or "
+        "scheduler events (e.g. preemption, eviction) to debug the root "
+        "cause.")));
   }
   if (!cluster_state_.contains(task_name)) {
     // Note: return early here as unexpected task register errors should not
@@ -880,8 +890,9 @@ absl::Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
         task_name,
         " failed. This usually implies an earlier error that caused "
         "coordination service to shut down before the workers disconnect "
-        "gracefully. Check the task leader's logs for an earlier error to "
-        "debug the root cause.")));
+        "gracefully. Check the task leader's logs for an earlier error or "
+        "scheduler events (e.g. preemption, eviction) to debug the root "
+        "cause.")));
   } else if (!cluster_state_.contains(task_name)) {
     return MakeCoordinationError(absl::InvalidArgumentError(
         absl::StrCat("Unexpected heartbeat request from task: ", task_name,
@@ -1108,7 +1119,7 @@ void CoordinationServiceStandaloneImpl::SetTaskError(
     absl::Status barrier_error =
         MakeCoordinationError(absl::InternalError(absl::StrCat(
             "Barrier failed beacuse a task is in error. Barrier Id: ",
-            barrier_id, ", Task: ", task_name, " Error: ", error.message())));
+            barrier_id, ", Task: ", task_name, " Error: ", error.ToString())));
     PassBarrier(barrier_id, barrier_error, &barriers_[barrier_id]);
   }
 }
@@ -1262,7 +1273,8 @@ bool CoordinationServiceStandaloneImpl::InitializeBarrier(
           absl::StrCat("Task (", task_name,
                        ") is already in error before the barrier "
                        "was called. Barrier Id: ",
-                       barrier_id)));
+                       barrier_id, " Task error: ",
+                       cluster_state_[task_name]->GetStatus().ToString())));
       PassBarrier(barrier_id, error, barrier);
       done(error);
       return false;
@@ -1514,14 +1526,16 @@ void CoordinationServiceStandaloneImpl::CompleteShutdownAfterBarrier(
   } else {
     LOG(ERROR) << "Shutdown barrier in coordination service has failed:\n"
                << result
-               << "\nThis suggests that the workers are out of sync. Either "
-                  "at least one worker is too fast in its execution / "
-                  "crashed early or too slow / hanging. Check the logs for "
-                  "an earlier error to identify the root cause.";
+               << "\nThis suggests that the workers are out of sync. Either at "
+                  "least one worker (a) crashed early due to program error or "
+                  "scheduler events (e.g. preemption, eviction), (b) was "
+                  "too fast in its execution, or (c) too slow / hanging. Check "
+                  "the logs (both the program and scheduler events) for an "
+                  "earlier error to identify the root cause.";
     absl::Status shutdown_error = MakeCoordinationError(absl::InternalError(
         absl::StrCat("Shutdown barrier has failed, but this task is not at the "
                      "barrier yet.\nBarrier result: '",
-                     barrier->result.message())));
+                     barrier->result.ToString())));
     // Propagate error to all tasks before disconnecting them.
     PropagateError(shutdown_error);
   }
