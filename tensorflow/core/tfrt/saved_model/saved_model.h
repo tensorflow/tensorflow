@@ -110,9 +110,10 @@ class SavedModel {
     // True if and only if SavedModel is being loaded to generate AOT results.
     bool aot_generation = false;
 
-    // Make a best-effort guess at the model type. E.g. detecting JAX models by
-    // looking for the `XlaCallModule` op in the MetagraphDef.
-    bool infer_model_type = false;
+    // Make a best-effort guess at the model type and emit a metric. E.g.
+    // detecting JAX models by looking for the `XlaCallModule` op in the
+    // MetagraphDef.
+    bool emit_model_type_metric = false;
 
     GraphExecutionOptions graph_execution_options;
   };
