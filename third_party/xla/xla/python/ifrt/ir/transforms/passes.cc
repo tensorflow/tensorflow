@@ -29,24 +29,28 @@ void CreateIfrtToOutlinedAtomProgramsPipeline(
     mlir::OpPassManager& pm,
     const IfrtToOutlinedAtomProgramsPipelineOptions& options) {
   // Passes that verify the correctness of the module.
-  pm.addPass(xla::ifrt::CreateSpmdExpandableInterfaceVerificationPass(
+  pm.addPass(CreateSpmdExpandableInterfaceVerificationPass(
       {{mlir::mhlo::MhloDialect::getDialectNamespace().str(),
         mlir::stablehlo::StablehloDialect::getDialectNamespace().str()}}));
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::ifrt::CreateIfrtVerifyDonationPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateIfrtVerifyDonationPass());
 
   // Passes that outline atom programs to modules and set their metadata.
-  pm.addPass(xla::ifrt::CreateIfrtOutlineAtomProgramToModulePass());
-  pm.addPass(xla::ifrt::CreateIfrtPopulateAtomProgramMetadataPass());
-  pm.addPass(xla::ifrt::CreateIfrtDuplicatedCalleeEliminationPass());
+  pm.addPass(CreateIfrtOutlineAtomProgramToModulePass());
+  pm.addPass(CreateIfrtPopulateAtomProgramMetadataPass());
+  pm.addPass(CreateIfrtDuplicatedCalleeEliminationPass());
   pm.addPass(mlir::createSymbolDCEPass());
 
   if (!options.propagate_shardings) {
-    pm.addPass(xla::ifrt::CreateIfrtVerifyShardingSpecifiedPass());
+    pm.addPass(CreateIfrtVerifyShardingSpecifiedPass());
     // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
     // are specified.
-    pm.addPass(xla::ifrt::CreateIfrtReshardToCopyArraysPass());
+    pm.addPass(CreateIfrtReshardToCopyArraysPass());
   }
+}
+
+void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(CreateIfrtLowerShardingToXlaPass());
+  pm.addPass(CreateIfrtRemoveIfrtAttrsPass());
 }
 
 void RegisterIfrtPassesAndPipelines() {
@@ -55,6 +59,10 @@ void RegisterIfrtPassesAndPipelines() {
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",
       CreateIfrtToOutlinedAtomProgramsPipeline);
+  mlir::PassPipelineRegistration<>(
+      "ifrt-compile-xla-preprocessing-pipeline",
+      "Run passes to lower an IFRT XLA program for XLA compilation",
+      CreateIfrtCompileXlaPreprocessingPipeline);
 }
 
 }  // namespace ifrt

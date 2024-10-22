@@ -30,9 +30,11 @@ cc_library(
     name = "passes",
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_lower_sharding_to_xla_pass.cc",
         "ifrt_merge_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
+        "ifrt_remove_ifrt_attrs_pass.cc",
         "ifrt_reshard_to_copy_arrays_pass.cc",
         "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",
@@ -45,8 +47,11 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":utils",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/support:sharding_conversions",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

@@ -57,6 +57,12 @@ CreateIfrtPopulateAtomProgramMetadataPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtReshardToCopyArraysPass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtLowerShardingToXlaPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtRemoveIfrtAttrsPass();
+
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export
@@ -74,6 +80,9 @@ struct IfrtToOutlinedAtomProgramsPipelineOptions
 void CreateIfrtToOutlinedAtomProgramsPipeline(
     mlir::OpPassManager& pm,
     const IfrtToOutlinedAtomProgramsPipelineOptions& options);
+
+// Creates pipeline to lower an IFRT XLA program to be ready for compilation.
+void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
 
 // Registers passes and pipelines to ifrt-opt.
 void RegisterIfrtPassesAndPipelines();

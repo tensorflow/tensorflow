@@ -11,9 +11,11 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "ifrt_duplicated_callee_elimination.mlir",
+            "ifrt_lower_sharding_to_xla.mlir",
             "ifrt_merge_reshards.mlir",
             "ifrt_outline_atom_program_to_module.mlir",
             "ifrt_populate_atom_program_metadata.mlir",
+            "ifrt_remove_ifrt_attrs.mlir",
             "ifrt_reshard_to_copy_arrays.mlir",
             "ifrt_verify_donation.mlir",
             "ifrt_verify_sharding_specified.mlir",
