@@ -46,17 +46,19 @@ std::string ToString(mlir::AffineExpr affine_expr,
 std::ostream& operator<<(std::ostream& out, mlir::AffineExpr affine_expr);
 
 // Prints AffineMap using the default (d0, d1, ..., s0, s1, ...) variable names.
+// Mixes range and runtime variables into a single symbol list.
 std::string ToString(mlir::AffineMap affine_map);
 
 // Prints AffineMap using the provided variable names.
 std::string ToString(mlir::AffineMap affine_map,
                      absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> symbol_names);
+                     absl::Span<const std::string> range_names,
+                     absl::Span<const std::string> rt_names);
 
 std::ostream& operator<<(std::ostream& out, mlir::AffineMap affine_map);
 
-// Prints IndexingMap using the default (d0, d1, ..., s0, s1, ...) variable
-// names.
+// Prints IndexingMap using the default (d0, d1, ..., s0, s1, ..., r0, r1, ...)
+// variable names.
 std::string ToString(const IndexingMap& indexing_map);
 
 // Prints IndexingMap using the provided variable names.

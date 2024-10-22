@@ -121,7 +121,7 @@ TEST_F(IndexingMapTest, RTVar) {
       {IndexingMap::Variable{Interval{0, 2}},
        IndexingMap::Variable({Interval{0, 7}})});
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                (d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1),
+                (d0, d1)[range]{rt0, rt1} -> (d1, d0, range + rt0, rt1),
                 domain:
                 d0 in [0, 99],
                 d1 in [0, 43],
@@ -282,7 +282,7 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
 
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
-    (d0, d1)[s, rt0, rt1, rt2] -> (rt0, d1 + rt1, s + rt2),
+    (d0, d1)[s]{rt0, rt1, rt2} -> (rt0, d1 + rt1, s + rt2),
     domain:
     d0 in [0, 0],
     d1 in [0, 1],
@@ -311,7 +311,7 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
 
   auto composed = ComposeIndexingMaps(consumer, producer);
   EXPECT_THAT(ToString(composed), MatchIndexingString(R"(
-    (d0, d1)[ps_0, ps_1, cs_0, cs_1] ->
+    (d0, d1){ps_0, ps_1, cs_0, cs_1} ->
       (d0 + cs_0 * 2 + ps_0, d1 + cs_1 * 3 + ps_1 * 4),
     domain:
     d0 in [0, 24],
@@ -567,7 +567,7 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
   indexing_map.RemoveUnusedSymbols();
   // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0)[s0, rt0] -> (d0 * 4 + s0 + rt0 - 42),
+                              (d0)[s0]{rt0} -> (d0 * 4 + s0 + rt0 - 42),
                               domain:
                               d0 in [0, 31],
                               s0 in [0, 1],

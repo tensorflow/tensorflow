@@ -668,7 +668,7 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                 operand id = 0
-                  (d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2),
+                  (d0, d1, d2){rt0, rt1, rt2} -> (d0 + rt0, d1 + rt1, d2 + rt2),
                   domain:
                   d0 in [0, 0],
                   d1 in [0, 1],
@@ -716,7 +716,7 @@ TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
                   d0 in [0, 19],
                   d1 in [0, 29]
                 operand id = 1
-                  (d0, d1)[rt0, rt1]  -> (d0 - rt0, d1 - rt1),
+                  (d0, d1){rt0, rt1}  -> (d0 - rt0, d1 - rt1),
                   domain:
                   d0 in [0, 19],
                   d1 in [0, 29],
@@ -1043,7 +1043,7 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1, d2, d3)[rt0, rt1] -> (d1 + rt0, d2 + rt1, d3),
+                (d0, d1, d2, d3){rt0, rt1} -> (d1 + rt0, d2 + rt1, d3),
                 domain:
                 d0 in [0, 1805],
                 d1 in [0, 6],
@@ -1326,7 +1326,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
   )"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
               operand id = 0
-                (d0, d1)[rt0, rt1, rt2, rt3] -> (d0 + rt0 + rt2, d1 + rt1 + rt3),
+                (d0, d1){rt0, rt1, rt2, rt3} -> (d0 + rt0 + rt2, d1 + rt1 + rt3),
                 domain:
                 d0 in [0, 24],
                 d1 in [0, 15],
@@ -2722,7 +2722,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Add) {
       }
     )hlo"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
-    operand id = 0 (d0)[rt0] -> (d0 + rt0 + 42),
+    operand id = 0 (d0){rt0} -> (d0 + rt0 + 42),
       domain:
       d0 in [0, 9],
       rt0 in [0, 4086]
@@ -2752,7 +2752,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Multiply) {
     )hlo"));
   // TODO: Figure out why the bounds are not updated.
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
-    operand id = 0 (d0)[rt0] -> (d0 + rt0 * 42),
+    operand id = 0 (d0){rt0} -> (d0 + rt0 * 42),
       domain:
       d0 in [0, 9],
       rt0 in [0, 4086]
@@ -2784,7 +2784,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_ChainedOps) {
     )hlo"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
    operand id = 0
-     (d0)[rt0] -> (d0 + rt0 * 2 + 84),
+     (d0){rt0} -> (d0 + rt0 * 2 + 84),
      domain: d0 in [0, 9],
      rt0 in [0, 4086]
    operand id = 1
@@ -2815,7 +2815,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDUS) {
     )hlo"));
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                             operand id = 0
-                              (d0, d1)[rt0] -> (0, d1 + rt0 - 4096),
+                              (d0, d1){rt0} -> (0, d1 + rt0 - 4096),
                               domain:
                               d0 in [0, 0],
                               d1 in [0, 4095],
