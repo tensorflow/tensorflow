@@ -96,6 +96,7 @@ class HloPrintOptions {
         indent_amount_(0),
         print_large_constants_(false),
         print_only_essential_constants_(false),
+        print_original_value_(true),
         print_metadata_(true),
         print_metadata_only_op_name_(false),
         print_backend_config_(true),
@@ -201,6 +202,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, origin will be printed.
+  HloPrintOptions& set_print_original_value(bool value) {
+    print_original_value_ = value;
+    return *this;
+  }
   // If true, metadata will be printed.
   HloPrintOptions& set_print_metadata(bool value) {
     print_metadata_ = value;
@@ -387,6 +393,7 @@ class HloPrintOptions {
   PrintSubcomputationMode print_subcomputation_mode() const {
     return print_subcomputation_mode_;
   }
+  bool print_original_value() const { return print_original_value_; }
   bool print_metadata() const { return print_metadata_; }
   bool print_metadata_only_op_name() const {
     return print_metadata_only_op_name_;
@@ -430,6 +437,7 @@ class HloPrintOptions {
   int indent_amount_;
   bool print_large_constants_;
   bool print_only_essential_constants_;
+  bool print_original_value_;
   bool print_metadata_;
   bool print_metadata_only_op_name_;
   bool print_backend_config_;
