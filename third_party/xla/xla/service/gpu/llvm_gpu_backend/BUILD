@@ -38,11 +38,6 @@ cc_library(
     hdrs = [
         "gpu_backend_lib.h",
     ],
-    data = if_cuda_is_configured(
-        if_google(
-            ["@local_config_cuda//cuda:runtime_libdevice"],
-        ),
-    ),
     local_defines = if_cuda_is_configured([
         "GOOGLE_CUDA=1",
     ]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
@@ -112,18 +107,22 @@ cc_library(
     name = "load_ir_module",
     hdrs = ["load_ir_module.h"],
     deps = [
-        "//xla/service/gpu/llvm_gpu_backend/default:load_ir_module",
         "@com_google_absl//absl/strings:string_view",
-    ],
+    ] + if_google(
+        ["//xla/service/gpu/llvm_gpu_backend/google:load_ir_module"],
+        ["//xla/service/gpu/llvm_gpu_backend/default:load_ir_module"],
+    ),
 )
 
 cc_library(
     name = "nvptx_libdevice_path",
     hdrs = ["nvptx_libdevice_path.h"],
     deps = [
-        "//xla/service/gpu/llvm_gpu_backend/default:nvptx_libdevice_path",
         "@com_google_absl//absl/strings:string_view",
-    ],
+    ] + if_google(
+        ["//xla/service/gpu/llvm_gpu_backend/google:nvptx_libdevice_path"],
+        ["//xla/service/gpu/llvm_gpu_backend/default:nvptx_libdevice_path"],
+    ),
 )
 
 cc_library(
