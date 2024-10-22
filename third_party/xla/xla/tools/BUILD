@@ -12,6 +12,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
@@ -608,14 +609,32 @@ xla_cc_binary(
     deps = [
         ":hlo_module_loader",
         "//xla:debug_options_flags",
-        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
+    ],
+)
+
+lit_test_suite(
+    name = "compute_cost_test",
+    srcs = enforce_glob(
+        [
+            "compute_cost_test.hlo",
+        ],
+        include = [
+            "*.hlo",
+        ],
+    ),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        ":compute_cost",
+        "@llvm-project//llvm:FileCheck",
     ],
 )
 
