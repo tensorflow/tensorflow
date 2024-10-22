@@ -3281,7 +3281,7 @@ class Subgraph {
           "failed to delegate %s node #%d. Unsupported number "
           "of dimensions %d for tensor #%d, must be at least 2",
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[0], num_dims_a);
+          num_dims_a, node->inputs->data[0]);
       return kTfLiteError;
     }
     const int num_dims_b = NumDimensions(&input_b);
@@ -3291,7 +3291,7 @@ class Subgraph {
           "failed to delegate %s node #%d. Unsupported number "
           "of dimensions %d for tensor #%d, must be at least 2",
           EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
-          node->inputs->data[1], num_dims_b);
+          num_dims_b, node->inputs->data[1]);
       return kTfLiteError;
     }
 
