@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -160,6 +161,19 @@ bool InlineComposites(
              instruction->frontend_attributes().map().at("composite.name"));
 }
 
+bool InlineStreamAnnotation(HloInstruction* instruction) {
+  if (instruction->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_stream_annotation()) {
+    if (instruction->frontend_attributes().map().contains(
+            kXlaStreamAnnotationAttr)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
@@ -213,7 +227,8 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
          !instruction->has_backend_config() &&
          !instruction->parent()->IsAsyncComputation() &&
          InlineUnderShardy(instruction) &&
-         InlineComposites(instruction, composites_to_preserve_);
+         InlineComposites(instruction, composites_to_preserve_) &&
+         InlineStreamAnnotation(instruction);
 }
 
 absl::StatusOr<bool> CallInliner::Run(

@@ -902,6 +902,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo_domain_isolator",
+        "//xla:side_effect_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -935,6 +936,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
