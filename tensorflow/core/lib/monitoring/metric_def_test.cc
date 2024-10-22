@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/metric_def.h"
 
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {

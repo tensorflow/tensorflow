@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
+#include "xla/tsl/lib/histogram/histogram.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
