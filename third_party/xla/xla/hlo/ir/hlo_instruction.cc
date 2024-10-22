@@ -3111,6 +3111,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kRaggedAllToAll:
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
