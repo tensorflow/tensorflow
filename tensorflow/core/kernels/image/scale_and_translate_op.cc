@@ -49,10 +49,11 @@ inline const T& Clamp(const T& low, const T& high, const T& value) {
 }
 
 template <typename Kernel>
-Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
-                        const int64_t output_size, const int64_t input_size,
-                        const float scale, const float translate,
-                        const bool antialias, Spans* spans) {
+absl::Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
+                              const int64_t output_size,
+                              const int64_t input_size, const float scale,
+                              const float translate, const bool antialias,
+                              Spans* spans) {
   // When sampling, we need the inverse scale and translation, to map from an
   // output to an input pixel.
   const float inv_scale = 1.0 / scale;
@@ -124,10 +125,10 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
   return absl::OkStatus();
 }
 
-Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
-                            const int64_t forward_output_size,
-                            const int64_t forward_input_size,
-                            Spans* grad_spans) {
+absl::Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
+                                  const int64_t forward_output_size,
+                                  const int64_t forward_input_size,
+                                  Spans* grad_spans) {
   struct GradComponent {
     int index;
     float weight;
@@ -188,11 +189,11 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
 // input_size transformed by scale and translate to an output dimension of
 // length output_size. Note that there's no requirement that;
 // output_size = input_size * scale.
-Status ComputeSpans(OpKernelContext* context,
-                    const functor::SamplingKernelType kernel_type,
-                    const int64_t output_size, const int64_t input_size,
-                    const float scale, const float translate,
-                    const bool antialias, Spans* spans) {
+absl::Status ComputeSpans(OpKernelContext* context,
+                          const functor::SamplingKernelType kernel_type,
+                          const int64_t output_size, const int64_t input_size,
+                          const float scale, const float translate,
+                          const bool antialias, Spans* spans) {
   switch (kernel_type) {
     case functor::Lanczos1Kernel: {
       return ComputeSpansCore(context, CreateLanczos1Kernel(), output_size,
@@ -236,12 +237,12 @@ Status ComputeSpans(OpKernelContext* context,
 // Computes the grad spans for the passed kernel.
 // forward_input_size and forward_output_size are the input and output size from
 // the forward operation.
-Status ComputeGradSpans(OpKernelContext* context,
-                        const functor::SamplingKernelType kernel_type,
-                        const int64_t forward_output_size,
-                        const int64_t forward_input_size, const float scale,
-                        const float translate, const bool antialias,
-                        Spans* grad_spans) {
+absl::Status ComputeGradSpans(OpKernelContext* context,
+                              const functor::SamplingKernelType kernel_type,
+                              const int64_t forward_output_size,
+                              const int64_t forward_input_size,
+                              const float scale, const float translate,
+                              const bool antialias, Spans* grad_spans) {
   Spans spans;
   TF_RETURN_IF_ERROR(ComputeSpans(context, kernel_type, forward_output_size,
                                   forward_input_size, scale, translate,
