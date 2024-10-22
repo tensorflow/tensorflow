@@ -37,9 +37,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ForceXlaConstantsOnHost(const Scope& s,
-                               FunctionLibraryDefinition* flib_def,
-                               std::unique_ptr<Graph>* result) {
+absl::Status ForceXlaConstantsOnHost(const Scope& s,
+                                     FunctionLibraryDefinition* flib_def,
+                                     std::unique_ptr<Graph>* result) {
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphOptimizationPassOptions options;
   SessionOptions session_options;

@@ -17,14 +17,11 @@ limitations under the License.
 
 #include <initializer_list>
 #include <memory>
-#include <string>
-#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,37 +35,11 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
-
-HloPrintOptions LeastPrintOptions() {
-  HloPrintOptions options;
-  options.set_print_operand_shape(false)
-      .set_include_layout_in_shapes(false)
-      .set_print_percent(false);
-  return options;
-}
-
 class CollectiveSelectFolderTest : public HloTestBase {
  public:
-  using FixedMapping =
-      std::initializer_list<std::pair<absl::string_view, absl::string_view>>;
-
-  absl::StatusOr<std::unique_ptr<HloModule>> RunTranform(
-      bool expect_changed, std::string_view hlo_template, FixedMapping params) {
-    std::string hlo_string = absl::StrReplaceAll(hlo_template, params);
-    SCOPED_TRACE("Input HLO: " + hlo_string);
-    VLOG(7) << "Input HLO: " << hlo_string;
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_string));
-    TF_ASSIGN_OR_RETURN(bool changed,
-                        RunHloPass(CollectiveSelectFolder(), module.get()));
-    VLOG(7) << "Output HLO: " << module->ToString(LeastPrintOptions());
-    EXPECT_EQ(changed, expect_changed);
-    return module;
-  }
-
   absl::Status ExpectNoTranform(std::string_view hlo_template) {
-    return RunTranform(/*expect_changed=*/false, hlo_template, {}).status();
+    return RunAndCheckHloRewrite(hlo_template, CollectiveSelectFolder(), false)
+        .status();
   }
 };
 
@@ -121,33 +92,39 @@ const char* kSPMD2cp = R"(
 
 TEST_F(CollectiveSelectFolderTest, SimpleForwardCycle) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSPMD2cp,
-                               {{"$first_id_constant", "0"},
-                                {"$last_id_constant", "3"},
-                                {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
-                                {"$backward_pairs", "{{3,0}}"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSPMD2cp, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$first_id_constant", "0"},
+                             {"$last_id_constant", "3"},
+                             {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
+                             {"$backward_pairs", "{{3,0}}"}}));
 
   VerifyDirectDataFeedSPMD(module.get(), "fwd_data", "bwd_data");
 }
 
 TEST_F(CollectiveSelectFolderTest, SimpleBackwardCycle) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSPMD2cp,
-                               {{"$first_id_constant", "3"},
-                                {"$last_id_constant", "0"},
-                                {"$forward_pairs", "{{3,2},{2,1},{1,0}}"},
-                                {"$backward_pairs", "{{0,3}}"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSPMD2cp, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$first_id_constant", "3"},
+                             {"$last_id_constant", "0"},
+                             {"$forward_pairs", "{{3,2},{2,1},{1,0}}"},
+                             {"$backward_pairs", "{{0,3}}"}}));
   VerifyDirectDataFeedSPMD(module.get(), "fwd_data", "bwd_data");
 }
 
 TEST_F(CollectiveSelectFolderTest, CompareNEForwardCycle) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSPMD2cp,
-                               {{"$first_id_constant", "0"},
-                                {"$last_id_constant", "3"},
-                                {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
-                                {"$backward_pairs", "{{3,0}}"},
-                                {"direction=EQ", "direction=NE"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSPMD2cp, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$first_id_constant", "0"},
+                             {"$last_id_constant", "3"},
+                             {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
+                             {"$backward_pairs", "{{3,0}}"},
+                             {"direction=EQ", "direction=NE"}}));
   // Compared with SimpleForwardCycle above, this test flips the condition
   // and therefore the data being forwarded.
   VerifyDirectDataFeedSPMD(module.get(), "bwd_data", "fwd_data");
@@ -159,11 +136,13 @@ TEST_F(CollectiveSelectFolderTest, CompareNEForwardCycle) {
 // to the select.
 TEST_F(CollectiveSelectFolderTest, LastDeviceIdMismatch) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSPMD2cp,
-                               {{"$first_id_constant", "0"},
-                                {"$last_id_constant", "2"},  // mismatch
-                                {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
-                                {"$backward_pairs", "{{3,0}}"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSPMD2cp, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$first_id_constant", "0"},
+                             {"$last_id_constant", "2"},  // mismatch
+                             {"$forward_pairs", "{{0,1},{1,2},{2,3}}"},
+                             {"$backward_pairs", "{{3,0}}"}}));
   VerifyDirectDataFeedSPMD(module.get(), "data_snd", "fwd_data");
 }
 
@@ -183,41 +162,49 @@ const char* kSelectBasecase = R"(
 )";
 
 TEST_F(CollectiveSelectFolderTest, EqualTrueBranchTransform) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunTranform(/*expect_changed=*/true, kSelectBasecase,
-                                      {{"$device_id_constant", "3"},
-                                       {"$direction", "EQ"},
-                                       {"$pairs", "{{3,0}}"}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$device_id_constant", "3"},
+                             {"$direction", "EQ"},
+                             {"$pairs", "{{3,0}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
 }
 
 TEST_F(CollectiveSelectFolderTest, EqualFalseBranchTransform) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunTranform(/*expect_changed=*/true, kSelectBasecase,
-                                      {{"$device_id_constant", "3"},
-                                       {"$direction", "EQ"},
-                                       {"$pairs", "{{0,1},{1,2}}"}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$device_id_constant", "3"},
+                             {"$direction", "EQ"},
+                             {"$pairs", "{{0,1},{1,2}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_false_data");
 }
 
 TEST_F(CollectiveSelectFolderTest, NotEqualFalseBranchTransform) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          RunTranform(/*expect_changed=*/true, kSelectBasecase,
-                                      {{"$device_id_constant", "3"},
-                                       {"$direction", "NE"},
-                                       {"$pairs", "{{3,0}}"}}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$device_id_constant", "3"},
+                             {"$direction", "NE"},
+                             {"$pairs", "{{3,0}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_false_data");
 }
 
 TEST_F(CollectiveSelectFolderTest, NotEqualTrueTrueTransform) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSelectBasecase,
-                               {{"$device_id_constant", "3"},
-                                {"$direction", "NE"},
-                                {"$pairs", "{{0,1},{1,2},{4,5},{5,6}}"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$device_id_constant", "3"},
+                             {"$direction", "NE"},
+                             {"$pairs", "{{0,1},{1,2},{4,5},{5,6}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
 }
@@ -225,17 +212,19 @@ TEST_F(CollectiveSelectFolderTest, NotEqualTrueTrueTransform) {
 TEST_F(CollectiveSelectFolderTest, MoreThanOnePair_NotTransformed) {
   // The cp contains sources 0 and 1, and therefore doesn't match
   // equal(1) and not equal(1)
-  TF_ASSERT_OK(RunTranform(/*expect_changed=*/false, kSelectBasecase,
-                           {{"$device_id_constant", "1"},
-                            {"$direction", "EQ"},
-                            {"$pairs", "{{0,1},{1,2}}"}}));
+  TF_ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                                     /*expect_change=*/false,
+                                     {{"$device_id_constant", "1"},
+                                      {"$direction", "EQ"},
+                                      {"$pairs", "{{0,1},{1,2}}"}}));
 
   // The cp contains sources 0 and 1, and therefore doesn't match
   // not_equal(1) and not not_equal(1)
-  TF_ASSERT_OK(RunTranform(/*expect_changed=*/false, kSelectBasecase,
-                           {{"$device_id_constant", "1"},
-                            {"$direction", "NE"},
-                            {"$pairs", "{{0,1},{1,2}}"}}));
+  TF_ASSERT_OK(RunAndCheckHloRewrite(kSelectBasecase, CollectiveSelectFolder(),
+                                     /*expect_change=*/false,
+                                     {{"$device_id_constant", "1"},
+                                      {"$direction", "NE"},
+                                      {"$pairs", "{{0,1},{1,2}}"}}));
 }
 
 const char* kSelectNoBroadcast = R"(
@@ -254,10 +243,12 @@ const char* kSelectNoBroadcast = R"(
 
 TEST_F(CollectiveSelectFolderTest, SelectNoBroadcastTransform) {
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, RunTranform(/*expect_changed=*/true, kSelectNoBroadcast,
-                               {{"$device_id_constant", "3"},
-                                {"$direction", "EQ"},
-                                {"$pairs", "{{3,0}}"}}));
+      auto module,
+      RunAndCheckHloRewrite(kSelectNoBroadcast, CollectiveSelectFolder(),
+                            /*expect_change=*/true,
+                            {{"$device_id_constant", "3"},
+                             {"$direction", "EQ"},
+                             {"$pairs", "{{3,0}}"}}));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->operand(0)->name(), "compare_true_data");
 }

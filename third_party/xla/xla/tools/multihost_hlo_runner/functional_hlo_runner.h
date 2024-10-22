@@ -203,6 +203,9 @@ class FunctionalHloRunner {
     // Whether to untuple the result of running HLO module into a vector of
     // arrays. If unprovided, use the default in ExecuteOptions.
     std::optional<bool> untuple_result = std::nullopt;
+    // Whether to use the layout on host when allocating buffers for arguments.
+    // Some platforms (e.g. CPU) do not support this yet.
+    bool use_argument_host_layout = false;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -377,7 +380,7 @@ class FunctionalHloRunner {
   CopyArgumentsToDevice(PjRtClient& client,
                         const PjRtLoadedExecutable* executable,
                         const PerDeviceLiteralVecType& arguments,
-                        bool log_input, bool flattened_arguments,
+                        const RunningOptions& options, bool flattened_arguments,
                         bool clone_device0_arguments = false);
 
   static absl::StatusOr<PerDeviceLiteralVecType> RunInternal(

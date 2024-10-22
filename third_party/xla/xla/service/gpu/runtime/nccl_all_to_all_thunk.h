@@ -19,15 +19,18 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/runtime/nccl_api.h"
+#include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 namespace gpu {
@@ -59,8 +62,11 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 
- protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
+  bool has_split_dimension() const { return config_.has_split_dimension; }
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+ protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream,
                                  NcclCommHandleWrapper comm_wrapper) override;
@@ -74,10 +80,11 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
-  absl::node_hash_map<int64_t, absl::node_hash_map<int64_t, uint64_t>>
-      send_pointer_maps_;
-  absl::node_hash_map<int64_t, absl::node_hash_map<int64_t, uint64_t>>
-      receive_pointer_maps_;
+  absl::Mutex pointer_maps_mutex_;
+  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
+      send_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
+  absl::node_hash_map<int64_t, absl::flat_hash_map<int64_t, uint64_t>>
+      receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
 };
 
 absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
@@ -88,8 +95,8 @@ absl::Status RunMemCpyAllToAll(
     NcclApi* nccl_api, bool has_split_dimension,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     NcclApi::NcclCommHandle comm,
-    absl::node_hash_map<int64_t, uint64_t>& send_pointer_map,
-    absl::node_hash_map<int64_t, uint64_t>& receive_pointer_map);
+    absl::flat_hash_map<int64_t, uint64_t>& send_pointer_map,
+    absl::flat_hash_map<int64_t, uint64_t>& receive_pointer_map);
 
 }  // namespace gpu
 }  // namespace xla

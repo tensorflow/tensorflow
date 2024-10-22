@@ -227,7 +227,7 @@ absl::Status RunCollectivePermute(
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << " current_id " << current_id;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, {buffer}, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), {buffer}, comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   const std::optional<int64_t> target_id = source_target.target;

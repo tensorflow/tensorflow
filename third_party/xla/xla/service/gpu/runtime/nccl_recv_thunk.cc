@@ -93,8 +93,10 @@ absl::Status NcclRecvThunk::RunNcclCollective(
   // source, just memzero() the destination buffer.
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing Recv from device ordinal: " << device_ordinal
-          << "current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
+          << ", current_id: " << current_id << ", group mode: "
+          << CollectiveOpGroupModeToString(config_.config.group_mode);
+  ;
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
                                           comm_wrapper.comm_handle));
 
   const std::optional<int64_t> source_id = source_target.source;
@@ -135,8 +137,7 @@ absl::Status NcclRecvThunk::RunNcclCollective(
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out
     // the destination buffer.
-    VLOG(3) << absl::StreamFormat("%s : collective-Permute: Issuing MemZero",
-                                  device_string);
+    VLOG(3) << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
     TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
   return absl::OkStatus();

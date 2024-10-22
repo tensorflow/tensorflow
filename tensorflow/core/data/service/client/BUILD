@@ -58,7 +58,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:retrying_utils",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

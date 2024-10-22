@@ -46,7 +46,7 @@ Tensor make_zeros(const DataType& dtype, const TensorShapeProto& shape) {
 // third-party libraries aren't currently supported.
 class AccumulateNV2RemovePass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override {
+  absl::Status Run(const GraphOptimizationPassOptions& options) override {
     // TODO(freiss.oss@gmail.com): Substantial shared code with
     // ParallelConcatRemovePass::Run(). Consider refactoring if someone makes
     // a third similar rewrite.
@@ -101,7 +101,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     return absl::OkStatus();
   }
 
-  Status RewriteIntoTempVariable(Node* n, Graph* g) {
+  absl::Status RewriteIntoTempVariable(Node* n, Graph* g) {
     VLOG(3) << "Rewrite AccumulateNV2 into TemporaryVariable and Assign: "
             << SummarizeNode(*n);
 
@@ -229,7 +229,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     return absl::OkStatus();
   }
 
-  Status RewriteIntoAddN(Node* n, Graph* g) {
+  absl::Status RewriteIntoAddN(Node* n, Graph* g) {
     VLOG(3) << "Rewrite AccumulateNV2 into AddN: " << SummarizeNode(*n);
 
     AttrSlice n_attrs = n->attrs();

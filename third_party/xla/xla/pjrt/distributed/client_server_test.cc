@@ -32,13 +32,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
-#include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/distributed/topology_util.h"
@@ -59,7 +59,7 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
-constexpr int kMaxMissingHeartbeats = 3;
+constexpr int kMaxMissingHeartbeats = 5;
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 class ClientServerTest : public testing::Test {
@@ -72,51 +72,36 @@ class ClientServerTest : public testing::Test {
     client_options.heartbeat_interval = kHeartbeatInterval;
     client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
     if (channel == nullptr) {
-      channel = server_->InProcessChannel(::grpc::ChannelArguments());
+      channel = coord_service_->server()->InProcessChannel(
+          ::grpc::ChannelArguments());
     }
     return GetDistributedRuntimeClient(channel, client_options);
   }
 
   void StartService(int num_nodes,
-                    CoordinationServiceImpl::Options service_options = {},
-                    absl::string_view service_address = "") {
-    ::grpc::ServerBuilder builder;
+                    CoordinationServiceImpl::Options service_options = {}) {
+    int port = tsl::testing::PickUnusedPortOrDie();
+    service_address_ = absl::StrCat("[::]:", port);
+
     service_options.num_nodes = num_nodes;
     // Set a small heartbeat interval for quicker tests.
     service_options.heartbeat_interval = kHeartbeatInterval;
     service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
 
-    // Add a listening port if address is specified.
-    if (!service_address.empty()) {
-      auto credentials = ::grpc::InsecureServerCredentials();
-      builder.AddListeningPort(std::string(service_address), credentials);
-    }
-
     // Set up and register service on the gRPC server.
-    coord_service_ =
-        std::make_unique<CoordinationServiceImpl>(service_options, &builder);
-    server_ = builder.BuildAndStart();
-    coord_service_->StartRpcThread();
+    coord_service_ = DistributedRuntimeService::Get(
+                         service_address_, ::grpc::InsecureServerCredentials(),
+                         service_options)
+                         .value();
   }
 
-  // Shut down the server.
-  void Stop() {
-    // Avoid shutting down the server twice if the test has already called
-    // Stop() earlier.
-    if (stop_is_already_called_) {
-      return;
-    }
-    server_->Shutdown();
-    stop_is_already_called_ = true;
-  }
+  std::string service_address() { return service_address_; }
 
-  void TearDown() override { Stop(); }
-
-  std::unique_ptr<::grpc::Server> server_;
+  void StopService() { coord_service_ = nullptr; }
 
  private:
-  std::unique_ptr<CoordinationServiceImpl> coord_service_;
-  bool stop_is_already_called_ = false;
+  std::unique_ptr<DistributedRuntimeService> coord_service_;
+  std::string service_address_ = "";
 };
 
 TEST_F(ClientServerTest, ConnectAndShutdownAreBarriers) {
@@ -379,7 +364,8 @@ TEST_F(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
   }
 }
 
-TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
+TEST_F(ClientServerTest,
+       ClientsTerminateShutdownIfAnyClientGoesAway_WithoutErrorPolling) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -387,8 +373,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
     client_options.poll_for_error_from_service_at_startup = false;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -425,17 +410,14 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   }
 }
 
-TEST_F(ClientServerTest,
-       ClientsTerminateShutdownIfAnyClientGoesAway_WithErrorPolling) {
+TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
-    client_options.poll_for_error_from_service_at_startup = true;
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -466,16 +448,14 @@ TEST_F(ClientServerTest,
   }
 }
 
-TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
+TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
   int num_nodes = 3;
   StartService(num_nodes);
 
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = true;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
-    client_options.poll_for_error_from_service_at_startup = true;
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -497,8 +477,7 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
   }
 }
 
-TEST_F(ClientServerTest,
-       MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway_WithErrorPolling) {
+TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -506,11 +485,9 @@ TEST_F(ClientServerTest,
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
-    client_options.poll_for_error_from_service_at_startup = true;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -535,7 +512,8 @@ TEST_F(ClientServerTest,
   }
 }
 
-TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
+TEST_F(ClientServerTest,
+       ClientsReceiveMissedHeartbeatIfAnyClientGoesAway_WithoutErrorPolling) {
   int num_nodes = 3;
   StartService(num_nodes);
 
@@ -543,10 +521,10 @@ TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
+    client_options.poll_for_error_from_service_at_startup = false;
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -572,13 +550,13 @@ TEST_F(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
 }
 
 TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
+#if defined(ADDRESS_SANITIZER)
+  GTEST_SKIP()
+      << "This test is known to produce memory leaks due to ungraceful "
+         "termination of the RPC server despite having pending connections.";
+#endif
   int num_nodes = 3;
-  // We use a socket connection for this test case because the in-process API
-  // does not react well to the server being told to shutdown while there are
-  // active clients.
-  int port = tsl::testing::PickUnusedPortOrDie();
-  StartService(num_nodes,
-               /*service_options=*/{}, absl::StrCat("[::]:", port));
+  StartService(num_nodes);
 
   absl::Barrier barrier(num_nodes + 1);
 
@@ -587,14 +565,11 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
     client_options.rpc_timeout = absl::Seconds(1);
     client_options.shutdown_timeout = absl::Seconds(10);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
-    std::shared_ptr<::grpc::ChannelCredentials> creds =
-        ::grpc::InsecureChannelCredentials();
-    std::shared_ptr<::grpc::Channel> channel =
-        ::grpc::CreateChannel(absl::StrCat("dns:///localhost:", port), creds);
+    auto channel = GetDistributedRuntimeClientChannel(
+        service_address(), ::grpc::InsecureChannelCredentials());
     auto client = GetClient(node_id, client_options, channel);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -614,7 +589,7 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
     barrier.Block();
-    Stop();
+    StopService();
   }
   for (int i = 0; i < num_nodes; ++i) {
     EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION);
@@ -668,10 +643,9 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     client_options.init_timeout = timeout;
     client_options.rpc_timeout = timeout;
     // Overwrite the default error callback which invokes LOG(QFATAL).
-    client_options.missed_heartbeat_callback =
-        [](absl::Status status, bool coordinator_reported_failure) {
-          LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
-        };
+    client_options.missed_heartbeat_callback = [](absl::Status status) {
+      LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+    };
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -996,6 +970,20 @@ TEST_F(ClientServerTest, KeyValueDelete_Directory) {
   auto kvs = client->KeyValueDirGet("test_dir/");
   TF_ASSERT_OK(kvs.status());
   EXPECT_THAT(kvs.value(), IsEmpty());
+}
+
+TEST_F(ClientServerTest, UseCompression) {
+  StartService(/*num_nodes=*/1);
+
+  // Sanity check that the client can connect with compression enabled.
+  auto channel = GetDistributedRuntimeClientChannel(
+      service_address(), ::grpc::InsecureChannelCredentials(),
+      /*use_compression=*/true);
+  auto client = GetClient(/*node_id=*/0, {}, channel);
+
+  TF_ASSERT_OK(client->Connect());
+  TF_ASSERT_OK(client->KeyValueSet("foo/bar/1", "1"));
+  TF_ASSERT_OK(client->Shutdown());
 }
 
 }  // namespace

@@ -23,15 +23,12 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -45,9 +42,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/macros.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

@@ -20,8 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -42,7 +40,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/legacy/scatter.h"
 #include "xla/service/gpu/fusions/legacy/transpose.h"
 #include "xla/service/gpu/fusions/loop_mlir.h"
-#include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
 #include "xla/service/gpu/fusions/reduction_mlir.h"
 #include "xla/service/gpu/fusions/scatter_mlir.h"
 #include "xla/service/gpu/fusions/transpose_mlir.h"

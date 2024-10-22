@@ -22,7 +22,7 @@ namespace {
 class AutoClusteringTestImpl : public AutoClusteringTest {
  protected:
   // Test auto-clustering with a proto text file ${key}.pbtxt.
-  Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
+  absl::Status RunAutoClusteringTestWithPbtxt(absl::string_view key) {
     string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
@@ -32,7 +32,7 @@ class AutoClusteringTestImpl : public AutoClusteringTest {
   }
 
   // Test auto-clustering with a gzipped proto text file ${key}.pbtxt.gz.
-  Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
+  absl::Status RunAutoClusteringTestWithGzippedPbtxt(absl::string_view key) {
     string file_name_without_extension =
         absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key);
 
@@ -77,7 +77,7 @@ TEST_F(AutoClusteringTestImpl, OpenSeq2SeqGNMT) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status BenchmarkHelper(absl::string_view key, benchmark::State& state) {
+absl::Status BenchmarkHelper(absl::string_view key, benchmark::State& state) {
   return BenchmarkMarkForCompilation(
       absl::StrCat(testing::TensorFlowSrcRoot(), "/compiler/jit/tests/", key,
                    ".pbtxt"),

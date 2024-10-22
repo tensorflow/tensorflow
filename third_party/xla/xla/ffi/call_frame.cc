@@ -65,20 +65,17 @@ CallFrameBuilder::AttributesBuilder::AttributesBuilder() = default;
 CallFrameBuilder::AttributesBuilder::~AttributesBuilder() = default;
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttribute attr) {
-  attrs_.try_emplace(std::move(name), FromFlatAttribute(std::move(attr)));
+                                                 Attribute attr) {
+  attrs_.try_emplace(std::move(name), std::move(attr));
 }
 
 void CallFrameBuilder::AttributesBuilder::Insert(std::string name,
-                                                 FlatAttributesMap attrs) {
-  AttributesBuilder builder;
-  for (auto& [name, attr] : attrs) builder.Insert(name, std::move(attr));
-
-  auto attrs_map = std::make_unique<AttributesMap>(builder.Build());
-  attrs_.try_emplace(std::move(name), Dictionary{std::move(attrs_map)});
+                                                 AttributesMap attrs) {
+  attrs_.try_emplace(std::move(name),
+                     Dictionary{std::make_shared<AttributesMap>(attrs)});
 }
 
-void CallFrameBuilder::AttributesBuilder::Append(FlatAttributesMap attrs) {
+void CallFrameBuilder::AttributesBuilder::Append(AttributesMap attrs) {
   for (auto& [name, attr] : attrs) Insert(name, std::move(attr));
 }
 
@@ -268,10 +265,12 @@ static XLA_FFI_DataType ToDataType(PrimitiveType primitive_type) {
     case PrimitiveType::C128:
     case PrimitiveType::TOKEN:
     case PrimitiveType::F8E5M2:
+    case PrimitiveType::F8E4M3:
     case PrimitiveType::F8E4M3FN:
     case PrimitiveType::F8E4M3B11FNUZ:
     case PrimitiveType::F8E5M2FNUZ:
     case PrimitiveType::F8E4M3FNUZ:
+    case PrimitiveType::F8E3M4:
       return static_cast<XLA_FFI_DataType>(primitive_type);
     default:
       DCHECK(false) << "Unsupported primitive type "

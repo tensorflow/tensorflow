@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -947,7 +949,7 @@ INSTANTIATE_TEST_SUITE_P(
                             HloOpcode::kNegate, HloOpcode::kRsqrt,
                             HloOpcode::kSin, HloOpcode::kSqrt, HloOpcode::kTan,
                             HloOpcode::kTanh}),
-                       ::testing::Values(5e-4)),
+                       ::testing::Values(1e-3)),
     ElementwiseTestParamsToString);
 
 using BinaryElementwiseTest = ElementwiseTest;

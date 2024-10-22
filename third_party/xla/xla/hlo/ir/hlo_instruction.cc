@@ -63,13 +63,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/ir/ptrvec.h"
+#include "xla/hlo/parser/hlo_lexer.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_lexer.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
@@ -2174,8 +2174,10 @@ HloInstruction::CreateDynamicReshape(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
-    const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root) {
-  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, fused_root);
+    const Shape& shape, FusionKind fusion_kind, HloInstruction* fused_root,
+    absl::string_view prefix) {
+  return std::make_unique<HloFusionInstruction>(shape, fusion_kind, fused_root,
+                                                prefix);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
@@ -2214,9 +2216,11 @@ void HloInstruction::SetupDerivedInstruction(
     derived_instruction->mutable_rare()->frontend_attributes.Clear();
     derived_instruction->mutable_rare()->statistics_viz.Clear();
   }
-  // If the derived instruction has the same opcode as current,
-  // then the backend config is also applicable.
-  if (opcode() == derived_instruction->opcode() && has_backend_config()) {
+  // If the derived instruction has the same opcode as current, then the backend
+  // config is also applicable (only if derived instruction doesn't have its own
+  // backend config which might be different from the original one).
+  if (opcode() == derived_instruction->opcode() && has_backend_config() &&
+      !derived_instruction->has_backend_config()) {
     derived_instruction->CopyBackendConfigFrom(this);
   }
 }
@@ -3755,7 +3759,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
   });
   PrintExtraAttributes(attr_printer, options);
 
-  if (original_value_) {
+  if (options.print_original_value() && original_value_) {
     printer->Append(", origin={");
     printer->Append(OriginalValueToString(*original_value()));
     printer->Append("}");

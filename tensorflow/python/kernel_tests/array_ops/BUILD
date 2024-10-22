@@ -480,6 +480,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@pypi_packaging//:pkg",
     ],
 )
 

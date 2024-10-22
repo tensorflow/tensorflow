@@ -91,6 +91,7 @@ absl::Status CreateTritonPipeline(
     pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
+  pm.addPass(mt::createInsertInstructionSchedHintsPass());
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
@@ -122,6 +123,7 @@ absl::Status CreateTritonPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mt::createLowerInstructionSchedHintsPass("default"));
   pm.addPass(mt::createConvertBuiltinFuncToLLVMPass());
   // There is no clusters in ROCm for now.
   out_cluster_info.clusterDimX = 1;

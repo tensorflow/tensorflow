@@ -198,8 +198,10 @@ TEST(FfiTest, WrongNumAttrs) {
 
   auto status = Call(*handler, call_frame);
 
-  ASSERT_EQ(status.message(),
-            "Wrong number of attributes: expected 1 but got 2");
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong number of attributes: expected 1 but got 2")));
 }
 
 TEST(FfiTest, BuiltinAttributes) {
@@ -379,10 +381,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::FlatAttributesMap dict0;
+  CallFrameBuilder::AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::FlatAttributesMap dict1;
+  CallFrameBuilder::AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -421,7 +423,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::FlatAttributesMap dict;
+  CallFrameBuilder::AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 

@@ -35,20 +35,25 @@ class DirectPluginOpKernelConstruction : public PluginOpKernelConstruction {
   explicit DirectPluginOpKernelConstruction(void* ctx)
       : ctx_(reinterpret_cast<OpKernelConstruction*>(ctx)) {}
 
-  Status GetBoolAttr(std::string_view attr_name, bool* value) const override;
-  Status GetInt32Attr(std::string_view attr_name, int* value) const override;
-  Status GetInt32AttrList(std::string_view attr_name,
-                          std::vector<int32_t>* value) const override;
-  Status GetInt64Attr(std::string_view attr_name,
-                      int64_t* value) const override;
-  Status GetStringAttr(std::string_view attr_name,
-                       std::string* value) const override;
-  Status GetFunctionAttr(std::string_view attr_name,
-                         NameAttrList* function) const override;
+  absl::Status GetBoolAttr(std::string_view attr_name,
+                           bool* value) const override;
+  absl::Status GetInt32Attr(std::string_view attr_name,
+                            int* value) const override;
+  absl::Status GetInt32AttrList(std::string_view attr_name,
+                                std::vector<int32_t>* value) const override;
+  absl::Status GetInt64Attr(std::string_view attr_name,
+                            int64_t* value) const override;
+  absl::Status GetStringAttr(std::string_view attr_name,
+                             std::string* value) const override;
+  absl::Status GetFunctionAttr(std::string_view attr_name,
+                               NameAttrList* function) const override;
 
-  void CtxFailure(const Status& status) override { ctx_->CtxFailure(status); }
+  void CtxFailure(const absl::Status& status) override {
+    ctx_->CtxFailure(status);
+  }
 
-  void CtxFailure(const char* file, int line, const Status& status) override {
+  void CtxFailure(const char* file, int line,
+                  const absl::Status& status) override {
     ctx_->CtxFailure(file, line, status);
   }
 
@@ -64,12 +69,12 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   std::string_view GetResourceMgrDefaultContainerName() override;
 
-  Status LookupOrCreateResource(std::string_view container_name,
-                                std::string_view plugin_resource_name,
-                                void** result_plugin_resource,
-                                void* (*create_func)(void*),
-                                void* create_func_args,
-                                void (*delete_func)(void*)) override;
+  absl::Status LookupOrCreateResource(std::string_view container_name,
+                                      std::string_view plugin_resource_name,
+                                      void** result_plugin_resource,
+                                      void* (*create_func)(void*),
+                                      void* create_func_args,
+                                      void (*delete_func)(void*)) override;
 
   std::unique_ptr<PluginCoordinationServiceAgent>
   GetPluginCoordinationServiceAgent() const override {
@@ -77,10 +82,10 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
         ctx_->coordination_service_agent());
   }
 
-  Status CreatePluginVariable(int index,
-                              PluginVariable** variable) const override;
+  absl::Status CreatePluginVariable(int index,
+                                    PluginVariable** variable) const override;
 
-  Status AllocateTempForPluginVariable(PluginVariable* variable) override;
+  absl::Status AllocateTempForPluginVariable(PluginVariable* variable) override;
 
   int NumInputs() const override { return ctx_->num_inputs(); }
 
@@ -88,8 +93,8 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   absl::Status GetInput(const char* name, const Tensor** tensor) const override;
 
-  Status GetInputRange(std::string_view name,
-                       std::pair<int, int>* range) const override;
+  absl::Status GetInputRange(std::string_view name,
+                             std::pair<int, int>* range) const override;
 
   DataType GetInputDataType(int index) const override {
     return ctx_->input_dtype(index);
@@ -117,7 +122,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
     return ctx_->session_metadata() ? ctx_->session_metadata()->name() : "";
   }
 
-  Status GetConfigProto(const ConfigProto** config_proto) const override {
+  absl::Status GetConfigProto(const ConfigProto** config_proto) const override {
     *config_proto = ctx_->function_library()->config_proto();
     return absl::OkStatus();
   }
@@ -127,7 +132,7 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
     // from FunctionLibraryRuntime in `ctx_`.
   }
 
-  Status GetFunctionLibraryDefinition(
+  absl::Status GetFunctionLibraryDefinition(
       const FunctionLibraryDefinition** flib_def) const override {
     *flib_def = ctx_->function_library()->GetFunctionLibraryDefinition();
     return absl::OkStatus();
@@ -139,8 +144,8 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
     // is obtained from FunctionLibraryRuntime in `ctx_`.
   }
 
-  Status GetResourceHandle(int index,
-                           const ResourceHandle** handle) const override {
+  absl::Status GetResourceHandle(int index,
+                                 const ResourceHandle** handle) const override {
     *handle = &HandleFromInput(ctx_, index);
     return absl::OkStatus();
   }
@@ -154,19 +159,22 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
     return ctx_->function_library()->graph_def_version();
   }
 
-  Status AllocateOutput(int index, const TensorShape& shape,
-                        Tensor** out) override {
+  absl::Status AllocateOutput(int index, const TensorShape& shape,
+                              Tensor** out) override {
     return ctx_->allocate_output(index, shape, out);
   }
 
-  Status SetOutput(int index, const Tensor& tensor) override {
+  absl::Status SetOutput(int index, const Tensor& tensor) override {
     ctx_->set_output(index, tensor);
     return absl::OkStatus();
   }
 
-  void CtxFailure(const Status& status) override { ctx_->CtxFailure(status); }
+  void CtxFailure(const absl::Status& status) override {
+    ctx_->CtxFailure(status);
+  }
 
-  void CtxFailure(const char* file, int line, const Status& status) override {
+  void CtxFailure(const char* file, int line,
+                  const absl::Status& status) override {
     LOG(WARNING) << "Plugin OP_REQUIRES failed at " << file << ": " << line
                  << ": " << status;
     ctx_->CtxFailure(file, line, status);

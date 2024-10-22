@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -131,7 +131,7 @@ class InvertPermutationOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     DataType dtype = ctx->expected_output_dtype(0);
-    Status status;
+    absl::Status status;
     switch (dtype) {
       case DT_INT32:
         InvertPermutation<int32>(ctx);

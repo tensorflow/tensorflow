@@ -15,11 +15,38 @@ limitations under the License.
 
 #include "xla/python/ifrt/executable.h"
 
+#include "absl/status/statusor.h"
+#include "xla/python/ifrt/execute_options.pb.h"
+
 namespace xla {
 namespace ifrt {
 
 char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
+
+absl::StatusOr<xla::ifrt::ExecuteOptionsProto> ExecuteOptions::ToProto() const {
+  ExecuteOptionsProto proto;
+
+  proto.set_launch_id(launch_id);
+  proto.mutable_non_donatable_input_indices()->Add(
+      non_donatable_input_indices.begin(), non_donatable_input_indices.end());
+  proto.set_fill_status(fill_status);
+
+  return proto;
+}
+
+absl::StatusOr<xla::ifrt::ExecuteOptions> ExecuteOptions::FromProto(
+    const xla::ifrt::ExecuteOptionsProto& proto) {
+  ExecuteOptions options;
+
+  options.launch_id = proto.launch_id();
+  options.non_donatable_input_indices.insert(
+      proto.non_donatable_input_indices().begin(),
+      proto.non_donatable_input_indices().end());
+  options.fill_status = proto.fill_status();
+
+  return options;
+}
 
 }  // namespace ifrt
 }  // namespace xla

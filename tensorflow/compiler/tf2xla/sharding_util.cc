@@ -48,7 +48,7 @@ void AssignOpMetadataToSharding(xla::OpSharding& sharding,
   }
 }
 
-Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
+absl::Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
   return errors::InvalidArgument(
       "Invalid replicated core id: ", core,
       "; num_cores_per_replica=", num_cores_per_replica);

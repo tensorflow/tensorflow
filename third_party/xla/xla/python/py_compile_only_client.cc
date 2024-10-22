@@ -246,6 +246,16 @@ class CompileOnlyIfRtClient final
         "AssembleArrayFromSingleDeviceArrays not available with compile-only "
         "client.");
   }
+  absl::StatusOr<tsl::RCReference<ifrt::Array>>
+  AssembleArrayFromSingleDeviceArrays(
+      ifrt::Shape shape, std::shared_ptr<const ifrt::Sharding> sharding,
+      absl::Span<tsl::RCReference<ifrt::Array>> arrays,
+      ifrt::ArrayCopySemantics array_copy_semantics,
+      ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
+    return Unimplemented(
+        "AssembleArrayFromSingleDeviceArrays not available with compile-only "
+        "client.");
+  }
 
   absl::StatusOr<std::vector<tsl::RCReference<ifrt::Array>>> CopyArrays(
       absl::Span<tsl::RCReference<ifrt::Array>> arrays,
@@ -295,6 +305,9 @@ class CompileOnlyIfRtClient final
     return {};
   }
   int process_index() const override { return 0; }
+  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override {
+    return devices_;
+  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return Unimplemented(

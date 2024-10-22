@@ -59,6 +59,9 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestorePruningPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreMergingPass());
 
+  // Convert reference variable to resource variable since
+  // LowerToIfrtRestoreVariablePass does not support reference variable.
+  pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
   pm.addPass(CreateLowerToIfrtRestoreVariablePass());
 
   pm.addPass(CreateRewriteClusterToIfrtCallPass());

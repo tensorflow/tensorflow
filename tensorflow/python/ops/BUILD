@@ -1093,6 +1093,7 @@ cuda_py_strict_test(
     name = "compiled_collective_ops_gpu_test",
     size = "small",
     srcs = ["compiled_collective_ops_gpu_test.py"],
+    env = {"TF_FORCE_GPU_ALLOW_GROWTH": "true"},
     main = "compiled_collective_ops_gpu_test.py",
     python_version = "PY3",
     tags = [
@@ -3675,6 +3676,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+        "@pypi_packaging//:pkg",
     ],
 )
 

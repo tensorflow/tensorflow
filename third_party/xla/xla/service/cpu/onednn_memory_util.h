@@ -71,7 +71,7 @@ inline dnnl::memory::data_type ToOneDnnDataType(PrimitiveType ptype) {
 
     // TODO(intel-tf): properly handle not supported types:
     // S16, S64, U16, U32, U64, C64, C128, F8E5M2, F8E4M3FN, S4, U4,
-    // F8E4M3B11FNUZ
+    // F8E4M3B11FNUZ, F8E4M3, F8E3M4
     default:
       return dt::undef;
   }

@@ -152,7 +152,7 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       };
   std::function<MeshAttr(TensorShardingAttr)> getMeshAttr =
       [&](TensorShardingAttr sharding) {
-        return mlir::sdy::getMeshAttr(symbolTable, sharding.getMeshName());
+        return sharding.getMesh(symbolTable);
       };
 
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
@@ -177,11 +177,11 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
   }
 
   funcOp.front().walk([&](Operation* op) {
-    if (auto shardingPerValue =
-            op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
-      op->setAttr(kXlaShardingAttr,
-                  convertToHloShardingAttr(op, shardingPerValue.getShardings(),
-                                           getMeshAttr, getStringAttr));
+    if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
+        !shardings.empty()) {
+      op->setAttr(
+          kXlaShardingAttr,
+          convertToHloShardingAttr(op, shardings, getMeshAttr, getStringAttr));
       op->removeAttr(kShardingAttr);
     }
   });

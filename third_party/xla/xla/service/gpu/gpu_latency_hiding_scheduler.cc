@@ -91,18 +91,23 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
   return {resource, usage};
 }
 
+// Marks async start operations to be scheduled as early as possible.
+// It allows maximum overlap of operations while respecting dependencies.
+// Besides async collectives, copy-start is async memcpy D2H/H2D, the beginning
+// of a host offloading segment.
 bool IsGpuAsyncStart(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                               /*include_send_recv=*/true) &&
           !IsSyncCollective(&hlo)) ||
-         IsAsyncComputeOp(hlo);
+         IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyStart;
 }
 
+// Marks async done operations to be scheduled as late as possible.
 bool IsGpuAsyncDone(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                              /*include_send_recv=*/true) &&
           !IsSyncCollective(hlo.operand(0))) ||
-         IsAsyncComputeOp(hlo);
+         IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyDone;
 }
 
 bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
@@ -237,6 +242,11 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   if ((resource_type - first_target_resource) ==
       static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamComputes)) {
     return 2;
+  }
+
+  if ((resource_type - first_target_resource) ==
+      static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamCollectives)) {
+    return config_.parallel_collective_overlap_limit;
   }
 
   return 1;
@@ -393,7 +403,8 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
 void GPUProfileStatisticsAggregator::HandleMissingInstructionCost(
     const HloInstruction& instruction) {
   if (!IsNopInstruction(instruction) &&
-      instruction.opcode() != HloOpcode::kWhile) {
+      HloPredicateIsNotOp<HloOpcode::kWhile>(&instruction) &&
+      HloPredicateIsNotOp<HloOpcode::kCopy>(&instruction)) {
     missing_instructions_.insert(&instruction);
   }
 }

@@ -88,6 +88,21 @@ TEST_P(DeviceListTest, AddressableDevicesFromConcurrentCalls) {
   }
 }
 
+TEST_P(DeviceListTest, IsFullyAddressable) {
+  auto device_list = GetDevices({0, 1});
+  int num_addressable_devices = 0;
+  for (Device* device : device_list->devices()) {
+    if (device->IsAddressable()) {
+      ++num_addressable_devices;
+    }
+  }
+  if (num_addressable_devices == device_list->size()) {
+    EXPECT_TRUE(device_list->IsFullyAddressable());
+  } else {
+    EXPECT_FALSE(device_list->IsFullyAddressable());
+  }
+}
+
 TEST_P(DeviceListTest, IdenticalHashFromConcurrentCalls) {
   auto device_list = GetDevices({0, 1});
 

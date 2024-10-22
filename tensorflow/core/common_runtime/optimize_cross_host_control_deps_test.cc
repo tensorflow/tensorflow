@@ -80,9 +80,9 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
 
   auto b = ops::Identity(scope.WithOpName("b"), a[0]);
   b.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
-  auto c = ops::Identity(scope.WithOpName("c"), a[0]);
+  auto c = ops::Identity(scope.WithOpName("c"), a[1]);
   c.node()->set_assigned_device_name("/job:worker/task:1/CPU:1");
-  auto d = ops::Identity(scope.WithOpName("d"), a[1]);
+  auto d = ops::Identity(scope.WithOpName("d"), a[0]);
   d.node()->set_assigned_device_name("/job:worker/task:2/CPU:0");
   auto e = ops::Identity(scope.WithOpName("e"), a[1]);
   e.node()->set_assigned_device_name("/job:worker/task:2/CPU:1");
@@ -116,7 +116,7 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
             "/job:worker/task:1/device:CPU:0");
   EXPECT_EQ(data_after1->def().input_size(), 2);
   EXPECT_EQ(data_after1->def().input(0), "a");
-  EXPECT_EQ(data_after1->def().input(1), "a");
+  EXPECT_EQ(data_after1->def().input(1), "a:1");
   EXPECT_EQ(data_after1->op_def().name(), "IdentityN");
 
   ASSERT_NE(data_after2, nullptr);
@@ -124,7 +124,7 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
   EXPECT_EQ(data_after2->assigned_device_name(),
             "/job:worker/task:2/device:CPU:0");
   EXPECT_EQ(data_after2->def().input_size(), 2);
-  EXPECT_EQ(data_after2->def().input(0), "a:1");
+  EXPECT_EQ(data_after2->def().input(0), "a");
   EXPECT_EQ(data_after2->def().input(1), "a:1");
   EXPECT_EQ(data_after2->op_def().name(), "IdentityN");
 
@@ -140,6 +140,54 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
   EXPECT_EQ(map["c"]->input(0), data_after1->name() + ":1");
   EXPECT_EQ(map["d"]->input(0), data_after2->name());
   EXPECT_EQ(map["e"]->input(0), data_after2->name() + ":1");
+}
+
+TEST(OptimizeCrossHostControlDepsTest,
+     CreatesIdentityNodesWhenInputsIdentical) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  auto c1 = ops::Const(scope.WithOpName("c1"), 1.0f);
+  auto c2 = ops::Const(scope.WithOpName("c2"), 2.0f);
+  auto a = ops::IdentityN(scope.WithOpName("a"), {c1, c2});
+  a.operation.node()->set_assigned_device_name("/job:worker/task:0/CPU:0");
+
+  auto b = ops::Identity(scope.WithOpName("b"), a[0]);
+  auto c = ops::Identity(scope.WithOpName("c"), a[0]);
+  auto d = ops::Identity(scope.WithOpName("d"), a[0]);
+  auto e = ops::Identity(scope.WithOpName("e"), a[0]);
+  b.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
+  c.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
+  d.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
+  e.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+  ASSERT_EQ(graph.num_op_nodes(), 7);
+
+  TF_ASSERT_OK(OptimizeCrossHostDataOutputEdges(
+      &graph, /*cross_host_edges_threshold=*/2));
+
+  ASSERT_EQ(graph.num_op_nodes(), 8);
+
+  Node* data_after = GetNodeByName("a/data_after/_0", &graph);
+
+  ASSERT_NE(data_after, nullptr);
+  EXPECT_EQ(data_after->op_def().name(), "Identity");
+  EXPECT_EQ(data_after->assigned_device_name(),
+            "/job:worker/task:1/device:CPU:0");
+  EXPECT_EQ(data_after->def().input_size(), 1);
+  EXPECT_EQ(data_after->def().input(0)[0], 'a');
+  EXPECT_EQ(data_after->op_def().name(), "Identity");
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  std::unordered_map<string, const NodeDef*> map;
+  for (auto& node : graph_def.node()) {
+    map[node.name()] = &node;
+  }
+  EXPECT_EQ(map["b"]->input(0), data_after->name());
+  EXPECT_EQ(map["c"]->input(0), data_after->name());
+  EXPECT_EQ(map["d"]->input(0), data_after->name());
+  EXPECT_EQ(map["e"]->input(0), data_after->name());
 }
 
 TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlInputEdges) {

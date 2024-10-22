@@ -5749,6 +5749,16 @@ func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
 
 // -----
 
+// CHECK-LABEL: func @reduce_precision_noop(
+// CHECK-SAME: %[[ARG:.*]]: tensor<1x2xf32>
+// CHECK: return %[[ARG]]
+func.func @reduce_precision_noop(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=8:i32, mantissa_bits=23:i32} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  return %0 : tensor<1x2xf32>
+}
+
+// -----
+
 // The following pattern only tests the general structure of the code and the
 // affine maps as it is better tested by tests executing the result, and as it
 // includes many ops which could lead to a high load of refactoring.

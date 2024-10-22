@@ -139,7 +139,7 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
   }
   std::optional<int> vector_size =
       mlir::getConstantIntValue(loop.getUpperBound());
-  if (vector_size != 2 && vector_size != 4) {
+  if (vector_size != 2 && vector_size != 4 && vector_size != 8) {
     return nullptr;  // Unsupported vector size.
   }
   if (tensor_type.getShape().back() % *vector_size) {

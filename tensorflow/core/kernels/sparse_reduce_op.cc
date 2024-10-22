@@ -111,7 +111,7 @@ absl::StatusOr<ReduceDetails> SparseTensorReduceHelper(const SparseTensor &sp,
   return reduction;
 }
 
-Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
+absl::Status ValidateInputs(const Tensor *shape_t, const Tensor *reduction_axes_t) {
   // indices and values are validated in SparseTensor ctor.
   if (!TensorShapeUtils::IsVector(shape_t->shape())) {
     return errors::InvalidArgument(

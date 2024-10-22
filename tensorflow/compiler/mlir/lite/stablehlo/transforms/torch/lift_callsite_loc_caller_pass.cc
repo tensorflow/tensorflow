@@ -18,12 +18,12 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"  // IWYU pragma: keep
 
 namespace mlir {
 namespace odml {
 #define GEN_PASS_DEF_LIFTCALLSITELOCCALLERPASS
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h.inc"
 
 namespace {
 

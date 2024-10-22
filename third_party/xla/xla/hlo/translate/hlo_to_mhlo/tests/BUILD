@@ -11,6 +11,7 @@ lit_test_suite(
         [
             "attributes.hlo",
             "bool_compare.hlo",
+            "call.hlo",
             "case_conditional.hlo",
             "composite_call.hlo",
             "custom_call.hlo",
@@ -29,6 +30,7 @@ lit_test_suite(
             "module_config.hlo",
             "simple.hlo",
             "spmd_module_sharding.hlo",
+            "stablehlo.hlo",
             "stacktrace_to_location.hlo",
             "types.hlo",
             "while.hlo",

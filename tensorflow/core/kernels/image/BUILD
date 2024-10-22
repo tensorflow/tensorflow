@@ -197,7 +197,6 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ]),
 )
 

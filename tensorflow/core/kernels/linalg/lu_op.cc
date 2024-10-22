@@ -32,8 +32,8 @@ class LuOp : public OpKernel {
   explicit LuOp(OpKernelConstruction* context) : OpKernel(context) {}
 
  protected:
-  using TensorShapes = gtl::InlinedVector<TensorShape, 4>;
-  using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
+  using TensorShapes = absl::InlinedVector<TensorShape, 4UL>;
+  using TensorOutputs = absl::InlinedVector<Tensor*, 4UL>;
 
   using Matrix =
       Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;

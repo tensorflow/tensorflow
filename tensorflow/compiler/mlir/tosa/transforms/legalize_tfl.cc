@@ -32,7 +32,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -3305,42 +3305,29 @@ LogicalResult ConvertTFLHardSwishOp::matchAndRewrite(
 LogicalResult ConvertTFLSinOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_sin_op = cast<TFL::SinOp>(op);
-  auto input = tfl_sin_op.getX();
+
   ShapedType output_type =
       dyn_cast<ShapedType>(tfl_sin_op.getResult().getType());
 
-  std::optional<Value> result = convertSinOp(rewriter, op, input, output_type);
-  if (!result) return failure();
+  if (!output_type)
+    return rewriter.notifyMatchFailure(op, "output_type required");
+  CreateReplaceOpAndInfer<tosa::SinOp>(rewriter, op, output_type,
+                                       tfl_sin_op.getX());
 
-  rewriter.replaceOp(op, {result.value()});
   return success();
 }
 
 LogicalResult ConvertTFLCosOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_cos_op = cast<TFL::CosOp>(op);
-  Value input = tfl_cos_op.getX();
-  RankedTensorType input_ty = dyn_cast<RankedTensorType>(input.getType());
-  ShapedType output_ty = dyn_cast<ShapedType>(tfl_cos_op.getResult().getType());
 
-  if (!input_ty || !output_ty) return failure();
+  ShapedType output_type =
+      dyn_cast<ShapedType>(tfl_cos_op.getResult().getType());
+  if (!output_type)
+    return rewriter.notifyMatchFailure(op, "output_type required");
+  CreateReplaceOpAndInfer<tosa::CosOp>(rewriter, op, output_type,
+                                       tfl_cos_op.getX());
 
-  bool input_is_fp = mlir::isa<mlir::FloatType>(input_ty.getElementType());
-  bool output_is_fp = mlir::isa<mlir::FloatType>(output_ty.getElementType());
-
-  if (!input_is_fp || !output_is_fp) {
-    return rewriter.notifyMatchFailure(op, "input/result must be fp");
-  }
-
-  // Replace with the equivalent sin operation:
-  //   cos(x) = sin(x + π / 2).
-  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
-  auto pi_2 = rewriter.create<ConstOp>(
-      op->getLoc(), fp_scalar_ty,
-      DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(M_PI_2)}));
-  auto offset = rewriter.create<AddOp>(op->getLoc(), input_ty, input, pi_2);
-
-  CreateReplaceOpAndInfer<TFL::SinOp>(rewriter, op, output_ty, offset);
   return success();
 }
 

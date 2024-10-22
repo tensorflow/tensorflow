@@ -26,25 +26,24 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
 class CudaKernel : public GpuKernel {
  public:
-  explicit CudaKernel(GpuExecutor* gpu_executor)
-      : gpu_executor_(gpu_executor) {}
+  explicit CudaKernel(StreamExecutor* executor) : executor_(executor) {}
 
   // Note that the function is unloaded when the module is unloaded, and the
-  // module that the function is contained in is owned by the GpuExecutor.
-  ~CudaKernel() override { gpu_executor_->UnloadKernel(this); }
+  // module that the function is contained in is owned by the StreamExecutor.
+  ~CudaKernel() override { executor_->UnloadKernel(this); }
 
   // As arity cannot be reflected upon using the CUDA API, the arity is
-  // explicitly set during the GpuExecutor::GetKernel initialization process.
+  // explicitly set during the StreamExecutor::GetKernel initialization process.
   void set_arity(unsigned arity) { arity_ = arity; }
   unsigned Arity() const override { return arity_; }
 
@@ -52,13 +51,16 @@ class CudaKernel : public GpuKernel {
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
   // Simple accessor methods.
-  GpuFunctionHandle gpu_function() const override { return gpu_function_; }
-  void set_gpu_function(GpuFunctionHandle gpu_function) {
+  CUfunction gpu_function() const override { return gpu_function_; }
+  void set_gpu_function(CUfunction gpu_function) {
     gpu_function_ = gpu_function;
   }
 
+  // Collects metadata for the specified kernel.
+  absl::StatusOr<KernelMetadata> GetKernelMetadata();
+
  private:
-  GpuExecutor* gpu_executor_ = nullptr;
+  StreamExecutor* executor_ = nullptr;
 
   CUfunction gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes

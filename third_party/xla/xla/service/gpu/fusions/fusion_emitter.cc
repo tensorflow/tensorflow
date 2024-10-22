@@ -168,21 +168,20 @@ IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
     divisor *= shape.dimensions(dimension);
   }
 
-  std::vector<DimVar> dim_vars = {
-      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1}},
-      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1}},
-      {{0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1}},
-      {{0, static_cast<int64_t>(launch_dims.block_counts().x) - 1}},
-      {{0, static_cast<int64_t>(launch_dims.block_counts().y) - 1}},
-      {{0, static_cast<int64_t>(launch_dims.block_counts().z) - 1}},
-  };
-  std::vector<RangeVar> range_vars;
+  std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
+      {static_cast<int64_t>(launch_dims.thread_counts_per_block().x),
+       static_cast<int64_t>(launch_dims.thread_counts_per_block().y),
+       static_cast<int64_t>(launch_dims.thread_counts_per_block().z),
+       static_cast<int64_t>(launch_dims.block_counts().x),
+       static_cast<int64_t>(launch_dims.block_counts().y),
+       static_cast<int64_t>(launch_dims.block_counts().z)});
+  std::vector<IndexingMap::Variable> range_vars;
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
-  range_vars.push_back(
-      {{0, CeilOfRatio(num_elements,
-                       static_cast<int64_t>(launch_dims.launch_bound()) *
-                           unroll_factor) -
-               1}});
+  range_vars.push_back(IndexingMap::Variable{
+      {0, CeilOfRatio(num_elements,
+                      static_cast<int64_t>(launch_dims.launch_bound()) *
+                          unroll_factor) -
+              1}});
   range_vars.push_back({0, unroll_factor - 1});
   IndexingMap indexing_map(
       mlir::AffineMap::get(/*dimCount=*/6,

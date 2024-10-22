@@ -71,11 +71,11 @@ cc_library(
         "//tsl/platform:threadpool_interface",
         "//tsl/platform:tracing",
         "//tsl/platform:types",
-        "//tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

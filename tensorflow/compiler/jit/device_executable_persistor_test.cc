@@ -134,7 +134,7 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
     return options;
   }
 
-  Status CreatePjRtCompilerClient() {
+  absl::Status CreatePjRtCompilerClient() {
     // Create PjRtClient manually while GetOrCreatePjRtClient() is WIP.
     TF_RETURN_IF_ERROR(SetPjRtClientInTFGlobalResourceManager(
         DEVICE_CPU_XLA_JIT,

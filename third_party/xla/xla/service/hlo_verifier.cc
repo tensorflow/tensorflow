@@ -2369,6 +2369,12 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
           break;
         }
         case HloOpcode::kSend: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
           TF_RETURN_IF_ERROR(VerifySingleUser(
               instruction, {HloOpcode::kSendDone, HloOpcode::kTuple}));
           break;
@@ -2379,6 +2385,12 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
           break;
         }
         case HloOpcode::kRecv: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
           TF_RETURN_IF_ERROR(VerifySingleUser(
               instruction, {HloOpcode::kRecvDone, HloOpcode::kTuple}));
           break;
@@ -2451,6 +2463,12 @@ absl::Status VerifyChannels(const HloModule& module,
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* send_done = instruction->users().front();
           if (send_done->opcode() == HloOpcode::kSendDone) {
@@ -2460,6 +2478,12 @@ absl::Status VerifyChannels(const HloModule& module,
           break;
         }
         case HloOpcode::kRecv: {
+          // If the instruction is kSend or kRecv, it can have no users if and
+          // only if it is wrapped in an async call.
+          if (instruction->IsRoot() &&
+              instruction->parent()->IsAsyncComputation()) {
+            break;
+          }
           TF_RET_CHECK(instruction->users().size() == 1);
           const HloInstruction* recv_done = instruction->users().front();
           if (recv_done->opcode() == HloOpcode::kRecvDone) {
@@ -2911,8 +2935,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           const Layout& operand_layout = operand_shape.layout();
           Layout::Equal equal_predicate =
               Layout::Equal().IgnoreTiles().IgnoreMemorySpace();
-          if (instruction->opcode() == HloOpcode::kConvert) {
-            // Convert instructions can change element_size_in_bits
+          if (instruction->opcode() == HloOpcode::kConvert ||
+              instruction->opcode() == HloOpcode::kCompare ||
+              (instruction->opcode() == HloOpcode::kSelect &&
+               operand_shape.element_type() == PRED)) {
+            // Convert and Compare instructions can change element_size_in_bits
+            // Select instructions ignore element_size_in_bits for predicate
             equal_predicate.IgnoreElementSize();
           } else if (instruction->opcode() == HloOpcode::kDynamicSlice ||
                      instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
@@ -3023,7 +3051,11 @@ absl::StatusOr<bool> HloVerifier::Run(
     for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
-      if (computation->IsAsyncComputation()) {
+      // Verify that async computations contain a single instruction or a
+      // collection of send/recv instructions. This is needed to represent NCCL
+      // groups on GPU.
+      if (computation->IsAsyncComputation() &&
+          !computation->OnlyContainsSendRecv()) {
         TF_RETURN_IF_ERROR(VerifyAsyncComputation(computation));
       }
     }

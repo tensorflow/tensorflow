@@ -79,6 +79,9 @@ struct NumpyScalarTypes {
   nanobind::object np_uint32;
   nanobind::object np_uint64;
   nanobind::object np_bfloat16;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
+  std::optional<nanobind::object> np_float8_e3m4;
+  std::optional<nanobind::object> np_float8_e4m3;
   nanobind::object np_float8_e4m3fn;
   nanobind::object np_float8_e4m3b11fnuz;
   nanobind::object np_float8_e4m3fnuz;
@@ -127,7 +130,6 @@ nanobind::tuple SpanToNbTuple(absl::Span<T const> xs) {
 // Converts a sequence of Python objects to a Python tuple, stealing the
 // references to the objects.
 nanobind::tuple MutableSpanToNbTuple(absl::Span<nanobind::object> xs);
-
 
 template <typename T>
 std::vector<T> IterableToVector(const nanobind::iterable& iterable) {

@@ -46,9 +46,10 @@ struct EndpointEq {
   }
 };
 
-static Status ProcessMemoryTypes(
+static absl::Status ProcessMemoryTypes(
     const DeviceType& device_type, const Graph* g,
-    const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
+    const std::function<absl::Status(const Edge*, MemoryType, MemoryType)>&
+        fn) {
   if (device_type != DEVICE_GPU &&
       !DeviceFactory::IsPluggableDevice(device_type.type_string())) {
     // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always compatible.
@@ -92,7 +93,8 @@ static Status ProcessMemoryTypes(
   return absl::OkStatus();
 }
 
-Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
+absl::Status ValidateMemoryTypes(const DeviceType& device_type,
+                                 const Graph* g) {
   return ProcessMemoryTypes(
       device_type, g, [](const Edge* e, MemoryType sm, MemoryType dm) {
         if (sm == dm) {
@@ -153,8 +155,8 @@ static Node* Recv(Graph* g, const string& tensor_name,
   return ret;
 }
 
-Status EnsureMemoryTypes(const DeviceType& device_type,
-                         const string& device_name, Graph* g) {
+absl::Status EnsureMemoryTypes(const DeviceType& device_type,
+                               const string& device_name, Graph* g) {
   struct Item {
     const Edge* edge;
     MemoryType sm;
@@ -214,8 +216,9 @@ Status EnsureMemoryTypes(const DeviceType& device_type,
   return ValidateMemoryTypes(device_type, g);
 }
 
-Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
-                           const Node* n, int index, MemoryType* memory_type) {
+absl::Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
+                                 const Node* n, int index,
+                                 MemoryType* memory_type) {
   MemoryTypeVector inp_mvec;
   MemoryTypeVector out_mvec;
   TF_RETURN_IF_ERROR(MemoryTypesForNode(g->op_registry(), device_type, n->def(),

@@ -124,6 +124,22 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_auto_spmd_partitioning_mesh_ids(
       std::vector<int64_t> mesh_ids);
 
+  float exec_time_optimization_effort() const {
+    return exec_time_optimization_effort_;
+  }
+  ExecutableBuildOptions& set_exec_time_optimization_effort(
+      float exec_time_optimization_effort) {
+    exec_time_optimization_effort_ = exec_time_optimization_effort;
+    return *this;
+  }
+
+  float memory_fitting_effort() const { return memory_fitting_effort_; }
+  ExecutableBuildOptions& set_memory_fitting_effort(
+      float memory_fitting_effort) {
+    memory_fitting_effort_ = memory_fitting_effort;
+    return *this;
+  }
+
   bool deduplicate_hlo() const { return deduplicate_hlo_; }
   ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
 
@@ -277,6 +293,8 @@ class ExecutableBuildOptions {
   bool use_auto_spmd_partitioning_ = false;
   std::vector<int64_t> auto_spmd_partitioning_mesh_shape_;
   std::vector<int64_t> auto_spmd_partitioning_mesh_ids_;
+  float exec_time_optimization_effort_ = 0.0f;
+  float memory_fitting_effort_ = 0.0f;
   bool deduplicate_hlo_ = false;
   bool broadcast_replicated_params_ = false;
   std::optional<DeviceAssignment> device_assignment_;

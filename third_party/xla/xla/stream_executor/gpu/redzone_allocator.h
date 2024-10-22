@@ -60,7 +60,8 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  absl::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+      int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.

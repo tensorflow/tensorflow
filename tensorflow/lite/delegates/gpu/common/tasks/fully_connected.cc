@@ -243,8 +243,6 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                        std::move(bias_tensor_desc)));
 
   return result;
-
-  return result;
 }
 
 }  // namespace gpu

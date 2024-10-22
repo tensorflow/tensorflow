@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -177,6 +178,16 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
   return status;
 }
 
+TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
+    const HloFusionInstruction& fusion) {
+  std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(fusion);
+  HloPrintOptions print_options = HloPrintOptions::ModuleFingerprint()
+                                      .set_print_only_essential_constants(false)
+                                      .set_print_backend_config(true)
+                                      .set_sort_backend_config(true);
+  return module->ToString(print_options);
+}
+
 }  // namespace
 
 absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
@@ -200,8 +211,16 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
 
   TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads, [&](const HloFusionInstruction& fusion) {
-        return VerifyTritonFusion(*opt_compile_util, fusion, config_,
-                                  debug_options);
+        auto key = CacheKeyForFusion(fusion);
+        if (auto it = fusion_result_cache_.find(key);
+            it != fusion_result_cache_.end()) {
+          ++cache_hits_;
+          return it->second;
+        }
+        auto result = VerifyTritonFusion(*opt_compile_util, fusion, config_,
+                                         debug_options);
+        fusion_result_cache_[key] = result;
+        return result;
       }));
   return false;
 }

@@ -38,7 +38,7 @@ namespace tensorflow {
 using PjRtDeviceCompiler =
     DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
-Status CompileToPjRtLoadedExecutable(
+absl::Status CompileToPjRtLoadedExecutable(
     const DeviceBase* device, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
@@ -70,7 +70,7 @@ Status CompileToPjRtLoadedExecutable(
       compilation_result, executable);
 }
 
-Status CompileToPjRtLoadedExecutable(
+absl::Status CompileToPjRtLoadedExecutable(
     const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
     const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,

@@ -25,7 +25,10 @@ lld-18
 clang-format-12
 curl
 git
+parallel
 sudo
 swig
 unzip
 zip
+openjdk-21-jdk
+vim

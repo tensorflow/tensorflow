@@ -33,7 +33,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -381,7 +381,7 @@ static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
   registry
       .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
               mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect,
-              mlir::quant::QuantizationDialect>();
+              mlir::quant::QuantDialect>();
   mlir::func::registerAllExtensions(registry);
 }
 

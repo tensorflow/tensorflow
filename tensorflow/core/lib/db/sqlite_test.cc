@@ -214,7 +214,7 @@ TEST_F(SqliteTest, Statement_MoveAssignment) {
 TEST_F(SqliteTest, PrepareFailed) {
   SqliteLock lock(*db_);
   SqliteStatement stmt;
-  Status s = db_->Prepare("SELECT", &stmt);
+  absl::Status s = db_->Prepare("SELECT", &stmt);
   ASSERT_FALSE(s.ok());
   EXPECT_NE(string::npos, s.message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
@@ -223,7 +223,7 @@ TEST_F(SqliteTest, PrepareFailed) {
 TEST_F(SqliteTest, BindFailed) {
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a) VALUES (123)");
   stmt.BindInt(1, 123);
-  Status s = stmt.StepOnce();
+  absl::Status s = stmt.StepOnce();
   EXPECT_NE(string::npos, s.message().find("INSERT INTO T (a) VALUES (123)"))
       << s.message();
 }

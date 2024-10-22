@@ -27,9 +27,9 @@ namespace tensorflow {
 namespace graph_transforms {
 
 // Clears the device field of all ops in the graph.
-Status InsertLogging(const GraphDef& input_graph_def,
-                     const TransformFuncContext& context,
-                     GraphDef* output_graph_def) {
+absl::Status InsertLogging(const GraphDef& input_graph_def,
+                           const TransformFuncContext& context,
+                           GraphDef* output_graph_def) {
   std::unordered_set<string> ops;
   bool has_ops;
   if (context.params.count("op")) {

@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/macros.h"
-#include "tsl/profiler/utils/math_utils.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 
 // TODO: b/323943471 - This macro should eventually be provided by Abseil.
 #ifndef ABSL_DEPRECATE_AND_INLINE

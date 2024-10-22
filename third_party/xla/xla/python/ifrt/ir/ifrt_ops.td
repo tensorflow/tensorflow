@@ -182,9 +182,11 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     a subset of these devices.
 
     `io_aliases` represents pairs of inputs and outputs, where the input buffer
-    may be donated and used as the output buffer. The aliased pair must have the
-    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
-    hint or not.
+    may be aliased and used as the output buffer. The aliased pair must have the
+    same byte size. It's up to IFRT implementations whether to respect this
+    hint or not. Alternatively, if the index of an input is In
+    `donated_input_indices` then the input buffer might be donated to the
+    callee if an output with the same byte size is found.
   }];
 
   let arguments = (ins
@@ -192,7 +194,8 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     Variadic<Ifrt_ControlType>:$control_inputs,
     SymbolRefAttr:$callee,
     Ifrt_DevicesAttr:$devices,
-    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$donated_input_indices);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
     Ifrt_ControlType:$control_output);
@@ -220,16 +223,19 @@ def Ifrt_CallLoadedExecutableOp : Ifrt_Op<"CallLoadedExecutable",
     be placed on a subset of these devices.
 
     `io_aliases` represents pairs of inputs and outputs, where the input buffer
-    may be donated and used as the output buffer. The aliased pair must have the
-    same Ifrt_ArrayType. It's up to IFRT implementations whether to respect this
-    hint or not.
+    may be aliased and used as the output buffer. The aliased pair must have the
+    same byte size. It's up to IFRT implementations whether to respect this
+    hint or not. Alternatively, if the index of an input is In
+    `donated_input_indices` then the input buffer might be donated to the
+    callee if an output with the same byte size is found.
   }];
 
   let arguments = (ins
     Variadic<Ifrt_ArrayType>:$inputs,
     Variadic<Ifrt_ControlType>:$control_inputs,
     SymbolRefAttr:$callee,
-    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
+    DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases,
+    DefaultValuedAttr<DenseI32ArrayAttr, "{}">:$donated_input_indices);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
     Ifrt_ControlType:$control_output);

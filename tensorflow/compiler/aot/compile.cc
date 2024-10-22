@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "xla/client/client_library.h"
 #include "xla/client/compile_only_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/util.h"

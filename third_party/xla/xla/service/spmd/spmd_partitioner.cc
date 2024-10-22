@@ -49,6 +49,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout_util.h"
@@ -58,14 +61,11 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_layout.h"
-#include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/custom_call_handler.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -246,135 +246,179 @@ HloInstruction* SpmdBuilder::AddInstruction(
   HloInstruction* hlo =
       HloComputation::Builder::AddInstruction(std::move(instruction));
   if (visiting_hlo_) {
-    hlo->set_metadata(visiting_hlo_->metadata());
+    std::shared_ptr<const HloSharding> prev_sharding = hlo->sharding_ptr();
+    visiting_hlo_->SetupDerivedInstruction(hlo);
+    if (prev_sharding != nullptr) {
+      hlo->set_sharding(*prev_sharding);
+    } else {
+      hlo->clear_sharding();
+    }
     instructions_[visiting_hlo_].push_back(hlo);
   }
-  if (hlo->opcode() == HloOpcode::kBroadcast) {
-    for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-      if (!absl::c_linear_search(hlo->dimensions(), i)) {
-        broadcast_dims_[hlo].insert(i);
-      }
-    }
-  }
-  if (hlo->IsElementwise() && hlo->operand_count() > 0 &&
-      // Copy can have a tuple result.
-      hlo->shape().IsArray()) {
-    absl::flat_hash_set<int64_t> broadcast_dims;
-    for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-      broadcast_dims.insert(i);
-    }
-    for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-      auto it = broadcast_dims_.find(hlo->operand(i));
-      if (it == broadcast_dims_.end()) {
-        broadcast_dims.clear();
-        break;
-      }
-      for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-        if (!it->second.contains(i)) {
-          broadcast_dims.erase(i);
-        }
-      }
-    }
-    if (!broadcast_dims.empty()) {
-      broadcast_dims_[hlo] = std::move(broadcast_dims);
-    }
-  }
-  if (hlo->opcode() == HloOpcode::kTranspose) {
-    auto it = broadcast_dims_.find(hlo->operand(0));
-    if (it != broadcast_dims_.end()) {
-      absl::flat_hash_set<int64_t> xpose_broadcast_dims;
-      std::vector<int64_t> reverse_map(hlo->shape().rank());
-      for (int64_t i = 0; i < reverse_map.size(); ++i) {
-        reverse_map[hlo->dimensions(i)] = i;
-      }
-      for (int64_t dim : it->second) {
-        xpose_broadcast_dims.insert(reverse_map[dim]);
-      }
-      broadcast_dims_[hlo] = std::move(xpose_broadcast_dims);
-    }
-  }
-  if (hlo->opcode() == HloOpcode::kReshape &&
-      Product(hlo->shape().dimensions()) > 0) {
-    auto it = broadcast_dims_.find(hlo->operand(0));
-    if (it != broadcast_dims_.end()) {
-      absl::flat_hash_set<int64_t> reshape_broadcast_dims;
-      for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-        reshape_broadcast_dims.insert(i);
-      }
-      std::vector<int64_t> before_dim_size_stack;
-      std::vector<int64_t> after_dim_size_stack;
-      const int64_t operand0_rank = hlo->operand(0)->shape().rank();
-      const int64_t hlo_shape_rank = hlo->shape().rank();
-      before_dim_size_stack.reserve(operand0_rank);
-      after_dim_size_stack.reserve(hlo_shape_rank);
-      for (int64_t i = operand0_rank - 1; i >= 0; --i) {
-        before_dim_size_stack.push_back(hlo->operand(0)->shape().dimensions(i));
-      }
-      for (int64_t i = hlo_shape_rank - 1; i >= 0; --i) {
-        after_dim_size_stack.push_back(hlo->shape().dimensions(i));
-      }
-      while (!before_dim_size_stack.empty() && !after_dim_size_stack.empty()) {
-        int64_t before_size = before_dim_size_stack.back();
-        int64_t after_size = after_dim_size_stack.back();
-        int64_t current_before_dim =
-            hlo->operand(0)->shape().rank() - before_dim_size_stack.size();
-        int64_t current_after_dim =
-            hlo->shape().rank() - after_dim_size_stack.size();
-        before_dim_size_stack.pop_back();
-        after_dim_size_stack.pop_back();
-        if (!it->second.contains(current_before_dim)) {
-          reshape_broadcast_dims.erase(current_after_dim);
-        }
-        if (before_size == after_size) {
-          continue;
-        }
-        if (before_size % after_size == 0) {
-          // Split dim.
-          before_dim_size_stack.push_back(before_size / after_size);
-        } else if (after_size % before_size == 0) {
-          // Merge dim.
-          after_dim_size_stack.push_back(after_size / before_size);
-        } else {
-          // Other cases, mark all remaining dims as non-broadcast.
-          for (int64_t i = current_after_dim; i < hlo->shape().rank(); ++i) {
-            reshape_broadcast_dims.erase(i);
-          }
-          break;
-        }
-      }
-      if (!before_dim_size_stack.empty() || !after_dim_size_stack.empty()) {
-        reshape_broadcast_dims.clear();
-      }
-      if (!reshape_broadcast_dims.empty()) {
-        broadcast_dims_[hlo] = std::move(reshape_broadcast_dims);
-      }
-    }
-  }
-  if (hlo->opcode() == HloOpcode::kSlice ||
-      hlo->opcode() == HloOpcode::kDynamicSlice) {
-    auto it = broadcast_dims_.find(hlo->operand(0));
-    if (it != broadcast_dims_.end()) {
-      auto dims = it->second;
-      broadcast_dims_[hlo] = std::move(dims);
-    }
-  }
-  if (hlo->opcode() == HloOpcode::kPad) {
-    auto it = broadcast_dims_.find(hlo->operand(0));
-    if (it != broadcast_dims_.end()) {
-      absl::flat_hash_set<int64_t> pad_broadcast_dims;
-      for (int64_t i = 0; i < hlo->shape().rank(); ++i) {
-        const auto& dim = hlo->padding_config().dimensions(i);
-        if (dim.edge_padding_low() == 0 && dim.edge_padding_high() == 0 &&
-            dim.interior_padding() == 0 && it->second.contains(i)) {
-          pad_broadcast_dims.insert(i);
-        }
-      }
-      if (!pad_broadcast_dims.empty()) {
-        broadcast_dims_[hlo] = std::move(pad_broadcast_dims);
-      }
-    }
-  }
+  SetBroadcastDimsForAddedHlo(*hlo);
   return hlo;
+}
+
+void SpmdBuilder::SetBroadcastDimsForAddedHlo(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kBroadcast) {
+    for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+      if (!absl::c_linear_search(hlo.dimensions(), i)) {
+        broadcast_dims_[&hlo].insert(i);
+      }
+    }
+  }
+  if (hlo.IsElementwise() && hlo.operand_count() > 0 &&
+      // Copy can have a tuple result.
+      hlo.shape().IsArray()) {
+    SetBroadcastDimsForElementwise(hlo);
+  }
+  if (hlo.opcode() == HloOpcode::kTranspose) {
+    SetBroadcastDimsForTranspose(hlo);
+  }
+  if (hlo.opcode() == HloOpcode::kReshape &&
+      Product(hlo.shape().dimensions()) > 0) {
+    SetBroadcastDimsForReshape(hlo);
+  }
+  if (hlo.opcode() == HloOpcode::kSlice ||
+      hlo.opcode() == HloOpcode::kDynamicSlice) {
+    SetBroadcastDimsForSlice(hlo);
+  }
+  if (hlo.opcode() == HloOpcode::kPad) {
+    SetBroadcastDimsForPad(hlo);
+  }
+}
+
+void SpmdBuilder::SetBroadcastDimsForReshape(const HloInstruction& hlo) {
+  CHECK(hlo.opcode() == HloOpcode::kReshape);
+
+  auto it = broadcast_dims_.find(hlo.operand(0));
+  if (it == broadcast_dims_.end()) {
+    return;
+  }
+  std::vector<int64_t> iota_dims(hlo.shape().rank());
+  absl::c_iota(iota_dims, 0);
+  absl::flat_hash_set<int64_t> reshape_broadcast_dims(iota_dims.begin(),
+                                                      iota_dims.end());
+
+  absl::Span<const int64_t> operand_dims = hlo.operand(0)->shape().dimensions();
+  absl::Span<const int64_t> hlo_dims = hlo.shape().dimensions();
+  std::vector<int64_t> before_dim_size_stack(operand_dims.rbegin(),
+                                             operand_dims.rend());
+  std::vector<int64_t> after_dim_size_stack(hlo_dims.rbegin(), hlo_dims.rend());
+
+  auto erase_reshape_broadcast_dims = [&reshape_broadcast_dims](int64_t from,
+                                                                int64_t to) {
+    for (int64_t i = from; i < to; ++i) {
+      reshape_broadcast_dims.erase(i);
+    }
+  };
+
+  while (!before_dim_size_stack.empty() && !after_dim_size_stack.empty()) {
+    int64_t before_size = before_dim_size_stack.back();
+    int64_t after_size = after_dim_size_stack.back();
+    int64_t current_before_dim =
+        hlo.operand(0)->shape().rank() - before_dim_size_stack.size();
+    int64_t current_after_dim =
+        hlo.shape().rank() - after_dim_size_stack.size();
+    before_dim_size_stack.pop_back();
+    after_dim_size_stack.pop_back();
+    if (!it->second.contains(current_before_dim)) {
+      reshape_broadcast_dims.erase(current_after_dim);
+    }
+    if (before_size == after_size) {
+      continue;
+    }
+    if (before_size % after_size == 0) {
+      // Split dim.
+      before_dim_size_stack.push_back(before_size / after_size);
+    } else if (after_size % before_size == 0) {
+      // Merge dim.
+      after_dim_size_stack.push_back(after_size / before_size);
+    } else {
+      // Other cases, mark all remaining dims as non-broadcast.
+      erase_reshape_broadcast_dims(current_after_dim, hlo.shape().rank());
+      break;
+    }
+  }
+
+  bool has_broadcast_dims = !reshape_broadcast_dims.empty() &&
+                            before_dim_size_stack.empty() &&
+                            after_dim_size_stack.empty();
+  if (has_broadcast_dims) {
+    broadcast_dims_[&hlo] = std::move(reshape_broadcast_dims);
+  }
+}
+
+void SpmdBuilder::SetBroadcastDimsForTranspose(const HloInstruction& hlo) {
+  CHECK(hlo.opcode() == HloOpcode::kTranspose);
+  auto it = broadcast_dims_.find(hlo.operand(0));
+  if (it == broadcast_dims_.end()) {
+    return;
+  }
+  absl::flat_hash_set<int64_t> xpose_broadcast_dims;
+  std::vector<int64_t> reverse_map(hlo.shape().rank());
+  for (int64_t i = 0; i < reverse_map.size(); ++i) {
+    reverse_map[hlo.dimensions(i)] = i;
+  }
+  for (int64_t dim : it->second) {
+    xpose_broadcast_dims.insert(reverse_map[dim]);
+  }
+  broadcast_dims_[&hlo] = std::move(xpose_broadcast_dims);
+}
+
+void SpmdBuilder::SetBroadcastDimsForPad(const HloInstruction& hlo) {
+  CHECK(hlo.opcode() == HloOpcode::kPad);
+  auto it = broadcast_dims_.find(hlo.operand(0));
+  if (it == broadcast_dims_.end()) {
+    return;
+  }
+  absl::flat_hash_set<int64_t> pad_broadcast_dims;
+  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+    const auto& dim = hlo.padding_config().dimensions(i);
+    if (dim.edge_padding_low() == 0 && dim.edge_padding_high() == 0 &&
+        dim.interior_padding() == 0 && it->second.contains(i)) {
+      pad_broadcast_dims.insert(i);
+    }
+  }
+  if (!pad_broadcast_dims.empty()) {
+    broadcast_dims_[&hlo] = std::move(pad_broadcast_dims);
+  }
+}
+
+void SpmdBuilder::SetBroadcastDimsForSlice(const HloInstruction& hlo) {
+  CHECK(hlo.opcode() == HloOpcode::kSlice ||
+        hlo.opcode() == HloOpcode::kDynamicSlice);
+  auto it = broadcast_dims_.find(hlo.operand(0));
+  if (it != broadcast_dims_.end()) {
+    auto dims = it->second;
+    broadcast_dims_[&hlo] = std::move(dims);
+  }
+}
+
+void SpmdBuilder::SetBroadcastDimsForElementwise(const HloInstruction& hlo) {
+  CHECK(hlo.IsElementwise());
+  if (hlo.operand_count() == 0 || hlo.shape().IsTuple()) {
+    return;
+  }
+  absl::flat_hash_set<int64_t> broadcast_dims;
+  for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+    broadcast_dims.insert(i);
+  }
+  for (int64_t i = 0; i < hlo.operand_count(); ++i) {
+    auto it = broadcast_dims_.find(hlo.operand(i));
+    if (it == broadcast_dims_.end()) {
+      broadcast_dims.clear();
+      break;
+    }
+    for (int64_t i = 0; i < hlo.shape().rank(); ++i) {
+      if (!it->second.contains(i)) {
+        broadcast_dims.erase(i);
+      }
+    }
+  }
+  if (!broadcast_dims.empty()) {
+    broadcast_dims_[&hlo] = std::move(broadcast_dims);
+  }
 }
 
 PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,

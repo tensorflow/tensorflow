@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/acceleration_test_util_internal.h"
@@ -90,11 +89,11 @@ void ValidateAcceleration(const SingleOpModel& model) {
     // We only want to check the delegate is working properly, so an error due
     // to incompatibility between the model and the delegate is not considered a
     // failure here.
-    EXPECT_THAT(model.GetDelegateApplicationStatus().value_or(kTfLiteOk),
+    ASSERT_THAT(model.GetDelegateApplicationStatus().value_or(kTfLiteOk),
                 testing::AnyOf(kTfLiteOk, kTfLiteApplicationError));
     return;
   } else {
-    EXPECT_EQ(model.GetDelegateApplicationStatus().value_or(kTfLiteOk),
+    ASSERT_EQ(model.GetDelegateApplicationStatus().value_or(kTfLiteOk),
               kTfLiteOk);
   }
 
@@ -108,10 +107,10 @@ void ValidateAcceleration(const SingleOpModel& model) {
     return;
   }
   TFLITE_LOG(INFO) << "Validating acceleration with the stable delegate";
-  EXPECT_EQ(model.CountNumberOfDelegatedPartitions(), 1)
+  ASSERT_GT(num_applied_delegates, 0) << "No delegates were applied.";
+  ASSERT_EQ(model.CountNumberOfDelegatedPartitions(), 1)
       << "Expecting operation to be accelerated but cannot find a partition "
          "associated to the stable delegate";
-  EXPECT_GT(num_applied_delegates, 0) << "No delegates were applied.";
 }
 
 bool InitKernelTest(int* argc, char** argv) {
@@ -155,7 +154,6 @@ int main(int argc, char** argv) {
   tflite::LogToStderr();
   if (tflite::InitKernelTest(&argc, argv)) {
     testing::InitGoogleTest(&argc, argv);
-    benchmark::RunSpecifiedBenchmarks();
     int ret = RUN_ALL_TESTS();
     tflite::DestroyKernelTest();
     return ret;

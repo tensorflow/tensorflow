@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -110,10 +109,9 @@ class ConstraintExpression {
     return disjoint_conjoint_constraints_;
   }
 
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   // Simplifies the constraint expression.
   //
@@ -285,12 +283,9 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(IndexingMap indexing_map);
 
   // For printing in tests.
-  std::string RtVarsToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
-  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+  void Print(std::ostream& out) const;
 
   mlir::AffineMap offset_map() const;
   mlir::AffineMap size_map() const;

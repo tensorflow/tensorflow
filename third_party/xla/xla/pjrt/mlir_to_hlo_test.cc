@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "stablehlo/api/PortableApi.h"
 #include "xla/test.h"
 #include "tsl/platform/statusor.h"
 
@@ -50,7 +51,7 @@ TEST(MlirToHloTest, StablehloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // StableHLO uses VHLO for PJRT serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -68,7 +69,7 @@ TEST(MlirToHloTest, ChloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // CHLO decomposes to StableHLO, so uses VHLO serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -85,7 +86,7 @@ TEST(MlirToHloTest, ChloTanOpTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // CHLO decomposes to StableHLO, so uses VHLO serialization.
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
@@ -103,10 +104,55 @@ TEST(MlirToHloTest, MhloTest) {
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
                           ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
 
   // MHLO and other dialects use native MLIR bytecode, not VHLO.
   EXPECT_THAT(blob, Not(IsVhloArtifact("1.0.0")));
+}
+
+TEST(MlirToHloTest, InvalidBytecodeTest) {
+  // MLIR bytecode format has full compatibility.
+  // Program using StableHLO v2.0.0 with op vhlo.constant_v99.
+  // TODO: Once this file is exposed via the StableHLO repo, replace this
+  // bytecode string with a read of the StableHLO file.
+  unsigned char invalid_future_vhlo_mlirbc[] = {
+      0x4d, 0x4c, 0xef, 0x52, 0x0d, 0x53, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x48,
+      0x4c, 0x4f, 0x5f, 0x76, 0x32, 0x2e, 0x30, 0x2e, 0x30, 0x00, 0x01, 0x19,
+      0x05, 0x01, 0x05, 0x09, 0x01, 0x03, 0x0b, 0x03, 0x07, 0x0f, 0x13, 0x17,
+      0x03, 0x2b, 0x15, 0x07, 0x01, 0x0b, 0x0b, 0x13, 0x13, 0x13, 0x13, 0x03,
+      0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x1f, 0x03, 0x07, 0x0f, 0x13, 0x07, 0x02,
+      0x53, 0x05, 0x0d, 0x17, 0x01, 0x03, 0x03, 0x17, 0x01, 0x05, 0x07, 0x17,
+      0x01, 0x07, 0x15, 0x17, 0x01, 0x09, 0x0b, 0x03, 0x01, 0x23, 0x03, 0x1d,
+      0x0f, 0x1d, 0x11, 0x1f, 0x01, 0x09, 0x00, 0x00, 0x80, 0x3f, 0x29, 0x01,
+      0x05, 0x11, 0x01, 0x03, 0x01, 0x09, 0x04, 0x41, 0x05, 0x01, 0x50, 0x03,
+      0x01, 0x07, 0x04, 0x31, 0x03, 0x01, 0x05, 0x03, 0x50, 0x05, 0x03, 0x07,
+      0x04, 0x1d, 0x03, 0x03, 0x09, 0x05, 0x42, 0x07, 0x05, 0x03, 0x01, 0x07,
+      0x04, 0x09, 0x03, 0x01, 0x06, 0x03, 0x01, 0x05, 0x01, 0x00, 0xad, 0x13,
+      0x0f, 0x0b, 0x1b, 0x15, 0x1b, 0x11, 0x0f, 0x0b, 0x11, 0x62, 0x75, 0x69,
+      0x6c, 0x74, 0x69, 0x6e, 0x00, 0x76, 0x68, 0x6c, 0x6f, 0x00, 0x6d, 0x6f,
+      0x64, 0x75, 0x6c, 0x65, 0x00, 0x66, 0x75, 0x6e, 0x63, 0x5f, 0x76, 0x31,
+      0x00, 0x63, 0x6f, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x74, 0x5f, 0x76, 0x39,
+      0x39, 0x00, 0x72, 0x65, 0x74, 0x75, 0x72, 0x6e, 0x5f, 0x76, 0x31, 0x00,
+      0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x74, 0x32, 0x2e, 0x6d, 0x6c, 0x69, 0x72,
+      0x00, 0x6d, 0x61, 0x69, 0x6e, 0x00, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63,
+      0x00, 0x08, 0x19, 0x07, 0x05, 0x01, 0x01, 0x0b, 0x0b, 0x0d, 0x0b, 0x0f,
+      0x11, 0x03, 0x13};
+  unsigned int invalid_future_vhlo_mlirbc_len = 243;
+
+  std::string buffer(reinterpret_cast<char*>(invalid_future_vhlo_mlirbc),
+                     invalid_future_vhlo_mlirbc_len);
+
+  mlir::MLIRContext context;
+  auto status = ParseMlirModuleString(buffer, context);
+  ASSERT_FALSE(status.ok());
+  // Check that the error message contains:
+  //   - The name of the op that is not supported (vhlo.constant_v99)
+  //   - The version that the StableHLO portable artifact was emit for (v2.0.0)
+  //   - The current version of StableHLO (v1.X.Y)
+  EXPECT_THAT(status.status().message(), HasSubstr("vhlo.constant_v99"));
+  EXPECT_THAT(status.status().message(), HasSubstr("StableHLO_v2.0.0"));
+  EXPECT_THAT(status.status().message(),
+              HasSubstr(mlir::stablehlo::getCurrentVersion()));
 }
 
 }  // namespace

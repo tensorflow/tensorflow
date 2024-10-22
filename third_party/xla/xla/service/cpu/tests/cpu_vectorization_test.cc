@@ -15,21 +15,25 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "llvm-c/Target.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -139,6 +143,139 @@ INSTANTIATE_TEST_SUITE_P(CpuVectorizationTestInstantiation,
                          CpuVectorizationTest,
                          ::testing::ValuesIn(CpuVectorizationTestCases),
                          CpuVectorizationTest::Name);
+
+struct MaxIsaTestSpec {
+  std::string max_isa;
+  std::string feature;
+  bool should_enable;
+};
+
+class MaxIsaTest : public CpuCodegenTest,
+                   public ::testing::WithParamInterface<MaxIsaTestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<MaxIsaTestSpec>& info) {
+    // Test names cannot contain '-'. Replace it with '_'.
+    std::string feature = info.param.feature;
+    absl::c_replace_if(
+        feature, [](char c) { return c != '_' && !absl::ascii_isalnum(c); },
+        '_');
+    return absl::StrCat(info.param.max_isa, "_feature_", feature);
+  }
+};
+
+TEST_P(MaxIsaTest, ShouldEnableFeature) {
+  HloComputation::Builder builder(TestName());
+  MaxIsaTestSpec spec = GetParam();
+
+  auto max_feature = ISAStringToFeature(spec.max_isa);
+  bool should_enable = ShouldEnableCPUFeature(spec.feature, *max_feature);
+  EXPECT_EQ(should_enable, spec.should_enable);
+}
+
+std::vector<MaxIsaTestSpec> GetMaxIsaTestCases() {
+  return std::vector<MaxIsaTestSpec>({
+      MaxIsaTestSpec{"AVX2", "avx", true},
+      MaxIsaTestSpec{"AVX2", "avx2", true},
+      MaxIsaTestSpec{"AVX2", "avx512f", false},
+      MaxIsaTestSpec{"AVX2", "avx512vnni", false},
+      MaxIsaTestSpec{"AVX2", "evex512", false},
+      MaxIsaTestSpec{"AVX512", "avx512f", true},
+      MaxIsaTestSpec{"AVX512", "avx512vnni", false},
+      MaxIsaTestSpec{"AVX512", "amx-bf16", false},
+  });
+}
+
+INSTANTIATE_TEST_SUITE_P(MaxIsaTestInstantiation, MaxIsaTest,
+                         ::testing::ValuesIn(GetMaxIsaTestCases()),
+                         MaxIsaTest::Name);
+
+struct JitVectorizationTestSpec {
+  HloOpcode opcode;
+  std::string max_isa;
+  std::string check_template;
+  int num_vector_elements;
+};
+
+class JitVectorizationTest
+    : public CpuCodegenTest,
+      public ::testing::WithParamInterface<JitVectorizationTestSpec> {
+ public:
+  static std::string Name(
+      const ::testing::TestParamInfo<JitVectorizationTestSpec>& info) {
+    std::string op_name(HloOpcodeString(info.param.opcode));
+    op_name[0] = toupper(op_name[0]);
+    return absl::StrCat(op_name, "_max_", info.param.max_isa);
+  }
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    JitVectorizationTestSpec spec = GetParam();
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_max_isa(spec.max_isa);
+    // For AVX512, we have to override the default `prefer_vector_width=256`
+    // setting. Otherwise, LLVM won't generate AVX512.
+    // TODO(penporn): Change the setting for actual AVX512 codegen too.
+    if (spec.max_isa == "AVX512") {
+      debug_options.set_xla_cpu_prefer_vector_width(512);
+    }
+    return debug_options;
+  }
+};
+
+TEST_P(JitVectorizationTest, JitUpToIsa) {
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This feature only works for x86 CPUs.";
+  }
+  HloComputation::Builder builder(TestName());
+  JitVectorizationTestSpec spec = GetParam();
+
+  // If the CPU doesn't have the `max_isa` feature, e.g., `max_isa=AVX512` but
+  // we are running on an AVX2 machine, update the `check_lines` accordingly.
+  using tsl::port::CPUFeature;
+  auto feature = ISAStringToFeature(spec.max_isa);
+  if (!tsl::port::TestCPUFeature(*feature)) {
+    if (tsl::port::TestCPUFeature(CPUFeature::AVX)) {
+      spec.num_vector_elements = 8;
+    } else {
+      spec.num_vector_elements = 4;
+    }
+  }
+  std::string check_lines = absl::StrReplaceAll(
+      spec.check_template, {{"%d", absl::StrCat(spec.num_vector_elements)}});
+
+  // Build HLO module.
+  auto shape = ShapeUtil::MakeShape(F32, {1024});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, spec.opcode, a, b));
+  std::unique_ptr<HloComputation> computation = builder.Build();
+
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  CompileAndVerifyIr(std::move(hlo_module), check_lines,
+                     /*match_optimized_ir=*/true);
+}
+
+std::vector<JitVectorizationTestSpec> GetJitVectorizationTestCases() {
+  return std::vector<JitVectorizationTestSpec>({
+      JitVectorizationTestSpec{HloOpcode::kMultiply, "SSE4_2",
+                               R"(CHECK: fmul <%d x float>)", 4},
+      JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX2",
+                               R"(CHECK: fmul <%d x float>)", 8},
+      JitVectorizationTestSpec{HloOpcode::kMultiply, "AVX512",
+                               R"(CHECK: fmul <%d x float>)", 16},
+  });
+}
+
+INSTANTIATE_TEST_SUITE_P(JitVectorizationTestInstantiation,
+                         JitVectorizationTest,
+                         ::testing::ValuesIn(GetJitVectorizationTestCases()),
+                         JitVectorizationTest::Name);
 
 }  // namespace
 }  // namespace cpu

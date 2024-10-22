@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus

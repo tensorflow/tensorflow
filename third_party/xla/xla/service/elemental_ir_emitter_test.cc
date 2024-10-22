@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -37,6 +39,8 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -89,9 +93,9 @@ class ElementalIrEmitterExecutionTypedTest
 };
 
 using FloatTypes =
-    ::testing::Types<bfloat16, tsl::float8_e4m3fn, tsl::float8_e4m3fnuz,
-                     tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
-                     tsl::float8_e5m2fnuz>;
+    ::testing::Types<bfloat16, tsl::float8_e5m2, tsl::float8_e5m2fnuz,
+                     tsl::float8_e4m3, tsl::float8_e4m3fn, tsl::float8_e4m3fnuz,
+                     tsl::float8_e4m3b11fnuz, tsl::float8_e3m4>;
 
 TYPED_TEST_SUITE(ElementalIrEmitterExecutionTypedTest, FloatTypes);
 
@@ -249,8 +253,10 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
 
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, ConvertFloatsToFloat) {
   auto tname = this->TypeName();
-  if (std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
+  if (std::is_same<TypeParam, tsl::float8_e4m3>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
+      std::is_same<TypeParam, tsl::float8_e3m4>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
   const auto hlo_text = absl::StrReplaceAll(R"(
@@ -413,8 +419,10 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, CompareFloat) {
 TYPED_TEST(ElementalIrEmitterExecutionTypedTest, IotaFloat) {
   auto tname = this->TypeName();
   if (std::is_same<TypeParam, tsl::float8_e5m2>() ||
+      std::is_same<TypeParam, tsl::float8_e4m3>() ||
       std::is_same<TypeParam, tsl::float8_e4m3fn>() ||
-      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
+      std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>() ||
+      std::is_same<TypeParam, tsl::float8_e3m4>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
   const auto hlo_text = absl::StrReplaceAll(R"(

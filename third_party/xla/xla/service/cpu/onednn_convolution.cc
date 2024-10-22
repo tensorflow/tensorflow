@@ -63,6 +63,13 @@ dnnl::memory::format_tag GetFormatTag(const int dims) {
                        : dnnl::memory::format_tag::any;
 }
 
+template <>
+typename PrimitiveTrait<kOnednnConvConfig>::pointer_type
+GetKernelConfig<kOnednnConvConfig>(
+    absl::StatusOr<BackendConfig>* backend_config) {
+  return (*backend_config)->mutable_onednn_conv_config();
+}
+
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     void* result, void** args) {
   // args[0]: ptr to nargs
@@ -154,7 +161,6 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   MemrefInfo ker_minfo(args[arg_indx++]);
   MemrefInfo res_minfo(result);
 
-  // Permute memory descriptors
   auto inp_md = inp_minfo.GetOneDnnMemDesc();
   auto ker_md = ker_minfo.GetOneDnnMemDesc();
   auto res_md = res_minfo.GetOneDnnMemDesc();
@@ -174,6 +180,50 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
     new_ker_md = new_ker_md.reshape(corr_dims);
   }
 
+  const int64_t num_fused_operands = num_args - arg_indx;
+  std::vector<memory::desc> fused_mds;
+  std::vector<void*> fused_bufs;
+  for (int64_t i = 0; i < num_fused_operands; ++i) {
+    MemrefInfo operand_minfo(args[arg_indx++]);
+    fused_mds.push_back(operand_minfo.GetOneDnnMemDesc());
+    fused_bufs.push_back(operand_minfo.Data());
+  }
+
+  std::vector<std::pair<int, dnnl::memory>> postop_args;
+
+  auto bias_md = memory::desc();
+
+  dnnl::post_ops post_ops;
+  int fused_operand_idx = 0;
+  for (auto& fused_op : conv_config.fusions().ops()) {
+    switch (fused_op) {
+      case OneDnnFusionConfig::BIAS: {
+        bias_md = fused_mds.at(fused_operand_idx);
+        postop_args.emplace_back(
+            DNNL_ARG_BIAS,
+            dnnl::memory(bias_md, cpu_engine, fused_bufs[fused_operand_idx]));
+        fused_operand_idx++;
+      } break;
+      case OneDnnFusionConfig::BINARY_ADD: {
+        auto binary_md = fused_mds.at(fused_operand_idx);
+        binary_md = binary_md.permute_axes(out_axes);
+        auto arg_idx =
+            DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;
+        postop_args.emplace_back(
+            arg_idx,
+            dnnl::memory(binary_md, cpu_engine, fused_bufs[fused_operand_idx]));
+        post_ops.append_binary(dnnl::algorithm::binary_add, binary_md);
+        fused_operand_idx++;
+      } break;
+      default:
+        LOG(FATAL)
+            << __FILE__ << ":" << __LINE__
+            << " Attempt to call OneDNN Convolution runtime library with "
+               "unsupported post op."
+            << std::endl;
+    }
+  }
+
   auto any_ker_md =
       memory::desc(new_ker_md.get_dims(), new_ker_md.get_data_type(),
                    dnnl::memory::format_tag::any);
@@ -187,37 +237,41 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnConvolution(
   XLA_LIGHTWEIGHT_CHECK(num_args == arg_indx);
 
   dnnl::primitive_attr attrs;
+  if (post_ops.len() > 0) {
+    attrs.set_post_ops(post_ops);
+  }
+
+  auto conv_pd = std::make_unique<convolution_forward::primitive_desc>(
+      cpu_engine, prop_kind::forward_inference, algorithm::convolution_direct,
+      any_inp_md, any_ker_md, bias_md, any_res_md, strides, rhs_dilations,
+      pad_left, pad_right, attrs);
 
   auto inp_mem = memory(new_inp_md, cpu_engine, inp_minfo.Data());
   auto ker_mem = memory(new_ker_md, cpu_engine, ker_minfo.Data());
   auto res_mem = memory(new_res_md, cpu_engine, res_minfo.Data());
 
-  auto conv_pd = convolution_forward::primitive_desc(
-      cpu_engine, prop_kind::forward_inference, algorithm::convolution_direct,
-      any_inp_md, any_ker_md, any_res_md, strides, rhs_dilations, pad_left,
-      pad_right, attrs);
-
-  auto new_inp_mem = (conv_pd.src_desc() == inp_mem.get_desc())
+  auto new_inp_mem = (conv_pd->src_desc() == inp_mem.get_desc())
                          ? inp_mem
-                         : ReorderMemory(cpu_engine, conv_pd.src_desc(),
+                         : ReorderMemory(cpu_engine, conv_pd->src_desc(),
                                          inp_mem, onednn_stream);
-  auto new_ker_mem = (conv_pd.weights_desc() == ker_mem.get_desc())
+  auto new_ker_mem = (conv_pd->weights_desc() == ker_mem.get_desc())
                          ? ker_mem
-                         : ReorderMemory(cpu_engine, conv_pd.weights_desc(),
+                         : ReorderMemory(cpu_engine, conv_pd->weights_desc(),
                                          ker_mem, onednn_stream);
-  auto new_res_mem = (conv_pd.dst_desc() == res_mem.get_desc())
+  auto new_res_mem = (conv_pd->dst_desc() == res_mem.get_desc())
                          ? res_mem
-                         : memory(conv_pd.dst_desc(), cpu_engine);
+                         : memory(conv_pd->dst_desc(), cpu_engine);
 
-  auto conv_prim = convolution_forward(conv_pd);
+  auto conv_prim = convolution_forward(*conv_pd);
 
   std::unordered_map<int, memory> conv_args{{DNNL_ARG_SRC, new_inp_mem},
                                             {DNNL_ARG_WEIGHTS, new_ker_mem},
                                             {DNNL_ARG_DST, new_res_mem}};
 
+  conv_args.insert(postop_args.begin(), postop_args.end());
   conv_prim.execute(onednn_stream, conv_args);
 
-  if (conv_pd.dst_desc() == res_mem.get_desc()) {
+  if (conv_pd->dst_desc() == res_mem.get_desc()) {
     res_mem = new_res_mem;
   } else {
     dnnl::reorder(new_res_mem, res_mem)

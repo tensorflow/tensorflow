@@ -330,7 +330,9 @@ enum XNNPackFlags {
 
 message XNNPackSettings {
   optional int32 num_threads = 1;
-  optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
+  // If flags is unset or zero, it means use the default XNNPack delegate flags.
+  // Any other value means use exactly (and only) the flags specified.
+  optional XNNPackFlags flags = 2;
   // Path to the XNNPack cache file. XNNPack packed buffers are saved to and
   // reloaded from this cache which can reduce initialization time and the
   // packing memory footprint.
@@ -787,6 +789,17 @@ message MtkNeuronSettings {
   // Optional path to the platform-dependent Neuron configuration file.
   // See docs at https://neuropilot.mediatek.com/ for more details.
   optional string neuron_config_path = 10;
+
+  // The deadline time duration (in ms) of the inference (waiting + execution).
+  // The scheduler would adjust scheduling based on this value. Note that
+  // setting this value to zero implies no deadline requirement.
+  optional int32 inference_deadline_ms = 11;
+
+  // The maximum inference (waiting + execution) time duration (in ms). The
+  // scheduler would abort the inference if the inference time dutation exceed
+  // the time specified. Note that setting this value to zero implies no abort
+  // time requirement.
+  optional int32 inference_abort_time_ms = 12;
 }
 
 // How to configure TFLite.
@@ -1129,4 +1142,4 @@ message BenchmarkEventStorage {
   optional BenchmarkEvent benchmark_event = 2;
 }
 
-// LINT.ThenChange(//tensorflow/lite/acceleration/configuration/testdata/configuration.proto_prev)
+// LINT.ThenChange(//tensorflow/lite/acceleration/configuration/testdata/configuration.proto_prev:all)

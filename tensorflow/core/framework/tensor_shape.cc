@@ -94,7 +94,8 @@ bool TensorShapeBase<Shape>::IsValid(const TensorShapeProto& proto) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::IsValidShape(const TensorShapeProto& proto) {
+absl::Status TensorShapeBase<Shape>::IsValidShape(
+    const TensorShapeProto& proto) {
   // NOTE(irving): Unfortunately, TensorShape allows parsing protos with
   // unknown_shape() set, and it seems hard to remove this without backwards
   // compatibility issues.
@@ -155,7 +156,7 @@ TensorShapeBase<Shape>::TensorShapeBase(const TensorShapeProto& proto) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::BuildTensorShapeBase(
+absl::Status TensorShapeBase<Shape>::BuildTensorShapeBase(
     const TensorShapeProto& proto, TensorShapeBase* out) {
   out->set_tag(REP16);
   out->set_data_type(DT_INVALID);
@@ -169,7 +170,7 @@ Status TensorShapeBase<Shape>::BuildTensorShapeBase(
     out->set_ndims_byte(0);
     out->set_num_elements(1);
     int64_t num_elements_excluding_zero_dims = 1;
-    Status s = absl::OkStatus();
+    absl::Status s = absl::OkStatus();
     for (const auto& d : proto.dim()) {
       s = out->AddDimWithStatus(d.size());
       if (!s.ok()) {
@@ -202,7 +203,7 @@ TensorShapeBase<Shape>::TensorShapeBase(absl::Span<const int64_t> dim_sizes) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::BuildTensorShapeBase(
+absl::Status TensorShapeBase<Shape>::BuildTensorShapeBase(
     absl::Span<const int64_t> dim_sizes, TensorShapeBase* out) {
   out->set_tag(REP16);
   out->set_data_type(DT_INVALID);
@@ -224,7 +225,8 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64_t val) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::InitDims(absl::Span<const int64_t> dim_sizes) {
+absl::Status TensorShapeBase<Shape>::InitDims(
+    absl::Span<const int64_t> dim_sizes) {
   DCHECK_EQ(tag(), REP16);
 
   // Allow sizes that are under kint64max^0.25 so that 4-way multiplication
@@ -298,7 +300,7 @@ Status TensorShapeBase<Shape>::InitDims(absl::Span<const int64_t> dim_sizes) {
 
   set_ndims_byte(0);
   set_num_elements(1);
-  Status status = absl::OkStatus();
+  absl::Status status = absl::OkStatus();
   for (int64_t s : dim_sizes) {
     status.Update(AddDimWithStatus(internal::SubtleMustCopy(s)));
     if (!status.ok()) {
@@ -384,7 +386,7 @@ void TensorShapeRep::ClearAllButDataType() {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::RecomputeNumElements() {
+absl::Status TensorShapeBase<Shape>::RecomputeNumElements() {
   if (unknown_rank()) {
     set_num_elements(-1);
     return absl::OkStatus();
@@ -422,7 +424,7 @@ void TensorShapeBase<Shape>::AddDim(int64_t size) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
+absl::Status TensorShapeBase<Shape>::AddDimWithStatus(int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
       return errors::InvalidArgument("Expected a non-negative size, got ",
@@ -506,9 +508,9 @@ void TensorShapeBase<Shape>::AppendShape(const TensorShapeBase& shape) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::AppendShapeWithStatus(
+absl::Status TensorShapeBase<Shape>::AppendShapeWithStatus(
     const TensorShapeBase& shape) {
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
   for (auto d : shape) {
     s.Update(AddDimWithStatus(d.size));
     if (!s.ok()) {
@@ -534,7 +536,7 @@ void TensorShapeBase<Shape>::InsertDim(int d, int64_t size) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
+absl::Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
   if (!kIsPartial) {
     if (TF_PREDICT_FALSE(size < 0)) {
       return errors::InvalidArgument("Expected a non-negative size, got ",
@@ -560,7 +562,7 @@ Status TensorShapeBase<Shape>::InsertDimWithStatus(int d, int64_t size) {
   vals.insert(vals.begin() + d, size);
   ClearAllButDataType();
 
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
   for (auto dval : vals) {
     s.Update(AddDimWithStatus(dval));
     if (!s.ok()) {
@@ -608,7 +610,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64_t size) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
+absl::Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
   if (TF_PREDICT_FALSE(d < 0)) {
     return errors::InvalidArgument("Index must be non-negative, got ", d);
   }
@@ -635,7 +637,7 @@ Status TensorShapeBase<Shape>::SetDimWithStatus(int d, int64_t size) {
     vals[d] = size;
     ClearAllButDataType();
 
-    Status s = absl::OkStatus();
+    absl::Status s = absl::OkStatus();
     for (auto dval : vals) {
       s.Update(AddDimWithStatus(dval));
       if (!s.ok()) {
@@ -668,7 +670,8 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
 }
 
 template <class Shape>
-Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin, int end) {
+absl::Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin,
+                                                              int end) {
   if (unknown_rank()) {
     return absl::OkStatus();
   }
@@ -700,7 +703,7 @@ Status TensorShapeBase<Shape>::RemoveDimRangeWithStatus(int begin, int end) {
   vals.erase(vals.begin() + begin, vals.begin() + end);
   ClearAllButDataType();
 
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
   for (auto dval : vals) {
     s.Update(AddDimWithStatus(dval));
     if (!s.ok()) {
@@ -809,7 +812,7 @@ bool TensorShapeUtils::EndsWith(const TensorShape& shape,
 }
 
 template <typename T, class Shape>
-Status MakeShapeHelper(const T* dims, int64_t n, Shape* out) {
+absl::Status MakeShapeHelper(const T* dims, int64_t n, Shape* out) {
   out->Clear();
   if (n > TensorShape::MaxDimensions()) {
     return errors::InvalidArgument("Too many dimensions");
@@ -879,7 +882,7 @@ PartialTensorShape PartialTensorShape::Concatenate(int64_t size) const {
   return out;
 }
 
-Status PartialTensorShape::ConcatenateWithStatus(
+absl::Status PartialTensorShape::ConcatenateWithStatus(
     int64_t size, PartialTensorShape* out) const {
   *out = *this;
   return out->AddDimWithStatus(size);
@@ -895,7 +898,7 @@ PartialTensorShape PartialTensorShape::Concatenate(
   return out;
 }
 
-Status PartialTensorShape::ConcatenateWithStatus(
+absl::Status PartialTensorShape::ConcatenateWithStatus(
     const PartialTensorShape& shape, PartialTensorShape* out) const {
   if (unknown_rank() || shape.unknown_rank()) {
     *out = PartialTensorShape();
@@ -903,15 +906,15 @@ Status PartialTensorShape::ConcatenateWithStatus(
   }
   *out = *this;
   for (auto dim : shape) {
-    Status s = out->AddDimWithStatus(dim.size);
+    absl::Status s = out->AddDimWithStatus(dim.size);
     if (!s.ok()) return s;
   }
 
   return absl::OkStatus();
 }
 
-Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
-                                     PartialTensorShape* result) const {
+absl::Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
+                                           PartialTensorShape* result) const {
   if (unknown_rank()) {
     *result = shape;
     return absl::OkStatus();
@@ -933,7 +936,7 @@ Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
   }
 
   result->Clear();
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
   for (int i = 0; i < dims_; ++i) {
     const int64_t dim0 = dim_size(i);
     const int64_t dim1 = shape.dim_size(i);
@@ -1024,8 +1027,8 @@ bool PartialTensorShapeUtils::AreIdentical(
   }
 }
 
-Status TensorShapeUtils::NumElements(absl::Span<const int64_t> shape,
-                                     int64_t* num_elements) {
+absl::Status TensorShapeUtils::NumElements(absl::Span<const int64_t> shape,
+                                           int64_t* num_elements) {
   int64_t n = 1;
   for (auto dim : shape) {
     n = MultiplyWithoutOverflow(n, dim);

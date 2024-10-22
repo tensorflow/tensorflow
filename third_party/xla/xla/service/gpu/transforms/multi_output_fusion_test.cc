@@ -42,23 +42,16 @@ namespace gpu {
 namespace m = ::xla::match;
 
 class MultiOutputFusionTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         ShapeSizeBytesFunction()};
+                         HloCostAnalysis::DefaultShapeSize};
 
   void CheckMultiOutputFusion(absl::string_view hlo,
                               std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(
         hlo,
         MultiOutputFusion{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                          ShapeSizeBytesFunction()},
+                          HloCostAnalysis::DefaultShapeSize},
         expected);
   }
 };

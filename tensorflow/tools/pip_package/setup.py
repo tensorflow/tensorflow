@@ -48,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.18.0'
+_VERSION = '2.19.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -109,11 +109,11 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.18.0.a',
-    'keras-nightly >= 3.2.0.dev',
+    'tb-nightly ~= 2.19.0.a',
+    'keras-nightly >= 3.6.0.dev',
     'numpy >= 1.26.0, < 2.2.0',
     'h5py >= 3.11.0',
-    'ml_dtypes >= 0.4.0, < 0.5.0',
+    'ml_dtypes >= 0.4.0, < 1.0.0',
 ]
 
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -159,7 +159,7 @@ EXTRA_PACKAGES['and-cuda'] = [
     'nvidia-curand-cu12 == 10.3.6.82',
     'nvidia-cusolver-cu12 == 11.6.3.83',
     'nvidia-cusparse-cu12 == 12.5.1.3',
-    'nvidia-nccl-cu12 == 2.21.5',
+    'nvidia-nccl-cu12 == 2.23.4',
     'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 

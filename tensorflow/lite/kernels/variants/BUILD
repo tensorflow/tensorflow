@@ -291,13 +291,17 @@ cc_test(
     deps = [
         ":list_ops_subgraph_test_util",
         ":tensor_array",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

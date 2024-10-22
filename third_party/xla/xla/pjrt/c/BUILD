@@ -133,7 +133,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/client:xla_computation",
+        "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:mlir_to_hlo",
@@ -199,6 +199,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
+        "@stablehlo//:version",
     ],
 )
 
@@ -423,6 +424,7 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+        "@stablehlo//:version",
     ],
 )
 
@@ -454,11 +456,11 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_future",
         "//xla/service:computation_placer_hdr",
-        "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/base:core_headers",

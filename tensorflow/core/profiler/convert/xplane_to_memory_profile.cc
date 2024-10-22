@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -527,7 +527,8 @@ void ProcessMemoryProfileProto(int64_t max_num_snapshots,
 }
 
 template <typename Proto>
-Status ConvertProtoToJson(const Proto& proto_output, std::string* json_output) {
+absl::Status ConvertProtoToJson(const Proto& proto_output,
+                                std::string* json_output) {
   protobuf::util::JsonPrintOptions json_options;
   json_options.always_print_primitive_fields = true;
   auto status = protobuf::util::MessageToJsonString(proto_output, json_output,
@@ -555,8 +556,8 @@ MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
   return memory_profile;
 }
 
-Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
-                                        std::string* json_output) {
+absl::Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
+                                              std::string* json_output) {
   if (const XPlane* host_plane =
           FindPlaneWithName(xspace, kHostThreadsPlaneName)) {
     MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/profiler/utils/xplane_visitor.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {

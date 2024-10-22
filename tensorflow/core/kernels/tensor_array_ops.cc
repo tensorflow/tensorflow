@@ -57,7 +57,8 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace tensorflow {
 
-Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
+absl::Status GetHandle(OpKernelContext* ctx, string* container,
+                       string* ta_handle) {
   {
     Tensor tensor;
     // Assuming that handle is the input at index 0.
@@ -78,7 +79,7 @@ Status GetHandle(OpKernelContext* ctx, string* container, string* ta_handle) {
   return absl::OkStatus();
 }
 
-Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
+absl::Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   string container;
   string ta_handle;
   if (ctx->input_dtype(0) != DT_RESOURCE) {
@@ -94,7 +95,7 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   }
 }
 
-Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
+absl::Status SetupFlowControlInputs(OpKernelContext* ctx, bool set_output) {
   const Tensor* flow_control;
   TF_RETURN_IF_ERROR(ctx->input("flow_in", &flow_control));
   if (set_output) {
@@ -152,9 +153,9 @@ class TensorArrayCreationOp : public OpKernel {
   }
 
  protected:
-  virtual Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
-                                   Tensor* tensor_array_output_handle,
-                                   TensorArray** output_tensor_array) = 0;
+  virtual absl::Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
+                                         Tensor* tensor_array_output_handle,
+                                         TensorArray** output_tensor_array) = 0;
 
  private:
   const DeviceType device_type_;
@@ -185,9 +186,9 @@ class TensorArrayOp : public TensorArrayCreationOp {
     if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
-  Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
-                           Tensor* tensor_array_output_handle,
-                           TensorArray** output_tensor_array) override {
+  absl::Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
+                                 Tensor* tensor_array_output_handle,
+                                 TensorArray** output_tensor_array) override {
     const Tensor* tensor_size;
     TF_RETURN_IF_ERROR(ctx->input("size", &tensor_size));
 
@@ -310,9 +311,9 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     OP_REQUIRES_OK(context, context->GetAttr("source", &source_));
   }
 
-  Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
-                           Tensor* tensor_array_output_handle,
-                           TensorArray** output_tensor_array) override {
+  absl::Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
+                                 Tensor* tensor_array_output_handle,
+                                 TensorArray** output_tensor_array) override {
     string container;
     string tensor_array_name;
     if (ctx->input_dtype(0) != DT_RESOURCE) {
@@ -384,8 +385,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
 
     const auto key = strings::StrCat(output_handle(0), output_handle(1));
     auto creator = [key, tensor_array, array_size, marked_size, element_shape,
-                    shape_to_prepend,
-                    tensor_array_output_handle](TensorArray** ret) -> Status {
+                    shape_to_prepend, tensor_array_output_handle](
+                       TensorArray** ret) -> absl::Status {
       *ret = new TensorArray(
           key, tensor_array->ElemType(), *tensor_array_output_handle,
           array_size, element_shape, tensor_array->HasIdenticalElementShapes(),
@@ -395,7 +396,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       return (*ret)->CopyShapesFrom(tensor_array, &shape_to_prepend);
     };
 
-    Status s = ctx->step_container()->LookupOrCreate<TensorArray>(
+    absl::Status s = ctx->step_container()->LookupOrCreate<TensorArray>(
         rm, key, output_tensor_array, creator);
     (*output_tensor_array)->Unref();
 
@@ -496,7 +497,7 @@ class TensorArrayWriteOp : public OpKernel {
                                 DataTypeString(tensor_array->ElemType()),
                                 " but Op is trying to write dtype ",
                                 DataTypeString(tensor_value->dtype()), "."));
-    Status s =
+    absl::Status s =
         tensor_array->WriteOrAggregate<Device, T>(ctx, index, tensor_value);
     OP_REQUIRES_OK(ctx, s);
   }
@@ -577,7 +578,7 @@ class TensorArrayReadOp : public OpKernel {
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
             " but Op requested dtype ", DataTypeString(dtype_), "."));
     Tensor value;
-    Status s = tensor_array->Read<Device, T>(ctx, index, &value);
+    absl::Status s = tensor_array->Read<Device, T>(ctx, index, &value);
     OP_REQUIRES_OK(ctx, s);
     ctx->set_output(0, value);
   }
@@ -706,7 +707,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     }
 
     // Read all the Tensors into a vector to keep track of their memory.
-    Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
+    absl::Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
     OP_REQUIRES_OK(ctx, s);
 
     const Tensor* value_0_t = &values[0];
@@ -912,7 +913,7 @@ class TensorArrayConcatOp : public OpKernel {
     std::vector<Tensor> values;
     std::vector<int32> indices(array_size);
     std::iota(indices.begin(), indices.end(), 0);
-    Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
+    absl::Status s = tensor_array->ReadMany<Device, T>(ctx, indices, &values);
     OP_REQUIRES_OK(ctx, s);
 
     Tensor* lengths_tensor = nullptr;
@@ -1211,8 +1212,8 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
       OP_REQUIRES_OK(ctx, tensor_array->SetMarkedSize(array_size));
     }
 
-    Status s = tensor_array->WriteOrAggregateMany<Device, T>(ctx, write_indices,
-                                                             &write_values);
+    absl::Status s = tensor_array->WriteOrAggregateMany<Device, T>(
+        ctx, write_indices, &write_values);
     OP_REQUIRES_OK(ctx, s);
   }
 };
@@ -1404,8 +1405,8 @@ class TensorArraySplitOp : public OpKernel {
     std::vector<int32> indices(array_size);
     std::iota(indices.begin(), indices.end(), 0);
 
-    Status s = tensor_array->WriteOrAggregateMany<Device, T>(ctx, indices,
-                                                             &write_values);
+    absl::Status s = tensor_array->WriteOrAggregateMany<Device, T>(
+        ctx, indices, &write_values);
     OP_REQUIRES_OK(ctx, s);
   }
 };

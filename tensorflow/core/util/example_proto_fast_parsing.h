@@ -134,23 +134,23 @@ struct Result {
 // according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
-Status FastParseExample(const FastParseExampleConfig& config,
-                        absl::Span<const tstring> serialized,
-                        absl::Span<const tstring> example_names,
-                        thread::ThreadPool* thread_pool, Result* result);
+absl::Status FastParseExample(const FastParseExampleConfig& config,
+                              absl::Span<const tstring> serialized,
+                              absl::Span<const tstring> example_names,
+                              thread::ThreadPool* thread_pool, Result* result);
 
 // TODO(mrry): Move the hash table construction into the config object.
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
-Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              StringPiece serialized, Result* result);
+absl::Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
+                                    StringPiece serialized, Result* result);
 
 // Parses a batch of serialized SequenceExample protos and converts them into
 // result according to given config.
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
 // (If batch=true, then this parses a single SequenceExample.)
-Status FastParseSequenceExample(
+absl::Status FastParseSequenceExample(
     const example::FastParseExampleConfig& context_config,
     const example::FastParseExampleConfig& sequence_config,
     absl::Span<const tstring> serialized,

@@ -50,9 +50,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -132,7 +132,7 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
                      })) {
     return absl::FailedPreconditionError(
         absl::StrCat("Symbol lower bound is not zero. ",
-                     tiled_hlo.indexing_map().ToString()));
+                     ToString(tiled_hlo.indexing_map())));
   }
 
   std::vector<AffineExpr> symbol_lower_bounds(
@@ -228,8 +228,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // Bail out on instructions that are known to cause problems down the
   // line. This is not an inherent limitation of the approach, but simply
   // issues to be resolved in the current implementation.
-  if (hlo->opcode() == HloOpcode::kDot ||
-      hlo->opcode() == HloOpcode::kConcatenate) {
+  if (hlo->opcode() == HloOpcode::kConcatenate) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
@@ -256,7 +255,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     if (!reshape_symbolic_tile.has_value()) {
       return FusionDecision::Forbid("Bailing out on reshape ")
              << hlo->ToString() << " with indexing map "
-             << reshape_indexing_map.ToString();
+             << ToString(reshape_indexing_map);
     }
   }
 
@@ -293,13 +292,13 @@ SetSymbolicTilesAndComputeConstraints(
     auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
     if (!symbolic_tile.has_value()) {
       return FusionDecision::Forbid("Failed to compute symbolic tile for ")
-             << indexing_map.ToString() << " for HLO " << hlo->ToString();
+             << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
     if (!symbolic_tile->is_satisfiable()) {
       return FusionDecision::Forbid("Symbolic tile ")
              << symbolic_tile->ToString() << " is not satisfiable for "
-             << indexing_map.ToString() << " for HLO " << hlo->ToString();
+             << ToString(indexing_map) << " for HLO " << hlo->ToString();
     }
 
     constraints = ConstraintExpression::And(std::move(constraints),
@@ -593,8 +592,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       output_tiling_info.num_output_tiles_per_dim);
 }
 
-std::string SymbolicTileAnalysis::ToString(
-    const AffineMapPrinter& printer) const {
+std::string SymbolicTileAnalysis::ToString() const {
   std::stringstream ss;
   NameUniquer name_uniquer("_");
   absl::flat_hash_map<SymbolicTiledHloInstruction*, std::string> tile_names;

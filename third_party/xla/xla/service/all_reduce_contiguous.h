@@ -16,24 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_CONTIGUOUS_H_
 #define XLA_SERVICE_ALL_REDUCE_CONTIGUOUS_H_
 
-#include "absl/status/statusor.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
-
-namespace xla {
-
-// Concatenates all-reduce operands together, so the all-reduce is performed
-// over a single, contiguous buffer.
-class AllReduceContiguous : public HloModulePass {
- public:
-  absl::string_view name() const override { return "all-reduce-contiguous"; }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
-
-}  // namespace xla
+// The current header will be deprecated in favour of the following.
+#include "xla/hlo/transforms/collectives/all_reduce_contiguous.h"
 
 #endif  // XLA_SERVICE_ALL_REDUCE_CONTIGUOUS_H_

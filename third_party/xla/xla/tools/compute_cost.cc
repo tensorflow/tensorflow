@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -41,15 +43,18 @@ The input file can be obtained from XProf graph viewer by clicking
 
 Usage:
 
-  bazel run compute_cost -- --input=path/to/hlo_module --format=[hlo|pb|pbtxt]
+  bazel run compute_cost -- --input=path/to/hlo_module --format=[hlo|pb|pbtxt] [--gpu]
 )";
 }  // namespace
 
 int main(int argc, char** argv) {
   std::string input, format;
+  bool gpu = false;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("input", &input, "input file"),
-      tsl::Flag("format", &format, "hlo|pb|pbtxt")};
+      tsl::Flag("format", &format, "hlo|pb|pbtxt"),
+      tsl::Flag("gpu", &gpu,
+                "Use GPU flavor of cost analysis instead of the generic one")};
   xla::AppendDebugOptionsFlags(&flag_list);
   const std::string kUsageString =
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
@@ -59,18 +64,22 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << kUsageString;
   }
 
-  xla::HloCostAnalysis analysis([](const xla::Shape& shape) {
-    return xla::ShapeUtil::ByteSizeOf(shape, 8);
-  });
+  std::unique_ptr<xla::HloCostAnalysis> analysis;
+  if (gpu) {
+    analysis = std::make_unique<xla::gpu::GpuHloCostAnalysis>(
+        xla::HloCostAnalysis::Options{});
+  } else {
+    analysis = std::make_unique<xla::HloCostAnalysis>();
+  }
 
   TF_CHECK_OK(xla::LoadModuleFromFile(input, format, {})
                   .value()
                   ->entry_computation()
                   ->root_instruction()
-                  ->Accept(&analysis));
+                  ->Accept(&*analysis));
 
   std::cout << std::setw(5) << std::setprecision(4)
-            << analysis.flop_count() / (1e9) << " GFLOPS. "
-            << analysis.bytes_accessed() / (1e6) << " MB." << std::endl;
+            << analysis->flop_count() / (1e9) << " GFLOPS. "
+            << analysis->bytes_accessed() / (1e6) << " MB." << std::endl;
   return 0;
 }

@@ -89,6 +89,21 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction,
     size_t collective_memory_size);
 
+// Represents topology of devices.
+struct TopologySizes {
+  int num_slices = 0;
+  int num_hosts_per_slice = 0;
+  int num_devices_per_host = 0;
+
+  // Returns number of devices in the topology.
+  int GetDeviceCount();
+  // Parses the topology description of the form
+  // "<num_slices> x <num_hosts_per_slice> x <num_devices_per_host>"
+  // and returns the parsed components on success.
+  static absl::StatusOr<TopologySizes> FromString(
+      std::string_view topology_string);
+};
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_GPU_HELPERS_H_

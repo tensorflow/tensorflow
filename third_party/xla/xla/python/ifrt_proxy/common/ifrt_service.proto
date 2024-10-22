@@ -17,9 +17,9 @@ syntax = "proto3";
 package xla.ifrt.proxy;
 
 import "google/protobuf/any.proto";
-import "xla/pjrt/execute_options.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
+import "xla/python/ifrt/execute_options.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
@@ -207,9 +207,12 @@ message InitResponse {
     AttributeMapProto attributes = 10;  // New in Version 4.
   }
 
-  repeated Device devices = 6;  // == ifrt::Client::devices()
+  repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
+  repeated int32 primary_device_ids =
+      10;  // == [device.id for device in ifrt::Client::devices()]
   repeated int32 addressable_device_ids =
-      7;  // == ifrt::Client::addressable_devices()
+      7;  // == [device.id for device in ifrt::Client::GetAllDevices() if
+          // device.IsAddressable()]
 
   message Memory {
     int32 id = 1;
@@ -266,6 +269,7 @@ message AssembleArrayFromSingleDeviceArraysRequest {
   ShardingProto sharding = 2;
   repeated fixed64 single_device_array_handles = 3;
   proto.ArrayCopySemantics copy_semantics = 4;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 5;
 }
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;
@@ -296,6 +300,7 @@ message CopyToHostBufferResponse {}
 message DisassembleIntoSingleDeviceArraysRequest {
   fixed64 array_handle = 1;
   proto.ArrayCopySemantics copy_semantics = 2;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 3;
 }
 message DisassembleIntoSingleDeviceArraysResponse {
   repeated fixed64 single_device_array_handles = 1;
@@ -428,7 +433,7 @@ message LoadedExecutableMetadataResponse {
 message LoadedExecutableExecuteRequest {
   fixed64 loaded_executable_handle = 1;
   repeated fixed64 args_handles = 2;
-  xla.ExecuteOptionsProto execute_options = 3;
+  xla.ifrt.ExecuteOptionsProto execute_options = 3;
   repeated int32 device_ids = 4;
 }
 message LoadedExecutableExecuteResponse {

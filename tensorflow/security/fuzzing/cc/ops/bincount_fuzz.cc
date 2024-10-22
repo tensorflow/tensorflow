@@ -40,7 +40,7 @@ class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
     Tensor size(DT_INT32, {});
     size.flat<int32>()(0) = nbins;
 
-    Status s = RunInputsWithStatus(
+    absl::Status s = RunInputsWithStatus(
         {{"arr", arr}, {"size", size}, {"weights", weights}});
     if (!s.ok()) {
       LOG(ERROR) << "Execution failed: " << s.message();

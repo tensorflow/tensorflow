@@ -21,9 +21,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
@@ -39,6 +43,7 @@ absl::Status CompileTensorflowGraphToHlo(
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_funcs,
     const std::vector<tensorflow::TensorShape>& arg_shapes,
+    tsl::DeviceType device_type,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client,

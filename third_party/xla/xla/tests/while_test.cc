@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
-#include "xla/client/lib/arithmetic.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"

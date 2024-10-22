@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "llvm/Support/Error.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"  // from @llvm-project
 #include "tensorflow/core/platform/mutex.h"

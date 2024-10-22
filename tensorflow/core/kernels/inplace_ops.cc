@@ -30,8 +30,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 namespace functor {
 
 template <typename Device, typename T>
-Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32_t loc,
-                              Tensor* output) {
+absl::Status DoParallelConcatUpdate(const Device& d, const Tensor& value,
+                                    int32_t loc, Tensor* output) {
   auto Tvalue = value.shaped<T, 2>({1, value.NumElements()});
   auto Toutput = output->flat_outer_dims<T>();
   auto nrows = Toutput.dimension(0);
@@ -41,8 +41,8 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32_t loc,
 }
 
 template <>
-Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32_t loc,
-                        Tensor* output) {
+absl::Status DoParallelConcat(const CPUDevice& d, const Tensor& value,
+                              int32_t loc, Tensor* output) {
   CHECK_EQ(value.dtype(), output->dtype());
   switch (value.dtype()) {
 #define CASE(type)                  \
@@ -240,8 +240,8 @@ class InplaceOpBase : public OpKernel {
   }
 
  protected:
-  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& i,
-                           const Tensor& v, Tensor* y) = 0;
+  virtual absl::Status DoCompute(OpKernelContext* ctx, const Tensor& i,
+                                 const Tensor& v, Tensor* y) = 0;
 };
 
 }  // end namespace
@@ -285,8 +285,8 @@ void DoInplaceStringUpdateOp(const CPUDevice& d, const Tensor& i,
 }
 
 template <>
-Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
-                 const Tensor& v, Tensor* y) {
+absl::Status DoInplace(const CPUDevice& device, InplaceOpType op,
+                       const Tensor& i, const Tensor& v, Tensor* y) {
   CHECK_EQ(v.dtype(), y->dtype());
   if (op == I_UPDATE) {
     if (v.dtype() == DT_STRING) {
@@ -320,8 +320,8 @@ class InplaceOp : public InplaceOpBase {
   explicit InplaceOp(OpKernelConstruction* ctx) : InplaceOpBase(ctx) {}
 
  protected:
-  Status DoCompute(OpKernelContext* ctx, const Tensor& i, const Tensor& v,
-                   Tensor* y) override {
+  absl::Status DoCompute(OpKernelContext* ctx, const Tensor& i, const Tensor& v,
+                         Tensor* y) override {
     const auto& d = ctx->eigen_device<Device>();
     return ::tensorflow::functor::DoInplace(d, op, i, v, y);
   }
@@ -339,8 +339,8 @@ class CopyOpBase : public OpKernel {
   }
 
  protected:
-  virtual Status DoCompute(OpKernelContext* ctx, const Tensor& x,
-                           Tensor* y) = 0;
+  virtual absl::Status DoCompute(OpKernelContext* ctx, const Tensor& x,
+                                 Tensor* y) = 0;
 };
 
 template <typename Device>
@@ -349,7 +349,8 @@ class CopyOp : public CopyOpBase {
   explicit CopyOp(OpKernelConstruction* ctx) : CopyOpBase(ctx) {}
 
  protected:
-  Status DoCompute(OpKernelContext* ctx, const Tensor& x, Tensor* y) override {
+  absl::Status DoCompute(OpKernelContext* ctx, const Tensor& x,
+                         Tensor* y) override {
     const auto& d = ctx->eigen_device<Device>();
     return ::tensorflow::functor::DoCopy(d, x, y);
   }
@@ -362,7 +363,7 @@ namespace functor {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template <>
-Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
+absl::Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
   CHECK_EQ(x.dtype(), y->dtype());
   switch (x.dtype()) {
 #define CASE(type)                                   \

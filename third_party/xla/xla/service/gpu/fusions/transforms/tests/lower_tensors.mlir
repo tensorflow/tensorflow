@@ -318,13 +318,24 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
   return %r : tensor<10xi4>
 }
 // CHECK: @i4_load_store
+// CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i8
+// CHECK-DAG: %[[C15:.*]] = arith.constant 15 : i8
+// CHECK-DAG: %[[C_NEG16:.*]] = arith.constant -16 : i8
 // CHECK: llvm.getelementptr
 // CHECK-SAME: -> !llvm.ptr, i8
 // CHECK: llvm.load
 // CHECK: llvm.getelementptr
 // CHECK-SAME: -> !llvm.ptr, i8
-// CHECK: llvm.load
-// CHECK: llvm.store
+// CHECK: %[[CURRENT:.*]] = llvm.load
+// CHECK: %[[VALUE_I8:.*]] = arith.extui {{.*}} : i4 to i8
+// CHECK: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
+// CHECK: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK: %[[NEW_LO:.*]] = arith.ori %[[MASKED_CURRENT_LO]], %[[MASKED_VALUE_I8]] : i8
+// CHECK: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
+// CHECK: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK: %[[NEW_HI:.*]] = arith.ori %[[MASKED_CURRENT_HI]], %[[VALUE_HI]] : i8
+// CHECK: %[[NEW_VALUE:.*]] = arith.select %{{.*}}, %[[NEW_LO]], %[[NEW_HI]] : i8
+// CHECK: llvm.store %[[NEW_VALUE]]
 
 // -----
 
@@ -698,3 +709,15 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
 
+// -----
+
+func.func @int4_constant(%arg0: tensor<3xi4>, %arg1: index) -> i4 {
+  %cst = arith.constant dense<[1, 2, 3]> : tensor<3xi4>
+  %extracted = tensor.extract %arg0[%arg1] : tensor<3xi4>
+  %extracted_0 = tensor.extract %cst[%arg1] : tensor<3xi4>
+  %0 = arith.addi %extracted, %extracted_0 : i4
+  return %0 : i4
+}
+// CHECK: llvm.mlir.global private constant
+// CHECK-SAME: dense<[18, 48]>
+// CHECK-LABEL: @int4_constant

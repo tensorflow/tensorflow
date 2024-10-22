@@ -60,6 +60,8 @@ message DTypeProto {
     // dtype will have empty dimensions.
     KIND_TOKEN = 17;
 
+    KIND_F8E3M4 = 29;
+    KIND_F8E4M3 = 28;
     KIND_F8E4M3FN = 20;
     KIND_F8E4M3B11FNUZ = 23;
     KIND_F8E4M3FNUZ = 25;

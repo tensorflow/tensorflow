@@ -181,6 +181,10 @@ DEFINE_UNARY_TEST_OP(
     { return [](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }; },
     { return +[](Traits::NativeRefT x) { return std::pow(x, 0.5f); }; });
 DEFINE_UNARY_TEST_OP(
+    Exp2Op,
+    { return [](XlaOp x) { return Pow(ScalarLike(x, 2.0f), x); }; },
+    { return +[](Traits::NativeRefT x) { return std::exp2(x); }; });
+DEFINE_UNARY_TEST_OP(
     RsqrtOp, { return Rsqrt; },
     { return +[](Traits::NativeRefT x) { return 1 / std::sqrt(x); }; });
 DEFINE_UNARY_TEST_OP(SqrtOp, { return Sqrt; }, { return std::sqrt; });

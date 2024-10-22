@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -32,22 +31,13 @@ namespace spmd {
 struct AutoShardingSolverOutput {
   std::vector<NodeStrategyIdx> s_val;
   double cost = -1.0;
+  bool is_optimal = true;
   absl::flat_hash_set<LivenessIdx> peak_times;
 
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-struct AutoShardingSolverResult {
- public:
-  AutoShardingSolverResult(absl::StatusOr<AutoShardingSolverOutput> status,
-                           bool skip_auto_sharding)
-      : status(status), skip_auto_sharding(skip_auto_sharding) {}
-  bool operator==(const AutoShardingSolverResult& other) const;
-  absl::StatusOr<AutoShardingSolverOutput> status;
-  bool skip_auto_sharding;
-};
-
-AutoShardingSolverResult CallORToolsSolver(
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request);
 
 enum AutoShardingViolationCode {
@@ -92,7 +82,7 @@ struct AutoShardingEvaluation {
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverResult& result);
+                                const AutoShardingSolverOutput& result);
 
 // Creates and returns a variable for makespan.
 operations_research::MPVariable* CreateMakespanVar(
@@ -101,7 +91,7 @@ operations_research::MPVariable* CreateMakespanVar(
     operations_research::MPSolver& solver);
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverResult& result,
+                        const AutoShardingSolverOutput& result,
                         AutoShardingEvaluation& evaluation);
 
 // Scale down values to reduce the range of costs & coefficients in the solver.
@@ -137,6 +127,8 @@ class StrategyShaver {
 // Check fail if `request` is invalid (e.g., because of negative node costs).
 // Note: This does not include checks for valid variable aliasing yet.
 absl::Status ValidateRequest(const AutoShardingSolverRequest& request);
+
+void SolverRequestCallback(const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

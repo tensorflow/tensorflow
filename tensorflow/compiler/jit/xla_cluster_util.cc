@@ -202,7 +202,7 @@ std::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
   if (attr_value == nullptr) {
     return std::nullopt;
   }
-  Status s = AttrValueHasType(*attr_value, "string");
+  absl::Status s = AttrValueHasType(*attr_value, "string");
   if (!s.ok()) {
     return std::nullopt;
   }
@@ -420,7 +420,7 @@ CallTargetListTy GetCallTargetListFromNode(
 
 enum class Direction { kForward, kBackward };
 
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result);
 
@@ -480,7 +480,7 @@ absl::StatusOr<bool> DoesAnyCalleeHaveRefNodes(
 
 // Helper for GetNodesRelatedToRefVariables that traverses the graph in one
 // direction.
-Status GetNodesRelatedToRefVariablesInDirection(
+absl::Status GetNodesRelatedToRefVariablesInDirection(
     const Graph& graph, FunctionLibraryRuntime* lib_runtime,
     Direction direction, int depth, absl::flat_hash_set<Node*>* result) {
   std::vector<Node*> nodes_in_order;

@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/client/padding.h"
+#include "xla/hlo/builder/padding.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -237,6 +237,18 @@ TEST_F(ShapeInferenceTest, SelectBadShapes) {
   ASSERT_FALSE(inferred_shape_error4.ok());
   ASSERT_THAT(inferred_shape_error4.status().message(),
               HasSubstr("Expected array argument for select pred"));
+}
+
+TEST_F(ShapeInferenceTest, SelectPreservesElementSize) {
+  Shape pred_shape = ShapeUtil::MakeShape(PRED, {10});
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {10});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
+
+  const absl::StatusOr<Shape> inferred_shape =
+      ShapeInference::InferTernaryOpShape(HloOpcode::kSelect, pred_shape,
+                                          int4_shape, int4_shape);
+  ASSERT_IS_OK(inferred_shape.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape, int4_shape));
 }
 
 TEST_F(ShapeInferenceTest, ClampAllMatrix) {

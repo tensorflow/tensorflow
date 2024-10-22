@@ -160,14 +160,14 @@ class BatchResource : public serving::BatchResourceBase {
     }
   };
 
-  static Status Create(bool has_process_batch_function,
-                       int32_t num_batch_threads,
-                       int32_t max_execution_batch_size,
-                       int32_t batch_timeout_micros,
-                       int32_t max_enqueued_batches,
-                       const std::vector<int32>& allowed_batch_sizes,
-                       bool enable_large_batch_splitting,
-                       std::unique_ptr<BatchResource>* resource) {
+  static absl::Status Create(bool has_process_batch_function,
+                             int32_t num_batch_threads,
+                             int32_t max_execution_batch_size,
+                             int32_t batch_timeout_micros,
+                             int32_t max_enqueued_batches,
+                             const std::vector<int32>& allowed_batch_sizes,
+                             bool enable_large_batch_splitting,
+                             std::unique_ptr<BatchResource>* resource) {
     return Create(has_process_batch_function, num_batch_threads,
                   max_execution_batch_size, batch_timeout_micros,
                   max_enqueued_batches, allowed_batch_sizes,
@@ -182,7 +182,7 @@ class BatchResource : public serving::BatchResourceBase {
                   /*batch_padding_policy=*/"PAD_UP", resource);
   }
 
-  static Status Create(
+  static absl::Status Create(
       bool has_process_batch_function, int32_t num_batch_threads,
       int32_t max_execution_batch_size, int32_t batch_timeout_micros,
       int32_t max_enqueued_batches,
@@ -213,7 +213,7 @@ class BatchResource : public serving::BatchResourceBase {
     return absl::OkStatus();
   }
 
-  static Status Create(
+  static absl::Status Create(
       bool has_process_batch_function,
       AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
       int32_t max_batch_size, int32_t batch_timeout_micros,
@@ -256,7 +256,7 @@ class BatchResource : public serving::BatchResourceBase {
   void ProcessFuncBatchImpl(
       const serving::BatchResourceBase::BatchTask& last_task,
       absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
-      std::function<void(const Status&)> done) const override {
+      std::function<void(const absl::Status&)> done) const override {
     auto* last_task_context = last_task.context;
     FunctionLibraryRuntime::Options opts;
     opts.step_container = last_task_context->step_container();
@@ -275,7 +275,7 @@ class BatchResource : public serving::BatchResourceBase {
     FunctionLibraryRuntime::Handle fhandle =
         down_cast<const BatchTask&>(last_task).fhandle;
     flib->Run(opts, fhandle, inputs, combined_outputs,
-              [&](const Status& run_status) {
+              [&](const absl::Status& run_status) {
                 done(run_status);
                 done_notif.Notify();
               });
@@ -352,7 +352,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                         GetModelName(c));
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
 
-  std::function<Status(BatchResource**)> creator;
+  std::function<absl::Status(BatchResource**)> creator;
 
   FunctionLibraryRuntime::Handle handle;
   OP_REQUIRES_OK_ASYNC(c, GetOrCreateFunctionHandle(c, &handle), done);
@@ -461,7 +461,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
                      std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
     return {std::make_unique<BatchResource::BatchTask>(handle)};
   };
-  Status status;
+  absl::Status status;
   if (serving::ShouldWarmupAllBatchSizes(c)) {
     status = br->RegisterWarmupInputs(guid, c, batcher_queue_,
                                       create_batch_task_fn, done);
@@ -474,7 +474,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
   // Assume br calls done, so nothing to do here.
 }
 
-Status BatchFunctionKernel::InstantiateFunction(
+absl::Status BatchFunctionKernel::InstantiateFunction(
     OpKernelContext* c, FunctionLibraryRuntime::Handle* handle) const {
   // TODO(b/173748062): Merge this instantiation logic with PartitionedCall.
   FunctionLibraryRuntime* flib = c->function_library();
@@ -535,7 +535,7 @@ Status BatchFunctionKernel::InstantiateFunction(
                            handle);
 }
 
-Status BatchFunctionKernel::GetOrCreateFunctionHandle(
+absl::Status BatchFunctionKernel::GetOrCreateFunctionHandle(
     OpKernelContext* c, FunctionLibraryRuntime::Handle* handle) {
   mutex_lock ml(mu_);
   if (!fhandle_) {
@@ -551,7 +551,7 @@ Status BatchFunctionKernel::GetOrCreateFunctionHandle(
 // If large batch split is not enabled, the last one must equal
 // `max_batch_size_`. otherwise the last element must be smaller than or equal
 // to `max_batch_size_`.
-Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
+absl::Status BatchFunctionKernel::ValidateAllowedBatchSizes() const {
   if (allowed_batch_sizes_.empty()) {
     return absl::OkStatus();
   }
@@ -679,20 +679,21 @@ class BatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     BatchResource* br;
-    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
-      std::unique_ptr<BatchResource> new_resource;
-      TF_RETURN_IF_ERROR(BatchResource::Create(
-          /*has_process_batch_function=*/false, num_batch_threads_,
-          max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
-          allowed_batch_sizes_, false, &new_resource));
-      *r = new_resource.release();
-      return absl::OkStatus();
-    };
+    std::function<absl::Status(BatchResource**)> creator =
+        [this](BatchResource** r) {
+          std::unique_ptr<BatchResource> new_resource;
+          TF_RETURN_IF_ERROR(BatchResource::Create(
+              /*has_process_batch_function=*/false, num_batch_threads_,
+              max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
+              allowed_batch_sizes_, false, &new_resource));
+          *r = new_resource.release();
+          return absl::OkStatus();
+        };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &br, creator),
                          done);
-    const Status status = br->RegisterInput(
+    const absl::Status status = br->RegisterInput(
         random::New64(), c, batcher_queue_,
         []() -> absl::StatusOr<
                  std::unique_ptr<serving::BatchResourceBase::BatchTask>> {
@@ -706,7 +707,7 @@ class BatchKernel : public AsyncOpKernel {
 
   // Validates 'allowed_batch_sizes_'. The entries must increase
   // monotonically, and the last one must equal 'max_batch_size_'.
-  Status ValidateAllowedBatchSizes() const {
+  absl::Status ValidateAllowedBatchSizes() const {
     if (allowed_batch_sizes_.empty()) {
       return absl::OkStatus();
     }
@@ -762,7 +763,8 @@ class UnbatchResource : public ResourceBase {
 
   string DebugString() const final { return "UnbatchResource"; }
 
-  Status Compute(OpKernelContext* context, AsyncOpKernel::DoneCallback done) {
+  absl::Status Compute(OpKernelContext* context,
+                       AsyncOpKernel::DoneCallback done) {
     const Tensor& data_t = context->input(0);
     const Tensor& batch_index_t = context->input(1);
 
@@ -808,7 +810,7 @@ class UnbatchResource : public ResourceBase {
 
     // Critical section.
     std::vector<AsyncOpKernel::DoneCallback> done_callbacks_to_call;
-    Status status = [&]() -> Status {
+    absl::Status status = [&]() -> absl::Status {
       mutex_lock ml(mu_);
 
       // Check to see whether the tensor we want is already ready.
@@ -946,7 +948,7 @@ class UnbatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchResource* ubr;
-    std::function<Status(UnbatchResource**)> creator =
+    std::function<absl::Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
           *r = new UnbatchResource(timeout_micros_);
           return absl::OkStatus();
@@ -978,8 +980,8 @@ class UnbatchGradResource : public ResourceBase {
 
   // Flushes the information for one batch, given its context and done
   // callback. Clears all information about it from the available_tensors_.
-  Status OutputBatch(OpKernelContext* context,
-                     const AsyncOpKernel::DoneCallback& done)
+  absl::Status OutputBatch(OpKernelContext* context,
+                           const AsyncOpKernel::DoneCallback& done)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor& batch_index_t = context->input(1);
     auto batch_index =
@@ -1012,8 +1014,8 @@ class UnbatchGradResource : public ResourceBase {
   }
 
   // Ingests data from one invocation of the op.
-  Status Compute(OpKernelContext* context,
-                 const AsyncOpKernel::DoneCallback& done) {
+  absl::Status Compute(OpKernelContext* context,
+                       const AsyncOpKernel::DoneCallback& done) {
     const Tensor& data_t = context->input(0);
     const Tensor& batch_index_t = context->input(1);
     const Tensor& grad_t = context->input(2);
@@ -1142,7 +1144,7 @@ class UnbatchGradKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchGradResource* ubr;
-    std::function<Status(UnbatchGradResource**)> creator =
+    std::function<absl::Status(UnbatchGradResource**)> creator =
         [](UnbatchGradResource** r) {
           *r = new UnbatchGradResource();
           return absl::OkStatus();
@@ -1151,7 +1153,7 @@ class UnbatchGradKernel : public AsyncOpKernel {
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &ubr, creator),
                          done);
-    Status status = ubr->Compute(c, done);
+    absl::Status status = ubr->Compute(c, done);
     ubr->Unref();
     OP_REQUIRES_OK_ASYNC(c, status, done);
     // Assume ubr calls done, so nothing to do here.

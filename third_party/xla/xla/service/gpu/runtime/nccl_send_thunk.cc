@@ -92,9 +92,10 @@ absl::Status NcclSendThunk::RunNcclCollective(
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing collective permute from device ordinal: "
-          << device_ordinal << "current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), device_ordinal, {buffer},
+  VLOG(3) << "Performing Send from device ordinal: " << device_ordinal
+          << ", current_id: " << current_id << ", group mode: "
+          << CollectiveOpGroupModeToString(config_.config.group_mode);
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(nccl_api(), stream.parent(), {buffer},
                                           comm_wrapper.comm_handle));
 
   const std::optional<int64_t> target_id = source_target.target;

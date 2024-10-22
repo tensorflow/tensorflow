@@ -43,8 +43,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -290,7 +290,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   PjRtPlatformId platform_id() const override { return platform_id_; }
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
-  PjRtRuntimeType runtime_type() const override { return kStreamExecutor; }
 
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This

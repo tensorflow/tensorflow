@@ -133,6 +133,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
                       /*on_done_with_host_buffer=*/{}));
 
   ExecuteOptions execute_options;
+  execute_options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
       loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
@@ -177,11 +178,57 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
                       /*on_done_with_host_buffer=*/{}));
 
   ExecuteOptions execute_options;
+  execute_options.fill_status = true;
   TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
                           loaded_executable->Execute(
                               absl::MakeSpan(&array, 1), execute_options,
                               /*devices=*/BasicDeviceList::Create({device})));
   TF_ASSERT_OK(result.status.Await());
+  EXPECT_THAT(result.outputs, SizeIs(1));
+
+  std::vector<float> out_data(6);
+  auto future = result.outputs[0]->CopyToHostBuffer(
+      out_data.data(), /*byte_strides=*/std::nullopt,
+      ArrayCopySemantics::kAlwaysCopy);
+  TF_ASSERT_OK(future.Await());
+
+  std::vector<float> expected_out_data(6);
+  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST(LoadedExecutableImplTest, DoNotFillStatus) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                       /*replicated=*/false));
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  std::iota(data.begin(), data.end(), 0);
+  Device* device = client->addressable_devices().at(0);
+  std::shared_ptr<const Sharding> sharding =
+      SingleDeviceSharding::Create(device, MemoryKind());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = false;
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                 /*devices=*/std::nullopt));
+  EXPECT_FALSE(result.status.IsValid());
   EXPECT_THAT(result.outputs, SizeIs(1));
 
   std::vector<float> out_data(6);

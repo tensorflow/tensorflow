@@ -38,12 +38,12 @@ limitations under the License.
 #endif  // PLATFORM_GOOGLE
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/map_util.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -718,8 +718,11 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
       fusion_instruction->set_fusion_kind(kind);
     }
   } else {
-    fusion_instruction = computation->AddInstruction(
-        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    fusion_instruction =
+        computation->AddInstruction(HloInstruction::CreateFusion(
+            consumer->shape(), kind, consumer,
+            absl::StrCat(HloOpcodeString(producer->opcode()), "_",
+                         HloOpcodeString(consumer->opcode()), "_")));
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(

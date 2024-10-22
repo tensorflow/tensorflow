@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/local_service.h"
 #include "xla/service/platform_util.h"

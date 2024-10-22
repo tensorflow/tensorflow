@@ -42,17 +42,22 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/convert_mover.h"
+#include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
+#include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
-#include "xla/service/convert_mover.h"
-#include "xla/service/dot_dimension_merger.h"
 #include "xla/service/dump.h"
-#include "xla/service/float_normalization.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
@@ -64,6 +69,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
@@ -83,18 +89,12 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/reshape_mover.h"
-#include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"  // IWYU pragma : keep - Needed for GpuContext
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -228,6 +228,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
       GetAlgebraicSimplifierOptions(hlo_module->config());
   algsimp_options.set_supports_non_canonical_dots(false);
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_conv_add_multiply_reorder(true);
   algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
@@ -296,6 +297,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     alg_sim_options.set_supports_non_canonical_dots(false);
     alg_sim_options.set_is_layout_sensitive(true);
     alg_sim_options.set_enable_conv_operand_swap(false);
+    alg_sim_options.set_enable_conv_add_multiply_reorder(true);
     // "slow" minmax means we propagate nan.
     alg_sim_options.set_minmax_propagate_nan(
         !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
@@ -1003,8 +1005,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context(),
-                    cubin_images);
+  return LinkGpuAsm(cc, stream_exec, cubin_images);
 }
 
 }  // namespace gpu

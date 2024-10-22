@@ -178,7 +178,11 @@ gpu_kernel_library(
     deps = [
         "//xla:types",
         "//xla/tsl/lib/math:math_util",
-    ],
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 xla_test(
@@ -242,7 +246,6 @@ xla_test(
         "//xla/stream_executor",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
@@ -486,4 +489,47 @@ cc_binary(
         "gpu",
     ],
     deps = [":cutlass_gemm"],
+)
+
+#===--------------------------------------------------------------------------------------------===#
+# PTX Custom Kernels
+#===--------------------------------------------------------------------------------------------===#
+
+cc_library(
+    name = "ptx_custom_kernel",
+    srcs = ["ptx_custom_kernel.cc"],
+    hdrs = ["ptx_custom_kernel.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":custom_kernel",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "ptx_custom_kernel_test",
+    srcs = ["ptx_custom_kernel_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":custom_kernel",
+        ":ptx_custom_kernel",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )

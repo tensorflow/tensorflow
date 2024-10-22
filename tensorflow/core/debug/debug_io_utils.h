@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status ReadEventFromFile(const string& dump_file_path, Event* event);
+absl::Status ReadEventFromFile(const string& dump_file_path, Event* event);
 
 struct DebugWatchAndURLSpec {
   DebugWatchAndURLSpec(const string& watch_key, const string& url,
@@ -61,7 +61,7 @@ class DebugIO {
   static const char* const kGrpcURLScheme;
   static const char* const kMemoryURLScheme;
 
-  static Status PublishDebugMetadata(
+  static absl::Status PublishDebugMetadata(
       const int64_t global_step, const int64_t session_run_index,
       const int64_t executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
@@ -80,25 +80,24 @@ class DebugIO {
   //     "file:///foo/tfdbg_dump", "grpc://localhost:11011"
   //   gated_grpc: Whether this call is subject to gRPC gating.
   //   step_id: Step ID associated with the tensor.
-  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
-                                   const Tensor& tensor,
-                                   const uint64 wall_time_us,
-                                   const absl::Span<const string> debug_urls,
-                                   bool gated_grpc, int64_t step_id = -1);
+  static absl::Status PublishDebugTensor(
+      const DebugNodeKey& debug_node_key, const Tensor& tensor,
+      const uint64 wall_time_us, const absl::Span<const string> debug_urls,
+      bool gated_grpc, int64_t step_id = -1);
 
   // Convenience overload of the method above for no gated_grpc by default.
-  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
-                                   const Tensor& tensor,
-                                   const uint64 wall_time_us,
-                                   const absl::Span<const string> debug_urls);
+  static absl::Status PublishDebugTensor(
+      const DebugNodeKey& debug_node_key, const Tensor& tensor,
+      const uint64 wall_time_us, const absl::Span<const string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //
   // Args:
   //   graph: The graph to be published.
   //   debug_urls: The set of debug URLs to publish the graph to.
-  static Status PublishGraph(const Graph& graph, const string& device_name,
-                             const std::unordered_set<string>& debug_urls);
+  static absl::Status PublishGraph(
+      const Graph& graph, const string& device_name,
+      const std::unordered_set<string>& debug_urls);
 
   // Determines whether a copy node needs to perform deep-copy of input tensor.
   //
@@ -145,7 +144,7 @@ class DebugIO {
   static bool IsDebugURLGateOpen(const string& watch_key,
                                  const string& debug_url);
 
-  static Status CloseDebugURL(const string& debug_url);
+  static absl::Status CloseDebugURL(const string& debug_url);
 };
 
 // Helper class for debug ops.
@@ -170,13 +169,14 @@ class DebugFileIO {
   //     execution. Unit: microseconds (us).
   //   dump_root_dir: Root directory for dumping the tensor.
   //   dump_file_path: The actual dump file path (passed as reference).
-  static Status DumpTensorToDir(const DebugNodeKey& debug_node_key,
-                                const Tensor& tensor, const uint64 wall_time_us,
-                                const string& dump_root_dir,
-                                string* dump_file_path);
+  static absl::Status DumpTensorToDir(const DebugNodeKey& debug_node_key,
+                                      const Tensor& tensor,
+                                      const uint64 wall_time_us,
+                                      const string& dump_root_dir,
+                                      string* dump_file_path);
 
   // Similar to the above, but for node inputs/outputs dumping feature.
-  static Status DumpTensorToDirForNodeDumping(
+  static absl::Status DumpTensorToDirForNodeDumping(
       const DebugNodeKey& debug_node_key, const Tensor& tensor,
       uint64 wall_time_us, const string& dump_root_dir, string* dump_file_path,
       int64_t step_id);
@@ -205,9 +205,9 @@ class DebugFileIO {
   //   event_prot: The Event proto to be dumped.
   //   dir_name: Directory path.
   //   file_name: Base file name.
-  static Status DumpEventProtoToFile(const Event& event_proto,
-                                     const string& dir_name,
-                                     const string& file_name);
+  static absl::Status DumpEventProtoToFile(const Event& event_proto,
+                                           const string& dir_name,
+                                           const string& file_name);
 
   // Request additional bytes to be dumped to the file system.
   //
@@ -231,15 +231,15 @@ class DebugFileIO {
 
  private:
   // Encapsulates the Tensor in an Event protobuf and write it to file.
-  static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
-                                      const Tensor& tensor,
-                                      const uint64 wall_time_us,
-                                      const string& file_path);
+  static absl::Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
+                                            const Tensor& tensor,
+                                            const uint64 wall_time_us,
+                                            const string& file_path);
 
   // Implemented ad hoc here for now.
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
   // fixed.
-  static Status RecursiveCreateDir(Env* env, const string& dir);
+  static absl::Status RecursiveCreateDir(Env* env, const string& dir);
 
   // Tracks how much disk has been used so far.
   static uint64 disk_bytes_used_;
@@ -295,7 +295,7 @@ class DebugGrpcChannel {
   // Returns:
   //   OK Status iff connection is successfully established before timeout,
   //   otherwise return an error Status.
-  Status Connect(const int64_t timeout_micros);
+  absl::Status Connect(const int64_t timeout_micros);
 
   // Write an Event proto to the debug gRPC stream.
   //
@@ -334,7 +334,7 @@ class DebugGrpcChannel {
 
   // Receive EventReplies from server (if any) and close the stream and the
   // channel.
-  Status ReceiveServerRepliesAndClose();
+  absl::Status ReceiveServerRepliesAndClose();
 
  private:
   string server_stream_addr_;
@@ -354,11 +354,10 @@ class DebugGrpcIO {
   static const size_t kGrpcMaxVarintLengthSize;
 
   // Sends a tensor through a debug gRPC stream.
-  static Status SendTensorThroughGrpcStream(const DebugNodeKey& debug_node_key,
-                                            const Tensor& tensor,
-                                            const uint64 wall_time_us,
-                                            const string& grpc_stream_url,
-                                            const bool gated);
+  static absl::Status SendTensorThroughGrpcStream(
+      const DebugNodeKey& debug_node_key, const Tensor& tensor,
+      const uint64 wall_time_us, const string& grpc_stream_url,
+      const bool gated);
 
   // Sends an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
@@ -373,12 +372,12 @@ class DebugGrpcIO {
   //
   // Returns:
   //   The Status of the operation.
-  static Status SendEventProtoThroughGrpcStream(
+  static absl::Status SendEventProtoThroughGrpcStream(
       const Event& event_proto, const string& grpc_stream_url,
       const bool receive_reply = false);
 
   // Receive an EventReply proto through a debug gRPC stream.
-  static Status ReceiveEventReplyProtoThroughGrpcStream(
+  static absl::Status ReceiveEventReplyProtoThroughGrpcStream(
       EventReply* event_reply, const string& grpc_stream_url);
 
   // Check whether a debug watch key is read-activated at a given gRPC URL.
@@ -393,7 +392,7 @@ class DebugGrpcIO {
   // Closes a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
-  static Status CloseGrpcStream(const string& grpc_stream_url);
+  static absl::Status CloseGrpcStream(const string& grpc_stream_url);
 
   // Set the gRPC state of a debug node key.
   // TODO(cais): Include device information in watch_key.
@@ -420,7 +419,7 @@ class DebugGrpcIO {
   //
   // Returns:
   //   Status of this operation.
-  static Status GetOrCreateDebugGrpcChannel(
+  static absl::Status GetOrCreateDebugGrpcChannel(
       const string& grpc_stream_url, DebugGrpcChannel** debug_grpc_channel);
 
   // Returns a map from debug URL to a map from debug op name to enabled state.

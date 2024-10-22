@@ -55,7 +55,7 @@ absl::string_view DefiningOpName(mlir::Value operand) {
   return StringRefToView(operand.getDefiningOp()->getName().getStringRef());
 }
 
-Status AssertReplicated(mlir::Value operand) {
+absl::Status AssertReplicated(mlir::Value operand) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractLayoutFromOperand(operand));
   if (!layout) return absl::OkStatus();
 
@@ -80,9 +80,9 @@ absl::flat_hash_set<std::string> ReducedMeshDimensions(
 }
 
 template <typename OpType>
-Status ExtractDims(mlir::Operation* op,
-                   llvm::SmallVector<int64_t, 4>* reduced_dims, bool* keep_dims,
-                   bool* matched) {
+absl::Status ExtractDims(mlir::Operation* op,
+                         llvm::SmallVector<int64_t, 4>* reduced_dims,
+                         bool* keep_dims, bool* matched) {
   if (!llvm::isa<OpType>(op)) return absl::OkStatus();
   auto reduce_op = llvm::cast<OpType>(op);
   *keep_dims = reduce_op.getKeepDims();
@@ -95,7 +95,7 @@ Status ExtractDims(mlir::Operation* op,
 }
 
 template <>
-Status ExtractDims<mlir::TF::L2LossOp>(
+absl::Status ExtractDims<mlir::TF::L2LossOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::L2LossOp>(op)) return absl::OkStatus();
@@ -111,7 +111,7 @@ Status ExtractDims<mlir::TF::L2LossOp>(
 }
 
 template <>
-Status ExtractDims<mlir::TF::BiasAddGradOp>(
+absl::Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return absl::OkStatus();
@@ -138,7 +138,7 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
 }
 
 template <>
-Status ExtractDims<mlir::TF::EncodePngOp>(
+absl::Status ExtractDims<mlir::TF::EncodePngOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
   if (!llvm::isa<mlir::TF::EncodePngOp>(op)) return absl::OkStatus();
@@ -148,9 +148,9 @@ Status ExtractDims<mlir::TF::EncodePngOp>(
   return absl::OkStatus();
 }
 
-Status ExtractReductionParameters(mlir::Operation* op,
-                                  absl::flat_hash_set<int>& reduced_dims_set,
-                                  bool& keep_dims) {
+absl::Status ExtractReductionParameters(
+    mlir::Operation* op, absl::flat_hash_set<int>& reduced_dims_set,
+    bool& keep_dims) {
   llvm::SmallVector<int64_t, 4> reduced_dims;
   bool matched = false;
   TF_RETURN_IF_ERROR(ExtractDims<mlir::TF::EncodePngOp>(op, &reduced_dims,

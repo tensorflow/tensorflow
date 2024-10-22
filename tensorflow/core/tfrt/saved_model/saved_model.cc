@@ -40,9 +40,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -99,6 +98,10 @@ namespace tfrt_stub {
 namespace {
 
 constexpr absl::string_view kSignatureJoiningDelimiter = "+";
+constexpr absl::string_view kXlaCallModuleOpName = "XlaCallModule";
+// TODO(b/374165187): Use enums for model types.
+constexpr absl::string_view kJaxModelLabel = "JAX";
+constexpr absl::string_view kUnknownModelLabel = "UNKNOWN";
 
 auto* lazy_loading_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/lazy_loading_count", "The total number of lazy loadings.",
@@ -111,6 +114,11 @@ auto* use_backend_compiler_count = monitoring::Counter<3>::New(
     "/tensorflow/tfrt/use_backend_compiler_count",
     "The total number of instances that use injected backend compiler.",
     "model_name", "model_version", "use_backend_compiler");
+
+auto* inferred_model_type_count = monitoring::Counter<3>::New(
+    "/tensorflow/tfrt/inferred_model_type",
+    "Count of SavedModels with their inferred model types (best-effort).",
+    "model_name", "model_version", "inferred_model_type");
 
 auto* saved_model_import_time_seconds =
     tensorflow::monitoring::Gauge<int64_t, 1>::New(
@@ -141,22 +149,19 @@ absl::Status PrepareRestore(mlir::MLIRContext* context,
                             const std::string& saved_model_dir,
                             const SavedModel::Options& options,
                             ifrt_serving::CheckpointLoader* checkpoint_loader) {
-  // Import the global MLIR with `import_user_signatures` as true so that we can
-  // analysis the global MLIR to retrieve data needed for restore.
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_restore_analysis;
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      mlir_module_restore_analysis,
-      ImportSavedModel(
-          context, meta_graph_def, fallback_state, saved_model_dir,
-          /*import_user_signatures=*/true,
-          options.graph_execution_options.run_placer_grappler_on_functions));
-
   if (!checkpoint_loader) {
     return absl::InternalError("Missing checkpoint loader.");
   }
 
-  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(
-      std::move(mlir_module_restore_analysis)));
+  ifrt_serving::CheckpointLoader::PrepareRestoreArgs args = {
+      .context = context,
+      .meta_graph_def = meta_graph_def,
+      .fallback_state = &fallback_state,
+      .saved_model_dir = saved_model_dir,
+      .run_placer_grappler_on_functions =
+          options.graph_execution_options.run_placer_grappler_on_functions};
+
+  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(args));
 
   LOG(INFO) << "Complete set restore metadata.";
   return absl::OkStatus();
@@ -388,6 +393,20 @@ bool AotPackageExists(absl::string_view saved_model_dir) {
   return env->FileExists(aot_package_path).ok() &&
          env->FileExists(aot_mlir_path).ok() &&
          env->FileExists(aot_bef_path).ok();
+}
+
+std::string GetInferredModelType(const MetaGraphDef& meta_graph_def) {
+  bool found_xla_call_module_op = false;
+  for (const auto& function : meta_graph_def.graph_def().library().function()) {
+    for (const auto& node : function.node_def()) {
+      if (node.name() == kXlaCallModuleOpName) {
+        found_xla_call_module_op = true;
+        break;
+      }
+    }
+  }
+  return std::string(found_xla_call_module_op ? kJaxModelLabel
+                                              : kUnknownModelLabel);
 }
 
 }  // namespace
@@ -761,6 +780,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
               << persistent_cache_directory << ", and set it to read-only.";
   }
 
+  if (options.infer_model_type) {
+    inferred_model_type_count
+        ->GetCell(options.graph_execution_options.model_metadata.name(),
+                  absl::StrCat(
+                      options.graph_execution_options.model_metadata.version()),
+                  GetInferredModelType(meta_graph_def))
+        ->IncrementBy(1);
+  }
+
   if (options.graph_execution_options.use_ifrt) {
     use_ifrt_count
         ->GetCell(options.graph_execution_options.model_metadata.name(),
@@ -1023,7 +1051,7 @@ SavedModelImpl::ImportSubgraph(
           graph_import_config));
 
   // Convert the optimized graph to an MLIR module.
-  return tensorflow::ConvertGraphToMlir(
+  return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       *optimization_result.graph, /*debug_info=*/{},
       optimization_result.graph->flib_def(), graph_import_config, context);
 }

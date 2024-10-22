@@ -522,7 +522,7 @@ cc_library(
     name = "fingerprinting",
     hdrs = ["fingerprinting.h"],
     visibility = [
-        "//learning/brain/contrib/hub/server/distro:__subpackages__",
+        "//learning/brain/contrib/hub/server/ingestion:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",

@@ -895,7 +895,7 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -993,7 +993,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

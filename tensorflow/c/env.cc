@@ -59,8 +59,7 @@ void TF_FileStat(const char* filename, TF_FileStatistics* stats,
                  TF_Status* status) {
   ::tensorflow::FileStatistics cc_stats;
   TF_SetStatus(status, TF_OK, "");
-  ::tensorflow::Status s =
-      ::tensorflow::Env::Default()->Stat(filename, &cc_stats);
+  absl::Status s = ::tensorflow::Env::Default()->Stat(filename, &cc_stats);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
   if (s.ok()) {
     stats->length = cc_stats.length;
@@ -73,8 +72,7 @@ void TF_NewWritableFile(const char* filename, TF_WritableFileHandle** handle,
                         TF_Status* status) {
   std::unique_ptr<::tensorflow::WritableFile> f;
   TF_SetStatus(status, TF_OK, "");
-  ::tensorflow::Status s =
-      ::tensorflow::Env::Default()->NewWritableFile(filename, &f);
+  absl::Status s = ::tensorflow::Env::Default()->NewWritableFile(filename, &f);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
 
   if (s.ok()) {

@@ -37,8 +37,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
@@ -255,10 +256,11 @@ class TfrtCpuDevice final : public PjRtDevice {
 
 class TfrtCpuClient final : public PjRtClient {
  public:
-  TfrtCpuClient(int process_index,
-                std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::shared_ptr<cpu::CollectivesInterface> collectives,
-                size_t num_threads, bool asynchronous);
+  TfrtCpuClient(
+      int process_index, std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
+      std::shared_ptr<cpu::CollectivesInterface> collectives,
+      size_t num_threads, bool asynchronous,
+      std::function<void(HloModuleConfig&)> customize_hlo_module_config);
   ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
@@ -290,8 +292,6 @@ class TfrtCpuClient final : public PjRtClient {
   absl::string_view platform_name() const override { return CpuName(); }
 
   absl::string_view platform_version() const override { return "<unknown>"; }
-
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -478,6 +478,9 @@ class TfrtCpuClient final : public PjRtClient {
   // Used to control whether asynchronous computation dispatch is available for
   // this client. Only applies to non-parallel computations.
   bool asynchronous_;
+
+  // A callback to customize the HloModuleConfig for each compiled module.
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
 
   // Used to prevent too much parallelism: we will not enqueue next non-parallel
   // computation until last one is done within each user thread.
@@ -709,16 +712,21 @@ struct CpuClientOptions {
   // Distributed collectives implementation. Optional. If not provided, an
   // in-process collectives implementation will be used.
   std::shared_ptr<cpu::CollectivesInterface> collectives;
+
+  // If defined this function will be called on the HloModuleConfig before
+  // compilation, and allows users to set custom flags.
+  std::function<void(HloModuleConfig&)> customize_hlo_module_config;
 };
+
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
-    const CpuClientOptions& options);
+    CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
 inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
     bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 // Deprecated. Use the overload that takes 'options' instead.
@@ -730,7 +738,7 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   options.cpu_device_count = cpu_device_count;
   options.max_inflight_computations_per_device =
       max_inflight_computations_per_device;
-  return GetTfrtCpuClient(options);
+  return GetTfrtCpuClient(std::move(options));
 }
 
 }  // namespace xla

@@ -1,3 +1,4 @@
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -123,8 +124,8 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla/hlo/parser:hlo_parser",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_xla//xla/service:hlo_parser",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
@@ -239,10 +240,13 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_converter_api.pyi",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
-    ],
+    ] + if_pywrap([":converter_python_api"]),
 )

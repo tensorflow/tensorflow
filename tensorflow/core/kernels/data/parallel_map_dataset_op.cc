@@ -162,8 +162,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
-  Status Get(OpKernelContext* ctx, int64 index,
-             std::vector<Tensor>* out_tensors) const override {
+  absl::Status Get(OpKernelContext* ctx, int64 index,
+                   std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     absl::call_once(instantiated_captured_func_once_, [this, ctx] {
       instantiated_captured_func_status_ = captured_func_->Instantiate(
@@ -175,12 +175,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     return instantiated_captured_func_->RunInstantiated(args, out_tensors);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
@@ -190,9 +191,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     // Input: input_dataset
     Node* input_graph_node = nullptr;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
@@ -287,7 +288,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return deterministic_;
     }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
       interleave_depth_ = ctx->interleave_depth();
       if (use_unbounded_threadpool_) {
@@ -315,9 +316,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       std::shared_ptr<InvocationResult> result;
       {
         mutex_lock l(*mu_);
@@ -378,8 +379,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           /*is_legacy_prefetch_autotuned=*/false, estimated_element_size);
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
@@ -418,8 +419,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       DCHECK(invocation_results_.empty());
@@ -499,7 +500,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       Notification notification;
-      Status status;
+      absl::Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
       const int64_t uid;
@@ -558,7 +559,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return;
       }
 
-      auto done = [this, ctx, result](Status status) {
+      auto done = [this, ctx, result](absl::Status status) {
         if (!status.ok()) {
           result->status = AddErrorContext(status);
         }
@@ -593,7 +594,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             std::move(input_element));
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              Status s;
+              absl::Status s;
               // Check whether we are already recording to prevent invalid
               // nesting of `RecordStart` calls.
               if (IsRecording(ctx.get())) {
@@ -608,10 +609,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status ProcessResult(IteratorContext* ctx,
-                         const std::shared_ptr<InvocationResult>& result,
-                         std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
+    absl::Status ProcessResult(IteratorContext* ctx,
+                               const std::shared_ptr<InvocationResult>& result,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
       ctx->MergeCheckpoint(&result->checkpoint);
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
@@ -739,8 +740,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status WriteStatusLocked(IteratorStateWriter* writer,
-                             const std::string& prefix, const Status& status)
+    absl::Status WriteStatusLocked(IteratorStateWriter* writer,
+                                   const std::string& prefix,
+                                   const absl::Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix, absl::StrCat("_", kErrorCode),
@@ -753,8 +755,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader,
-                            const std::string& prefix, Status* status)
+    absl::Status ReadStatusLocked(IteratorStateReader* reader,
+                                  const std::string& prefix,
+                                  absl::Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
       TF_RETURN_IF_ERROR(
@@ -765,7 +768,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             prefix, absl::StrCat("_", kErrorMessage), &error_message));
-        *status = Status(code, error_message);
+        *status = absl::Status(code, error_message);
       } else {
         *status = absl::OkStatus();
       }

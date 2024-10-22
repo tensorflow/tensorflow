@@ -30,12 +30,15 @@ limitations under the License.
 #include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_backend_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/import_shardings.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/mhlo_to_hlo_to_mhlo.h"
@@ -58,16 +61,19 @@ int main(int argc, char** argv) {
   xla::sdy::registerMhloRoundTripShardMapImportPass();
   xla::sdy::registerConvertShardingCustomCallsPass();
   xla::sdy::registerOpenWhileFreeVarsShardingPass();
+  xla::sdy::registerImportBackendFuncCallsPass();
   xla::sdy::registerImportConstantsPass();
 
   xla::sdy::registerMhloExportPipeline();
   xla::sdy::registerMhloExportShardingsPass();
   xla::sdy::registerMhloRoundTripShardMapExportPass();
+  xla::sdy::registerExportNamedComputationsPass();
   xla::sdy::registerExportOpsPass();
 
   xla::sdy::registerSdyRoundTripMhloToHloToMhloPass();
-  xla::sdy::registerSdyRoundTripExportShardingsPass();
-  xla::sdy::registerSdyRoundTripImportShardingsPass();
+  xla::sdy::registerSdyRoundTripExportShardyAttrsPass();
+  xla::sdy::registerSdyRoundTripImportShardyAttrsPass();
+  xla::sdy::registerSdyRoundTripRemoveSizeOneAxesPass();
   xla::sdy::registerSdyRoundTripExportOpsPass();
   xla::sdy::registerSdyRoundTripExportPipeline();
   xla::sdy::registerSdyRoundTripShardMapExportPass();

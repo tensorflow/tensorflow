@@ -14,23 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/IR/DialectRegistry.h"
-#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
-#include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/support/module_parsing.h"
 
 int main(int argc, char** argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<xla::ifrt::IfrtDialect>();
-  xla::ifrt::registerIfrtIrPasses();
+  mlir::registerAllPasses();
   xla::ifrt::RegisterIfrtPassesAndPipelines();
-
-  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
+  mlir::DialectRegistry registry;
+  xla::ifrt::support::InitializeMlirDialectRegistry(registry);
 
   return mlir::asMainReturnCode(
-      mlir::MlirOptMain(argc, argv, "IFRT dialect driver\n", registry));
+      mlir::MlirOptMain(argc, argv, "IFRT IR dialect driver\n", registry));
 }

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -35,9 +36,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
-#include "xla/stream_executor/cuda/ptx_compiler_support.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -154,14 +156,14 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   // Print the verbose output of ptxas.
   if (!info_log.empty()) {
     if (absl::StrContains(info_log, "warning")) {
-      LOG(INFO) << info_log;
+      LOG(INFO) << absl::StripTrailingAsciiWhitespace(info_log);
       if (cancel_if_reg_spill &&
           absl::StrContains(info_log, "Registers are spilled")) {
         return absl::CancelledError(
             "Compilation result discarded due to register spilling");
       }
     } else {
-      VLOG(2) << info_log;
+      VLOG(2) << absl::StripTrailingAsciiWhitespace(info_log);
     }
   }
 

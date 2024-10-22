@@ -1129,20 +1129,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    DimensionVector lhs_non_contracting_dims;
-    DimensionVector rhs_non_contracting_dims;
-    for (int64_t i = 0; i < lhs_rank; i++) {
-      if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
-          !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
-        lhs_non_contracting_dims.push_back(i);
-      }
-    }
-    for (int64_t i = 0; i < rhs_rank; i++) {
-      if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
-          !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
-        rhs_non_contracting_dims.push_back(i);
-      }
-    }
+    DimensionVector lhs_non_contracting_dims =
+        GetNonContractingDims(lhs_rank, dnums.lhs_contracting_dimensions(),
+                              dnums.lhs_batch_dimensions());
+    DimensionVector rhs_non_contracting_dims =
+        GetNonContractingDims(rhs_rank, dnums.rhs_contracting_dimensions(),
+                              dnums.rhs_batch_dimensions());
 
     DimensionVector contracting_dim_sizes;
     contracting_dim_sizes.reserve(dnums.lhs_contracting_dimensions_size());
@@ -1743,10 +1735,12 @@ extern template class HloEvaluatorTypedVisitor<complex64>;
 extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2fnuz, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fnuz, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e3m4, float>;
 
 }  // namespace xla
 

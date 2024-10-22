@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -50,13 +51,6 @@ namespace gpu {
 namespace {
 
 class GpuPerformanceModelTest : public HloTestBase {
-  GpuHloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   GpuPerformanceModel::RunTimes EstimateRunTimesDefault(
       const HloInstruction* producer,
@@ -85,10 +79,7 @@ class GpuPerformanceModelTest : public HloTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
-                                       /*per_second_rates=*/{},
-                                       /*min_latencies_seconds=*/{},
-                                       /*count_multiple_input_accesses=*/true};
+  GpuHloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
@@ -97,7 +88,7 @@ class GpuPerformanceModelTest : public HloTestBase {
   GpuPerformanceModelCache gpu_performance_model_cache_;
 
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
-      &device_info_, &fusion_analysis_cache_, ShapeSizeBytesFunction(),
+      &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
       &mlir_context_};
 
   GpuPerformanceModelTest() : HloTestBase() {}

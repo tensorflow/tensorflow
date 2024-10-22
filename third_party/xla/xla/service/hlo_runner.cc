@@ -23,10 +23,10 @@ limitations under the License.
 
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"

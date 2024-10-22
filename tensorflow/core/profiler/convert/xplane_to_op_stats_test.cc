@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/profiler/utils/group_events.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tsl/platform/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -86,12 +86,16 @@ TEST(ConvertXPlaneToOpStats, GpuPerfEnv) {
   TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
                                                    options, &op_stats));
   const PerfEnv& perf_env = op_stats.perf_env();
-  EXPECT_NEAR(141, perf_env.peak_tera_flops_per_second(), kMaxError);
+  // Change to lower flops number that we do not use sum of the tensor core peak
+  // flops and the cuda core peak flops together as peak flops. Only use the
+  // tensor core peak flops as all those white papers are using.
+  EXPECT_NEAR(125.34, perf_env.peak_tera_flops_per_second(), kMaxError);
   EXPECT_NEAR(
       900,
       perf_env.peak_bws_giga_bytes_per_second(MemBwType::MEM_BW_TYPE_HBM_RW),
       kMaxError);
-  EXPECT_NEAR(156.67, perf_env.ridge_point(), kMaxError);
+  // Ridge point changed accordingly from above peak flops change.
+  EXPECT_NEAR(139.26, perf_env.ridge_point(), kMaxError);
 }
 
 TEST(ConvertXPlaneToOpStats, GpuRunEnvironment) {

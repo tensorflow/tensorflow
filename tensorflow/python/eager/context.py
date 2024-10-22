@@ -1425,7 +1425,8 @@ class Context:
       )
     visible_device_list = []
     virtual_devices = []
-    gpu_index = -1
+    # This mapping is needed to handle multiple sub types of PluggableDevices.
+    device_to_indices = collections.defaultdict(int)
     memory_growths = set()
     compatible_devices = (
         self.list_physical_devices("GPU")
@@ -1434,14 +1435,18 @@ class Context:
     )
     support_virtual_devices = device_type == "GPU"
     for dev in compatible_devices:
-      gpu_index += 1
+      device_index = device_to_indices[dev.device_type]
+      device_to_indices[dev.device_type] += 1
 
       if dev not in self._visible_device_list:
         continue
 
       growth = self._memory_growth_map[dev]
       memory_growths.add(growth)
-      visible_device_list.append(str(gpu_index))
+      if device_type == "PluggableDevice":
+        visible_device_list.append(dev.device_type + ":" + str(device_index))
+      else:
+        visible_device_list.append(str(device_index))
 
       if support_virtual_devices and self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])

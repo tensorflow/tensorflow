@@ -40,9 +40,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/xla_builder.h"
-#include "xla/client/xla_computation.h"
 #include "xla/executable_run_options.h"
+#include "xla/fp_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/shaped_buffer.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
@@ -864,11 +866,15 @@ template class ExhaustiveOpTestBase<F64, 1>;
 template class ExhaustiveOpTestBase<F32, 1>;
 template class ExhaustiveOpTestBase<F16, 1>;
 template class ExhaustiveOpTestBase<BF16, 1>;
+template class ExhaustiveOpTestBase<F8E5M2, 1>;
+template class ExhaustiveOpTestBase<F8E4M3FN, 1>;
 
 template class ExhaustiveOpTestBase<F64, 2>;
 template class ExhaustiveOpTestBase<F32, 2>;
 template class ExhaustiveOpTestBase<F16, 2>;
 template class ExhaustiveOpTestBase<BF16, 2>;
+template class ExhaustiveOpTestBase<F8E5M2, 2>;
+template class ExhaustiveOpTestBase<F8E4M3FN, 2>;
 
 }  // namespace exhaustive_op_test
 }  // namespace xla

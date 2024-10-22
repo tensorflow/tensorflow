@@ -17,11 +17,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
-#include "xla/client/sharding_builder.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/platform_util.h"
@@ -1016,6 +1017,53 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
   EXPECT_EQ(compiled_module.config().use_shardy_partitioner(), true);
   auto proto = compiled_module.ToProtoWithConfig();
   EXPECT_EQ(proto.config().use_shardy_partitioner(), true);
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_exec_time_optimization_effort(-1.5f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_FLOAT_EQ(compiled_module.config().exec_time_optimization_effort(),
+                  -1.5f);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_FLOAT_EQ(proto.config().exec_time_optimization_effort(), -1.5f);
+}
+
+XLA_TEST_F(LocalClientExecuteTest, ValidateMemoryFittingEffort) {
+  XlaBuilder builder(TestName());
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
+  Shape argument_layout =
+      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
+          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
+
+  ExecutableBuildOptions build_options;
+  build_options.set_memory_fitting_effort(2.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables,
+      local_client_->Compile(builder.Build().value(), {&argument_layout},
+                             build_options));
+  EXPECT_EQ(1, executables.size());
+  const HloModule& compiled_module =
+      executables.front()->executable()->module();
+  EXPECT_FLOAT_EQ(compiled_module.config().memory_fitting_effort(), 2.0f);
+  auto proto = compiled_module.ToProtoWithConfig();
+  EXPECT_FLOAT_EQ(proto.config().memory_fitting_effort(), 2.0f);
 }
 
 BENCHMARK(BM_LocalClientOverhead);

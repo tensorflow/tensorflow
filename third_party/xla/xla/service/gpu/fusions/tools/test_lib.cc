@@ -77,6 +77,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
     auto* new_entry = module->AddComputationAndUnifyNamesAndIds(
         builder.Build(), /*is_entry=*/false);
     module->ReplaceEntryComputation(new_entry);
+    *module->mutable_entry_computation_layout() =
+        module->compute_computation_layout();
   }
 
   return module;

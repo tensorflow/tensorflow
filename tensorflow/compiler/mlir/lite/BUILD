@@ -906,6 +906,7 @@ cc_library(
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf",
         "//tensorflow/compiler/mlir/lite/stablehlo:optimize_layout",
         "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_legalize_hlo",
@@ -1622,6 +1623,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -1731,7 +1733,7 @@ cc_library(
     name = "string_utils",
     srcs = ["utils/string_utils.cc"],
     hdrs = ["utils/string_utils.h"],
-    visibility = ["//tensorflow/lite:__pkg__"],
+    visibility = ["//visibility:public"],
 )
 
 exports_files(srcs = ["allocation.h"])

@@ -215,15 +215,6 @@ INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(DotBF16ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32),
-                                 Values(BF16), Values(BF16, F32),
-                                 Values(CC(8, 0)),
-                                 Values(SemanticVersion{6, 0, 0}),
-                                 Values(BackendRestriction::kNoRestriction),
-                                 Values(Sizes{32, 32}, Sizes{16, 2})),
-                         TestParamsToString);
-
 INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32), Values(F32),
                                  Values(F32), Values(CC(8, 0)),
@@ -232,12 +223,19 @@ INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 
-INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32XnTests, DotAlgorithmSupportTest,
-                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3,
-                                        PC::ALG_DOT_BF16_BF16_F32_X6),
+INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X3Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3),
                                  Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
-                                 Values(BackendRestriction::kTritonOnly),
+                                 Values(BackendRestriction::kNoRestriction),
+                                 Values(Sizes{32, 32}, Sizes{16, 2})),
+                         TestParamsToString);
+
+INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X6Tests, DotAlgorithmSupportTest,
+                         Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X6),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(SemanticVersion{6, 0, 0}),
+                                 Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
                          TestParamsToString);
 

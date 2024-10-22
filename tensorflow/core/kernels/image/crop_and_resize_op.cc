@@ -41,12 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-using stream_executor::gpu::ScopedActivateContext;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-using stream_executor::gpu::ScopedActivateContext;
 #endif
 
 namespace tensorflow {
@@ -56,9 +52,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 using Callback = std::function<void()>;
 
-static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
-                                           const Tensor& box_index,
-                                           int* num_boxes) {
+static inline absl::Status ParseAndCheckBoxSizes(const Tensor& boxes,
+                                                 const Tensor& box_index,
+                                                 int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
     return absl::OkStatus();
@@ -888,7 +884,8 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
                            compute, done]() {
     {
       auto stream = context->op_device_context()->stream();
-      ScopedActivateContext scoped_activation{stream->parent()};
+      std::unique_ptr<se::ActivateContext> scoped_activation =
+          stream->parent()->Activate();
       const bool isvalid = isvalid_host_tensor.scalar<bool>()();
       isvalid_dev_ref.Unref();
       OP_REQUIRES_ASYNC(
@@ -896,7 +893,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
           errors::OutOfRange("box_index has values outside [0, batch_size)"),
           done);
       compute();
-    }  // Release ScopedActivateContext to prevent deadlock when done
+    }  // Release ActivateContext to prevent deadlock when done
        // inlines another Op kernel, which may assume the original cuda Context.
 
     done();

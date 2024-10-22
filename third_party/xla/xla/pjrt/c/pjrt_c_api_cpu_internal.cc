@@ -39,7 +39,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetTfrtCpuClient(options));
+                        xla::GetTfrtCpuClient(std::move(options)));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
@@ -64,7 +64,8 @@ const PJRT_Api* GetCpuPjrtApi() {
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
       pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension),
+      pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }

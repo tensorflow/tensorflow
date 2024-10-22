@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: "Checkout code"
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4.2.0
         with:
           persist-credentials: false
 
@@ -64,6 +64,6 @@ jobs:
       # Upload the results to GitHub's code scanning dashboard (optional).
       # Commenting out will disable upload of results to your repo's Code Scanning dashboard
       - name: "Upload to code-scanning"
-        uses: github/codeql-action/upload-sarif@4dd16135b69a43b6c8efb853346f8437d92d3c93 # v3.26.6
+        uses: github/codeql-action/upload-sarif@e2b3eafc8d227b0241d48be5f425d47c2d750a13 # v3.26.10
         with:
           sarif_file: results.sarif

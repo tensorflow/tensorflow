@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/transpose.h"
+
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -24,12 +25,6 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace transpose {
-
-// This file has two implementations of Transpose.
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
 
 struct TransposeContext {
   TransposeContext(TfLiteContext* context, TfLiteNode* node) {
@@ -89,7 +84,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputTensor(context, &op_context);
 }
 
-template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
@@ -119,11 +113,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (op_context.input->type) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, int32_t);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, int32_t);
-      }
+      TF_LITE_TRANSPOSE(reference_ops, int32_t);
       break;
     case kTfLiteBool:
       if (sizeof(bool) != 1) {
@@ -133,18 +123,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       [[fallthrough]];
     case kTfLiteUInt8:
     case kTfLiteInt8:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, int8_t);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, int8_t);
-      }
+      TF_LITE_TRANSPOSE(reference_ops, int8_t);
       break;
     case kTfLiteInt16:
-      if (kernel_type == kGenericOptimized) {
-        TF_LITE_TRANSPOSE(optimized_ops, int16_t);
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, int16_t);
-      }
+      TF_LITE_TRANSPOSE(reference_ops, int16_t);
       break;
     case kTfLiteInt64:
       TF_LITE_TRANSPOSE(reference_ops, int64_t);
@@ -164,19 +146,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_TRANSPOSE_REF() {
   static TfLiteRegistration r = {nullptr, nullptr, transpose::Prepare,
-                                 transpose::Eval<transpose::kReference>};
+                                 transpose::Eval};
   return &r;
 }
 
-TfLiteRegistration* Register_TRANSPOSE_GENERIC_OPTIMIZED() {
-  static TfLiteRegistration r = {nullptr, nullptr, transpose::Prepare,
-                                 transpose::Eval<transpose::kGenericOptimized>};
-  return &r;
-}
-
-TfLiteRegistration* Register_TRANSPOSE() {
-  return Register_TRANSPOSE_GENERIC_OPTIMIZED();
-}
+TfLiteRegistration* Register_TRANSPOSE() { return Register_TRANSPOSE_REF(); }
 
 }  // namespace builtin
 }  // namespace ops

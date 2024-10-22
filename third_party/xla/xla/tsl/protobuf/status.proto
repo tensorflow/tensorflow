@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tsl/protobuf/error_codes.proto";
+import "xla/tsl/protobuf/error_codes.proto";
 
 option cc_enable_arenas = true;
 option java_multiple_files = true;
@@ -10,11 +10,15 @@ option java_package = "org.tensorflow.framework";
 option go_package = "github.com/google/tsl/tsl/go/protobuf/for_core_protos_go_proto";
 
 // Wire-format for Status.
-// Next tag: 3
+// Next tag: 4
 message StatusProto {
-  // Status code as defined in tensorflow/tsl/protobuf/error_codes.proto.
+  // Status code as defined in
+  // tensorflow/compiler/xla/tsl/protobuf/error_codes.proto.
   error.Code code = 1;
 
   // Detail error message.
   string message = 2;
+
+  // Unique type URL -> value, like absl::Status payloads.
+  map<string, bytes> payload = 3;
 }

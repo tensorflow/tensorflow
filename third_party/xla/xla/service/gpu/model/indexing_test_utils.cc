@@ -345,16 +345,16 @@ absl::Status VerifyExprsAreIdentical(
     mlir::AffineExpr reference, mlir::AffineExpr other,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges) {
-  std::vector<DimVar> dims;
+  std::vector<IndexingMap::Variable> dims;
   dims.reserve(dimension_ranges.size());
   for (const auto& interval : dimension_ranges) {
-    dims.push_back({interval});
+    dims.push_back(IndexingMap::Variable{interval});
   }
 
-  std::vector<RangeVar> symbols;
+  std::vector<IndexingMap::Variable> symbols;
   symbols.reserve(symbol_ranges.size());
   for (const auto& interval : symbol_ranges) {
-    symbols.push_back({interval});
+    symbols.push_back(IndexingMap::Variable{interval});
   }
 
   IndexingMap map(mlir::AffineMap::get(dimension_ranges.size(),

@@ -52,7 +52,9 @@ bool HasFastAccum(PrecisionConfig::Algorithm algorithm);
 //
 // We may want to also check storage types, but for now those are checked in
 // IsSupportedDotAlgorithmOnGpu.
-bool IsSupportedByCublasOrCublasLt(PrecisionConfig::Algorithm algorithm);
+bool IsSupportedByCublasOrCublasLt(
+    PrecisionConfig::Algorithm algorithm,
+    stream_executor::GpuComputeCapability gpu_compute_capability);
 
 // Checks if we support the given algorithm using cuDNN.
 bool IsSupportedByCudnn(PrecisionConfig::Algorithm algorithm);

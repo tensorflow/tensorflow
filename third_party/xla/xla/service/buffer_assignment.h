@@ -33,6 +33,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,10 +45,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
@@ -228,7 +228,18 @@ class BufferAllocation {
   Slice GetSlice(const HloValue& buffer) const;
 
   std::string ToString() const;
-  std::string ToShortString() const;
+  std::string ToShortString(bool human_readable_size = false) const;
+  std::string ValuesToString() const;
+
+  // The function returns memory usage report for the values belonging to the
+  // buffer allocation. The values are grouped by their offset in the
+  // allocation. The groups are sorted by the max size(Z-A) of the values in the
+  // group. Percentile and more_than_k are used to control the number of groups
+  // being reported.
+  std::string MemoryUsageReport(const std::string& prefix,
+                                float percentile = 0.05,
+                                int64_t more_than_k = 50) const;
+
   BufferAllocationProto ToProto() const;
 
   // Whether the buffer is a parameter to or live out of the entry computation.
@@ -486,10 +497,18 @@ class BufferAssignment {
   // Returns the HloLiveRange object used to construct this assignment.
   const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
 
+  // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+
+  // Returns a memory usage report with the list of buffer allocations ordered
+  // by the size(Z-A) and the values assigned to each buffer allocation.
+  std::string MemoryUsageReport(float percentile = 0.05,
+                                int64_t more_than_k = 50) const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
   std::string ToVerboseString(size_t max_buffers_to_show) const;
+
+  // Is in use by tpu compiler to dump the buffer info.
   std::string BufferInfoString() const;
 
   // Convert BufferAssignment to or from a proto.

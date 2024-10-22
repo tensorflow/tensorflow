@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/types/span.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_op_test.h"
@@ -138,16 +138,19 @@ UNARY_TEST_COMPLEX_64(Sqrt, {
   Run(Sqrt, [](complex64 x) { return std::sqrt(x); }, error_spec_gen);
 })
 
-double RsqrtCpuGpuAbsErr(complex64 x) {
-  return std::sqrt(std::numeric_limits<float>::min());
+template <typename NativeT, typename ComponentNativeT>
+double RsqrtCpuGpuAbsErr(NativeT x) {
+  return std::sqrt(std::numeric_limits<ComponentNativeT>::min());
 }
 
-double RsqrtCpuGpuRelErr(complex64 x) {
+template <typename NativeT, typename ComponentNativeT>
+double RsqrtCpuGpuRelErr(NativeT x) {
   // As noted above for Sqrt, the accuracy of sqrt degrades severely for
   // inputs with inputs with subnormals entries.
-  constexpr double eps = std::numeric_limits<float>::epsilon();
-  constexpr double norm_min = std::numeric_limits<float>::min();
-  constexpr double denorm_min = std::numeric_limits<float>::denorm_min();
+  constexpr double eps = std::numeric_limits<ComponentNativeT>::epsilon();
+  constexpr double norm_min = std::numeric_limits<ComponentNativeT>::min();
+  constexpr double denorm_min =
+      std::numeric_limits<ComponentNativeT>::denorm_min();
   if (std::abs(x) < norm_min) {
     // Gradually loosen the relative tolerance as abs(x) becomes smaller
     // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
@@ -164,8 +167,8 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
   if (IsCpu()) {
     error_spec_gen = +[](complex64 x) {
       return ErrorSpec::Builder()
-          .abs_err(RsqrtCpuGpuAbsErr(x))
-          .rel_err(RsqrtCpuGpuRelErr(x))
+          .abs_err(RsqrtCpuGpuAbsErr<NativeT, ComponentNativeT>(x))
+          .rel_err(RsqrtCpuGpuRelErr<NativeT, ComponentNativeT>(x))
           .skip_comparison(x.real() == 0.0f)
           .strict_signed_zeros(false)
           .build();
@@ -175,8 +178,8 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
   if (IsGpu()) {
     error_spec_gen = +[](complex64 x) {
       return ErrorSpec::Builder()
-          .abs_err(RsqrtCpuGpuAbsErr(x))
-          .rel_err(RsqrtCpuGpuRelErr(x))
+          .abs_err(RsqrtCpuGpuAbsErr<NativeT, ComponentNativeT>(x))
+          .rel_err(RsqrtCpuGpuRelErr<NativeT, ComponentNativeT>(x))
           .strict_signed_zeros(false)
           .build();
     };
@@ -286,24 +289,38 @@ UNARY_TEST_COMPLEX_128(Sqrt, {
 })
 
 UNARY_TEST_COMPLEX_128(Rsqrt, {
-  ErrorSpecGen error_spec_gen = +[](complex128 x) {
-    // As noted above for Sqrt, the accuracy of sqrt degrades severely for
-    // inputs with inputs with subnormals entries.
-    constexpr double norm_min = std::numeric_limits<double>::min();
-    constexpr double denorm_min = std::numeric_limits<double>::denorm_min();
-    if (std::abs(x) < norm_min) {
-      // Gradually loosen the relative tolerance as abs(x) becomes smaller
-      // than norm_min, letting it reach 100% when abs(x) = 10 * denorm_min.
-      return ErrorSpec::Builder()
-          .abs_err(std::sqrt(std::numeric_limits<double>::min()))
-          .rel_err(10 * denorm_min / std::abs(x))
-          .build();
-    }
-    return ErrorSpec::Builder()
-        .abs_err(std::sqrt(std::numeric_limits<double>::min()))
-        .rel_err(50 * std::numeric_limits<double>::epsilon())
-        .build();
+  ErrorSpecGen error_spec_gen = +[](complex128) {
+    return ErrorSpec::Builder().strict_signed_zeros().build();
   };
+
+  if (IsCpu()) {
+    error_spec_gen = +[](complex128 x) {
+      return ErrorSpec::Builder()
+          .abs_err(RsqrtCpuGpuAbsErr<NativeT, ComponentNativeT>(x))
+          .rel_err(RsqrtCpuGpuRelErr<NativeT, ComponentNativeT>(x))
+#ifdef __aarch64__
+          // TODO(b/365620546): ARM and x86 handle complex(inf, nan)
+          // differently.
+          .skip_comparison(x.real() == 0.0f ||
+                           (std::isinf(x.real()) && std::isnan(x.imag())))
+#else
+          .skip_comparison(x.real() == 0.0f)
+#endif
+          .strict_signed_zeros(false)
+          .build();
+    };
+  }
+
+  if (IsGpu()) {
+    error_spec_gen = +[](complex128 x) {
+      return ErrorSpec::Builder()
+          .abs_err(RsqrtCpuGpuAbsErr<NativeT, ComponentNativeT>(x))
+          .rel_err(RsqrtCpuGpuRelErr<NativeT, ComponentNativeT>(x))
+          .strict_signed_zeros(false)
+          .build();
+    };
+  }
+
   Run(
       Rsqrt, [](complex128 x) { return complex128(1, 0) / std::sqrt(x); },
       error_spec_gen);

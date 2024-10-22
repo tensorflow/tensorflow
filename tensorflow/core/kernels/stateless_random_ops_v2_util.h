@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
+absl::Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
   auto dtype = DataTypeToEnum<T>::v();
   if (tensor.dims() != 0) {
     return errors::InvalidArgument("input ", std::to_string(input_idx),

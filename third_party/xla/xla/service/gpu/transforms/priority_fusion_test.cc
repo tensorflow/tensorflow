@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "tsl/platform/status_matchers.h"
@@ -55,13 +57,6 @@ namespace xla {
 namespace gpu {
 
 class PriorityFusionTest : public HloTestBase {
-  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const {
-    return [&](const Shape& shape) {
-      constexpr int64_t kPointerSize = 8;
-      return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-    };
-  }
-
  public:
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
@@ -72,20 +67,17 @@ class PriorityFusionTest : public HloTestBase {
     for (auto computation : module->computations()) {
       if (!computation->FusionInstruction()) continue;
 
-      auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
       auto analysis = HloFusionAnalysis::Create(
-          *computation->FusionInstruction(), device_info);
+          *computation->FusionInstruction(), device_info_);
       kinds.push_back(analysis.GetEmitterFusionKind());
     }
     return kinds;
   }
 
+  se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   PriorityFusion priority_fusion_{
-      /*thread_pool=*/nullptr, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-      GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
-                                  /*per_second_rates=*/{},
-                                  /*min_latencies_seconds=*/{},
-                                  /*count_multiple_input_accesses=*/true}};
+      /*thread_pool=*/nullptr, device_info_,
+      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true}};
 };
 
 class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {

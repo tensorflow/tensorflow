@@ -3,7 +3,7 @@
 
 #map = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, s1), domain:"
   "d0 in [0, 3], s0 in [0, 7], s1 in [0, 10], d0 + s0 in [0, 9],"
-  "d0 + s1 in [0, 12], is_simplified: false">
+  "d0 + s1 in [0, 12]">
 func.func @peel_both_loops(%input: tensor<16x32xf32>,
     %init: f32, %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i, %j] -> (%r0, %r1)
@@ -14,9 +14,9 @@ func.func @peel_both_loops(%input: tensor<16x32xf32>,
   }
   func.return %sum : f32
 }
-// CHECK: #[[$PEELED_MAP:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, s1), domain: d0 in [0, 3], s0 in [0, 6], s1 in [0, 9], is_simplified: true">
-// CHECK: #[[$TAIL_MAP0:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (7, s1), domain: d0 in [0, 2], s0 in [7, 7], s1 in [0, 9], is_simplified: true">
-// CHECK: #[[$TAIL_MAP1:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, 10), domain: d0 in [0, 2], s0 in [0, 7], s1 in [10, 10], is_simplified: true">
+// CHECK: #[[$PEELED_MAP:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, s1), domain: d0 in [0, 3], s0 in [0, 6], s1 in [0, 9]">
+// CHECK: #[[$TAIL_MAP0:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (7, s1), domain: d0 in [0, 2], s0 in [7, 7], s1 in [0, 9]">
+// CHECK: #[[$TAIL_MAP1:.*]] = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, 10), domain: d0 in [0, 2], s0 in [0, 7], s1 in [10, 10]">
 
 // CHECK-LABEL: func.func @peel_both_loops(
 // CHECK-SAME:      %[[INPUT:.*]]: tensor<16x32xf32>,
@@ -42,7 +42,7 @@ func.func @peel_both_loops(%input: tensor<16x32xf32>,
 // -----
 
 #map = #xla_gpu.indexing_map<"(d0)[s0] -> (s0),"
-  "domain: d0 in [0, 3], s0 in [0, 7], is_simplified: false">
+  "domain: d0 in [0, 3], s0 in [0, 7]">
 func.func @not_constrained_symbol(%input: tensor<16xf32>, %init: f32,
     %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i] -> (%r0)
@@ -64,9 +64,7 @@ func.func @not_constrained_symbol(%input: tensor<16xf32>, %init: f32,
 "  domain:"
 "  d0 in [0, 3],"
 "  s0 in [0, 7],"
-"  s0 mod 5 in [0, 1],"
-"  is_simplified: false"
->
+"  s0 mod 5 in [0, 1]">
 func.func @constraint_exists_after_peeling(%input: tensor<16xf32>, %init: f32,
     %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i] -> (%r0)

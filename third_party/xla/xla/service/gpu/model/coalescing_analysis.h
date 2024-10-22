@@ -73,6 +73,16 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
                               const HloInstruction* producer,
                               const HloInstruction* consumer = nullptr);
 
+// Returns the bandwidth utilization rate of the memory access for the given
+// tiled HLO instruction. Naturally, values are between 0 and 1, where a
+// perfectly coalesced read has a utilization rate of 1.
+//
+// Note: the assumption is that the tile sizes do not include padding beyond
+// the end of the shape.
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info);
+
 // Returns true if read of this tiled hlo operand is coalesced.
 //
 // We consider a read coalesced if the operand tile consist of contiguous chunk

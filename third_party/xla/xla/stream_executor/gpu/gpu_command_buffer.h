@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -163,6 +162,7 @@ class GpuCommandBuffer : public CommandBuffer {
  private:
   using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
 
+ protected:
   using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
@@ -186,6 +186,7 @@ class GpuCommandBuffer : public CommandBuffer {
   using SetWhileConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<bool>>;
 
+ private:
   // A callback to launch a kernel that updates conditional handles state.
   using SetConditionFn = std::function<absl::Status(
       ExecutionScopeId, absl::Span<const GpuGraphConditionalHandle>)>;
@@ -250,12 +251,15 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Returns loaded auxiliary kernels, or loads them on a given stream executor.
   // Loaded kernels owned by a current command buffer.
-  absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel();
-  absl::StatusOr<SetIfElseConditionKernel*> GetSetIfElseConditionKernel();
-  absl::StatusOr<SetCaseConditionKernel*> GetSetCaseConditionKernel();
-  absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel();
-  absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel();
-  absl::StatusOr<NoOpKernel*> GetNoOpKernel();
+  virtual absl::StatusOr<SetIfConditionKernel*> GetSetIfConditionKernel() = 0;
+  virtual absl::StatusOr<SetIfElseConditionKernel*>
+  GetSetIfElseConditionKernel() = 0;
+  virtual absl::StatusOr<SetCaseConditionKernel*>
+  GetSetCaseConditionKernel() = 0;
+  virtual absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() = 0;
+  virtual absl::StatusOr<SetWhileConditionKernel*>
+  GetSetWhileConditionKernel() = 0;
+  virtual absl::StatusOr<NoOpKernel*> GetNoOpKernel() = 0;
 
   // Recursively disable all nodes corresponding to barriers (including nested
   // conditional command buffers). This is work around the fact that we can't
@@ -342,14 +346,10 @@ class GpuCommandBuffer : public CommandBuffer {
   // Track the number of command buffer updates for debugging.
   int64_t num_updates_ = 0;
 
-  // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
-  // barriers, updating conditional handles, etc.).
-  SetIfConditionKernel set_if_condition_kernel_;
-  SetIfElseConditionKernel set_if_else_condition_kernel_;
-  SetCaseConditionKernel set_case_condition_kernel_;
-  SetForConditionKernel set_for_condition_kernel_;
-  SetWhileConditionKernel set_while_condition_kernel_;
-  NoOpKernel noop_kernel_;
+  // Creates a nested command buffer, associated with the same executor.
+  // The given graph will not be owned by the created command buffer.
+  virtual std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
+      GpuGraphHandle graph) = 0;
 };
 
 }  // namespace stream_executor::gpu

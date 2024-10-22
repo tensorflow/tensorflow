@@ -30,7 +30,7 @@ namespace custom_op_examples {
 
 using ::tensorflow::shape_inference::InferenceContext;
 
-Status MultiplexShapeFunction(InferenceContext* c) {
+absl::Status MultiplexShapeFunction(InferenceContext* c) {
   int64_t num_cond_a;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_cond_a));
   tensorflow::shape_inference::ShapeHandle unused;

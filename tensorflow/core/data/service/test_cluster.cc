@@ -55,7 +55,7 @@ TestCluster::~TestCluster() {
   }
 }
 
-Status TestCluster::Initialize() {
+absl::Status TestCluster::Initialize() {
   if (initialized_) {
     return errors::FailedPrecondition(
         "Test cluster has already been initialized.");
@@ -89,7 +89,7 @@ Status TestCluster::Initialize() {
   return absl::OkStatus();
 }
 
-Status TestCluster::AddWorker(
+absl::Status TestCluster::AddWorker(
     std::optional<int> port,
     std::optional<std::string> data_transfer_protocol) {
   std::unique_ptr<WorkerGrpcDataServer> worker;

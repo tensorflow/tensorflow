@@ -65,6 +65,26 @@ Status BuildIdentityNNode(const Node& source, StringPiece name,
   return absl::OkStatus();
 }
 
+Status BuildIdentityNode(const Node& source, StringPiece name,
+                         const string& device, Graph* graph,
+                         std::vector<NodeDefBuilder::NodeOut>& inputs,
+                         Node** node) {
+  NodeDefBuilder builder(name, "Identity", NodeDebugInfo(source));
+  if (!device.empty()) {
+    builder.Device(device);
+  }
+  builder.Input(inputs[0]);
+
+  NodeDef def;
+  TF_RETURN_IF_ERROR(builder.Finalize(&def));
+
+  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(def));
+  if (!device.empty()) {
+    (*node)->set_assigned_device_name(device);
+  }
+  return absl::OkStatus();
+}
+
 const string& RequestedOrAssignedDevice(const Node* n) {
   if (!n->assigned_device_name().empty()) {
     return n->assigned_device_name();
@@ -232,20 +252,45 @@ Status OptimizeCrossHostDataOutputEdges(Graph* graph,
       Node* data_after;
       std::vector<NodeDefBuilder::NodeOut> inputs;
       inputs.reserve(pair.second.size());
-      for (const Edge* edge : pair.second) {
-        inputs.emplace_back(edge->src()->name(), edge->src_output(),
-                            edge->src()->output_type(edge->src_output()));
-      }
-      TF_RETURN_IF_ERROR(BuildIdentityNNode(
-          *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
-          device, graph, inputs, &data_after));
+      const Edge* edge0 = pair.second[0];
+      if (std::all_of(pair.second.begin(), pair.second.end(),
+                      [edge0](const Edge* e) {
+                        return e->src() == edge0->src() &&
+                               e->src_output() == edge0->src_output();
+                      })) {
+        // Handle the special case of all inputs being identical, which is when
+        // we only need an Identity op with one input.
+        // TODO(kramm): Can we break this up further? E.g. what if we have two
+        // sets of inputs that are both all identical?
+        inputs.emplace_back(edge0->src()->name(), edge0->src_output(),
+                            edge0->src()->output_type(edge0->src_output()));
+        TF_RETURN_IF_ERROR(BuildIdentityNode(
+            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            device, graph, inputs, &data_after));
 
-      int i = 0;
-      for (const Edge* edge : pair.second) {
-        graph->AddEdge(edge->src(), edge->src_output(), data_after, i);
-        graph->AddEdge(data_after, i, edge->dst(), edge->dst_input());
-        graph->RemoveEdge(edge);
-        i++;
+        graph->AddEdge(edge0->src(), edge0->src_output(), data_after, 0);
+        int i = 0;
+        for (const Edge* edge : pair.second) {
+          graph->AddEdge(data_after, 0, edge->dst(), edge->dst_input());
+          graph->RemoveEdge(edge);
+          i++;
+        }
+      } else {
+        for (const Edge* edge : pair.second) {
+          inputs.emplace_back(edge->src()->name(), edge->src_output(),
+                              edge->src()->output_type(edge->src_output()));
+        }
+        TF_RETURN_IF_ERROR(BuildIdentityNNode(
+            *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+            device, graph, inputs, &data_after));
+
+        int i = 0;
+        for (const Edge* edge : pair.second) {
+          graph->AddEdge(data_after, i, edge->dst(), edge->dst_input());
+          graph->AddEdge(edge->src(), edge->src_output(), data_after, i);
+          graph->RemoveEdge(edge);
+          i++;
+        }
       }
     }
   }

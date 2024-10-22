@@ -110,9 +110,9 @@ constexpr char kGraphDefWithPartitionedCall[] =
     "}\n";
 
 // Declare here, so we don't need a public header.
-Status InlinePartitionedCall(const GraphDef& input_graph_def,
-                             const TransformFuncContext& context,
-                             GraphDef* output_graph_def);
+absl::Status InlinePartitionedCall(const GraphDef& input_graph_def,
+                                   const TransformFuncContext& context,
+                                   GraphDef* output_graph_def);
 
 TEST(InlinePartitionedCallTest, Inlining) {
   GraphDef in_graph;

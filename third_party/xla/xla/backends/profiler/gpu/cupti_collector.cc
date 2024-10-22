@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
+#include <optional>
 #include <queue>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -26,15 +28,15 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
+#include "xla/tsl/profiler/utils/parse_annotation.h"
+#include "xla/tsl/profiler/utils/trace_utils.h"
+#include "xla/tsl/profiler/utils/xplane_builder.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/mutex.h"
-#include "tsl/profiler/utils/parse_annotation.h"
-#include "tsl/profiler/utils/trace_utils.h"
-#include "tsl/profiler/utils/xplane_builder.h"
-#include "tsl/profiler/utils/xplane_schema.h"
-#include "tsl/profiler/utils/xplane_utils.h"
 
 namespace xla {
 namespace profiler {
@@ -322,6 +324,15 @@ class PerDeviceCollector {
     return ret_val;
   }
 
+  std::optional<std::string> GetDeviceName(CUdevice device) {
+    char device_name[512];
+    if (cuDeviceGetName(device_name, sizeof(device_name), device) !=
+        CUDA_SUCCESS) {
+      return std::nullopt;
+    }
+    return std::string(device_name);
+  }
+
   std::string GetDeviceXLineName(
       int64_t stream_id,
       absl::flat_hash_set<CuptiTracerEventType>& event_types) {
@@ -389,6 +400,13 @@ class PerDeviceCollector {
 
     CUdevice device;
     if (cuDeviceGet(&device, device_ordinal) != CUDA_SUCCESS) return;
+
+    std::optional<std::string> device_name = GetDeviceName(device);
+    if (device_name.has_value()) {
+      device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
+                                     GetStatTypeStr(StatType::kGpuDeviceName)),
+                                 *device_name);
+    }
 
     auto clock_rate_in_khz =
         GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_CLOCK_RATE);

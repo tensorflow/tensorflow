@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
@@ -114,6 +115,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

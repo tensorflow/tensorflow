@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -141,8 +140,7 @@ class SymbolicTileAnalysis {
 
   // Returns a string representation of the analysis. Used only for error
   // messages and debugging.
-  std::string ToString(
-      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  std::string ToString() const;
 
   // Returns a list of tilings for the symbolic tiled HLO computation of the
   // analysis that are expected to perform well.

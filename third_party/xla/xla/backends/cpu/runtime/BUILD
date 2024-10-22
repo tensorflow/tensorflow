@@ -68,6 +68,15 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "thread_pool_task_runner",
+    hdrs = ["thread_pool_task_runner.h"],
+    deps = [
+        ":thunk",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "thunk",
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
@@ -159,6 +168,7 @@ xla_cc_test(
     deps = [
         ":buffer_allocations",
         ":resource_use",
+        ":thread_pool_task_runner",
         ":thunk",
         ":thunk_executor",
         "//xla/runtime:buffer_use",
@@ -950,14 +960,12 @@ xla_cc_test(
         "//xla/service:buffer_assignment",
         "//xla/service:maybe_owning_device_memory",
         "//xla/stream_executor",
-        "//xla/stream_executor/host:host_kernel_c_api",
         "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

@@ -41,14 +41,14 @@ class FullTypeGraphUtilsTest : public ::testing::Test {
       : graph_(OpRegistry::Global()),
         root_(Scope::NewRootScope().ExitOnError()) {}
 
-  Status MakeArg(Node **arg, DataType dtype) {
+  absl::Status MakeArg(Node **arg, DataType dtype) {
     return NodeBuilder("arg", "_Arg", &root_.graph()->flib_def())
         .Attr("T", dtype)
         .Attr("index", 0)
         .Finalize(root_.graph(), arg);
   }
 
-  Status MakeRet(Node *src, Node **ret, DataType dtype) {
+  absl::Status MakeRet(Node *src, Node **ret, DataType dtype) {
     return NodeBuilder("ret", "_Retval", &root_.graph()->flib_def())
         .Input(src, 0)
         .Attr("T", dtype)
@@ -57,7 +57,7 @@ class FullTypeGraphUtilsTest : public ::testing::Test {
   }
 
  public:
-  Status MakeArgRet(Node **arg, Node **ret, DataType dtype) {
+  absl::Status MakeArgRet(Node **arg, Node **ret, DataType dtype) {
     TF_RETURN_IF_ERROR(MakeArg(arg, dtype));
     return MakeRet(*arg, ret, dtype);
   }
@@ -152,7 +152,8 @@ TEST_F(FullTypeGraphUtilsTest, ArgError) {
 
   nodes.push_back(arg);
   dtypes.push_back(DT_INT32);
-  Status status = full_type::SetMemoryTypeForArgs(nodes, dtypes, memory_types);
+  absl::Status status =
+      full_type::SetMemoryTypeForArgs(nodes, dtypes, memory_types);
   EXPECT_FALSE(status.ok());
 }
 
@@ -230,7 +231,8 @@ TEST_F(FullTypeGraphUtilsTest, RetError) {
   TF_ASSERT_OK(MakeArgRet(&arg, &ret, DT_INT32));
   nodes.push_back(ret);
   dtypes.push_back(DT_INT32);
-  Status status = full_type::SetMemoryTypeForRets(nodes, dtypes, memory_types);
+  absl::Status status =
+      full_type::SetMemoryTypeForRets(nodes, dtypes, memory_types);
   EXPECT_FALSE(status.ok());
 }
 
@@ -302,7 +304,7 @@ TEST_F(FullTypeGraphUtilsTest, SingleDeviceAllocAttrsRetError) {
   // test TFT_SHAPE_TENSOR and ints_on_device=true mismatch
   AddArgFullType(arg, TFT_SHAPE_TENSOR, TFT_INT32);
   ret_nodes.push_back(std::make_pair(ret, 0));
-  Status status = full_type::SingleDeviceSetAllocAttrsForRets(
+  absl::Status status = full_type::SingleDeviceSetAllocAttrsForRets(
       ret_nodes, /*ints_on_device=*/true, alloc_attrs);
   EXPECT_FALSE(status.ok());
 }
@@ -348,7 +350,7 @@ TEST_F(FullTypeGraphUtilsTest, CheckMemoryTypeBadFT) {
   AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
   // full type information for the whole node, not for one tensor / one output
   const FullTypeDef &ft = node->def().experimental_type();
-  Status status = full_type::CheckMemoryType(true, ft);
+  absl::Status status = full_type::CheckMemoryType(true, ft);
   EXPECT_FALSE(status.ok());
 }
 
@@ -358,7 +360,7 @@ TEST_F(FullTypeGraphUtilsTest, CheckMemoryTypeWrongFT) {
   AddArgFullType(node, TFT_SHAPE_TENSOR, TFT_INT32);
   const FullTypeDef &ft = node->def().experimental_type().args()[0];
   // use_host_memory=false does not match TFT_SHAPE_TENSOR
-  Status status = full_type::CheckMemoryType(false, ft);
+  absl::Status status = full_type::CheckMemoryType(false, ft);
   EXPECT_FALSE(status.ok());
 }
 

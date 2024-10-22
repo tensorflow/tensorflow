@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -830,6 +831,367 @@ XLA_TEST_F(CollectivePipelineParallelismTest,
                         /*run_hlo_passes=*/true));
   EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected_output, results[3],
                                            ErrorSpec{1e-5, 1e-5}));
+}
+
+XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test, num_partitions=4
+
+    while_condidtion {
+      param = (u32[], f32[2,2]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c3 = u32[] constant(3)
+      ROOT cmp = pred[] compare(i, c3), direction=LT
+    }
+
+    while_body {
+      param = (u32[], f32[2,2]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[2,2] get-tuple-element(param), index=1
+
+      // Send data from GPU i to i+1. Break cycle to avoid deadlock.
+      after_all = token[] after-all()
+      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
+      recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data_ = f32[2,2] get-tuple-element(recv_done), index=0
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], f32[2,2]) tuple(i_, data_)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      init = (u32[], f32[2,2]) tuple(i, data)
+      while = (u32[], f32[2,2]) while(init), condition=while_condidtion,
+          body=while_body
+      ROOT data_ = f32[2,2] get-tuple-element(while), index=1
+    }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  std::unique_ptr<VerifiedHloModule> module;
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  // Create input data.
+  std::vector<Literal> literals;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    float val = i + 1;
+    literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
+  }
+  std::vector<std::vector<Literal *>> inputs;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    inputs.push_back({&literals[i]});
+  }
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  // Execute and check results.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), inputs,
+                        /*num_replicas=*/kNumPartitions,
+                        /*run_hlo_passes=*/false, &device_assignment));
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
+  LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
+}
+
+XLA_TEST_F(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test, num_partitions=2
+
+    // 1 iteration so that we can test on 2 GPUs.
+    while_condidtion {
+      param = (u32[], f32[2,2]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c1 = u32[] constant(1)
+      ROOT cmp = pred[] compare(i, c1), direction=LT
+    }
+
+    while_body {
+      param = (u32[], f32[2,2]) parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      data = f32[2,2] get-tuple-element(param), index=1
+
+      // Just send from GPU 0 to GPU 1 to avoid deadlock.
+      after_all = token[] after-all()
+      send_ctx = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data_ = f32[2,2] get-tuple-element(recv_done), index=0
+
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], f32[2,2]) tuple(i_, data_)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      init = (u32[], f32[2,2]) tuple(i, data)
+      while = (u32[], f32[2,2]) while(init), condition=while_condidtion,
+          body=while_body
+      ROOT data_ = f32[2,2] get-tuple-element(while), index=1
+    }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  std::unique_ptr<VerifiedHloModule> module;
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  // Create input data.
+  std::vector<Literal> literals;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    float val = i + 1;
+    literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
+  }
+  std::vector<std::vector<Literal *>> inputs;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    inputs.push_back({&literals[i]});
+  }
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  // Execute and check results.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), inputs,
+                        /*num_replicas=*/kNumPartitions,
+                        /*run_hlo_passes=*/false, &device_assignment));
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[1]);
+}
+
+XLA_TEST_F(CollectivePipelineParallelismTest,
+           PartiallyPipelinedAsyncSendRecvLoop) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test, num_partitions=4
+
+    while_condidtion {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c2 = u32[] constant(2)
+      ROOT cmp = pred[] compare(i, c2), direction=LT
+    }
+
+    while_body {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      send_ctx = get-tuple-element(param), index=1
+      recv_ctx = get-tuple-element(param), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data = get-tuple-element(recv_done), index=0
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], (f32[2,2], u32[], token[]),
+          (f32[2,2], u32[], token[])) tuple(i_, send_ctx_, recv_ctx_)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={
+          _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}, channel_id=2
+      init = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          tuple(i, send_ctx_, recv_ctx_)
+      while = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          while(init), condition=while_condidtion, body=while_body
+      send_ctx = get-tuple-element(while), index=1
+      recv_ctx = get-tuple-element(while), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      ROOT data_ = get-tuple-element(recv_done), index=0
+    }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  std::unique_ptr<VerifiedHloModule> module;
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  // Create input data.
+  std::vector<Literal> literals;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    float val = i + 1;
+    literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
+  }
+  std::vector<std::vector<Literal *>> inputs;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    inputs.push_back({&literals[i]});
+  }
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  // Execute and check results.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), inputs,
+                        /*num_replicas=*/kNumPartitions,
+                        /*run_hlo_passes=*/false, &device_assignment));
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[2]);
+  LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
+}
+
+XLA_TEST_F(CollectivePipelineParallelismTest,
+           PartiallyPipelinedAsyncSendRecvLoop2Devices) {
+  const absl::string_view kModuleStr = R"(
+    HloModule test, num_partitions=2
+
+    while_condidtion {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c2 = u32[] constant(2)
+      ROOT cmp = pred[] compare(i, c2), direction=LT
+    }
+
+    while_body {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      send_ctx = get-tuple-element(param), index=1
+      recv_ctx = get-tuple-element(param), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data = get-tuple-element(recv_done), index=0
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          channel_id=2
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], (f32[2,2], u32[], token[]),
+          (f32[2,2], u32[], token[])) tuple(i_, send_ctx_, recv_ctx_)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}}, 
+          channel_id=2
+      init = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          tuple(i, send_ctx_, recv_ctx_)
+      while = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          while(init), condition=while_condidtion, body=while_body
+      send_ctx = get-tuple-element(while), index=1
+      recv_ctx = get-tuple-element(while), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      ROOT data_ = get-tuple-element(recv_done), index=0
+    }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  const int64_t kNumPartitions = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
+
+  // Parse HLO module.
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  std::unique_ptr<VerifiedHloModule> module;
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  // Create input data.
+  std::vector<Literal> literals;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    float val = i + 1;
+    literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
+  }
+  std::vector<std::vector<Literal *>> inputs;
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    inputs.push_back({&literals[i]});
+  }
+
+  // Create device assignment running across partitions.
+  DeviceAssignment device_assignment(/*replica_count=*/kNumReplicas,
+                                     /*computation_count=*/kNumPartitions);
+  for (int64_t i = 0; i < kNumPartitions; ++i) {
+    device_assignment(0, i) = i;
+  }
+
+  // Execute and check results.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), inputs,
+                        /*num_replicas=*/kNumPartitions,
+                        /*run_hlo_passes=*/false, &device_assignment));
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[0]);
+  LiteralTestUtil::ExpectR2Equal<float>({{0, 0}, {0, 0}}, results[1]);
 }
 
 }  // namespace

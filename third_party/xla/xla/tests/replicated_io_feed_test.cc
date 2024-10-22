@@ -81,7 +81,7 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   opts.use_threads = true;
 
   TF_ASSERT_OK(
-      test_runner_.ExecuteReplicated(executable.get(), opts, &device_assn)
+      ExecuteReplicatedWithHloRunner(executable.get(), opts, &device_assn)
           .status());
 
   // Verify that each infeed and outfeed is routed correctly. Each replica

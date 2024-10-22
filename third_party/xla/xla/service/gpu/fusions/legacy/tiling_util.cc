@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
@@ -333,9 +336,8 @@ IndexingMap GetIndexingMapForTiling(AffineMap block_offsets,
        llvm::zip(block_offsets.getResults(), thread_offsets.getResults())) {
     offsets.push_back(block + thread);
   }
-  std::vector<DimVar> dimension_ranges{
-      {{0, threads_per_block - 1}}, {}, {}, {{0, num_blocks - 1}}, {}, {},
-  };
+  std::vector<IndexingMap::Variable> dimension_ranges =
+      DimVarsFromGPUGrid({threads_per_block, 1, 1, num_blocks, 1, 1});
   auto affine_map = mlir::AffineMap::get(block_offsets.getNumDims(),
                                          block_offsets.getNumSymbols(), offsets,
                                          mlir_context);

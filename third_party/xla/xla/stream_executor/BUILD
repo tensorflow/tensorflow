@@ -31,6 +31,7 @@ bzl_library(
     srcs = ["build_defs.bzl"],
     deps = [
         "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_tsl//tsl/platform:rules_cc_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
     ] + stream_executor_build_defs_bzl_deps(),
@@ -84,6 +85,7 @@ cc_library(
         ":stream_executor_api_headers",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -104,7 +106,6 @@ cc_library(
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
-        "//xla/stream_executor/platform",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_type",
         "//xla/tsl/lib/gtl:int_type",
@@ -150,6 +151,11 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "activate_context",
+    hdrs = ["activate_context.h"],
+)
+
+cc_library(
     name = "device_description",
     srcs = ["device_description.cc"],
     hdrs = ["device_description.h"],
@@ -187,6 +193,7 @@ cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -255,6 +262,7 @@ cc_library(
     testonly = True,
     hdrs = ["mock_stream_executor.h"],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -411,10 +419,12 @@ cc_library(
         ":data_type",
         ":device_memory",
         ":numeric_options",
-        "//xla/stream_executor/platform",
+        ":scratch_allocator",
+        ":stream",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
@@ -430,7 +440,9 @@ cc_library(
         ":device_description_proto_cc",
         ":device_memory",
         ":numeric_options",
-        "//xla/stream_executor/platform",
+        ":scratch_allocator",
+        ":stream",
+        "//xla:util",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -455,7 +467,6 @@ cc_library(
     name = "fft",
     hdrs = ["fft.h"],
     deps = [
-        "//xla/stream_executor/platform",
     ],
 )
 
@@ -491,6 +502,7 @@ cc_library(
         "stream_executor.h",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -727,6 +739,7 @@ cc_library(
     srcs = ["stream_executor_common.cc"],
     hdrs = ["stream_executor_common.h"],
     deps = [
+        ":activate_context",
         ":device_description",
         ":platform",
         ":stream_executor_h",

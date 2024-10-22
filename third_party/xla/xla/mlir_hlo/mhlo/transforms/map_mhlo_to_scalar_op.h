@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 #define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
+#include <cstdint>
 #include <optional>
 #include <type_traits>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "mhlo/IR/hlo_ops.h"
+#include "mhlo/transforms/transformation_helpers.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -467,119 +469,37 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
   return nullptr;
 }
 
+static bool HasDefaultMantissaBits(Type type, uint32_t mantissa_bits) {
+  if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
+    return float_ty.getFPMantissaWidth() == mantissa_bits;
+  }
+  return false;
+}
+
+static bool HasDefaultExponentBits(Type type, uint32_t exponent_bits) {
+  if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
+    return float_ty.getWidth() - float_ty.getFPMantissaWidth() - 1 ==
+           exponent_bits;
+  }
+  return false;
+}
+
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
-    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> argTypes,
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
     mhlo::ReducePrecisionOp::Adaptor adaptor, OpBuilder* builder) {
-  using llvm::APInt;
-  mlir::ImplicitLocOpBuilder b(loc, *builder);
-
-  // Integer and float types for casting and constant generation.
-  auto floatType =
-      mlir::cast<FloatType>(getElementTypeOrSelf(argTypes.front()));
-  int64_t nbits = floatType.getWidth();
-  auto intType = mlir::IntegerType::get(loc.getContext(), nbits);
-
-  Value xAsInt = b.create<arith::BitcastOp>(intType, adaptor.getOperand());
-
-  // SignificandWidth includes the implicit extra bit.
-  auto srcMantissaBits = floatType.getFPMantissaWidth() - 1;
-  int srcExponentBits = nbits - 1 - srcMantissaBits;
-
-  // Clear the sign bit, it does not participate in rounding and we will restore
-  // it later.
-  APInt signBitMask(nbits, 1);
-  signBitMask <<= nbits - 1;
-
-  APInt expBitsMask(nbits, 1);
-  expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
-
-  auto createConstant = [&](const APInt& v) {
-    return b.create<arith::ConstantIntOp>(v.getZExtValue(), intType)
-        .getResult();
-  };
-
-  Value xAbsBits =
-      b.create<arith::AndIOp>(xAsInt, createConstant(~signBitMask));
-  Value xIsNan = b.create<arith::CmpIOp>(arith::CmpIPredicate::ugt, xAbsBits,
-                                         createConstant(expBitsMask));
-
-  int destMantissaBits = adaptor.getMantissaBits();
-  if (destMantissaBits < static_cast<int>(srcMantissaBits)) {
-    // Last remaining mantissa bit.
-    APInt lastMantissaBitMask(nbits, 1);
-    lastMantissaBitMask <<= srcMantissaBits - destMantissaBits;
-
-    // Compute rounding bias for round-to-nearest with ties to even.  This is
-    // equal to a base value of 0111... plus one bit if the last remaining
-    // mantissa bit is 1.
-    APInt baseRoundingBias = lastMantissaBitMask.lshr(1) - 1;
-
-    Value mantissaDiff = b.create<arith::ConstantIntOp>(
-        srcMantissaBits - destMantissaBits, intType);
-    Value highestMantissaMaskVal = createConstant(lastMantissaBitMask);
-    Value baseRoundingBiasVal = createConstant(baseRoundingBias);
-    Value xLastMantissaBit = b.create<arith::ShRUIOp>(
-        b.create<arith::AndIOp>(xAsInt, highestMantissaMaskVal), mantissaDiff);
-    Value xRoundingBias =
-        b.create<arith::AddIOp>(xLastMantissaBit, baseRoundingBiasVal);
-
-    // Add rounding bias, and mask out truncated bits.  Note that the case
-    // where adding the rounding bias overflows into the exponent bits is
-    // correct; the non-masked mantissa bits will all be zero, and the
-    // exponent will be incremented by one.
-    APInt truncationMask = ~(lastMantissaBitMask - 1);
-    Value xRounded = b.create<arith::AddIOp>(xAsInt, xRoundingBias);
-    xAsInt = b.create<arith::AndIOp>(xRounded, createConstant(truncationMask));
+  // TODO(b/373787166): This should actually be a folder, but JAX is adding
+  // no-op ReducePrecision ops to workaround an issue with some simplifications
+  // allowed with the xla_allow_excess_precision flag. We would already fold
+  // these ops away before they reach HLO. Folding them away at emission time
+  // keeps the workaround intact.
+  if (HasDefaultExponentBits(resultTypes[0], adaptor.getExponentBits()) &&
+      HasDefaultMantissaBits(resultTypes[0], adaptor.getMantissaBits())) {
+    return adaptor.getOperand();
   }
-
-  int destExponentBits = adaptor.getExponentBits();
-  if (destExponentBits < srcExponentBits) {
-    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
-    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
-    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
-    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
-    // exponent (corresponding to 0.0f).
-    //
-    // Thus, the f32 exponent corresponding to the highest non-infinite
-    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
-    // exponent corresponding to the lowest exponent for a bit size of n is
-    // (2^7-1) - 2^(n-1)-1.
-    //
-    // Note that we have already checked that exponents_bits >= 1.
-    APInt exponentBias(nbits, 1);
-    exponentBias = (exponentBias << (srcExponentBits - 1)) - 1;
-
-    APInt reducedExponentBias(nbits, 1);
-    reducedExponentBias = (reducedExponentBias << (destExponentBits - 1)) - 1;
-
-    APInt reducedMaxExponent = exponentBias + reducedExponentBias;
-    APInt reducedMinExponent = exponentBias - reducedExponentBias;
-
-    // Do we overflow or underflow?
-    Value xExponent =
-        b.create<arith::AndIOp>(xAsInt, createConstant(expBitsMask));
-    Value xOverflows = b.create<arith::CmpIOp>(
-        arith::CmpIPredicate::ugt, xExponent,
-        createConstant(reducedMaxExponent << srcMantissaBits));
-    Value xUnderflows = b.create<arith::CmpIOp>(
-        arith::CmpIPredicate::ule, xExponent,
-        createConstant(reducedMinExponent << srcMantissaBits));
-
-    // Compute appropriately-signed values of zero and infinity.
-    Value xSignedZero =
-        b.create<arith::AndIOp>(xAsInt, createConstant(signBitMask));
-    Value xSignedInf =
-        b.create<arith::OrIOp>(xSignedZero, createConstant(expBitsMask));
-
-    // Force to zero or infinity if overflow or underflow.  (Note that this
-    // truncates all denormal values to zero, rather than rounding them.)
-    xAsInt = b.create<arith::SelectOp>(xOverflows, xSignedInf, xAsInt);
-    xAsInt = b.create<arith::SelectOp>(xUnderflows, xSignedZero, xAsInt);
-  }
-
-  Value result = b.create<arith::BitcastOp>(floatType, xAsInt);
-  return b.create<arith::SelectOp>(xIsNan, adaptor.getOperand(), result);
+  return reducePrecision<arith::BitcastOp>(loc, adaptor.getOperand(),
+                                           adaptor.getExponentBits(),
+                                           adaptor.getMantissaBits(), builder);
 }
 
 template <>

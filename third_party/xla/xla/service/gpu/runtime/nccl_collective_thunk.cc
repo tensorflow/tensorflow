@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -302,7 +303,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-absl::Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
+absl::Status RegisterBufferOnce(NcclApi* nccl_api, se::StreamExecutor* executor,
                                 NcclApi::NcclCommHandle comm,
                                 se::DeviceMemoryBase buffer) {
   // Keep track of which communicators we have registered for already.
@@ -321,39 +322,34 @@ absl::Status RegisterBufferOnce(NcclApi* nccl_api, int device_ordinal,
   // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
   // get the base address of buffer. We will use the base address to keep track
   // of which chunks we have registered.
-  void* base_ptr;
-  size_t base_size;
-#ifdef GOOGLE_CUDA
-  TF_RETURN_IF_ERROR(se::gpu::GpuDriver::GetPointerAddressRange(
-      reinterpret_cast<se::gpu::GpuDevicePtr>(buffer.opaque()),
-      reinterpret_cast<se::gpu::GpuDevicePtr*>(&base_ptr), &base_size));
-#else   // GOOGLE_CUDA
-  base_ptr = nullptr;
-  base_size = 0;
-#endif  // GOOGLE_CUDA
+  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase base_buffer,
+                      executor->GetMemoryRange(buffer));
 
   absl::MutexLock lock(&all_registered.mu);
-  if (!all_registered.records.contains({device_ordinal, comm, base_ptr})) {
+  if (!all_registered.records.contains(
+          {executor->device_ordinal(), comm, base_buffer.opaque()})) {
     // ncclCommRegister will internally get and use the base address/size of the
     // address we provide.
     TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
                         nccl_api->RegisterBuffer(comm, buffer));
     all_registered.handles.push_back(handle);
-    all_registered.records.insert({device_ordinal, comm, base_ptr});
+    all_registered.records.insert(
+        {executor->device_ordinal(), comm, base_buffer.opaque()});
   }
   return absl::OkStatus();
 }
 
-absl::Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
+absl::Status MaybeRegisterBuffers(NcclApi* nccl_api,
+                                  se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   NcclApi::NcclCommHandle comm) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, device_ordinal, comm,
+      TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, executor, comm,
                                             buffers[i].source_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, device_ordinal, comm,
+      TF_RETURN_IF_ERROR(RegisterBufferOnce(nccl_api, executor, comm,
                                             buffers[i].destination_buffer));
     }
   }

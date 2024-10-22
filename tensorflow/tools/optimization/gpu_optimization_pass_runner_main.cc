@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-Status RealMain(int argc, char** argv) {
+absl::Status RealMain(int argc, char** argv) {
   string input_file_path;
   string output_file_path;
   string optimization_pass;

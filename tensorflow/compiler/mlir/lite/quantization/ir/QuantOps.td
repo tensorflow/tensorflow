@@ -23,9 +23,40 @@ limitations under the License.
 #define QUANT_FORK_OPS
 
 include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOpsBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
+include "mlir/Dialect/Quant/IR/QuantBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+
+class quant_TypedPrimitiveOrContainer<Type etype> :
+    Type<Or<[etype.predicate,
+                TensorOf<[etype]>.predicate,
+                VectorOf<[etype]>.predicate]>,
+         "primitive/tensor/vector of " # etype.summary>;
+
+// A primitive type that can represent a real value. This is either a
+// floating point value or a quantized type.
+def quant_RealPrimitiveType :
+    Type<Or<[AnyFloat.predicate, quant_QuantizedType.predicate]>,
+    "real valued primitive (float or quantized type)">;
+
+// A primitive type that can represent a storage value. This is either an
+// integer or quantized type.
+def quant_StoragePrimitiveType :
+    Type<Or<[AnySignlessInteger.predicate, quant_QuantizedType.predicate]>,
+    "quantized storage primitive (integer or quantized type)">;
+
+// A primitive or container of RealPrimitiveType.
+def quant_RealValueType :
+    quant_TypedPrimitiveOrContainer<quant_RealPrimitiveType>;
+
+// A primitive or container of StoragePrimitiveType.
+def quant_StorageValueType :
+    quant_TypedPrimitiveOrContainer<quant_StoragePrimitiveType>;
+
+// Either a real valued or storage primitive or container type.
+def quant_RealOrStorageValueType :
+    Type<Or<[quant_RealValueType.predicate, quant_StorageValueType.predicate]>,
+    "real valued or storage primitive or container type">;
 
 //===----------------------------------------------------------------------===//
 // Base classes

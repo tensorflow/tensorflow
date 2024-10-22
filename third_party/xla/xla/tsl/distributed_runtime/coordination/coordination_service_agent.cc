@@ -69,7 +69,6 @@ constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
 constexpr absl::Duration kDefaultHeartbeatTimeout = absl::Seconds(10);
 constexpr absl::Duration kDefaultShutdownTimeout = absl::Seconds(10);
 constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
-constexpr char kErrorPollingThread[] = "CoordinationServiceErrorPolling";
 
 class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
  public:
@@ -146,10 +145,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::Status ShutdownInternal();
   // Starts sending heartbeats to the coordination service.
   void StartSendingHeartbeats();
-  // Use long polling to get error from the coordination service. This function
-  // will block until an error is received or the agent is shutdown or reset.
-  absl::Status PollForError();
-  std::shared_ptr<CallOptions> PollForErrorAsync(StatusCallback done);
+  // Use long polling to get error from the coordination service.
+  void PollForErrorAsync(StatusCallback done);
 
   // Starts polling for error from the coordination service.
   void StartPollingForError();
@@ -180,7 +177,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::CondVar heartbeat_thread_cv_;
   bool shutting_down_ TF_GUARDED_BY(heartbeat_thread_shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
-  std::unique_ptr<Thread> error_polling_thread_;
   // Must outlive coordination client which may need to access it within
   // GetKeyValueAsync() callbacks.
   CancellationManager cancellation_manager_;
@@ -259,7 +255,6 @@ void CoordinationServiceAgentImpl::StopHeartbeat() {
 void CoordinationServiceAgentImpl::StopErrorPolling() {
   // Cancel pending error polling RPC call.
   error_polling_cancellation_manager_->StartCancel();
-  error_polling_thread_ = nullptr;
 }
 
 void CoordinationServiceAgentImpl::ResetCancellationManager() {
@@ -298,7 +293,7 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
     call_opts.SetTimeout(absl::ToInt64Milliseconds(deadline - absl::Now()));
     absl::Notification n;
     leader_client_->RegisterTaskAsync(
-        &call_opts, &request, &response, [&](absl::Status s) {
+        &call_opts, &request, &response, [&](const absl::Status& s) {
           if (s.ok()) {
             leader_incarnation_ = response.leader_incarnation();
             {
@@ -343,11 +338,7 @@ absl::Status CoordinationServiceAgentImpl::Connect() {
       absl::bind_front(&CoordinationServiceAgentImpl::StartSendingHeartbeats,
                        this)));
   if (configs_.poll_for_error_from_service_at_startup()) {
-    // Start a thread to poll for error from the coordination service.
-    error_polling_thread_.reset(env_->StartThread(
-        ThreadOptions(), kErrorPollingThread,
-        absl::bind_front(&CoordinationServiceAgentImpl::StartPollingForError,
-                         this)));
+    StartPollingForError();
   }
   return absl::OkStatus();
 }
@@ -371,7 +362,7 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
     // transient network failures.
     VLOG(10) << "HeartbeatRequest: " << request.DebugString();
     leader_client_->HeartbeatAsync(&call_opts, &request, &response,
-                                   [&](absl::Status s) {
+                                   [&](const absl::Status& s) {
                                      status = s;
                                      n.Notify();
                                    });
@@ -412,44 +403,33 @@ void CoordinationServiceAgentImpl::StartSendingHeartbeats() {
 }
 
 void CoordinationServiceAgentImpl::StartPollingForError() {
-  LOG(INFO) << "Polling for error from coordination service. This thread will "
-               "run until an error is encountered or the agent is shutdown.";
-  absl::Status status = PollForError();
-  CHECK(!status.ok()) << "PollForError returned OK status. Should "
-                         "always return an error.";
-  if (absl::IsCancelled(status)) {
-    LOG(INFO) << "Cancelling error polling because the service or the agent is "
-                 "shutting down.";
-    // Return early and there is no need to set error.
-    return;
-  }
-  LOG(ERROR) << "An error is returned from coordination service (this can be "
-                "an error from this or another task).";
-  SetError(status);
-}
-
-absl::Status CoordinationServiceAgentImpl::PollForError() {
-  absl::Status status = absl::OkStatus();
-  absl::Notification n;
-  PollForErrorAsync([&](absl::Status s) {
-    status = s;
-    n.Notify();
+  LOG(INFO) << "Polling for error from coordination service. This is a "
+               "long-running RPC that will return only if an error is "
+               "encountered or cancelled (e.g. due to shutdown).";
+  PollForErrorAsync([&](const absl::Status& status) {
+    CHECK(!status.ok()) << "PollForError returned OK status. Should "
+                           "always return an error.";
+    if (absl::IsCancelled(status)) {
+      LOG(INFO)
+          << "Cancelling error polling because the service or the agent is "
+             "shutting down.";
+      // Return early and there is no need to set error.
+      return;
+    }
+    LOG(ERROR) << "Polled an error from coordination service (this can be "
+                  "an error from this or another task).";
+    SetError(status);
   });
-  n.WaitForNotification();
-  CHECK(!status.ok())
-      << "PollForError returned OK status. Should always return an error.";
-  return status;
 }
 
-std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::PollForErrorAsync(
-    StatusCallback done) {
+void CoordinationServiceAgentImpl::PollForErrorAsync(StatusCallback done) {
   auto call_opts = std::make_shared<CallOptions>();
 
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {
     done(agent_running_status);
-    return call_opts;
+    return;
   }
   auto request = std::make_shared<PollForErrorRequest>();
   auto response = std::make_shared<PollForErrorResponse>();
@@ -463,7 +443,7 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::PollForErrorAsync(
           token, [call_opts]() { call_opts->StartCancel(); });
   if (already_cancelled) {
     done(absl::CancelledError("PollForErrorAsync() was cancelled."));
-    return call_opts;
+    return;
   }
 
   leader_client_->PollForErrorAsync(
@@ -476,7 +456,6 @@ std::shared_ptr<CallOptions> CoordinationServiceAgentImpl::PollForErrorAsync(
         cm->TryDeregisterCallback(token);
         done(s);
       });
-  return call_opts;
 }
 
 absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
@@ -493,7 +472,7 @@ absl::Status CoordinationServiceAgentImpl::WaitForAllTasks(
   absl::Status status;
   absl::Notification n;
   leader_client_->WaitForAllTasksAsync(&request, &response,
-                                       [&](absl::Status s) {
+                                       [&](const absl::Status& s) {
                                          status = s;
                                          n.Notify();
                                        });
@@ -569,7 +548,7 @@ absl::Status CoordinationServiceAgentImpl::ReportError(
 
   absl::Notification n;
   leader_client_->ReportErrorToServiceAsync(
-      &request, &response, [&](absl::Status s) {
+      &request, &response, [&](const absl::Status& s) {
         VLOG(5) << "ReportErrorToServiceResponse: " << s;
         if (!s.ok()) {
           LOG(ERROR)
@@ -612,7 +591,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
 
     absl::Notification n;
     leader_client_->ShutdownTaskAsync(&call_opts, &request, &response,
-                                      [&status, &n](absl::Status s) {
+                                      [&status, &n](const absl::Status& s) {
                                         status = s;
                                         n.Notify();
                                       });
@@ -672,7 +651,7 @@ absl::Status CoordinationServiceAgentImpl::Reset() {
   absl::Status status;
   absl::Notification n;
   leader_client_->ResetTaskAsync(&request, &response,
-                                 [&status, &n](absl::Status s) {
+                                 [&status, &n](const absl::Status& s) {
                                    status = s;
                                    n.Notify();
                                  });
@@ -837,10 +816,11 @@ absl::Status CoordinationServiceAgentImpl::InsertKeyValue(
 
   absl::Status status;
   absl::Notification n;
-  leader_client_->InsertKeyValueAsync(&request, &response, [&](absl::Status s) {
-    status = s;
-    n.Notify();
-  });
+  leader_client_->InsertKeyValueAsync(&request, &response,
+                                      [&](const absl::Status& s) {
+                                        status = s;
+                                        n.Notify();
+                                      });
   n.WaitForNotification();
   VLOG(3) << "InsertKeyValueResponse: " << status;
   return status;
@@ -856,10 +836,11 @@ absl::Status CoordinationServiceAgentImpl::DeleteKeyValue(
 
   absl::Status status;
   absl::Notification n;
-  leader_client_->DeleteKeyValueAsync(&request, &response, [&](absl::Status s) {
-    status = s;
-    n.Notify();
-  });
+  leader_client_->DeleteKeyValueAsync(&request, &response,
+                                      [&](const absl::Status& s) {
+                                        status = s;
+                                        n.Notify();
+                                      });
   n.WaitForNotification();
   VLOG(3) << "DeleteKeyValueResponse " << status;
   return absl::OkStatus();
@@ -889,7 +870,6 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
   absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
-  LOG(ERROR) << "Coordination agent is set to ERROR: " << trimmed_error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = trimmed_error;
   error_fn_(trimmed_error);
@@ -906,7 +886,7 @@ absl::Status CoordinationServiceAgentImpl::WaitAtBarrier(
     const std::vector<CoordinatedTask>& tasks) {
   absl::Status status;
   absl::Notification n;
-  WaitAtBarrierAsync(barrier_id, timeout, tasks, [&](absl::Status s) {
+  WaitAtBarrierAsync(barrier_id, timeout, tasks, [&](const absl::Status& s) {
     status = s;
     n.Notify();
   });

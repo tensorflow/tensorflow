@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape.h"
 #include "tsl/platform/statusor.h"

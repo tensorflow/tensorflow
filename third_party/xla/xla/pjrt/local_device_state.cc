@@ -27,13 +27,13 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -85,7 +85,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       stream = executor->CreateStream().value();
     }
     if (stream) {
-      stream->set_name(name);
+      stream->SetName(name);
     }
     return stream;
   };
@@ -172,7 +172,8 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
-      new_stream->set_name(absl::StrFormat("Callback for %s", stream->name()));
+      new_stream->SetName(
+          absl::StrFormat("Callback for %s", stream->GetName()));
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
@@ -261,7 +262,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
 
   // The stream pool is empty, create a new stream.
   auto stream = compute_stream_->parent()->CreateStream().value();
-  stream->set_name("Pool stream");
+  stream->SetName("Pool stream");
   return stream;
 }
 

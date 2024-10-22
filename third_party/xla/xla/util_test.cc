@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "ml_dtypes/include/float8.h"
 #include "xla/maybe_owning.h"
 #include "xla/test.h"
 #include "xla/types.h"
@@ -129,6 +130,18 @@ TEST(UtilTest, RoundTripFpToString) {
             "nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e5m2>(
                 true, QuietNanWithoutPayload<tsl::float8_e5m2>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e4m3>(
+                false, QuietNanWithoutPayload<tsl::float8_e4m3>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e4m3>(
+                true, QuietNanWithoutPayload<tsl::float8_e4m3>())),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e3m4>(
+                false, QuietNanWithoutPayload<tsl::float8_e3m4>())),
+            "nan");
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tsl::float8_e3m4>(
+                true, QuietNanWithoutPayload<tsl::float8_e3m4>())),
             "-nan");
   EXPECT_EQ(
       RoundTripFpToString(std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
@@ -237,6 +250,18 @@ TEST(UtilTest, TotalOrder_F8E5M2) {
   }
 }
 
+TEST(UtilTest, TotalOrder_F8E4M3) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e4m3 x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e4m3 y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
 TEST(UtilTest, TotalOrder_F8E4M3FN) {
   for (int a = 0; a < 256; ++a) {
     tsl::float8_e4m3fn x =
@@ -282,6 +307,18 @@ TEST(UtilTest, TotalOrder_F8E5M2FNUZ) {
     for (int b = 0; b < 256; ++b) {
       tsl::float8_e5m2fnuz y = Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(
           static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
+TEST(UtilTest, TotalOrder_F8E3M4) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e3m4 x =
+        Eigen::numext::bit_cast<tsl::float8_e3m4>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e3m4 y =
+          Eigen::numext::bit_cast<tsl::float8_e3m4>(static_cast<uint8_t>(b));
       TotalOrderHelper(x, y);
     }
   }

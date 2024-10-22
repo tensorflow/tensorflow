@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -31,8 +31,10 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -45,6 +47,8 @@ namespace {
 
 class CopyOpTest : public HloTestBase {
  protected:
+  CopyOpTest() : platform_(*PlatformUtil::GetDefaultPlatform()) {}
+
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
     auto constant =
@@ -81,6 +85,11 @@ class CopyOpTest : public HloTestBase {
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
   void TestCopyConstantLayoutR4(size_t n1, size_t n2, size_t n3, size_t n4,
                                 absl::Span<const int64_t> permutation);
+
+  se::Platform* platform() const { return platform_; }
+
+ private:
+  se::Platform* platform_;
 };
 
 XLA_TEST_F(CopyOpTest, CopyR0Bool) {
@@ -97,7 +106,7 @@ XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
 
 XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
-  if (backend().platform()->Name() == "Host") {
+  if (platform()->Name() == "Host") {
     GTEST_SKIP();
   }
   Shape bounded_shape =
@@ -110,7 +119,7 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
 
 XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
-  if (backend().platform()->Name() == "Host") {
+  if (platform()->Name() == "Host") {
     GTEST_SKIP();
   }
   Shape bounded_shape =
@@ -124,7 +133,7 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
 
 XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
-  if (backend().platform()->Name() == "Host") {
+  if (platform()->Name() == "Host") {
     GTEST_SKIP();
   }
   Shape bounded_shape =
@@ -138,7 +147,7 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
 
 XLA_TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   // TODO(vsytch): CPU emitter doesn't handle dynamic shapes.
-  if (backend().platform()->Name() == "Host") {
+  if (platform()->Name() == "Host") {
     GTEST_SKIP();
   }
   Shape bounded_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {512}, {true});

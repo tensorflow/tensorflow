@@ -148,8 +148,9 @@ namespace {
 
 // Ensures indices, values, shape are all of the proper ranks and are
 // compatible.
-Status ValidateSparseTensorShape(const Tensor& indices, const Tensor& values,
-                                 const Tensor& shape) {
+absl::Status ValidateSparseTensorShape(const Tensor& indices,
+                                       const Tensor& values,
+                                       const Tensor& shape) {
   // Indices must be a matrix, and values/shape must be a vector.
   if (!TensorShapeUtils::IsMatrix(indices.shape())) {
     return errors::InvalidArgument("Sparse indices must be rank 2 but is rank ",
@@ -196,8 +197,8 @@ string CreateIndexString(const IndexTensor& indices, int64_t row) {
 
 // Ensures all sparse indices are within correct bounds.
 template <typename Tindices>
-Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
-                                            const Tensor& shape) {
+absl::Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
+                                                  const Tensor& shape) {
   // Ensure no index is out-of-bounds.
   const auto indices_mat = indices.flat_inner_dims<Tindices>();
   const auto shape_vec = shape.flat<Tindices>();
@@ -221,8 +222,8 @@ Status ValidateSparseTensorIndicesUnordered(const Tensor& indices,
 // Ensures all sparse indices are within correct bounds and are
 // lexicographically ordered.
 template <typename Tindices>
-Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
-                                          const Tensor& shape) {
+absl::Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
+                                                const Tensor& shape) {
   const auto indices_mat = indices.flat_inner_dims<Tindices>();
   const auto shape_vec = shape.flat<Tindices>();
   int64_t nnz = indices.dim_size(0);
@@ -288,9 +289,9 @@ Status ValidateSparseTensorIndicesOrdered(const Tensor& indices,
 }  // namespace
 
 template <typename Tindices>
-Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
-                            const Tensor& shape,
-                            IndexValidation index_validation) {
+absl::Status ValidateSparseTensor(const Tensor& indices, const Tensor& values,
+                                  const Tensor& shape,
+                                  IndexValidation index_validation) {
   TF_RETURN_IF_ERROR(ValidateSparseTensorShape(indices, values, shape));
   switch (index_validation) {
     case IndexValidation::kOrdered:

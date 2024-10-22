@@ -25,11 +25,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -653,6 +653,35 @@ ENTRY main {
   auto reduce = m->entry_computation()->root_instruction();
   EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
             LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
+}
+
+TEST_F(LayoutAssignmentTest, AutoLayoutE4M3ContractingMinorFirst) {
+  const char* hlo = R"(
+
+  HloModule jit_dot_general_f8e4m3fn
+
+  ENTRY main {
+    p0 = f8e4m3fn[128,5120] parameter(0)
+    p1 = f8e4m3fn[5120,10240] parameter(1)
+    ROOT dot = f32[128,10240] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Dot(m::Parameter(0).WithShape(F8E4M3FN, {128, 5120}, {1, 0}),
+                 m::Parameter(1).WithShape(F8E4M3FN, {5120, 10240}, {0, 1}))
+              .WithShape(F32, {128, 10240}, {1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {

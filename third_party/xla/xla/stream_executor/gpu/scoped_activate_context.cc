@@ -17,8 +17,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
@@ -32,12 +30,6 @@ thread_local struct ThreadLocalData {
 } tls_data = {};
 
 }  // namespace
-
-ScopedActivateContext::ScopedActivateContext(GpuExecutor* gpu_executor)
-    : ScopedActivateContext(gpu_executor->gpu_context()) {}
-
-ScopedActivateContext::ScopedActivateContext(StreamExecutor* executor)
-    : ScopedActivateContext(ExtractGpuExecutor(executor)) {}
 
 ScopedActivateContext::ScopedActivateContext(gpu::Context* gpu_context) {
   auto* tls = &tls_data;

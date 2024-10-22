@@ -29,7 +29,7 @@ func.func @sharding_custom_call_with_unspecified_dims(%arg0: tensor<8x8xf32> {mh
 func.func @manual(%arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
                   %arg1: tensor<4x8xf32> {mhlo.sharding = "{devices=[4,1,2]<=[8] last_tile_dim_replicate}"}) -> (tensor<8x8xf32>) {
   // CHECK:        sdy.manual_computation(%arg0, %arg1)
-  // CHECK-SAME:     in_shardings=[<@mesh, [{"axis_0", "axis_1"}, {}]>, <@mesh, [{"axis_0"}, {}], replicated={"axis_1"}>]
+  // CHECK-SAME:     in_shardings=[<@mesh, [{"axis_0", "axis_1"}, {}]>, <@mesh, [{"axis_0"}, {}]>]
   // CHECK-SAME:     out_shardings=[<@mesh, [{"axis_0", "axis_1"}, {}]>]
   // CHECK-SAME:     manual_axes={"axis_0", "axis_1"} (%arg2: tensor<1x8xf32>, %arg3: tensor<1x8xf32>) {
   // CHECK-LABEL:  mhlo.add

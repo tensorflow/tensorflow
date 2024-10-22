@@ -35,6 +35,7 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/default/posix_file_system.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/load_library.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/ram_file_system.h"
 #include "tsl/platform/strcat.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 

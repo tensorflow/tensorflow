@@ -124,8 +124,8 @@ func.func @predicated_extract(
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false">
-#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false">
+#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1]">
 
 func.func @materialize(%input: tensor<32x64xf32>, %i: index, %j: index)
     -> !xla_gpu.indexed_vector<32x2x2xf32, #map1> {
@@ -149,8 +149,8 @@ func.func @materialize(%input: tensor<32x64xf32>, %i: index, %j: index)
 
 // -----
 
-#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false">
-#map1 = #xla_gpu.indexing_map<"(d0, d1) -> (d0 mod 16, d1), domain: d0 in [0, 32], d1 in [0, 2], is_simplified: false">
+#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
+#map1 = #xla_gpu.indexing_map<"(d0, d1) -> (d0 mod 16, d1), domain: d0 in [0, 32], d1 in [0, 2]">
 
 func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
     %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
@@ -181,9 +181,9 @@ func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false">
-#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false">
-#map2 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 32], d1 in [0, 2], is_simplified: false">
+#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1]">
+#map2 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 32], d1 in [0, 2]">
 
 func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
     %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
@@ -199,8 +199,8 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
 
 func.func private @exp(%p0: tensor<32x64xcomplex<f32>>, %i: index, %j: index) -> complex<f32>
 
-#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 2], s1 in [0, 3], is_simplified: false">
-#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 2], s1 in [0, 3], is_simplified: false">
+#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 2], s1 in [0, 3]">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 2], s1 in [0, 3]">
 func.func @materialize_complex(
   %input: tensor<32x64xcomplex<f32>>,
   %output: tensor<32x64xcomplex<f32>>,
@@ -227,8 +227,8 @@ func.func @materialize_complex(
 
 // -----
 
-#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 2], s1 in [0, 3], is_simplified: false">
-#map2 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 32], d1 in [0, 2], is_simplified: false">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 2], s1 in [0, 3]">
+#map2 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 32], d1 in [0, 2]">
 func.func @insert_complex(
   %input: !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>,
   %output: tensor<32x64xcomplex<f32>>,

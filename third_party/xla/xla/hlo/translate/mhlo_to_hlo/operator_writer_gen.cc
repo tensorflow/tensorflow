@@ -140,7 +140,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
 // The function below has a non-constant reference as that is required by LLVM's
 // TableGenMain.
 // NOLINTNEXTLINE
-static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
+static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
   emitSourceFileHeader("MLIR XLA Builders", os);
 
   // Emit all the helper functions.

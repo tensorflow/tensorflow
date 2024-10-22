@@ -37,10 +37,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
 #include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/sub_byte_normalization.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -307,7 +308,6 @@ void HorizontalLoopFusionImpl::FusionCandidates::Initialize(
               << " other fusion candidates, instr: " << instr->ToString();
       continue;
     } else {
-      VLOG(2) << "Find a fusion candidate " << instr->ToString();
       // Encapsulate it into a fusion computation for unified representation
       // for later processing.
       fusible_instrs_.push_back(instr);
@@ -346,6 +346,9 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
     return absl::Span<HloInstruction*>();
   }
 
+  // CUDA has a parameter size limit of ~4k bytes.
+  constexpr int64_t kMaxCudaParamSize = 4000;
+
   // Fusing too many computations at a time may not be easily profitable and
   // may increase compile time due to large kernels. Set a limit to it.
   // From profiling results, we found an issue that large fused horizontal
@@ -366,23 +369,21 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   }();
 
   size_t left = pos_;
-  size_t right = pos_ + 1;
-  size_t first_output_size = GetOutputSizeOfFusible(*fusible_instrs_[left]);
-  PrimitiveType first_output_type =
-      GetUniqueOutputTypeOfFusible(*fusible_instrs_[left]);
-  // CUDA has a parameter size limit of ~4k bytes.
-  constexpr int64_t kMaxCudaParamSize = 4000;
-  size_t accum_io_size = 0;
+  size_t right = pos_;
   size_t accum_num_outputs = 0;
+  size_t accum_io_size = 0;
+
   for (; right < fusible_instrs_.size(); ++right) {
-    PrimitiveType cur_output_type =
-        GetUniqueOutputTypeOfFusible(*fusible_instrs_[right]);
-    if (first_output_type != cur_output_type) {
+    if (GetUniqueOutputTypeOfFusible(*fusible_instrs_[left]) !=
+        GetUniqueOutputTypeOfFusible(*fusible_instrs_[right])) {
       // Cannot fuse computations who have multiple output types.
+      VLOG(2) << "different multiple output types";
       break;
     }
-    if (first_output_size != GetOutputSizeOfFusible(*fusible_instrs_[right])) {
+    if (GetOutputSizeOfFusible(*fusible_instrs_[left]) !=
+        GetOutputSizeOfFusible(*fusible_instrs_[right])) {
       // Cannot fuse computations who have different numbers of outputs.
+      VLOG(2) << "different number of outputs";
       break;
     }
     if (GetInstrCountOfFusible(*fusible_instrs_[left]) !=
@@ -391,6 +392,7 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
       // introduce control divergence. This is a very simple heuristic to avoid
       // fusing computations with too much discrepancy and we may improve it
       // when the needs arise.
+      VLOG(2) << "different instruction count";
       break;
     }
     if (!sliced_input_fusion_ &&
@@ -399,19 +401,30 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
             GetOutputsOfFusible(*fusible_instrs_[right])[0]->shape())) {
       // This is for fusing into kLoop type kernel, so we requires that each
       // fusion operand have the same shape
+      VLOG(2) << "different output shape";
       break;
     }
     size_t num_outputs = GetOutputSizeOfFusible(*fusible_instrs_[right]);
     accum_num_outputs += num_outputs;
     if (accum_num_outputs >= kMaxFusionBatchSize) {
       // Hit max fusion batch size.
+      VLOG(2) << "hit max fusion batch size: " << accum_num_outputs;
       break;
     }
     accum_io_size += fusible_instrs_.at(right)->operand_count() + num_outputs;
     if (accum_io_size * 8 >= kMaxCudaParamSize) {
+      VLOG(2) << "hit max cuda param size: " << accum_io_size;
       break;
     }
   }
+
+  // If right was not incremented, it means that the `left` instruction already
+  // exceeds one of the limits. We can't do anything about that fusion here, so
+  // we return a span of one instruction.
+  if (left == right) {
+    ++right;
+  }
+
   VLOG(2) << "horizontal fuse get instruction span with " << (right - left)
           << " instructions for sliced_input_fusion=" << sliced_input_fusion_
           << " fusion";
@@ -438,6 +451,7 @@ absl::StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
     // `Fuse()`.
     std::vector<HloInstruction*> fusion_instrs;
     for (HloInstruction* instr : fusibles) {
+      VLOG(2) << "next candidate: " << instr->ToString();
       if (instr->opcode() == HloOpcode::kFusion) {
         fusion_instrs.push_back(instr);
       } else {

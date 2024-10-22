@@ -19,6 +19,7 @@ cc_library(
         "//xla/stream_executor/tpu:tpu_profiler_init_fns",
         "//xla/stream_executor/tpu:tsl_status_helper",
         "//xla/tsl/c:tsl_status",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
@@ -27,7 +28,6 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/utils:xplane_schema",
     ],
     alwayslink = True,
 )

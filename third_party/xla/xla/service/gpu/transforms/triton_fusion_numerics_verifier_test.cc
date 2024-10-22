@@ -27,13 +27,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
+#include "xla/service/backend.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
@@ -243,6 +245,61 @@ ENTRY main {
               tsl::testing::StatusIs(absl::StatusCode::kInternal));
   EXPECT_THAT(compilation_result.status().message(),
               ::testing::HasSubstr("Failed to compile Triton fusion"));
+}
+
+TEST_F(TritonFusionNumericsVerifierTest, CacheIsUsed) {
+  absl::string_view hlo_text = R"(
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] maximum(p0, p1)
+}
+
+reduce_0 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=add
+}
+
+reduce_1 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=max
+}
+
+// Identical to reduce_0.
+reduce_2 {
+  p = f32[16,16] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce_0 = f32[16]{0} reduce(p, c), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  p0 = f32[16,16] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  p2 = f32[16,16] parameter(2)
+  r0 = f32[16] fusion(p0), kind=kCustom, calls=reduce_0, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  r1 = f32[16] fusion(p1), kind=kCustom, calls=reduce_1, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  r2 = f32[16] fusion(p2), kind=kCustom, calls=reduce_2, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["16"],"num_warps":"1"}}}
+  add_0_1 = f32[16] add(r0, r1)
+  ROOT add_0_2 = f32[16] add(add_0_1, r2)
+}
+  )";
+
+  std::unique_ptr<HloModule> module =
+      *ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+  AutotuneConfig autotune_config{
+      DeviceConfig{backend().default_stream_executor(), GetAllocator()},
+      module->config().debug_options()};
+  TritonFusionNumericsVerifier verifier(autotune_config);
+  TF_EXPECT_OK(RunHloPass(verifier, module.get()));
+  EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,

@@ -23,9 +23,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -35,17 +38,42 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+namespace {
+
+// Actually performs the work of CUDA initialization. Wrapped up in one-time
+// execution guard.
+static absl::Status InternalInit() {
+  absl::Status status =
+      cuda::ToStatus(cuInit(0 /* = flags */), "Failed call to cuInit");
+  if (status.ok()) {
+    return status;
+  }
+
+  LOG(ERROR) << "failed call to cuInit: " << status;
+
+  Diagnostician::LogDiagnosticInformation();
+  return status;
+}
+
+static absl::Status PlatformInitialize() {
+  // Cached return value from calling InternalInit(), as cuInit need only be
+  // called once, but PlatformInitialize may be called many times.
+  static absl::Status* initialization_status = [] {
+    return new absl::Status(InternalInit());
+  }();
+  return *initialization_status;
+}
+
+}  // namespace
 
 CudaPlatform::CudaPlatform() : name_("CUDA") {}
-
-CudaPlatform::~CudaPlatform() {}
 
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
   // Initialized in a thread-safe manner the first time this is run.
   static const int num_devices = [] {
-    if (!GpuDriver::Init().ok()) return -1;
+    if (!PlatformInitialize().ok()) return -1;
     return GpuDriver::GetDeviceCount();
   }();
   return num_devices;
@@ -55,10 +83,12 @@ const std::string& CudaPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaPlatform::DescriptionForDevice(int ordinal) const {
-  return GpuExecutor::CreateDeviceDescription(ordinal);
+  TF_RETURN_IF_ERROR(PlatformInitialize());
+  return CudaExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
+  TF_RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }

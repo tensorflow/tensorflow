@@ -24,8 +24,6 @@ limitations under the License.
 
 #include "xla/compiler_macros.h"
 
-namespace xla {
-
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
 #endif
@@ -37,6 +35,8 @@ namespace xla {
 #if defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 #define XLA_HAS_VEC128
 #endif  // defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
+
+namespace xla {
 
 // The transpose microkernels use a general approach of zipping elements from
 // different rows together. We start zipping together elements of size 1, size 2

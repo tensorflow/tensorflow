@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/logging.h"

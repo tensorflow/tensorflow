@@ -42,6 +42,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:mark_initialized_variables_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -66,20 +67,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:status",
         "@local_xla//xla:status_macros",
-    ],
-)
-
-tf_cc_test(
-    name = "tf_mlir_translate_registration_test",
-    size = "small",
-    srcs = ["tf_mlir_translate_registration_test.cc"],
-    deps = [
-        ":translate_registration",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:TranslateLib",
     ],
 )
 

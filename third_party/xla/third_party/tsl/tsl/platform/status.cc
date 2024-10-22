@@ -39,13 +39,13 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stack_frame.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
 #include "tsl/platform/stringprintf.h"
-#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 

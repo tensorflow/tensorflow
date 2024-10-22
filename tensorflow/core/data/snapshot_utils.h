@@ -84,25 +84,25 @@ std::string GetCheckpointFileName(const std::string& shard_directory,
 class Writer {
  public:
   // Creates a new writer object.
-  static Status Create(Env* env, const std::string& filename,
-                       const std::string& compression_type, int version,
-                       const DataTypeVector& dtypes,
-                       std::unique_ptr<Writer>* out_writer);
+  static absl::Status Create(Env* env, const std::string& filename,
+                             const std::string& compression_type, int version,
+                             const DataTypeVector& dtypes,
+                             std::unique_ptr<Writer>* out_writer);
 
   // Writes a vector of tensors to the snapshot writer file.
-  virtual Status WriteTensors(const std::vector<Tensor>& tensors) = 0;
+  virtual absl::Status WriteTensors(const std::vector<Tensor>& tensors) = 0;
 
   // Flushes any in-memory buffers to disk.
-  virtual Status Sync() = 0;
+  virtual absl::Status Sync() = 0;
 
   // Closes and finalizes the snapshot file. All calls to any other method will
   // be invalid after this call.
-  virtual Status Close() = 0;
+  virtual absl::Status Close() = 0;
 
   virtual ~Writer() = default;
 
  protected:
-  virtual Status Initialize(tensorflow::Env* env) = 0;
+  virtual absl::Status Initialize(tensorflow::Env* env) = 0;
 };
 
 // Writes snapshots with the standard TFRecord file format.
@@ -111,13 +111,13 @@ class TFRecordWriter : public Writer {
   TFRecordWriter(const std::string& filename,
                  const std::string& compression_type);
 
-  Status Initialize(tensorflow::Env* env) override;
+  absl::Status Initialize(tensorflow::Env* env) override;
 
-  Status WriteTensors(const std::vector<Tensor>& tensors) override;
+  absl::Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
-  Status Sync() override;
+  absl::Status Sync() override;
 
-  Status Close() override;
+  absl::Status Close() override;
 
   ~TFRecordWriter() override;
 
@@ -142,22 +142,22 @@ class CustomWriter : public Writer {
   CustomWriter(const std::string& filename, const std::string& compression_type,
                const DataTypeVector& dtypes);
 
-  Status WriteTensors(const std::vector<Tensor>& tensors) override;
+  absl::Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
-  Status Sync() override;
+  absl::Status Sync() override;
 
-  Status Close() override;
+  absl::Status Close() override;
 
   ~CustomWriter() override;
 
  protected:
-  Status Initialize(tensorflow::Env* env) override;
+  absl::Status Initialize(tensorflow::Env* env) override;
 
  private:
-  Status WriteRecord(const StringPiece& data);
+  absl::Status WriteRecord(const StringPiece& data);
 
 #if defined(TF_CORD_SUPPORT)
-  Status WriteRecord(const absl::Cord& data);
+  absl::Status WriteRecord(const absl::Cord& data);
 #endif  // TF_CORD_SUPPORT
 
   std::unique_ptr<WritableFile> dest_;
@@ -209,38 +209,37 @@ class Reader {
   // Creates a new Reader object that reads data from `filename`. Note that
   // the `version`, `compression_type`, and `dtypes` arguments passed into
   // `Writer` and `Reader` must be the same for the reading to succeed.
-  static Status Create(Env* env, const std::string& filename,
-                       const string& compression_type, int version,
-                       const DataTypeVector& dtypes,
-                       std::unique_ptr<Reader>* out_reader);
+  static absl::Status Create(Env* env, const std::string& filename,
+                             const string& compression_type, int version,
+                             const DataTypeVector& dtypes,
+                             std::unique_ptr<Reader>* out_reader);
 
   // Returns a nested dataset for a set of given snapshot file names.
   //
   // This function takes a vector of snapshot files, and returns a nested
   // dataset. Each element within the nested dataset is itself a dataset, and
   // contains all the elements written out to each individual snapshot file.
-  static Status MakeNestedDataset(Env* env,
-                                  const std::vector<std::string>& shard_dirs,
-                                  const string& compression_type, int version,
-                                  const DataTypeVector& dtypes,
-                                  const std::vector<PartialTensorShape>& shapes,
-                                  int64_t start_index, DatasetBase** output);
+  static absl::Status MakeNestedDataset(
+      Env* env, const std::vector<std::string>& shard_dirs,
+      const string& compression_type, int version, const DataTypeVector& dtypes,
+      const std::vector<PartialTensorShape>& shapes, int64_t start_index,
+      DatasetBase** output);
 
   // Returns a nested dataset for the given datasets.
   static void MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
                                 DatasetBase** output);
 
   // Reads a vector of Tensors from the snapshot file.
-  virtual Status ReadTensors(std::vector<Tensor>* read_tensors) = 0;
+  virtual absl::Status ReadTensors(std::vector<Tensor>* read_tensors) = 0;
 
   // Skips `num_records`. Equivalent to calling `ReadTensors` `num_records`
   // times then discarding the results.
-  virtual Status SkipRecords(int64_t num_records);
+  virtual absl::Status SkipRecords(int64_t num_records);
 
   virtual ~Reader() = default;
 
  protected:
-  virtual Status Initialize(Env* env) = 0;
+  virtual absl::Status Initialize(Env* env) = 0;
 
   class Dataset;
   class NestedDataset;
@@ -259,7 +258,7 @@ class TFRecordReaderImpl {
 
   // Initializes the reader. Callers must initialize the reader before calling
   // `GetNext` or `GetTensors`.
-  Status Initialize(Env* env);
+  absl::Status Initialize(Env* env);
 
   // Reads the next Tensor in the input file.
   absl::StatusOr<Tensor> GetNext();
@@ -295,11 +294,13 @@ class TFRecordReader : public Reader {
 
   // Initializes the reader. Callers must initialize the reader before calling
   // `ReadTensors`.
-  Status Initialize(Env* env) override { return reader_impl_.Initialize(env); }
+  absl::Status Initialize(Env* env) override {
+    return reader_impl_.Initialize(env);
+  }
 
   // Reads Tensors into `read_tensors`. Returns OK on success, OutOfRange for
   // end of file, or an error status if there is an error.
-  Status ReadTensors(std::vector<Tensor>* read_tensors) override;
+  absl::Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
   // Returns the number of bytes read.
   uint64_t BytesRead() const { return reader_impl_.BytesRead(); }
@@ -330,26 +331,26 @@ class CustomReader : public Reader {
   CustomReader(const std::string& filename, const string& compression_type,
                int version, const DataTypeVector& dtypes);
 
-  Status ReadTensors(std::vector<Tensor>* read_tensors) override;
+  absl::Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
   ~CustomReader() override = default;
 
  protected:
-  Status Initialize(Env* env) override;
+  absl::Status Initialize(Env* env) override;
 
  private:
-  Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
+  absl::Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
 
-  Status SnappyUncompress(
+  absl::Status SnappyUncompress(
       const experimental::SnapshotTensorMetadata* metadata,
       std::vector<Tensor>* simple_tensors,
       std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
           tensor_proto_strs);
 
-  Status ReadRecord(tstring* record);
+  absl::Status ReadRecord(tstring* record);
 
 #if defined(TF_CORD_SUPPORT)
-  Status ReadRecord(absl::Cord* record);
+  absl::Status ReadRecord(absl::Cord* record);
 #endif
 
   std::string filename_;
@@ -364,36 +365,38 @@ class CustomReader : public Reader {
 };
 
 // Writes snapshot metadata to the given directory.
-Status WriteMetadataFile(Env* env, const string& dir,
-                         const experimental::SnapshotMetadataRecord* metadata);
+absl::Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::SnapshotMetadataRecord* metadata);
 
 // Writes distributed snapshot metadata to the given directory. An error is
 // returned if `dir` is unable to be created or if `metadata` is unable to be
 // written.
-Status WriteMetadataFile(
+absl::Status WriteMetadataFile(
     Env* env, const string& dir,
     const experimental::DistributedSnapshotMetadata* metadata);
 
 // Reads snapshot metadata from the given directory.
-Status ReadMetadataFile(Env* env, const string& dir,
-                        experimental::SnapshotMetadataRecord* metadata,
-                        bool* file_exists);
+absl::Status ReadMetadataFile(Env* env, const string& dir,
+                              experimental::SnapshotMetadataRecord* metadata,
+                              bool* file_exists);
 
 // Reads distributed snapshot metadata from the given directory. If the file
 // doesn't exist in `dir`, `file_exists` is set to true and an ok status is
 // returned. If the file exists in `dir` but is unable to be opened, an error
 // is returned.
-Status ReadMetadataFile(Env* env, const string& dir,
-                        experimental::DistributedSnapshotMetadata* metadata,
-                        bool* file_exists);
+absl::Status ReadMetadataFile(
+    Env* env, const string& dir,
+    experimental::DistributedSnapshotMetadata* metadata, bool* file_exists);
 
 // Writes a dataset graph to the given directory.
-Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
-                        const GraphDef* graph);
+absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
+                              const GraphDef* graph);
 
-Status DetermineOpState(const std::string& mode_string, bool file_exists,
-                        const experimental::SnapshotMetadataRecord* metadata,
-                        uint64 pending_snapshot_expiry_seconds, Mode* mode);
+absl::Status DetermineOpState(
+    const std::string& mode_string, bool file_exists,
+    const experimental::SnapshotMetadataRecord* metadata,
+    uint64 pending_snapshot_expiry_seconds, Mode* mode);
 
 // Represents a dataset element or EOF.
 struct ElementOrEOF {
@@ -420,7 +423,7 @@ class AsyncWriter {
                        const std::string& shard_directory, uint64 checkpoint_id,
                        const std::string& compression, int64_t version,
                        const DataTypeVector& output_types,
-                       std::function<void(Status)> done);
+                       std::function<void(absl::Status)> done);
 
   // Writes the given tensors. The method is non-blocking and returns without
   // waiting for the element to be written.
@@ -433,9 +436,10 @@ class AsyncWriter {
  private:
   void Consume(ElementOrEOF* be) TF_LOCKS_EXCLUDED(mu_);
   bool ElementAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  Status WriterThread(Env* env, const std::string& shard_directory,
-                      uint64 checkpoint_id, const std::string& compression,
-                      int64_t version, DataTypeVector output_types);
+  absl::Status WriterThread(Env* env, const std::string& shard_directory,
+                            uint64 checkpoint_id,
+                            const std::string& compression, int64_t version,
+                            DataTypeVector output_types);
 
   mutex mu_;
   std::deque<ElementOrEOF> deque_ TF_GUARDED_BY(mu_);

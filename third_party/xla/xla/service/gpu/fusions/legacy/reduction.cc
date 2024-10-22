@@ -43,6 +43,9 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -63,6 +66,8 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/runtime/kernel_thunk.h"
@@ -78,6 +83,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -1223,14 +1229,9 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
 
   auto physical_shape =
       ShapeUtil::DeleteDimensions(hero.dimensions(), hero.operand(0)->shape());
-  std::vector<DimVar> dimension_ranges{
-      {{0, tiling_.GetNumThreadsPerBlock() - 1}},
-      {},
-      {},
-      {{0, tiling_.GetNumBlocks() - 1}},
-      {{0, static_cast<int64_t>(groups_.grouped_roots.size() - 1)}},
-      {},
-  };
+  std::vector<IndexingMap::Variable> dimension_ranges = DimVarsFromGPUGrid(
+      {tiling_.GetNumThreadsPerBlock(), 1, 1, tiling_.GetNumBlocks(),
+       static_cast<int64_t>(groups_.grouped_roots.size()), 1});
 
   constexpr int kRowKept = ReductionDimensions::kRowKeptDimension;
   constexpr int kRowMinorReduced =
@@ -1264,7 +1265,7 @@ std::optional<IndexingMap> ReductionInfo::ComputeThreadIdToOutputIndexing(
     mlir::SmallVector<mlir::AffineExpr> projected_dims{
         block_offsets.getResult(kColMajorKept),
         block_offsets.getResult(kColMinorKept) + thread_ids[kColReduced]};
-    std::vector<RangeVar> range_vars;
+    std::vector<IndexingMap::Variable> range_vars;
     if (thread_ids.size() == 4) {
       int vector_size = tiling_.GetThreadTileSize().back();
       range_vars.push_back({0, vector_size - 1});

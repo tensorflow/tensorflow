@@ -91,8 +91,9 @@ void DataTransferServer::Register(std::string name, ServerFactoryT factory) {
   }
 }
 
-Status DataTransferServer::Build(std::string name, GetElementT get_element,
-                                 std::shared_ptr<DataTransferServer>* out) {
+absl::Status DataTransferServer::Build(
+    std::string name, GetElementT get_element,
+    std::shared_ptr<DataTransferServer>* out) {
   mutex_lock l(*get_lock());
   auto it = transfer_server_factories().find(name);
   if (it != transfer_server_factories().end()) {
@@ -119,8 +120,8 @@ void DataTransferClient::Register(std::string name, ClientFactoryT factory) {
   }
 }
 
-Status DataTransferClient::Build(std::string name, Config config,
-                                 std::unique_ptr<DataTransferClient>* out) {
+absl::Status DataTransferClient::Build(
+    std::string name, Config config, std::unique_ptr<DataTransferClient>* out) {
   mutex_lock l(*get_lock());
   auto it = transfer_client_factories().find(name);
   if (it != transfer_client_factories().end()) {

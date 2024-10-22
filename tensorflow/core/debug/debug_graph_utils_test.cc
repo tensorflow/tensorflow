@@ -24,9 +24,9 @@ namespace tensorflow {
 
 class DebugGraphUtilsTest : public ::testing::Test {
  protected:
-  Status ParseDebugOpName(const string& debug_op_name,
-                          string* debug_op_name_proper,
-                          std::unordered_map<string, string>* attributes) {
+  absl::Status ParseDebugOpName(
+      const string& debug_op_name, string* debug_op_name_proper,
+      std::unordered_map<string, string>* attributes) {
     return DebugNodeInserter::ParseDebugOpName(
         debug_op_name, debug_op_name_proper, attributes);
   }
@@ -45,8 +45,8 @@ TEST_F(DebugGraphUtilsTest, TestMalformedDebugOpName) {
   string debug_op_name_proper;
   std::unordered_map<string, string> attributes;
 
-  Status s = ParseDebugOpName("(mute_if_healthy=true)", &debug_op_name_proper,
-                              &attributes);
+  absl::Status s = ParseDebugOpName("(mute_if_healthy=true)",
+                                    &debug_op_name_proper, &attributes);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(", &debug_op_name_proper,
@@ -62,8 +62,8 @@ TEST_F(DebugGraphUtilsTest, TestDebugOpNameWithMalformedAttributes) {
   string debug_op_name_proper;
   std::unordered_map<string, string> attributes;
 
-  Status s = ParseDebugOpName("DebugNumericSummary(=)", &debug_op_name_proper,
-                              &attributes);
+  absl::Status s = ParseDebugOpName("DebugNumericSummary(=)",
+                                    &debug_op_name_proper, &attributes);
   ASSERT_TRUE(errors::IsInvalidArgument(s));
 
   s = ParseDebugOpName("DebugNumericSummary(mute_if_healthy=)",
@@ -130,7 +130,7 @@ TEST_F(DebugGraphUtilsTest, TestValidDebugOpNameWithMoreThanOneAttributes) {
 TEST_F(DebugGraphUtilsTest, TestValidDebugOpNameWithMoreDuplicateAttributes) {
   string debug_op_name_proper;
   std::unordered_map<string, string> attributes;
-  Status s = ParseDebugOpName(
+  absl::Status s = ParseDebugOpName(
       "DebugNumericSummary(mute_if_healthy=true; lower_bound=3; "
       "mute_if_healthy=false;)",
       &debug_op_name_proper, &attributes);

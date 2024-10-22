@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -41,8 +42,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
-#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/indexing_map_serialization.h"
 
 namespace xla {
 namespace gpu {
@@ -231,8 +232,7 @@ ExtractSizesAndStridesFromMultivariateSummation(
     std::optional<SizeAndStrideExpression> maybe_size_and_stride =
         ExtractSizeAndStride(summand, dimension_intervals, symbol_intervals);
     if (!maybe_size_and_stride.has_value()) {
-      VLOG(1) << "Couldn't extract size and stride from "
-              << AffineMapPrinter().ToString(summand);
+      VLOG(1) << "Couldn't extract size and stride from " << ToString(summand);
       return std::nullopt;
     }
     sizes_and_strides.push_back(*maybe_size_and_stride);
@@ -320,8 +320,8 @@ std::optional<int64_t> TryGetSizeExpressionRangeSize(
     // working well with concatenations. Nevertheless, we can take a look
     // later.
     VLOG(1) << "Attempted to combine strides but got dimension "
-            << AffineMapPrinter().ToString(size) << " with lower bound "
-            << interval.lower << " != 0";
+            << ToString(size) << " with lower bound " << interval.lower
+            << " != 0";
     return std::nullopt;
   }
   // We need to add 1 to the upper bound of the interval to describe the
@@ -364,7 +364,7 @@ std::optional<AffineExpr> CombineStrides(
   for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
     if (size_and_stride.stride.getKind() != AffineExprKind::Constant) {
       VLOG(1) << "Attempted to combine non-constant stride: "
-              << AffineMapPrinter().ToString(size_and_stride.stride);
+              << ToString(size_and_stride.stride);
       return std::nullopt;
     }
 
@@ -379,7 +379,7 @@ std::optional<AffineExpr> CombineStrides(
         size_and_stride.size.getKind() != AffineExprKind::DimId) {
       VLOG(1) << "Attempted to combine strides but got non-constant, "
                  "non-dimension size "
-              << AffineMapPrinter().ToString(size_and_stride.size);
+              << ToString(size_and_stride.size);
       return std::nullopt;
     }
   }
@@ -567,9 +567,8 @@ std::optional<SizeAndStrideExpression> CombineSizesAndStrides(
   if (VLOG_IS_ON(1)) {
     for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
       LOG(INFO) << "CombineSizesAndStrides:";
-      LOG(INFO) << "size: " << AffineMapPrinter().ToString(size_and_stride.size)
-                << " stride: "
-                << AffineMapPrinter().ToString(size_and_stride.stride);
+      LOG(INFO) << "size: " << ToString(size_and_stride.size)
+                << " stride: " << ToString(size_and_stride.stride);
     }
   }
 
@@ -603,7 +602,6 @@ std::optional<SizeAndStrideExpression> ExtractSizeAndStride(
     AffineExpr strided_indexing, absl::Span<Interval const> dimension_intervals,
     absl::Span<Interval const> symbol_intervals) {
   MLIRContext* ctx = strided_indexing.getContext();
-  AffineMapPrinter printer;
 
   switch (strided_indexing.getKind()) {
     case AffineExprKind::DimId:
@@ -711,9 +709,8 @@ std::optional<ConjointConstraints> TryIntersectConjointConstraints(
       auto& [result_expr, result_interval] = *result_it;
       result_interval = result_interval.Intersect(interval);
       if (!result_interval.IsFeasible()) {
-        AffineMapPrinter printer;
         VLOG(1) << "Got two incompatible intervals for expression "
-                << printer.ToString(expr);
+                << ToString(expr);
         return std::nullopt;
       }
     } else {
@@ -866,15 +863,13 @@ bool ConstraintExpression::IsSatisfiedBy(
   return constraints_are_satisfied;
 }
 
-std::string ConstraintExpression::ToString(
-    const AffineMapPrinter& printer) const {
+std::string ConstraintExpression::ToString() const {
   std::stringstream ss;
-  Print(ss, printer);
+  Print(ss);
   return ss.str();
 }
 
-void ConstraintExpression::Print(std::ostream& out,
-                                 const AffineMapPrinter& printer) const {
+void ConstraintExpression::Print(std::ostream& out) const {
   if (IsAlwaysSatisfied()) {
     out << "always satisfied";
   } else if (is_satisfiable()) {
@@ -886,11 +881,8 @@ void ConstraintExpression::Print(std::ostream& out,
       std::vector<std::string> constraint_strings;
       constraint_strings.reserve(disjunction.size());
       for (const auto& [expr, interval] : disjunction) {
-        std::stringstream ss;
-        printer.Print(ss, expr);
-        ss << " in ";
-        interval.Print(ss);
-        constraint_strings.push_back(ss.str());
+        constraint_strings.push_back(absl::StrCat(xla::gpu::ToString(expr),
+                                                  " in ", interval.ToString()));
       }
       std::sort(constraint_strings.begin(), constraint_strings.end());
       conjunction_strings.push_back(absl::StrJoin(constraint_strings, " && "));
@@ -1019,7 +1011,7 @@ void ConstraintExpression::Simplify() {
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     IndexingMap indexing_map) {
-  VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map.ToString();
+  VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map;
 
   // We do not handle indexing maps with pre-existing constraints for now.
   // Let's try to simplify the indexing map, because the constraints my be
@@ -1030,7 +1022,7 @@ void ConstraintExpression::Simplify() {
   if (indexing_map.GetConstraintsCount() != 0) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
             << "constraints might produce spurious constraints. Bailing out. "
-            << indexing_map.ToString();
+            << indexing_map;
     return std::nullopt;
   }
 
@@ -1104,17 +1096,16 @@ void ConstraintExpression::Simplify() {
       offset = offset + size * stride - stride;
       stride = -stride;
     } else if (!constant) {
-      AffineMapPrinter printer;
       VLOG(1) << "Unexpected non-constant stride expression: "
-              << printer.ToString(stride);
+              << xla::gpu::ToString(stride);
     }
   }
 
   // DimVars in `indexing_map` represent indices, but in `tile_map` they will
   // represent the size of the tile. So we need to add 1 to the bounds.
   // For example: indices: [0, 9] -> sizes: [1, 10].
-  std::vector<DimVar> tile_sizes = indexing_map.GetDimVars();
-  for (DimVar& tile_size : tile_sizes) {
+  std::vector<IndexingMap::Variable> tile_sizes = indexing_map.GetDimVars();
+  for (IndexingMap::Variable& tile_size : tile_sizes) {
     tile_size.bounds.lower += 1;
     tile_size.bounds.upper += 1;
   }
@@ -1139,45 +1130,33 @@ void ConstraintExpression::Simplify() {
       /*rt_vars=*/indexing_map.GetRTVars());
   tile_map.RemoveUnusedSymbols();
   CHECK_EQ(tile_map.GetRangeVarsCount(), 0);
-  VLOG(1) << "tile_map: " << tile_map.ToString();
+  VLOG(1) << "tile_map: " << tile_map;
 
   constraints.Simplify();
   return SymbolicTile(std::move(tile_map), std::move(constraints));
 }
 
-std::string SymbolicTile::RtVarsToString(
-    const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
-  PrintRTVars(tile_map_.GetRTVars(), /*first_rt_var_symbol_index=*/0, ss,
-              printer);
+std::string SymbolicTile::ToString() const {
+  std::stringstream ss;
+  Print(ss);
   return ss.str();
 }
 
-std::string SymbolicTile::ToString(const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
-  Print(ss, printer);
-  return ss.str();
-}
-
-void SymbolicTile::Print(std::ostream& out,
-                         const AffineMapPrinter& printer) const {
+void SymbolicTile::Print(std::ostream& out) const {
   out << "Symbolic tile with \n";
-  out << "\toffset_map: ";
-  printer.Print(out, offset_map());
-  out << "\n\tsize_map: ";
-  printer.Print(out, size_map());
-  out << "\n\tstride_map: ";
-  printer.Print(out, stride_map());
-  const std::vector<RTVar>& rt_vars = tile_map_.GetRTVars();
+  out << "\toffset_map: " << offset_map();
+  out << "\n\tsize_map: " << size_map();
+  out << "\n\tstride_map: " << stride_map();
+  const std::vector<IndexingMap::Variable>& rt_vars = tile_map_.GetRTVars();
   if (!rt_vars.empty()) {
     out << "\n\trt_vars: ";
-    PrintRTVars(rt_vars, /*first_rt_var_symbol_index=*/0, out, printer);
+    for (const auto& [index, rt_var] : llvm::enumerate(rt_vars)) {
+      out << 's' << index << " in " << rt_var.bounds << ", ";
+    }
   }
   if (!constraints_.IsAlwaysSatisfied()) {
     out << "\n\tconstraints: ";
-    constraints_.Print(out, printer);
+    constraints_.Print(out);
   }
 }
 

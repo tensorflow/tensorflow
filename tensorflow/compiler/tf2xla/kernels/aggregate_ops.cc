@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "xla/client/xla_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

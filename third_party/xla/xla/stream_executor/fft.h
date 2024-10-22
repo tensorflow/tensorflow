@@ -47,8 +47,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "xla/stream_executor/platform/port.h"
-
 namespace stream_executor {
 
 class Stream;
@@ -109,9 +107,9 @@ class FftSupport {
   // output_distance: Indicates the distance between the first element of two
   //                  consecutive signals in a batch of the output data.
   virtual std::unique_ptr<Plan> CreateBatchedPlanWithScratchAllocator(
-      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,
-      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,
-      uint64_t output_stride, uint64 output_distance, Type type,
+      Stream *stream, int rank, uint64_t *elem_count, uint64_t *input_embed,
+      uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,
+      uint64_t output_stride, uint64_t output_distance, Type type,
       bool in_place_fft, int batch_count,
       ScratchAllocator *scratch_allocator) = 0;
 
@@ -162,9 +160,9 @@ class FftSupport {
 // ::stream_executor namespace.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                   \
   std::unique_ptr<fft::Plan> CreateBatchedPlanWithScratchAllocator(            \
-      Stream *stream, int rank, uint64_t *elem_count, uint64 *input_embed,     \
-      uint64_t input_stride, uint64 input_distance, uint64 *output_embed,      \
-      uint64_t output_stride, uint64 output_distance, fft::Type type,          \
+      Stream *stream, int rank, uint64_t *elem_count, uint64_t *input_embed,   \
+      uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,  \
+      uint64_t output_stride, uint64_t output_distance, fft::Type type,        \
       bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) \
       override;                                                                \
   void UpdatePlanWithScratchAllocator(Stream *stream, fft::Plan *plan,         \

@@ -14,6 +14,7 @@
 # ==============================================================================
 """Converts a frozen graph into a TFLite FlatBuffer."""
 
+
 import enum
 import hashlib
 from typing import Optional
@@ -315,6 +316,7 @@ def convert(
     ConverterError: When conversion fails in TFLiteConverter, usually due to
       ops not being supported.
   """
+
   try:
     return wrap_converter.wrapped_convert(
         model_flags.SerializeToString(),
