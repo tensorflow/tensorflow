@@ -246,7 +246,7 @@ class CopyAllocation final : public Allocation {
       int64_t copy_start_schedule_after_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
       std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
-      HloInstruction* sync_instruction = nullptr);
+      HloInstruction* sync_mem_op = nullptr);
 
   // Overridden methods
   //
@@ -269,7 +269,7 @@ class CopyAllocation final : public Allocation {
   bool operator==(const Allocation& other) const override;
 
   // New non-virtual methods
-  const HloInstruction* sync_instruction() const { return sync_instruction_; }
+  const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const CopyAllocation& other) const;
 
   const Allocation& prev_allocation() { return prev_allocation_; }
@@ -294,7 +294,7 @@ class CopyAllocation final : public Allocation {
   HloInstruction* copy_start_ = nullptr;
   HloInstruction* copy_done_ = nullptr;
   // The sync data movement instruction that this copy is associated with.
-  HloInstruction* sync_instruction_ = nullptr;
+  HloInstruction* sync_mem_op_ = nullptr;
 };
 
 // This class represents an allocation resulting from asynchronous sliced
@@ -352,7 +352,8 @@ class SlicedCopyAllocation final : public Allocation {
       std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
       const SlicedPrefetchOptions& sliced_prefetch_options,
-      absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn);
+      absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn,
+      HloInstruction* sync_mem_op = nullptr);
 
   // Overridden methods
   //
@@ -377,6 +378,7 @@ class SlicedCopyAllocation final : public Allocation {
   bool operator==(const Allocation& other) const override;
 
   // New non-virtual methods
+  const HloInstruction* sync_mem_op() const { return sync_mem_op_; }
   bool operator==(const SlicedCopyAllocation& other) const;
 
   std::vector<int64_t> SliceOffsetsSortedByStartTime() const;
@@ -405,6 +407,8 @@ class SlicedCopyAllocation final : public Allocation {
   HloInstruction* concat_ = nullptr;
   const SlicedPrefetchOptions& sliced_prefetch_options_;
   absl::FunctionRef<Shape(const Shape&)> get_equivalent_s8_shape_fn_;
+  // The sync data movement instruction that this copy is associated with.
+  HloInstruction* sync_mem_op_ = nullptr;
 };
 
 // This class represents an allocation resulting from asynchronously prefetching

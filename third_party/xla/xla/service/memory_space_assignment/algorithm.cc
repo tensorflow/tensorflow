@@ -1285,9 +1285,76 @@ void MsaAlgorithm::IdentifyAndOptimizeMemoryBoundLoops() {
 
 bool MsaAlgorithm::IsAsyncConversionCandidate(
     const HloInstruction* instruction) const {
-  return IsAsyncConversionCopyCandidate(instruction) ||
-         IsAsyncConversionSliceCandidate(instruction) ==
-             AsyncConversionResult::kSuccess;
+  bool meets_special_preconditions =
+      IsAsyncConversionCopyCandidate(instruction) ||
+      IsAsyncConversionSliceCandidate(instruction) ==
+          AsyncConversionResult::kSuccess;
+  if (!meets_special_preconditions) {
+    return false;
+  }
+
+  for (auto& operand : instruction->operands()) {
+    // TODO(b/374835319): relax the operand constraint to be able to cover
+    // nested sync data movement cases.
+    if (IsAsyncConversionCandidate(operand)) {
+      VLOG(4) << "The instruction is not considered to be replaced, because it "
+                 "potentially has a replaceable operand.";
+      return false;
+    }
+    const HloValue& operand_value = alias_analysis_.dataflow_analysis()
+                                        .GetValueSet(operand)
+                                        .GetUniqueValue();
+    if (!buffer_intervals_.at(&operand_value).need_allocation) {
+      VLOG(4)
+          << "The instruction is not considered to be replaced, because its "
+             "operand value doesn't need an allocation.";
+      return false;
+    }
+  }
+
+  const HloValue& value = alias_analysis_.dataflow_analysis()
+                              .GetValueSet(instruction)
+                              .GetUniqueValue();
+  if (!buffer_intervals_.at(&value).need_allocation) {
+    VLOG(4) << "The instruction is not considered to be replaced, because its "
+               "output doesn't need an allocation and it might be too late to "
+               "replace this instruction.";
+    return false;
+  }
+  if (value.IsRootOf(instruction->parent())) {
+    VLOG(4) << "The instruction is not considered to be replaced, because its "
+               "output value is in the root of the computation.";
+    return false;
+  }
+  if (finalized_values_.contains(&value)) {
+    VLOG(4) << "The instruction is not considered to be replaced, because its "
+               "output value is in the finalized values.";
+    return false;
+  }
+  if (buffer_intervals_.at(&value).size > available_heap_size()) {
+    VLOG(4) << "The instruction is not considered to be replaced, because its "
+               "output value is too large to fit in the heap.";
+    return false;
+  }
+  // This check is here only because we skip processing the values that are not
+  // allowed in alternate memory.
+  if (!MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
+          buffer_intervals_.at(&value), options_.alternate_memory_space)) {
+    VLOG(4) << "The instruction is not considered to be replaced, because its "
+               "output value is not allowed in alternate memory.";
+    return false;
+  }
+
+  for (const HloInstruction* user : instruction->users()) {
+    if (HloDataflowAnalysis::IsAsynchronousOperationStart(user->opcode())) {
+      VLOG(4) << "The instruction is not considered to be replaced, because "
+                 "its used by an async start operation that might require "
+                 "contiguous allocation.";
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool MsaAlgorithm::IsAsyncConversionCopyCandidate(
@@ -1363,18 +1430,6 @@ MsaAlgorithm::IsAsyncConversionSliceCandidate(
             << instruction->ToShortString();
     return AsyncConversionResult::kFailedPrecondition;
   }
-  bool has_slice_operand = false;
-  for (auto& operand : instruction->operands()) {
-    if (operand->opcode() == HloOpcode::kSlice) {
-      has_slice_operand = true;
-      break;
-    }
-  }
-  if (has_slice_operand) {
-    VLOG(4) << "The sync slice is not considered to be replaced, because it "
-               "has a slice operand.";
-    return AsyncConversionResult::kFailedPrecondition;
-  }
 
   if (instruction->shape().layout().memory_space() !=
           static_cast<int64_t>(MemorySpace::kDefault) ||
@@ -1444,22 +1499,6 @@ void MsaAlgorithm::UpdateSyncDataMovementCandidatesForJointProcessedValues(
     const std::vector<const HloValue*>& joint_processed_values) {
   absl::flat_hash_set<const HloInstruction*> replaceable_sync_instructions;
   absl::flat_hash_set<const HloInstruction*> do_not_touch_instructions;
-  for (const HloValue* value : joint_processed_values) {
-    if (!MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
-            buffer_intervals_.at(value), options_.alternate_memory_space)) {
-      HloInstruction* inst = value->instruction();
-      if (IsAsyncConversionCandidate(inst)) {
-        do_not_touch_instructions.insert(inst);
-        failed_async_conversions_[inst] =
-            AsyncConversionResult::kFailedValueNotAllowedInAlternateMemory;
-        VLOG(4) << "Not trying to replace sync instruction "
-                << inst->ToShortString()
-                << " with an async version, because the sync instruction "
-                   "defines a value that is not allowed in alternate memory.";
-      }
-    }
-  }
-
   for (const HloValue* value : joint_processed_values) {
     for (const auto& use : value->GetUses()) {
       bool is_use_replaceable_sync_candidate =
@@ -1577,12 +1616,23 @@ void MsaAlgorithm::CreateAllocationValuesForJointProcessedValues(
       continue;
     }
 
-    if (!options_.enable_sync_slice_replacement &&
-        !options_.enable_window_prefetch &&
+    if (!options_.enable_window_prefetch &&
         interval.size > available_heap_size()) {
-      VLOG(3) << "Skip " << interval.buffer->ToShortString()
-              << " because the buffer is larger than the heap size.";
-      continue;
+      const HloInstruction* defining_instruction =
+          interval.buffer->instruction();
+      auto may_be_replaced_by_slice_fn = [this](const HloInstruction* user) {
+        return IsInstructionPendingReplacements(user) &&
+               user->opcode() == HloOpcode::kSlice;
+      };
+      bool may_be_replaced_by_slice = std::any_of(
+          defining_instruction->users().begin(),
+          defining_instruction->users().end(), may_be_replaced_by_slice_fn);
+
+      if (!may_be_replaced_by_slice) {
+        VLOG(3) << "Skip " << interval.buffer->ToShortString()
+                << " because the buffer is larger than the heap size.";
+        continue;
+      }
     }
 
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
@@ -1640,6 +1690,24 @@ MsaAlgorithm::JointAllocationProposal MsaAlgorithm::GetJointProposal(
 
   CreateAllocationValuesForJointProcessedValues(proposal);
   return proposal;
+}
+
+bool MsaAlgorithm::RepackAllocationsIncludeConvertedSyncMemOp() {
+  for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+    if (allocation_block.allocation->is_copy_allocation()) {
+      if (dynamic_cast<CopyAllocation*>(allocation_block.allocation)
+              ->sync_mem_op()) {
+        return true;
+      }
+    }
+    if (allocation_block.allocation->is_sliced_copy_allocation()) {
+      if (dynamic_cast<SlicedCopyAllocation*>(allocation_block.allocation)
+              ->sync_mem_op()) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
@@ -1795,11 +1863,18 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       } else if (result_requires_uncommit(result)) {
         UncommitPendingChunks(absl::MakeSpan(proposal.allocation_values));
         VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
+        if (retry_number > 0 && !sorted_async_conversion_candidates_.empty()) {
+          failed_async_conversions_[sorted_async_conversion_candidates_.at(0)] =
+              AsyncConversionResult::kFailedGaveUp;
+          VLOG(2) << "Giving the allocation another chance by dropping one "
+                     "async conversion candidate.";
+          proposal = GetJointProposal(interval);
+          --retry_number;
+        }
       } else if ((result_is(result, Result::kFailOutOfMemory) ||
                   options_.repack_after_every_allocation) &&
                  num_repacks_ < options_.max_repacks && !repacked &&
-                 (sorted_async_conversion_candidates_.empty() ||
-                  !options_.enable_sync_slice_replacement)) {
+                 !RepackAllocationsIncludeConvertedSyncMemOp()) {
         UncommitPendingChunks(absl::MakeSpan(proposal.allocation_values));
         ++num_repacks_;
         repacked = true;
@@ -1861,6 +1936,9 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
   if (options_.repack_after_every_allocation) {
     CHECK_NE(options_.repacker, nullptr);
+    CHECK(!RepackAllocationsIncludeConvertedSyncMemOp())
+        << "Repacking is not supported yet when there are converted sync mem "
+           "ops.";
     std::vector<AllocationBlock*> repack_allocation_blocks;
     ExportAllocationsForRepacking(repack_allocation_blocks);
     VLOG(2) << "Final Repacking.";
@@ -2238,7 +2316,7 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
       uses_work_list.push_back({&allocation_value.uses(), primary_use_idx,
                                 allocation_value_idx, true});
       for (auto sync_destination_idx :
-           value_indices_by_sync_inst[primary_use.hlo_use.instruction]) {
+           value_indices_by_sync_inst.at(primary_use.hlo_use.instruction)) {
         AllocationValue& sync_destination =
             allocation_values.at(sync_destination_idx);
         if (sync_destination.defining_instruction() ==
@@ -2257,13 +2335,6 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
             uses_work_list.push_back({&sync_destination.uses(),
                                       secondary_use_id,
                                       updates_allocation_value_idx, false});
-            if (sync_destination.requires_contiguous_allocation()) {
-              VLOG(3) << "Setting requires_contiguous_allocation to true for "
-                      << allocation_value.ToShortString()
-                      << " because its skip destination "
-                      << sync_destination.ToShortString() << " requires it.";
-              allocation_value.set_requires_contiguous_allocation(true);
-            }
           }
         } else {
           VLOG(3) << "Skipping secondary uses related to allocation value "
@@ -2421,7 +2492,7 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
                   return copy_allocation &&
                          (copy_allocation->copy_done_schedule_before() <=
                           request.required_copy_allocation_latest_time) &&
-                         (copy_allocation->sync_instruction() ==
+                         (copy_allocation->sync_mem_op() ==
                           request.required_copy_allocation_for) &&
                          (!request.required_copy_for_slice ||
                           (request.required_copy_for_slice &&
@@ -2435,6 +2506,8 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
                   return sliced_copy_allocation &&
                          (sliced_copy_allocation->earliest_available_time() <=
                           request.required_copy_allocation_latest_time) &&
+                         (sliced_copy_allocation->sync_mem_op() ==
+                          request.required_copy_allocation_for) &&
                          !request.required_copy_for_slice;
                 }
                 return false;
@@ -2446,10 +2519,6 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
                        "segment allocation. "
                        "Sync copy replacement has failed. Fall back to the "
                        "normal mode.";
-            VLOG(3) << "result_requires_uncommit(result)"
-                    << result_requires_uncommit(result)
-                    << " it == allocation_sequence->end()"
-                    << (it == allocation_sequence->end());
             failed_async_conversions_[request.required_copy_allocation_for] =
                 AsyncConversionResult::kFailedSatisfyingConstraints;
             result_mark(Result::kFailSyncDataMoveReplacement, result);
@@ -2472,6 +2541,8 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
               result_mark(Result::kFailSyncDataMoveReplacement, result);
               result_mark(Result::kFailRequiresUncommit, result);
             } else {
+              not_finalized_async_conversions_.push_back(
+                  request.required_copy_allocation_for);
               VLOG(3) << "Replacing "
                       << request.required_copy_allocation_for->ToShortString()
                       << " with " << (*it)->ToString();
@@ -2513,7 +2584,31 @@ absl::StatusOr<MsaAlgorithm::Result> MsaAlgorithm::AllocateAllocationValues(
           preferred_offset_for_computation);
     }
   }
+
+  if (!VerifyAllConversionsAreSuccessful()) {
+    result_mark(Result::kFailSyncDataMoveReplacement, result);
+    result_mark(Result::kFailRequiresUncommit, result);
+  }
+
   return result;
+}
+
+bool MsaAlgorithm::VerifyAllConversionsAreSuccessful() {
+  for (const HloInstruction* instruction :
+       sorted_async_conversion_candidates_) {
+    if (absl::c_find(not_finalized_async_conversions_, instruction) ==
+        not_finalized_async_conversions_.end()) {
+      if (!failed_async_conversions_.contains(instruction)) {
+        failed_async_conversions_[instruction] =
+            AsyncConversionResult::kFailedNotProcessed;
+        VLOG(3) << "Async conversion failed for "
+                << instruction->ToShortString()
+                << " because its operand or user was not processed.";
+      }
+      return false;
+    }
+  }
+  return true;
 }
 
 MsaAlgorithm::AliasedOffset* MsaAlgorithm::UpdatePreferredOffsetForUse(
@@ -2555,11 +2650,11 @@ MsaAlgorithm::AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     required_copy_for_slice =
         (IsAsyncConversionSliceCandidate(use.sync_mem_op_operand) ==
          AsyncConversionResult::kSuccess);
-
     // The async copy allocation can be delayed until the earliest time at which
     // the value is used in a position or the earliest use time of the updated
     // allocation value. We find the minimum of these two times.
-    int64_t min_time = GetCorrectedUseTime(use.sync_mem_op_operand);
+    int64_t min_time =
+        GetCorrectedUseTime(allocation_value.defining_instruction());
     int64_t earliest_position_time = std::numeric_limits<int64_t>::max();
     for (auto& position : allocation_value.value()->positions()) {
       auto position_time = GetCorrectedUseTime(position.instruction);
@@ -4079,6 +4174,7 @@ void MsaAlgorithm::FinalizeAllocations(
   for (const HloInstruction* copy_inst : sorted_async_conversion_candidates_) {
     successful_async_conversion_set_.insert(copy_inst);
   }
+  not_finalized_async_conversions_.clear();
   std::vector<std::pair<const AliasedOffset*, std::vector<Allocation*>>>
       colocation_vector;
   absl::flat_hash_map<const AliasedOffset*, size_t> offset_to_index;
@@ -4317,7 +4413,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
             return allocation->memory_space() == required_memory_space_at_start;
           });
       if (prev_allocation_it != allocation_sequence->rend()) {
-        (*prev_allocation_it)->set_end_time(request.inclusive_start_time);
+        (*prev_allocation_it)->Extend(request.inclusive_start_time);
         needs_required_allocation = false;
       }
     }
@@ -4416,7 +4512,7 @@ MsaAlgorithm::Result MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   if (required_memory_space_at_end == MemorySpace::kDefault) {
     VLOG(3)
         << "Not trying to prefetch because use requires buffer in default mem.";
-    (*prev_allocation_in_default_mem_it)->set_end_time(request.end_time);
+    (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
     (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
 
     // If the buffer is placed in default memory, we can also try window
@@ -4628,7 +4724,8 @@ void MsaAlgorithm::AddAsyncSlicesForPrefetch(
     const Allocation& prev_allocation, AllocationSequence* allocations,
     AliasedOffset* aliased_offset,
     const std::vector<SliceDecision>& slice_decisions_sorted_by_start_time,
-    int64_t prefetch_end_time, int64_t allocation_end_time) {
+    int64_t prefetch_end_time, int64_t allocation_end_time,
+    HloInstruction* sync_mem_op) {
   VLOG(3) << "Sliced copy to alternate memory. "
           << SliceTimesAndCopyResourcesToString(
                  slice_decisions_sorted_by_start_time, prefetch_end_time,
@@ -4642,7 +4739,7 @@ void MsaAlgorithm::AddAsyncSlicesForPrefetch(
       prev_allocation, MemorySpace::kAlternate,
       slice_decisions_sorted_by_start_time, prefetch_end_time,
       allocation_end_time, options_.sliced_prefetch_options,
-      options_.get_equivalent_s8_shape_fn));
+      options_.get_equivalent_s8_shape_fn, sync_mem_op));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -4856,7 +4953,12 @@ MsaAlgorithm::Result MsaAlgorithm::Evict(const AllocationRequest& request) {
 
   MsaBufferInterval eviction_mem_interval;
   eviction_mem_interval.buffer = request.allocation_value->value();
-  eviction_mem_interval.size = request.size;
+  // When replacing an sync slice, the size of the original allocation_value
+  // matters instead of the queuing_allocation_value
+  // TODO(mehrdadk): separate the request size for src and dst
+  // AllocationSequence
+  eviction_mem_interval.size =
+      std::max(request.allocation_value->size(), request.size);
   // Try to reserve a buffer from the end of the previous allocation to the
   // preferred eviction end time.
   eviction_mem_interval.start = eviction_end_time + 1;
@@ -4912,7 +5014,7 @@ MsaAlgorithm::Result MsaAlgorithm::Evict(const AllocationRequest& request) {
   // See if this interval would violate the asynchronous copy limit.
   if (!eviction_interval_too_short && !eviction_violates_outstanding_copies &&
       !eviction_violates_resource) {
-    prev_allocation->set_end_time(eviction_end_time);
+    prev_allocation->Extend(eviction_end_time);
     AddAsyncCopyOrOtherMemOp(
         *prev_allocation, MemorySpace::kDefault,
         /*chunk=*/std::nullopt, eviction_exclusive_start_time,
@@ -5144,7 +5246,8 @@ MsaAlgorithm::Result MsaAlgorithm::Prefetch(
             ->mutable_allocation_sequence(),
         context.request->preferred_offset,
         context.sliced_solution->slice_decisions_sorted_by_start_time,
-        context.prefetch_end_time, context.request->end_time);
+        context.prefetch_end_time, context.request->end_time,
+        context.request->required_copy_allocation_for);
     context.request->updates_allocation_value->allocation_sequence()
         ->back()
         ->AddUse(context.request->use->hlo_use);
