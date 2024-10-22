@@ -5391,8 +5391,9 @@ absl::Status SpmdPartitioner::PreprocessHlos(
             auto* merged_dim = merged_padding->mutable_dimensions(i);
             merged_dim->set_edge_padding_low(dim.edge_padding_low() -
                                              hlo->slice_starts(i));
-            merged_dim->set_edge_padding_high(hlo->slice_limits(i) -
-                                              operand->shape().dimensions(i));
+            merged_dim->set_edge_padding_high(
+                hlo->slice_limits(i) -
+                (operand->shape().dimensions(i) - dim.edge_padding_high()));
           }
           if (merged_padding.has_value() && may_have_multi_halo_exchanges) {
             // Rewrite to a single Pad.

@@ -15082,6 +15082,27 @@ ENTRY offloading (param0: f32[1,256,128]) -> f32[1,256,128] {
   EXPECT_THAT(move_to_device, op::Shape("f32[1,256,32]"));
 }
 
+TEST_P(SpmdPartitioningTest, MergedPadThenSliceWithPaddingHigh) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4] parameter(0), sharding={devices=[4]<=[4]}
+  %init = f32[] constant(2.0)
+  %pad = f32[8] pad(%param0, %init), padding=2_2, sharding={devices=[4]<=[4]}
+  ROOT %slice = f32[4] slice(%pad), slice={[4:8]}, sharding={devices=[4]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1]"));
+  EXPECT_THAT(root, AllOf(op::Select(_, op::CollectivePermute(param0), _),
+                          op::Shape("f32[1]")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
