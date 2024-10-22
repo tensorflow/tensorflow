@@ -501,7 +501,7 @@ class FlatBufferModelBase {
     std::map<std::string, std::string> keys_values;
     if (!model || !model->metadata() || !model->buffers()) return keys_values;
 
-    for (int i = 0; i < model->metadata()->size(); ++i) {
+    for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
       auto buf = metadata->buffer();
       if (buf >= model->buffers()->size()) continue;
