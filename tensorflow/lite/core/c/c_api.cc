@@ -19,15 +19,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/common_internal.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/create_op_resolver.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/version.h"
 
 namespace {
