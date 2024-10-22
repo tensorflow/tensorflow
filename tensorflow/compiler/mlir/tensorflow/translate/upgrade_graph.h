@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_UPGRADE_GRAPH_H_
 
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
