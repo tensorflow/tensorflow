@@ -3165,9 +3165,10 @@ ENTRY %module {
       return AsyncTracker::GetResourceHazardType(resource_type);
     }
 
-    ResourcesVector GetResourcesFromInstruction(
+    ResourcesVector GetResourcesFromInstructionImpl(
         const HloInstruction& hlo) const override {
-      ResourcesVector result = AsyncTracker::GetResourcesFromInstruction(hlo);
+      ResourcesVector result =
+          AsyncTracker::GetResourcesFromInstructionImpl(hlo);
       // There is only one target defined resource (which is non-extendable).
       if (hlo.opcode() == HloOpcode::kAllGatherStart) {
         result.push_back({AsyncTracker::GetFirstTargetDefinedResource(),

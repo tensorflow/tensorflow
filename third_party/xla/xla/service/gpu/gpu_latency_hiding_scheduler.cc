@@ -188,7 +188,7 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
-ResourcesVector GpuAsyncTracker::GetResourcesFromInstruction(
+ResourcesVector GpuAsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& instr) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
   if (op.outer == HloOpcode::kAsyncStart || op.outer == HloOpcode::kAsyncDone) {
@@ -208,7 +208,7 @@ ResourcesVector GpuAsyncTracker::GetResourcesFromInstruction(
         GetFirstTargetDefinedResource() + static_cast<int64_t>(resource),
         usage)};
   }
-  return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
+  return GpuAsyncTrackerBase::GetResourcesFromInstructionImpl(instr);
 }
 
 int64_t GpuAsyncTracker::GetNumTargetDefinedResources() const {
