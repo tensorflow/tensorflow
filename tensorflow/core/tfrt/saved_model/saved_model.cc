@@ -140,22 +140,19 @@ absl::Status PrepareRestore(mlir::MLIRContext* context,
                             const std::string& saved_model_dir,
                             const SavedModel::Options& options,
                             ifrt_serving::CheckpointLoader* checkpoint_loader) {
-  // Import the global MLIR with `import_user_signatures` as true so that we can
-  // analysis the global MLIR to retrieve data needed for restore.
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_restore_analysis;
-  ASSIGN_OR_RETURN_IN_IMPORT(
-      mlir_module_restore_analysis,
-      ImportSavedModel(
-          context, meta_graph_def, fallback_state, saved_model_dir,
-          /*import_user_signatures=*/true,
-          options.graph_execution_options.run_placer_grappler_on_functions));
-
   if (!checkpoint_loader) {
     return absl::InternalError("Missing checkpoint loader.");
   }
 
-  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(
-      std::move(mlir_module_restore_analysis)));
+  ifrt_serving::CheckpointLoader::PrepareRestoreArgs args = {
+      .context = context,
+      .meta_graph_def = meta_graph_def,
+      .fallback_state = &fallback_state,
+      .saved_model_dir = saved_model_dir,
+      .run_placer_grappler_on_functions =
+          options.graph_execution_options.run_placer_grappler_on_functions};
+
+  TF_RETURN_IF_ERROR(checkpoint_loader->PrepareRestore(args));
 
   LOG(INFO) << "Complete set restore metadata.";
   return absl::OkStatus();

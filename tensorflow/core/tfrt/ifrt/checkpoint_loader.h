@@ -23,7 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
@@ -38,6 +41,14 @@ namespace ifrt_serving {
 // Implement the `CheckpointLoaderInterface` by using RestoreV2.
 class CheckpointLoader {
  public:
+  struct PrepareRestoreArgs {
+    mlir::MLIRContext* context;
+    tensorflow::MetaGraphDef meta_graph_def;
+    tfrt_stub::FallbackState* fallback_state;
+    std::string saved_model_dir;
+    bool run_placer_grappler_on_functions;
+  };
+
   explicit CheckpointLoader(
       IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry,
       tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue,
@@ -48,7 +59,7 @@ class CheckpointLoader {
   virtual ~CheckpointLoader() = default;
 
   // Called before `Load` to do some preparation work.
-  virtual absl::Status PrepareRestore(mlir::OwningOpRef<mlir::ModuleOp> module);
+  virtual absl::Status PrepareRestore(const PrepareRestoreArgs& args);
 
   // Load the checkpoint. This API is designed to be compatible with the
   // `tf_mlrt.ifrt_restore_variable` kernel.
