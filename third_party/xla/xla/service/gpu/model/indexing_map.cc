@@ -29,10 +29,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/numeric/int128.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
@@ -47,10 +45,6 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
