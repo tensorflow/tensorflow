@@ -94,13 +94,13 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kRsqrt:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
     case HloOpcode::kReal:
     case HloOpcode::kImag:
     case HloOpcode::kLogistic:
       return pu::IsFloatingPointType(type) || pu::IsComplexType(type);
+    case HloOpcode::kCbrt:
     case HloOpcode::kErf:
     case HloOpcode::kFloor:
     case HloOpcode::kCeil:
