@@ -1979,7 +1979,6 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms:sub_byte_normalization",
         "//xla/service:hlo_creation_utils",
-        "//xla/service:sub_byte_normalization",
         "//xla/service/gpu:gpu_fusible",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
