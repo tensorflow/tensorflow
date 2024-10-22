@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -956,6 +957,7 @@ cc_library(
             "@local_tsl//tsl/platform:env",
             "@local_tsl//tsl/platform:path",
             "@local_tsl//tsl/platform:platform_port",
+            "@local_tsl//tsl/platform:protobuf",
             "@local_tsl//tsl/platform:status",
         ],
     )
@@ -966,6 +968,13 @@ cc_library(
         "sm90",
     ]
 ]
+
+build_test(
+    name = "hlo_op_profiler_build_test",
+    targets = [
+        ":hlo_op_profiler_run_sm80",
+    ],
+)
 
 xla_test(
     name = "hlo_op_profiler_test",
