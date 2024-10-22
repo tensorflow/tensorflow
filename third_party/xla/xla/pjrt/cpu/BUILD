@@ -189,7 +189,7 @@ cc_library(
         "//xla/service/cpu:cpu_runtime",
         "//xla/service/cpu:cpu_xfeed",
         "//xla/service/cpu:simple_orc_jit",
-        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/strings:proto_serialization",
