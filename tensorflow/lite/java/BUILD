@@ -133,6 +133,7 @@ filegroup(
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
     "//tensorflow/lite:builtin_ops.h",
+    "//tensorflow/lite/c:builtin_op_data.h",
     "//tensorflow/lite/c:c_api.h",
     "//tensorflow/lite/c:c_api_experimental.h",
     "//tensorflow/lite/c:c_api_opaque.h",
