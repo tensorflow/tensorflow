@@ -200,17 +200,6 @@ class [[deprecated("Use NewHloTestBase instead.")]] HloTestBase
 
   ErrorSpec error_spec_{0.0001};
 
-  // DO NOT USE: These are temporary fields to help migrate to NewHloTestBase's
-  // accessors.
-  [[deprecated(
-      "Use test_runner() instead. This is a temporary field to help migrate to "
-      "the accessors in NewHloTestBase. Please do not introduce new "
-      "uses.")]] HloRunnerInterface& test_runner_;
-  [[deprecated(
-      "Use reference_runner() instead. This is a temporary field to help "
-      "migrate to the accessors in NewHloTestBase. Please do not introduce new "
-      "uses.")]] HloRunnerInterface& reference_runner_;
-
  private:
   se::Platform* test_platform_;
   std::unique_ptr<se::DeviceMemoryAllocator> allocator_;

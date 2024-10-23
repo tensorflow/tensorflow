@@ -125,8 +125,6 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
           /*reference_runner=*/
           GetHloRunnerForReference(reference_platform).value(),
           verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier),
-      test_runner_(test_runner()),
-      reference_runner_(reference_runner()),
       test_platform_(test_platform) {}
 
 /*static*/ se::Platform* HloTestBase::GetReferencePlatform() {

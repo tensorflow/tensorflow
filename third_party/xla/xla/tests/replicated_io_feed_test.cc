@@ -59,8 +59,7 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   std::unique_ptr<HloModule> module =
       ParseAndReturnVerifiedModule(hlo_text, config).value();
   auto executable =
-      test_runner_.CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
-          .value();
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true).value();
 
   auto device_assn = MakeDeviceAssn(kNumReplicas);
 
