@@ -120,7 +120,7 @@ bool FunctionParameterCanonicalizer::Canonicalize(
         index = InternedArgNameLinearSearch(key);
         Py_DECREF(key);
 
-        // Stil not found, then return an error.
+        // Still not found, then return an error.
         if (TF_PREDICT_FALSE(index == interned_arg_names_.size())) {
           PyErr_Format(PyExc_TypeError,
                        "Got an unexpected keyword argument '%s'",
