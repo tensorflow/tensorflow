@@ -19,7 +19,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/task_function.h"  // from @tf_runtime
+#include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
