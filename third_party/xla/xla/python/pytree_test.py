@@ -14,6 +14,7 @@
 # ==============================================================================
 import collections
 import dataclasses
+import gc
 
 from absl.testing import absltest
 
@@ -110,6 +111,17 @@ class PyTreeTest(absltest.TestCase):
     )
     self.assertEqual(c_tree2.unflatten(c_leafs), c)
     self.assertEqual(str(c_tree2), str(c_tree))
+
+  def testTpTraverse(self):
+    self.assertContainsSubset(
+        [
+            pytree.PyTreeRegistry,
+            ExampleType2,
+            ExampleType2.to_iterable,
+            from_iterable,
+        ],
+        gc.get_referents(registry),
+    )
 
 
 if __name__ == "__main__":
