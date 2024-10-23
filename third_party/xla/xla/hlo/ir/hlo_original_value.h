@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 // Stores information of original values.

@@ -68,6 +68,7 @@ cc_library(
         "//xla:literal_util",
         "//xla:printer",
         "//xla:protobuf_util",
+        "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:sort_json",
@@ -94,6 +95,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -169,9 +171,13 @@ cc_library(
     hdrs = ["hlo_module_group.h"],
     deps = [
         ":hlo",
+        "//xla:status_macros",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -181,7 +187,9 @@ cc_library(
     hdrs = ["hlo_instruction_utils.h"],
     deps = [
         ":hlo",
+        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -232,7 +240,9 @@ cc_library(
         "//xla:util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
