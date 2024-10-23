@@ -1444,6 +1444,7 @@ cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
+    visibility = internal_visibility(["//xla/internal:hwi_internal"]),
     deps = [
         ":buffer_assignment",
         ":buffer_value",
