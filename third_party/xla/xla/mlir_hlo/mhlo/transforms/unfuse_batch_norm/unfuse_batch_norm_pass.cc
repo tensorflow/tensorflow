@@ -52,7 +52,7 @@ struct TestUnfuseBatchNormPass
 
 }  // namespace
 
-std::unique_ptr<::mlir::Pass> createTestUnfuseBatchNormPass() {
+static std::unique_ptr<::mlir::Pass> createTestUnfuseBatchNormPass() {
   return std::make_unique<TestUnfuseBatchNormPass>();
 }
 
