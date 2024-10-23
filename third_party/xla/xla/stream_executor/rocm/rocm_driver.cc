@@ -494,4 +494,11 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
+absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
+  int32_t version;
+  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&version),
+                              "Could not get driver version"));
+  return version;
+}
+
 }  // namespace stream_executor::gpu

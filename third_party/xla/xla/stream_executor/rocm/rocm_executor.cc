@@ -1054,11 +1054,9 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_runtime_version(
       ParseRocmVersion(RocmRuntime::GetRuntimeVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
-  int32_t driver_version = 0;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&driver_version),
-                              "Could not get driver version"));
   desc.set_driver_version(
-      ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
+      ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))
+          .value_or(SemanticVersion{0, 0, 0}));
 
   // It would be better to use the PCI device ID or some other truly unique
   // identifier for the GPU model.  But getting this requires using NVML or
