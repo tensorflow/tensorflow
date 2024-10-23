@@ -236,7 +236,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 
 }  // namespace
 
-DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
   auto options = HloTestBase::GetDebugOptionsForTest();
   // It's necessary to set this manually, because it's disabled in optimized
   // builds and there are some ASAN builds that run on TAP with -c opt.

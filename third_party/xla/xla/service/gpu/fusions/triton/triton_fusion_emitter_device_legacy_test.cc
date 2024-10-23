@@ -107,7 +107,7 @@ class TritonGemmTest : public TritonTest {
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -128,7 +128,7 @@ class TritonGemmTest : public TritonTest {
 
 class TritonGemmTestWithSplitK : public TritonGemmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_split_k_autotuning(true);
     return debug_options;
@@ -137,7 +137,7 @@ class TritonGemmTestWithSplitK : public TritonGemmTest {
 
 class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(false);
     return debug_options;
@@ -1786,7 +1786,7 @@ ENTRY e {
 
 class TritonGemmTestAny : public TritonGemmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     return debug_options;
@@ -2208,7 +2208,7 @@ ENTRY e  {
 
 class TritonGemmLevel2Test : public TritonGemmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_fusion_level(2);
     return debug_options;
@@ -2217,7 +2217,7 @@ class TritonGemmLevel2Test : public TritonGemmTest {
 
 class TritonGemmLevel2TestAny : public TritonGemmLevel2Test {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmLevel2Test::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
     return debug_options;
@@ -4386,7 +4386,7 @@ ENTRY e {
 
 class TritonGemmContractionDims : public TritonGemmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
     debug_options.set_xla_gpu_triton_gemm_any(true);

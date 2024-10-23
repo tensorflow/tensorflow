@@ -36,7 +36,7 @@ namespace gpu {
 namespace {
 
 class ScatterFusionTest : public HloTestBase {
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto opts = HloTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mlir_emitter_level(0);
     return opts;

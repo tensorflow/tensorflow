@@ -1471,7 +1471,7 @@ TEST(CommandBufferThunkTest, WhileCmd) {
 
 class CmdBufferTest : public HloTestBase {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
     debug_options.set_xla_gpu_graph_min_graph_size(1);

@@ -39,7 +39,7 @@ class CublasGemmPadForTensorCoresTest : public HloTestBase {
         .value();
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // Some pads would not be added if we detect that Triton will handle the
     // given dot operation.

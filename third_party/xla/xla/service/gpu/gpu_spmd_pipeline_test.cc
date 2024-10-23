@@ -72,7 +72,7 @@ class GpuSpmdPartitioningTest : public HloTestBase,
  protected:
   bool UseShardy() const { return GetParam(); }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     return debug_options;
   }

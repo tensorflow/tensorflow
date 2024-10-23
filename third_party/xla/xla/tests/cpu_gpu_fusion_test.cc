@@ -138,7 +138,7 @@ class CpuGpuFusionTest : public HloTestBase {
                                       absl::Span<const float> xs);
   bool ComputeElementwiseAnswerCompare(ComparisonDirection direction,
                                        absl::Span<const float> xs);
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;

@@ -289,7 +289,7 @@ ENTRY e {
     return str;
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions options = HloTestBase::GetDebugOptionsForTest();
     options.set_xla_gpu_dump_autotune_results_to(
         xla_gpu_dump_autotune_results_to_);
@@ -793,7 +793,7 @@ class KernelCacheTest : public HloTestBase {
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_kernel_cache_file(cache_file_name_);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
@@ -953,7 +953,7 @@ ENTRY e {
 
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
     return debug_options;
@@ -970,7 +970,7 @@ TEST_F(KernelCacheTestSingleThreaded, CacheIsGenerated) {
 
 class NoKernelCacheTest : public KernelCacheTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = KernelCacheTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
     return debug_options;

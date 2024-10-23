@@ -38,7 +38,7 @@ namespace {
 
 class ParallelReductionTest : public GpuCodegenTest {
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // The test contains a MOF fusion and the XLA optimizer passes
     // don't like this.

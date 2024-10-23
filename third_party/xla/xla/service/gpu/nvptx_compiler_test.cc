@@ -87,7 +87,7 @@ class NVPTXCompilerTest : public HloTestBase {
 
 class NVPTXCompilerTestTriton : public NVPTXCompilerTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;

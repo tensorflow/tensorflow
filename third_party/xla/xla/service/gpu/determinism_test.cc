@@ -84,7 +84,9 @@ class DeterminismTest : public GpuCodegenTest {
     }
   }
 
-  DebugOptions GetDebugOptionsForTest() override { return debug_options_; }
+  DebugOptions GetDebugOptionsForTest() const override {
+    return debug_options_;
+  }
 
   DebugOptions debug_options_;
 

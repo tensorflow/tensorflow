@@ -183,7 +183,7 @@ void HloHardwareIndependentTestBase::SetAotFastMathDebugOptions(
   options->set_xla_cpu_fast_math_honor_division(false);
 }
 
-DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() {
+DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   auto debug_options = GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");

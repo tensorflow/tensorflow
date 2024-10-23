@@ -105,7 +105,7 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
                             });
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_fmha(true);
     debug_options.set_xla_gpu_fused_attention_use_cudnn_rng(true);

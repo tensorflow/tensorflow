@@ -49,7 +49,7 @@ namespace {
 
 class AlgorithmTest : public GpuCodegenTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_dump_to("sponge");
     debug_options.set_xla_dump_hlo_pass_re(".*");
@@ -93,7 +93,7 @@ class AlgorithmTest : public GpuCodegenTest {
 // algorithm.
 class Triton6xBF16GemmTest : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // These 2 flags are not strictly necessary now, but we're adding them to be
     // on the safe side against future flakiness.
@@ -121,7 +121,7 @@ class Triton6xBF16GemmTest : public AlgorithmTest {
 // flag after we will support the algorithm values through the entire stack.
 class Triton6xBF16GemmTestWithFlag : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -136,7 +136,7 @@ class Triton6xBF16GemmTestWithFlag : public AlgorithmTest {
 
 class BlasAlgorithmTest : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
@@ -148,7 +148,7 @@ class BlasAlgorithmTest : public AlgorithmTest {
 
 class TritonAlgorithmTest : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -711,7 +711,7 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
 // algorithm.
 class Triton3xBF16GemmTest : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // These 2 flags are not strictly necessary now, but we're adding them the
     // to be on the safe side against future flakiness.
@@ -734,7 +734,7 @@ class Triton3xBF16GemmTest : public AlgorithmTest {
 // flag after we will support the algorithm values through the entire stack.
 class Triton3xBF16GemmTestWithFlag : public AlgorithmTest {
  public:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = AlgorithmTest::GetDebugOptionsForTest();
     // Enable triton fusion for all supported GEMMs.
     debug_options.set_xla_gpu_triton_gemm_any(true);

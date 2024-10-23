@@ -142,7 +142,7 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
   }
 
  protected:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
 
     // Enable or disable all async collectives based on test parameter.

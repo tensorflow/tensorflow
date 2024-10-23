@@ -81,7 +81,7 @@ class CpuUnaryIntrinsicTest
   }
 
  private:
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     HloTestBase::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;

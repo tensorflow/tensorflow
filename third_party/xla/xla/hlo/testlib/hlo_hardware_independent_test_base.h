@@ -154,7 +154,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   //
   // This function is virtual so tests can specify an alternative set of debug
   // options (e.g. disabling additional passes).
-  virtual DebugOptions GetDebugOptionsForTest();
+  virtual DebugOptions GetDebugOptionsForTest() const;
 
   // Gets an HloModuleConfig with options appropriate for tests.
   HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,

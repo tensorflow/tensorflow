@@ -45,7 +45,7 @@ class TensorFloat32GlobalVarTest : public ::testing::WithParamInterface<bool>,
     tsl::enable_tensor_float_32_execution(true);
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     const bool enable_triton_gemm = GetParam();
     if (enable_triton_gemm) {

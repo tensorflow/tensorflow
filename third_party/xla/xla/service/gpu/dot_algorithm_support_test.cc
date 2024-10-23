@@ -115,7 +115,7 @@ class DotAlgorithmSupportTest
     return GetDeviceDescription().gpu_compute_capability();
   }
 
-  DebugOptions GetDebugOptionsForTest() override {
+  DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     // Setting this explicitly to make sure that we also test the case when the
     // dot's dimensions are under the rewrite size threshold:
