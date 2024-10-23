@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatc.h"  // from @flatbuffers
-#include "tensorflow/core/platform/platform.h"
+#include "flatbuffers/idl.h"  // from @flatbuffers
+#include "flatbuffers/util.h"  // from @flatbuffers
 
 #ifdef PLATFORM_GOOGLE
 #define TFLITE_TF_PREFIX "third_party/tensorflow/"
