@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DERIVED_TIMELINE_H_
 
+#include <stdbool.h>
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -39,7 +41,8 @@ class DerivedXEventBuilder {
   DerivedXEventBuilder(XEventBuilder event, std::optional<int64_t> group_id);
 
   bool ShouldExpand(const XEventMetadata& event_metadata,
-                    std::optional<int64_t> group_id) const;
+                    std::optional<int64_t> group_id,
+                    std::optional<int64_t> next_ps = std::nullopt) const;
 
   void Expand(tsl::profiler::Timespan event_span);
   tsl::profiler::Timespan GetTimespan() const { return event_.GetTimespan(); }
@@ -101,6 +104,14 @@ class DerivedXLineBuilder {
     return cuda_graph_id_metadata_;
   }
 
+  // If set to true, when try to decide expand or not, check the next event's
+  // start time, if the gap from current event's end to it is too large, do not
+  // expand current event! This is to fix the issue that two or more framework
+  // op scopes of same prefix/name are merged into one.
+  void SetCheckNextEventStart(bool check_next_event_start) {
+    check_next_event_start_ = check_next_event_start;
+  }
+
  private:
   // If the last event of the given level has the same metadata, expands it to
   // include the time until the given event's end time.
@@ -121,6 +132,7 @@ class DerivedXLineBuilder {
   absl::flat_hash_map<int, std::optional<DerivedXEventBuilder>>
       last_event_by_level_;
   std::vector<DerivedXLineBuilder*> dependent_lines_;
+  bool check_next_event_start_ = false;
 };
 
 struct Symbol {
