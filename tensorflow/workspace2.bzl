@@ -182,6 +182,7 @@ def _tf_repositories():
         name = "cpuinfo",
         sha256 = "ca31f17a86e4db01b5fc05efa1807ddc84c02ba4611464b67e185e8210bf096b",
         strip_prefix = "cpuinfo-1e83a2fdd3102f65c6f1fb602c1b320486218a99",
+        patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
         urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/1e83a2fdd3102f65c6f1fb602c1b320486218a99.zip"),
     )
 
