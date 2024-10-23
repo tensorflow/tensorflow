@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tensorflow/translate/node_order.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/node_order.h"
 
 #include <string>
 #include <utility>

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_NODE_ORDER_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_NODE_ORDER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_NODE_ORDER_H_
+#define TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_NODE_ORDER_H_
 
 #include <functional>
 #include <unordered_set>
@@ -48,4 +48,4 @@ void TopologicalOrdering(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_NODE_ORDER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_INTERNAL_NODE_ORDER_H_
