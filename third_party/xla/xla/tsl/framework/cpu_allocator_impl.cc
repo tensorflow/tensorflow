@@ -196,10 +196,6 @@ class CPUAllocatorFactory : public AllocatorFactory {
  public:
   Allocator* CreateAllocator() override { return new CPUAllocator; }
 
-  SubAllocator* CreateSubAllocator(int numa_node) override {
-    return new CPUSubAllocator(new CPUAllocator);
-  }
-
  private:
   class CPUSubAllocator : public SubAllocator {
    public:
