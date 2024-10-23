@@ -288,7 +288,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
 
-  opts.set_xla_gpu_enable_pgle_accuracy_checker(false);
+  opts.set_xla_gpu_pgle_accuracy_checker(
+      DebugOptions::PGLE_STRICTNESS_LEVEL_WARN);
 
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
@@ -700,6 +701,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     debug_options->set_xla_step_marker_location(step_marker_location);
     return true;
   };
+
+  // Custom "sub-parser" lambda for xla_gpu_pgle_accuracy_checker.
+  auto setter_for_xla_gpu_pgle_accuracy_checker =
+      [debug_options](const std::string& value) {
+        DebugOptions::PGLEStrictnessLevel strictness_level;
+        if (!DebugOptions::PGLEStrictnessLevel_Parse(value,
+                                                     &strictness_level)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_pgle_accuracy_checker(strictness_level);
+        return true;
+      };
 
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
@@ -1975,12 +1988,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "a training. The location of the marker (if any) is determined "
       "by the option value of type DebugOptions::StepMarkerLocation."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_pgle_accuracy_checker",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pgle_accuracy_checker),
-      debug_options->xla_gpu_enable_pgle_accuracy_checker(),
-      "Enables strict PGLE checking. If an FDO profile is specified and "
-      "latency hiding scheduler encounters missing instructions in the profile "
-      "compilation will halt."));
+      "xla_gpu_pgle_accuracy_checker", setter_for_xla_gpu_pgle_accuracy_checker,
+      DebugOptions::PGLEStrictnessLevel_Name(
+          debug_options->xla_gpu_pgle_accuracy_checker()),
+      "If an FDO profile is specified and latency hiding scheduler encounters "
+      "missing instructions in the profile, then the compilation will halt "
+      "(ERROR), or a warning will be emitted (WARN), or the checker is "
+      "disabled (OFF)"));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_executable_warn_stuck_timeout",
