@@ -20,18 +20,27 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
+#include "third_party/protobuf/message_lite.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/util.h"
+#include "tensorflow/core/platform/types.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
