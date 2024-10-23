@@ -33,6 +33,7 @@ namespace tensorflow {
 
 using tsl::Stat;
 using tsl::StatsCalculator;
+using tsl::StatWithPercentiles;
 
 }  // namespace tensorflow
 

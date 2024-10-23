@@ -45,8 +45,8 @@ class BenchmarkResults {
   BenchmarkResults() {}
   BenchmarkResults(double model_size_mb, int64_t startup_latency_us,
                    uint64_t input_bytes,
-                   tensorflow::Stat<int64_t> warmup_time_us,
-                   tensorflow::Stat<int64_t> inference_time_us,
+                   tensorflow::StatWithPercentiles<int64_t> warmup_time_us,
+                   tensorflow::StatWithPercentiles<int64_t> inference_time_us,
                    const profiling::memory::MemoryUsage& init_mem_usage,
                    const profiling::memory::MemoryUsage& overall_mem_usage,
                    float peak_mem_mb)
@@ -60,10 +60,12 @@ class BenchmarkResults {
         peak_mem_mb_(peak_mem_mb) {}
 
   const double model_size_mb() const { return model_size_mb_; }
-  tensorflow::Stat<int64_t> inference_time_us() const {
+  tensorflow::StatWithPercentiles<int64_t> inference_time_us() const {
     return inference_time_us_;
   }
-  tensorflow::Stat<int64_t> warmup_time_us() const { return warmup_time_us_; }
+  tensorflow::StatWithPercentiles<int64_t> warmup_time_us() const {
+    return warmup_time_us_;
+  }
   int64_t startup_latency_us() const { return startup_latency_us_; }
   uint64_t input_bytes() const { return input_bytes_; }
   double throughput_MB_per_second() const {
@@ -84,8 +86,8 @@ class BenchmarkResults {
   double model_size_mb_ = 0.0;
   int64_t startup_latency_us_ = 0;
   uint64_t input_bytes_ = 0;
-  tensorflow::Stat<int64_t> warmup_time_us_;
-  tensorflow::Stat<int64_t> inference_time_us_;
+  tensorflow::StatWithPercentiles<int64_t> warmup_time_us_;
+  tensorflow::StatWithPercentiles<int64_t> inference_time_us_;
   profiling::memory::MemoryUsage init_mem_usage_;
   profiling::memory::MemoryUsage overall_mem_usage_;
   // An invalid value could happen when we don't monitor memory footprint for
@@ -216,9 +218,9 @@ class BenchmarkModel {
   // Get the model file size if it's available.
   virtual int64_t MayGetModelFileSize() { return -1; }
   virtual uint64_t ComputeInputBytes() = 0;
-  virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        float max_secs, RunType run_type,
-                                        TfLiteStatus* invoke_status);
+  virtual tensorflow::StatWithPercentiles<int64_t> Run(
+      int min_num_times, float min_secs, float max_secs, RunType run_type,
+      TfLiteStatus* invoke_status);
   // Prepares input data for benchmark. This can be used to initialize input
   // data that has non-trivial cost.
   virtual TfLiteStatus PrepareInputData();
