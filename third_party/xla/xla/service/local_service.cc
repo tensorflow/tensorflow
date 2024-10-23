@@ -93,7 +93,6 @@ LocalService::CompileExecutables(
       build_options.layout_canonicalization_callback(),
       false,
       {},
-      nullptr,
       {build_options.key_value_store(), build_options.process_index(),
        build_options.process_count()}};
   if (build_options.num_partitions() == 1) {
