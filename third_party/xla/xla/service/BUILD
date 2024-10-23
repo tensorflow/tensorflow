@@ -2029,6 +2029,7 @@ cc_library(
     srcs = ["gather_expander.cc"],
     hdrs = ["gather_expander.h"],
     deps = [
+        ":gather_scatter_utils",
         ":hlo_creation_utils",
         ":while_util",
         "//xla:literal_util",
@@ -5786,9 +5787,12 @@ cc_library(
     hdrs = ["gather_scatter_utils.h"],
     deps = [
         ":hlo_creation_utils",
+        "//xla:literal_util",
         "//xla:permutation_util",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
     ],
 )
