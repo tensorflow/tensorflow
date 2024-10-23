@@ -56,9 +56,7 @@ tf_cc_test(
     deps = [
         "inference_metrics_pass",
         "//tensorflow/compiler/mlir/tf2xla/transforms:test_utils",
-        "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
