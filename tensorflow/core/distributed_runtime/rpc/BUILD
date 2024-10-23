@@ -222,7 +222,9 @@ cc_library(
     deps = [
         ":grpc_util",
         "//tensorflow/core/distributed_runtime:tensor_coding",
+        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/log",
     ] + tf_grpc_cc_dependencies(),
 )
 
