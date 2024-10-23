@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 
@@ -537,6 +540,67 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
         return absl::InternalError(
             absl::StrCat("Expected 2 inputs and 1 output, got: ", num_inputs,
                          " inputs and ", num_outputs, " outputs"));
+      }
+      return absl::OkStatus();
+    }
+
+    case kTfLiteBuiltinBitcast: {
+      RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
+                                         /*required_runtime_inputs=*/1,
+                                         /*required_outputs=*/1));
+      std::vector<int32_t> input_dims = op_sig.inputs.at(0).dims;
+      std::vector<int32_t> output_dims = op_sig.outputs.at(0).dims;
+      size_t input_elem_size, output_elem_size;
+      TfLiteStatus status = GetSizeOfType(
+          /*context=*/nullptr, op_sig.inputs.at(0).type, &input_elem_size);
+      if (status != kTfLiteOk) {
+        return absl::InternalError("Could not parse input type");
+      }
+      status = GetSizeOfType(/*context=*/nullptr, op_sig.outputs.at(0).type,
+                             &output_elem_size);
+      if (status != kTfLiteOk) {
+        return absl::InternalError("Could not parse output type");
+      }
+      if (input_elem_size == output_elem_size) {
+        if (input_dims != output_dims) {
+          return absl::InternalError(
+              "If input and output types have the same element size, they must "
+              "have the same shapes");
+        }
+      } else if (input_elem_size > output_elem_size) {
+        if (input_dims.size() + 1 != output_dims.size()) {
+          return absl::InternalError(
+              "If input element size is greater than output element size, "
+              "require that input rank is one greater than output rank");
+        }
+        for (int d = 0; d < input_dims.size(); ++d) {
+          if (input_dims[d] != output_dims[d]) {
+            return absl::InternalError("Shapes must match in all but last dim");
+          }
+        }
+        if (output_dims[output_dims.size() - 1] * output_elem_size !=
+            input_elem_size) {
+          return absl::InternalError(
+              "Last output dim must be equal to input element size divided by "
+              "output element size");
+        }
+      } else {  // output_elem_size > input_elem_size
+        if (input_dims.size() != output_dims.size() + 1) {
+          return absl::InternalError(
+              "If output element size is greater than input element size, "
+              "require that output rank is on greater than input rank");
+        }
+        for (int d = 0; d < output_dims.size(); ++d) {
+          if (input_dims[d] != output_dims[d]) {
+            return absl::InternalError("Shapes must match in all but last dim");
+          }
+        }
+        if (input_dims[input_dims.size() - 1] * input_elem_size !=
+            output_elem_size) {
+          return absl::InternalError(
+              "Last input dim must be equal to output element size divided by "
+              "input element size");
+        }
       }
       return absl::OkStatus();
     }
