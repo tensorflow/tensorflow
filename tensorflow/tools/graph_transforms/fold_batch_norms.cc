@@ -62,7 +62,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
             new_nodes->insert(new_nodes->end(),
                               {mul_node, conv_node, input_node, weights_node,
                                mul_values_node});
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
 
@@ -112,11 +112,11 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         new_conv_node.set_name(mul_node.name());
         new_nodes->push_back(new_conv_node);
 
-        return OkStatus();
+        return absl::OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("fold_batch_norms", FoldBatchNorms);
