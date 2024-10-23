@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_PJRT_MEMORY_H_
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/memory.h"
 
 namespace xla {
