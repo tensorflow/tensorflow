@@ -1,1 +1,44 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/lldb/source/Utility/DiagnosticsRendering.cpp b/lldb/source/Utility/DiagnosticsRendering.cpp
+--- a/lldb/source/Utility/DiagnosticsRendering.cpp
++++ b/lldb/source/Utility/DiagnosticsRendering.cpp
+@@ -99,10 +99,10 @@
+ 
+   // Sort the diagnostics.
+   auto sort = [](auto &ds) {
+-    llvm::sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
++    std::stable_sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
+       auto l1 = d1.source_location.value_or(DiagnosticDetail::SourceLocation{});
+       auto l2 = d2.source_location.value_or(DiagnosticDetail::SourceLocation{});
+-      return std::pair(l1.line, l2.column) < std::pair(l1.line, l2.column);
++      return std::tie(l1.line, l1.column) < std::tie(l2.line, l2.column);
+     });
+   };
+   sort(remaining_details);
+diff -ruN --strip-trailing-cr a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
+--- a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
++++ b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
+@@ -46,16 +46,20 @@
+     std::string result =
+         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
+                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
+-    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
++    // Unintuitively the later diagnostic appears first in the string:
++    //    ^   ^
++    //    |   second
++    //    first
++    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
+   }
+   {
+     // Test that diagnostics in reverse order are emitted correctly.
+-    SourceLocation loc1 = {FileSpec{"a.c"}, 2, 10, 0, false, true};
++    SourceLocation loc1 = {FileSpec{"a.c"}, 1, 10, 0, false, true};
+     SourceLocation loc2 = {FileSpec{"a.c"}, 1, 20, 0, false, true};
+     std::string result =
+         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
+                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
+-    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
++    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
+   }
+   {
+     // Test that range diagnostics are emitted correctly.
