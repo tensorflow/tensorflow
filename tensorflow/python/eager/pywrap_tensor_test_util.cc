@@ -15,7 +15,9 @@
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
