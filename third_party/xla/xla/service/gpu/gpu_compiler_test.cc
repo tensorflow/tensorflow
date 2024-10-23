@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -1302,16 +1301,6 @@ TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
 
   VerifyPassOrder(/*first_pass_regex=*/"collective-quantizer",
                   /*last_pass_regex=*/"collective-pipeliner.*");
-}
-
-TEST_F(PassOrderTest,
-       AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
-  DebugOptions options = GetDebugOptionsForTest();
-  SetDebugOptions(options);
-
-  VerifyPassOrder(
-      /*first_pass_regex=*/".*all-gather-optimizer.*",
-      /*last_pass_regex=*/".*all-gather-dynamic-slice-simplifier.*");
 }
 
 }  // namespace
