@@ -95,7 +95,11 @@ def is_generator_or_sequence(x):
           isinstance(x, typing.Iterator))
 
 
-def _extract_archive(file_path, path='.', archive_format='auto'):
+def _extract_archive(file_path,
+                     path='.',
+                     archive_format='auto',
+                     tar_filter: typing.Literal[
+                       "fully_trusted", "tar", "data"] = 'data'):
   """Extracts an archive if it matches tar, tar.gz, tar.bz, or zip formats.
 
   Args:
@@ -106,6 +110,10 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
           'tar' includes tar, tar.gz, and tar.bz files.
           The default 'auto' is ['tar', 'zip'].
           None or an empty list will return no matches found.
+      tar_filter: Set extraction filter for tar files.
+          Options are `'fully_trusted'`, `'tar'`, `'data'` and None.
+          Only available in Python 3.12 or higher.
+          Details at: https://docs.python.org/3/library/tarfile.html#tarfile-extraction-filter
 
   Returns:
       True if a match was found and an archive extraction was completed,
@@ -132,7 +140,11 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     if is_match_fn(file_path):
       with open_fn(file_path) as archive:
         try:
-          archive.extractall(path)
+          if isinstance(archive, tarfile.TarFile) and (sys.version_info
+                                                       >= (3, 12)):
+            archive.extractall(path=path, filter=tar_filter)
+          else:
+            archive.extractall(path)
         except (tarfile.TarError, RuntimeError, KeyboardInterrupt):
           if os.path.exists(path):
             if os.path.isfile(path):
@@ -153,7 +165,8 @@ def get_file(fname,
              hash_algorithm='auto',
              extract=False,
              archive_format='auto',
-             cache_dir=None):
+             cache_dir=None,
+             tar_filter='data'):
   """Downloads a file from a URL if it not already in the cache.
 
   By default the file at the url `origin` is downloaded to the
@@ -198,7 +211,10 @@ def get_file(fname,
           None or an empty list will return no matches found.
       cache_dir: Location to store cached files, when None it
           defaults to the default directory `~/.keras/`.
-
+      tar_filter: Set extraction filter for tar files.
+          Options are `'fully_trusted'`, `'tar'`, `'data'` and None.
+          Only available in Python 3.12 or higher.
+          Details at: https://docs.python.org/3/library/tarfile.html#tarfile-extraction-filter
   Returns:
       Path to the downloaded file
   """
@@ -266,11 +282,12 @@ def get_file(fname,
 
   if untar:
     if not os.path.exists(untar_fpath):
-      _extract_archive(fpath, datadir, archive_format='tar')
+      _extract_archive(fpath, datadir, archive_format='tar',
+                       tar_filter=tar_filter)
     return untar_fpath
 
   if extract:
-    _extract_archive(fpath, datadir, archive_format)
+    _extract_archive(fpath, datadir, archive_format, tar_filter)
 
   return fpath
 
