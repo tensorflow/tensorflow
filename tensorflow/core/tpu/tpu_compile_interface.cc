@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 
