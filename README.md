@@ -170,6 +170,6 @@ Learn more about the
 * [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
 * [Edx](https://www.edx.org/search?q=TensorFlow)
 
-## License
+## License2
 
 [Apache License 2.0](LICENSE)
