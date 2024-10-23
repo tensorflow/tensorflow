@@ -171,11 +171,7 @@ tf_cuda_library(
     cuda_deps = [
         "@local_config_cuda//cuda:cudnn_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform",
-<<<<<<< HEAD
-        "@local_xla//xla/stream_executor/gpu:gpu_stream",
-=======
         "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
->>>>>>> upstream/master
         ":gpu_runtime_hermetic_cuda_deps",
     ],
     defines = if_linux_x86_64(["TF_PLATFORM_LINUX_X86_64"]),

@@ -560,12 +560,8 @@ tsl_gpu_library(
         ":gpu_init_impl",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:stream_executor_h",
-<<<<<<< HEAD
-        "//xla/stream_executor/gpu:scoped_activate_context",
-=======
         "//xla/stream_executor/cuda:cuda_executor",
         "//xla/stream_executor/cuda:cuda_status",
->>>>>>> upstream/master
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/util:env_var",

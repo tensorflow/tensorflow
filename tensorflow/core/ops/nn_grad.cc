@@ -137,7 +137,6 @@ absl::Status CrossEntropyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("CrossEntropy", CrossEntropyGrad);
 
-<<<<<<< HEAD
 Status DropoutGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
@@ -157,10 +156,7 @@ Status DropoutGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Dropout", DropoutGrad);
 
-Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
-=======
 absl::Status Conv2DGrad(const AttrSlice& attrs, FunctionDef* g) {
->>>>>>> upstream/master
   // clang-format off
   *g = FDH::Define(
     // Arg defs

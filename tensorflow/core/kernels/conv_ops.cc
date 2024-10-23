@@ -39,7 +39,6 @@ typedef Eigen::GpuDevice GPUDevice;
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
   } while (false)
 
-<<<<<<< HEAD
 bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 #if TENSORFLOW_USE_ROCM
    bool is_enabled = se::gpu::UseNhwcLayoutForRocm();
@@ -50,12 +49,8 @@ bool UseNhwcLayoutForConvOnRocm(se::Stream* stream) {
 #endif
 }
 
-Status InitConv2DParameters(const OpKernelConstruction* context,
-                            Conv2DParameters* params) {
-=======
 absl::Status InitConv2DParameters(const OpKernelConstruction* context,
                                   Conv2DParameters* params) {
->>>>>>> upstream/master
   TF_RETURN_IF_ERROR(context->GetAttr("dilations", &params->dilations));
   TF_RETURN_IF_ERROR(context->GetAttr("strides", &params->strides));
   TF_RETURN_IF_ERROR(context->GetAttr("padding", &params->padding));

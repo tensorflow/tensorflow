@@ -30,10 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
-<<<<<<< HEAD
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
-=======
->>>>>>> upstream/master
 
 #if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
