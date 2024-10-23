@@ -47,13 +47,14 @@ INCLUDEPRE_RE = re.compile(r"absl::lts_[0-9]+::base_internal::ThrowStdOutOfRange
                            r"absl::lts_[0-9]+::numbers_internal::FastIntToBuffer|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::StrCat|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::StrAppend|" # for _pywrap_tfe
+                           r"absl::lts_[0-9]+::log_internal|" # for _pywrap_tfe
                            r"absl::lts_[0-9]+::hash_internal|" # for _pywrap_tfcompile
                            r"absl::lts_[0-9]+::container_internal|" # for _pywrap_tfcompile
                            r"absl::lts_[0-9]+::Status::raw_code|" # for absl::Status
                            r"absl::lts_[0-9]+::Status::code|" # for absl::Status
-                           r"absl::lts_[0-9]+::Status::UnrefNonInlined|"  # for absl::Status
                            r"absl::lts_[0-9]+::Status::Status|" # for absl::Status
                            r"absl::lts_[0-9]+::Status::ForEachPayload|" # for absl::Status
+                           r"absl::lts_[0-9]+::status_internal::StatusRep::Unref|"  # for absl::Status
                            r"absl::lts_[0-9]+::internal_statusor::Helper::Crash|"  # for absl::StatusOr
                            r"absl::lts_[0-9]+::internal_statusor::Helper::HandleInvalidStatusCtorArg|"
                            r"absl::lts_[0-9]+::internal_statusor::ThrowBadStatusOrAccess|"
@@ -300,8 +301,9 @@ def main():
     def_fp.write("\t ??_7ConfigProto@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ??_7CoordinatedTask@tensorflow@@6B@\n") # for _pywrap_tfe
     def_fp.write("\t ?InternalSwap@CoordinatedTask@tensorflow@@AEAAXPEAV12@@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20230802@absl@@0QEBXEB\n") # for _pywrap_tfcompile
-    def_fp.write("\t ?kEmptyGroup@container_internal@lts_20230802@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kSeed@MixingHashState@hash_internal@lts_20240722@absl@@0QEBXEB\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kEmptyGroup@container_internal@lts_20240722@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfcompile
+    def_fp.write("\t ?kSooControl@container_internal@lts_20240722@absl@@3QBW4ctrl_t@123@B\n") # for _pywrap_tfe
     def_fp.write("\t ??_7GraphDef@tensorflow@@6B@\n")
     def_fp.write("\t ??_7DeviceProperties@tensorflow@@6B@\n")
     def_fp.write("\t ??_7MetaGraphDef@tensorflow@@6B@\n")
@@ -310,10 +312,8 @@ def main():
     def_fp.write("\t ??1CoordinatedTask@tensorflow@@UEAA@XZ\n") # for _pywrap_tfe
     def_fp.write("\t ?CopyFrom@CoordinatedTask@tensorflow@@QEAAXAEBV12@@Z\n") # for _pywrap_tfe
     def_fp.write("\t ??0CoordinatedTask@tensorflow@@IEAA@PEAVArena@protobuf@google@@_N@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ??0LogMessageFatal@log_internal@lts_20230802@absl@@QEAA@PEBDH@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ??1LogMessageFatal@log_internal@lts_20230802@absl@@QEAA@XZ\n") # for _pywrap_tfe
-    def_fp.write("\t ??$CopyToEncodedBuffer@$0A@@LogMessage@log_internal@lts_20230802@absl@@AEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z\n") # for _pywrap_tfe
-    def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20230802@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
+    def_fp.write("\t ??$CopyToEncodedBuffer@$0A@@LogMessage@log_internal@lts_20240722@absl@@AEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z\n") # for _pywrap_tfe
+    def_fp.write("\t ?MaybeTrackCordImpl@CordzInfo@cord_internal@lts_20240722@absl@@CAXAEAVInlineData@234@AEBV5234@W4MethodIdentifier@CordzUpdateTracker@234@@Z\n") # for tensorflow::Status usage of absl::Cord
 
 
     # Each symbols returned by undname matches the same position in candidates.
