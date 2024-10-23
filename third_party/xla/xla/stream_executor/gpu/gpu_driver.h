@@ -282,43 +282,12 @@ class GpuDriver {
                                                   GpuGraphNodeHandle node,
                                                   GpuGraphHandle child);
 
-  // The CUDA stream callback type signature.
-  // The data passed to AddStreamCallback is subsequently passed to this
-  // callback when it fires.
-  //
-  // Some notable things:
-  // * Callbacks must not make any CUDA API calls.
-  // * Callbacks from independent streams execute in an undefined order and may
-  //   be serialized.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gab95a78143bae7f21eebb978f91e7f3f
-  typedef void (*StreamCallback)(void* data);
-
-  // Blocks the calling thread until the operations enqueued onto stream have
-  // been completed, via cuStreamSynchronize.
-  //
-  // TODO(leary) if a pathological thread enqueues operations onto the stream
-  // while another thread blocks like this, can you wind up waiting an unbounded
-  // amount of time?
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g15e49dd91ec15991eb7c0a741beb7dad
-  static absl::Status SynchronizeStream(Context* context,
-                                        GpuStreamHandle stream);
-
   // -- Context- and device-independent calls.
 
   // Returns the number of visible CUDA device via cuDeviceGetCount.
   // This should correspond to the set of device ordinals available.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__DEVICE.html#group__CUDA__DEVICE_1g52b5ce05cb8c5fb6831b2c0ff2887c74
   static int GetDeviceCount();
-
-  // Returns the driver version number via cuDriverGetVersion.
-  // This is, surprisingly, NOT the actual driver version (e.g. 331.79) but,
-  // instead, the CUDA toolkit release number that this driver is compatible
-  // with; e.g. 6000 (for a CUDA 6.0 compatible driver) or 6050 (for a CUDA 6.5
-  // compatible driver).
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VERSION.html#group__CUDA__VERSION_1g8b7a10395392e049006e61bcdc8ebe71
-  static absl::StatusOr<int32_t> GetDriverVersion();
 };
 
 }  // namespace gpu

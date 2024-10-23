@@ -1166,9 +1166,11 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   DeviceDescription desc;
 
+  int32_t driver_version = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&driver_version),
+                                    "Could not get driver version"));
   desc.set_driver_version(
-      ParseCudaVersion(GpuDriver::GetDriverVersion().value_or(0))
-          .value_or(SemanticVersion{0, 0, 0}));
+      ParseCudaVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_runtime_version(
       ParseCudaVersion(CudaRuntime::GetRuntimeVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));

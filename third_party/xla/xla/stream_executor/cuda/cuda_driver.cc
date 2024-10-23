@@ -632,13 +632,6 @@ int GpuDriver::GetDeviceCount() {
   return device_count;
 }
 
-absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
-  int32_t version;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&version),
-                                    "Could not get driver version"));
-  return version;
-}
-
 absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(GpuGraphHandle graph) {
   size_t num_nodes;
   TF_RETURN_IF_ERROR(
