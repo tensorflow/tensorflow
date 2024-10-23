@@ -749,8 +749,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_swift/releases
     tf_http_archive(
         name = "build_bazel_rules_swift",
-        sha256 = "32f95dbe6a88eb298aaa790f05065434f32a662c65ec0a6aabdaf6881e4f169f",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.5.0/rules_swift.1.5.0.tar.gz"),
+        sha256 = "ef0e081ed87e43295cf9d0208a88dc8b74cee104bc9c9e01dbbf85404a4cb4ef",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.18.0/rules_swift.1.18.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/apple_support/releases
