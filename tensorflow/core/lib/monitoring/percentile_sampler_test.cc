@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 
+#include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
