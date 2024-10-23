@@ -30,6 +30,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "local": "https://bazel.build/reference/be/common-definitions",
     "manual": "https://bazel.build/reference/be/common-definitions",
     "large": "Conventional tag for `test_suites` of large tests",
+    "__PYTHON_RULES_MIGRATION_DO_NOT_USE_WILL_BREAK__": "Internal bazel tag",
     # Various disable tags (currently recognized by OpenXLA CI)
     "no_oss": "Test is disabled on OpenXLA CI.",
     "no_mac": "Disabled on MacOS.",
