@@ -13,25 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-static std::array<bool, 2> use_bfloat16_params{false, true};
+static std::array<PrimitiveType, 4> test_type_params{F32, BF16, F8E5M2,
+                                                     F8E4M3FN};
 
 class PadTest : public ClientLibraryTestBase {
  protected:
@@ -62,17 +70,11 @@ class PadTest : public ClientLibraryTestBase {
 };
 
 class PadTestFloat : public PadTest,
-                     public ::testing::WithParamInterface<bool> {
+                     public ::testing::WithParamInterface<PrimitiveType> {
  protected:
-  PadTestFloat() { set_use_bfloat16(GetParam()); }
+  PadTestFloat() { set_float_type(GetParam()); }
 
-  ErrorSpec DefaultErrorSpec() const {
-    if (use_bfloat16()) {
-      return ErrorSpec(1e-3, 1e-3);
-    } else {
-      return ErrorSpec(1e-5, 1e-5);
-    }
-  }
+  ErrorSpec DefaultErrorSpec() const { return ErrorSpec(1e-5, 1e-5); }
 };
 
 // Tests a Pad() with a zero-element input and output.
@@ -458,7 +460,7 @@ XLA_TEST_P(PadTestFloat, ReducePad) {
 }
 
 INSTANTIATE_TEST_CASE_P(PadTestFloatInstantiation, PadTestFloat,
-                        ::testing::ValuesIn(use_bfloat16_params));
+                        ::testing::ValuesIn(test_type_params));
 
 }  // namespace
 }  // namespace xla
