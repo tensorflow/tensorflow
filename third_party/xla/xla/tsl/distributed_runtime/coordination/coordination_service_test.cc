@@ -236,6 +236,7 @@ class CoordinateTwoTasksTest : public ::testing::Test {
   void EnableCoordinationService(
       bool has_service_to_client_connection = true,
       bool enable_shutdown_barrier = false,
+      bool enable_register_barrier = false,
       bool set_worker_job_recoverable = false,
       bool allow_new_incarnation_to_reconnect = false) {
     CoordinationServiceConfig config =
@@ -254,6 +255,11 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     }
     if (enable_shutdown_barrier) {
       config.set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
+                                                absl::Milliseconds(1));
+    }
+    if (enable_register_barrier) {
+      config.set_cluster_register_with_barrier(true);
+      config.set_cluster_register_timeout_in_ms(absl::Seconds(1) /
                                                 absl::Milliseconds(1));
     }
     if (allow_new_incarnation_to_reconnect) {
@@ -1729,6 +1735,7 @@ TEST_F(CoordinateTwoTasksTest,
 TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/false,
                             /*set_worker_job_recoverable=*/false);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -1746,6 +1753,7 @@ TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
 TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/false,
                             /*set_worker_job_recoverable=*/true);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -1765,6 +1773,7 @@ TEST_F(CoordinateTwoTasksTest,
        RecoverableTaskReportErrorResetAndRegisterAgain) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/false,
                             /*set_worker_job_recoverable=*/true);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
@@ -1789,6 +1798,7 @@ TEST_F(CoordinateTwoTasksTest,
 TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
   EnableCoordinationService(/*has_service_to_client_connection=*/true,
                             /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/false,
                             /*set_worker_job_recoverable=*/false,
                             /*allow_new_incarnation_to_reconnect=*/true);
 
@@ -1971,4 +1981,91 @@ TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
                                       HasSubstr("test_error_from_task_0"))));
 }
 
+TEST_F(CoordinateTwoTasksTest,
+       RegisterWithBarrier_OldHeartbeat_ServiceNotStopped) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/true);
+  // Service restarted.
+  // Old task 0 sends an unexpected heartbeat, which should fail.
+  // Crucially, this should not stop the service, so future API calls should not
+  // trigger an internal error (which occurs if service has shut down).
+  ASSERT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_ - 1),
+              StatusIs(absl::StatusCode::kInvalidArgument));
+  absl::Status task0_status = absl::InternalError("uninitialized_status");
+  // Task 0 registers first.
+  coord_service_->RegisterTaskAsync(task_0_, incarnation_0_,
+                                    [](const absl::Status& s) {});
+  // Task 0 restarts with a new incarnation, and registers again.
+  // This should be allowed since all tasks have not joined the cluster yet.
+  coord_service_->RegisterTaskAsync(
+      task_0_, /*incarnation=*/incarnation_0_ + 1,
+      [&](const absl::Status& s) { task0_status = s; });
+  // Now all tasks will register in a synchronized fashion due to the barrier.
+  EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  EXPECT_OK(task0_status);
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       RegisterWithBarrier_RestartBeforeBarrier_Succeeds) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/true);
+  absl::Status task0_status = absl::InternalError("uninitialized_status");
+  // Task 0 registers first.
+  coord_service_->RegisterTaskAsync(task_0_, incarnation_0_,
+                                    [](const absl::Status& s) {});
+  // Task 0 restarts with a new incarnation, and registers again.
+  // This should be allowed since all tasks have not joined the cluster yet.
+  coord_service_->RegisterTaskAsync(
+      task_0_, /*incarnation=*/incarnation_0_ + 1,
+      [&](const absl::Status& s) { task0_status = s; });
+  // Now all tasks will register in a synchronized fashion due to the barrier.
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  ASSERT_OK(task0_status);
+  // Task 0 joins again with the same incarnation.
+  // This is okay, it didn't restart, probably sent RPC twice due to network
+  // retries.
+  EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_ + 1));
+}
+
+TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_RestartAfterBarrier_Fails) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/true);
+  absl::Status task0_status = absl::InternalError("uninitialized_status");
+  // Task 0 registers first.
+  coord_service_->RegisterTaskAsync(
+      task_0_, incarnation_0_,
+      [&](const absl::Status& s) { task0_status = s; });
+  // Now all tasks will register in a synchronized fashion due to the barrier.
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  ASSERT_OK(task0_status);
+
+  // Task 0 restarts again with a new incarnation.
+  // This should fail since this happens after the initial register barrier
+  // (i.e. all tasks already acked once).
+  ASSERT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_ + 2),
+              StatusIs(absl::StatusCode::kAborted));
+  // Service should have stopped due to the previous registration failure.
+  // Check for internal error code.
+  absl::Notification n;
+  absl::Status barrier_status;
+  coord_service_->BarrierAsync("barrier_id", absl::Seconds(10), task_0_, {},
+                               [&](const absl::Status& s) {
+                                 n.Notify();
+                                 barrier_status = s;
+                               });
+  n.WaitForNotification();
+  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_Timeout) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false,
+                            /*enable_shutdown_barrier=*/false,
+                            /*enable_register_barrier=*/true);
+  // Task 0 joins without task 1. Times out eventually.
+  EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
+              StatusIs(absl::StatusCode::kDeadlineExceeded));
+}
 }  // namespace tsl
