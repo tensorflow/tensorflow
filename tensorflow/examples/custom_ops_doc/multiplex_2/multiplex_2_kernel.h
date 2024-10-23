@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
 #define TENSORFLOW_EXAMPLES_CUSTOM_OPS_DOC_MULTIPLEX_2_MULTIPLEX_2_KERNEL_H_
 
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
