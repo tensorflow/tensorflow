@@ -159,7 +159,7 @@ TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCallNonTuple) {
   )";
   auto m = ParseAndReturnVerifiedModule(hlo_string).value();
   HloInstruction* while_op = m->entry_computation()->root_instruction();
-  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
+  EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCall) {
@@ -192,7 +192,7 @@ TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCall) {
   )";
   auto m = ParseAndReturnVerifiedModule(hlo_string).value();
   HloInstruction* while_op = m->entry_computation()->root_instruction();
-  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
+  EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
 }
 
 TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
