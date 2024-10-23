@@ -1331,7 +1331,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   }
 
   TF_RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, dnn_version, options.device_allocator,
+      hlo_module, gpu_version, dnn_version,
       gpu_target_config.device_description.runtime_version()));
 
   TF_RETURN_IF_ERROR(

@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -673,7 +672,6 @@ TEST_F(CustomCallTest, FfiAttributes) {
 
 static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, int32_t device_ordinal,
-    se::DeviceMemoryAllocator* allocator,
     se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
     ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
   if (called_computation == nullptr)
@@ -697,7 +695,6 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Ctx<ffi::DeviceOrdinal>()     // device_ordinal
-                           .Ctx<ffi::Allocator>()         // allocator
                            .Ctx<ffi::ScratchAllocator>()  // scratch
                            .Arg<ffi::AnyBuffer>()         // src
                            .Ret<ffi::AnyBuffer>()         // dst

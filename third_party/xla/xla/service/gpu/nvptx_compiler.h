@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -59,7 +58,6 @@ class NVPTXCompiler : public GpuCompiler {
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
-      se::DeviceMemoryAllocator* device_allocator,
       const se::SemanticVersion& toolkit_version) override;
 
   absl::Status OptimizeHloPostLayoutAssignment(

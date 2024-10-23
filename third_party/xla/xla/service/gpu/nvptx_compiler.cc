@@ -103,11 +103,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/ptx_linking_method.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/env_var.h"
@@ -187,7 +185,6 @@ class MatmulBfloat16Support : public FloatSupport {
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
-    se::DeviceMemoryAllocator* device_allocator,
     const se::SemanticVersion& toolkit_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
