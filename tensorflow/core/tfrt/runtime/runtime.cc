@@ -18,16 +18,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/framework/types.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/cpu/core_runtime/cpu_op_handler.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/tensor/scalar_host_tensor.h"  // from @tf_runtime
 
 constexpr char const kDefaultHostDeviceName[] =
     "/job:localhost/replica:0/task:0/device:CPU:0";
