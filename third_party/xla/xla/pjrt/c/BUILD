@@ -234,9 +234,17 @@ cc_library(
 
 # PJRT CPU plugin.
 xla_cc_binary(
-    name = "pjrt_c_api_cpu_plugin.so",
-    linkopts = if_macos(
+    name = "pjrt_c_api_cpu_plugin",
+    additional_linker_inputs = if_macos(
         [],
+        [":pjrt_c_api_cpu_version_script.lds"],
+    ),
+    linkopts = if_macos(
+        [
+            "-Wl,-exported_symbol,_GetPjrtApi",
+            "-Wl,-install_name,@rpath/pjrt_c_api_cpu_plugin.dylib",
+            "-Wl,-undefined,error",
+        ],
         [
             "-Wl,--version-script,$(location :pjrt_c_api_cpu_version_script.lds)",
             "-Wl,--no-undefined",
@@ -249,10 +257,7 @@ xla_cc_binary(
         "notsan",
     ],
     visibility = ["//visibility:public"],
-    deps = [
-        ":pjrt_c_api_cpu",
-        ":pjrt_c_api_cpu_version_script.lds",
-    ],
+    deps = [":pjrt_c_api_cpu"],
 )
 
 cc_library(
@@ -318,7 +323,8 @@ cc_library(
 
 # PJRT GPU plugin. Can be configured to be built for CUDA or ROCM.
 xla_cc_binary(
-    name = "pjrt_c_api_gpu_plugin.so",
+    name = "pjrt_c_api_gpu_plugin",
+    additional_linker_inputs = [":pjrt_c_api_gpu_version_script.lds"],
     linkopts = [
         "-Wl,--version-script,$(location :pjrt_c_api_gpu_version_script.lds)",
         "-Wl,--no-undefined",
@@ -332,7 +338,6 @@ xla_cc_binary(
     ],
     deps = [
         ":pjrt_c_api_gpu",
-        ":pjrt_c_api_gpu_version_script.lds",
         "//xla/service:gpu_plugin",
     ] + if_cuda_is_configured([
         "//xla/stream_executor:cuda_platform",
