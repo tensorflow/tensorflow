@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <algorithm>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -246,6 +248,55 @@ absl::Status ResetAgentAndConnectToCoordinationService(
     }
   }
   return absl::OkStatus();
+}
+
+void ValidateRemoteTensorHandleUse(
+    std::vector<RemoteTensorHandleInternal> input_remote_tensor_handles,
+    EagerContext* eager_context) {
+  auto remote_tensor_handles =
+      eager_context->RemoteMgr()->GetRemoteTensorHandleMap();
+
+  bool use_after_delete = false, use_before_add = false;
+  bool any_input_missing = std::any_of(
+      input_remote_tensor_handles.cbegin(), input_remote_tensor_handles.cend(),
+      [&](RemoteTensorHandleInternal handle) {
+        return remote_tensor_handles.find(handle) ==
+               remote_tensor_handles.end();
+      });
+  if (any_input_missing) {
+    std::vector<RemoteTensorHandleInternal> missing_inputs;
+    std::copy_if(input_remote_tensor_handles.begin(),
+                 input_remote_tensor_handles.end(),
+                 std::back_inserter(missing_inputs),
+                 [&](RemoteTensorHandleInternal handle) {
+                   return remote_tensor_handles.find(handle) ==
+                          remote_tensor_handles.end();
+                 });
+    auto deleted_remote_tensor_handles =
+        eager_context->RemoteMgr()->GetDeletedRemoteTensorHandles();
+    if (!deleted_remote_tensor_handles.empty()) {
+      bool any_input_previously_present =
+          std::any_of(missing_inputs.cbegin(), missing_inputs.cend(),
+                      [&](RemoteTensorHandleInternal handle) {
+                        return deleted_remote_tensor_handles.find(handle) !=
+                               deleted_remote_tensor_handles.end();
+                      });
+      if (any_input_previously_present) {
+        use_after_delete = true;
+      } else {
+        use_before_add = true;
+      }
+    } else {
+      use_before_add = true;
+    }
+    if (use_after_delete) {
+      LOG(ERROR) << "A remote tensor handle is looked up before it has been "
+                    "deleted from the remote manager";
+    } else if (use_before_add) {
+      LOG(ERROR) << "A remote tensor handle is looked up before it has been "
+                    "added to the remote manager";
+    }
+  }
 }
 
 }  // namespace
@@ -591,6 +642,16 @@ void EagerServiceImpl::RunComponentFunction(
 
   EagerOperation* op = new EagerOperation(eager_context);
   int* num_retvals = new int(0);
+  std::vector<RemoteTensorHandleInternal> input_remote_tensor_handles;
+  for (const auto& input : operation.op_inputs()) {
+    if (input.has_remote_handle()) {
+      input_remote_tensor_handles.push_back(
+          (RemoteTensorHandleInternal(input.remote_handle())));
+    }
+  }
+  if (!input_remote_tensor_handles.empty()) {
+    ValidateRemoteTensorHandleUse(input_remote_tensor_handles, eager_context);
+  }
   s = GetEagerOperationAndNumRetvals(operation, eager_context, eager_executor,
                                      op, num_retvals);
   if (!s.ok()) {
@@ -661,6 +722,16 @@ absl::Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
                                          QueueResponse* queue_response) {
   tensorflow::EagerOperation op(eager_context);
   int num_retvals = 0;
+  std::vector<RemoteTensorHandleInternal> input_remote_tensor_handles;
+  for (const auto& input : operation.op_inputs()) {
+    if (input.has_remote_handle()) {
+      input_remote_tensor_handles.push_back(
+          (RemoteTensorHandleInternal(input.remote_handle())));
+    }
+  }
+  if (!input_remote_tensor_handles.empty()) {
+    ValidateRemoteTensorHandleUse(input_remote_tensor_handles, eager_context);
+  }
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
 
@@ -864,6 +935,16 @@ absl::Status EagerServiceImpl::SendPackedHandle(
 
   std::vector<tensorflow::TensorHandle*> handles;
   handles.resize(send_packed_handle.handles_size());
+  std::vector<RemoteTensorHandleInternal> input_remote_tensor_handles;
+  for (const auto& input : send_packed_handle.handles()) {
+    if (!input.has_local_handle()) {
+      input_remote_tensor_handles.push_back(
+          (RemoteTensorHandleInternal(input.remote_handle())));
+    }
+  }
+  if (!input_remote_tensor_handles.empty()) {
+    ValidateRemoteTensorHandleUse(input_remote_tensor_handles, eager_context);
+  }
   for (int i = 0; i < send_packed_handle.handles_size(); ++i) {
     const auto& item = send_packed_handle.handles(i);
     if (item.has_local_handle()) {
