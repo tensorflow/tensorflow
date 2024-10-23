@@ -49,6 +49,11 @@ def parse_args() -> argparse.Namespace:
   parser.add_argument("--project-name", required=True,
                       help="Project name to be passed to setup.py")
   parser.add_argument(
+      "--platform",
+      required=True,
+      help="Platform name to be passed to setup.py",
+  )
+  parser.add_argument(
       "--headers", help="header files for the wheel", action="append")
   parser.add_argument("--srcs", help="source files for the wheel",
                       action="append")
@@ -350,14 +355,20 @@ def create_local_config_python(dst_dir: str) -> None:
   shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 
-def build_wheel(dir_path: str, cwd: str, project_name: str,
-                collab: str = False) -> None:
+def build_wheel(
+    dir_path: str,
+    cwd: str,
+    project_name: str,
+    platform: str,
+    collab: str = False,
+) -> None:
   """Build the wheel in the target directory.
-  
+
   Args:
     dir_path: directory where the wheel will be stored
     cwd: path to directory with wheel source files
     project_name: name to pass to setup.py.
+    platform: platform name to pass to setup.py.
     collab: defines if this is a collab build
   """
   env = os.environ.copy()
@@ -376,6 +387,7 @@ def build_wheel(dir_path: str, cwd: str, project_name: str,
           "tensorflow/tools/pip_package/setup.py",
           "bdist_wheel",
           f"--dist-dir={dir_path}",
+          f"--plat-name={platform}",
       ],
       check=True,
       cwd=cwd,
@@ -390,7 +402,12 @@ if __name__ == "__main__":
   try:
     prepare_wheel_srcs(args.headers, args.srcs, args.xla_aot,
                        temp_dir_path, args.version)
-    build_wheel(os.path.join(os.getcwd(), args.output_name),
-                temp_dir_path, args.project_name, args.collab)
+    build_wheel(
+        os.path.join(os.getcwd(), args.output_name),
+        temp_dir_path,
+        args.project_name,
+        args.platform,
+        args.collab,
+    )
   finally:
     temp_dir.cleanup()
