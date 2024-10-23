@@ -253,3 +253,9 @@ class Calibrator:
     """
     self._feed_tensors(dataset_gen, resize_input=True)
     return self._calibrator.Calibrate()
+
+  def get_op_names(
+      self,
+  ) -> list[str]:
+    """Returns a set of op names."""
+    return self._calibrator.GetOpNames()
