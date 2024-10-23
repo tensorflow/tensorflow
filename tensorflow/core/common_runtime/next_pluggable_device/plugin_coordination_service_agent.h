@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 

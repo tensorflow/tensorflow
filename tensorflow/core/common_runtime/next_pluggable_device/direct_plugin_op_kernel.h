@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"

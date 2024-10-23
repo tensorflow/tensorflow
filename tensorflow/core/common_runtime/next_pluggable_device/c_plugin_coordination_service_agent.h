@@ -20,12 +20,12 @@ limitations under the License.
 #include <string>
 #include <string_view>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
