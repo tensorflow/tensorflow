@@ -2280,6 +2280,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
   for (const HloInstruction* instr :
        module->schedule().sequence(computation).instructions()) {
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
+    VLOG(0) << "instr: " << instr->name() << " cost: " << instr_node.GetCost();
     current_time += instr_node.GetCost();
     if (async_tracker->IsSupportedAsyncStart(*instr)) {
       outstanding_collectives[async_tracker->GetCanonicalAsyncOp(*instr).inner]
@@ -2294,6 +2295,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
         const HloGraphNode& start_node =
             schedule_graph.GetNode(std::get<0>(*it));
         auto edge_it = find_node_successor_edge(start_node, instr_node);
+        VLOG(0) << "instr: " << instr->name()
+                << " cost: " << edge_it->Latency();
         const double async_wasted_cycles = std::max(
             0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
         AsyncKind kind = opcode_to_async_kind(
@@ -2386,7 +2389,7 @@ std::string LatencyHidingScheduler::SchedulerStatisticsString(
 
 void LatencyHidingScheduler::LogScheduleStatistics(
     const HloComputation* computation) {
-  XLA_VLOG_LINES(1, SchedulerStatisticsString(LatencyHidingStatistics(
+  XLA_VLOG_LINES(0, SchedulerStatisticsString(LatencyHidingStatistics(
                         computation, latency_estimator_.get(),
                         async_tracker_.get(), shape_size_bytes_)));
 }
@@ -2447,11 +2450,11 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
             << scheduler_core_->GetMemoryPeak()
             << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
   for (HloComputation* computation : computations_to_schedule) {
-    VLOG(1) << "Statistics before scheduling:";
+    VLOG(0) << "Statistics before scheduling:";
     LogScheduleStatistics(computation);
     module->schedule().set_sequence(
         computation, absl::MakeConstSpan(saved_schedules[computation]));
-    VLOG(1) << "Statistics after scheduling:";
+    VLOG(0) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }
   return true;
