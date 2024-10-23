@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <unordered_set>
 
 #include "pybind11/functional.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
@@ -84,6 +85,16 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
                  input_py_type, output_py_type, allow_float,
                  activations_py_type, bias_py_type, disable_per_channel));
            })
+      .def(
+          "QuantizeModel",
+          [](CalibrationWrapper& self, int input_py_type, int output_py_type,
+             bool allow_float, int activations_py_type, int bias_py_type,
+             bool disable_per_channel,
+             std::unordered_set<std::string>& selected_op_names) {
+            return tensorflow::PyoOrThrow(self.QuantizeModel(
+                input_py_type, output_py_type, allow_float, activations_py_type,
+                bias_py_type, disable_per_channel, selected_op_names));
+          })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
               bool allow_float, const char* operator_output_name) {

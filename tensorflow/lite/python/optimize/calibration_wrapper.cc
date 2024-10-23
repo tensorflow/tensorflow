@@ -41,6 +41,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 // NOLINTEND
@@ -85,6 +86,7 @@ using ::tflite::interpreter_wrapper::PythonErrorReporter;
 using ::tflite::ops::builtin::BuiltinOpResolver;
 using ::tflite::optimize::AddIntermediateTensorsToFusedOp;
 using ::tflite::optimize::QuantizeModelAllOperators;
+using ::tflite::optimize::QuantizeModelSelectedOperators;
 using ::tflite::optimize::calibration::BuildLoggingInterpreter;
 using ::tflite::optimize::calibration::CalibrationReader;
 using ::tflite::python::ImportNumpy;
@@ -700,9 +702,50 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             bool allow_float,
                                             int activations_py_type,
                                             int bias_py_type) {
+  std::unordered_set<std::string> selected_op_names;
   return QuantizeModel(input_py_type, output_py_type, allow_float,
                        activations_py_type, bias_py_type,
-                       /*disable_per_channel=*/false);
+                       /*disable_per_channel=*/false, selected_op_names);
+}
+
+PyObject* CalibrationWrapper::QuantizeModel(
+    int input_py_type, int output_py_type, bool allow_float,
+    int activations_py_type, int bias_py_type, bool disable_per_channel,
+    std::unordered_set<std::string>& selected_op_names) {
+  if (NoOpModel(*model_)) {
+    return ConvertToPyString(model_str_->data(), model_str_->size());
+  }
+
+  TfLiteType input_type = TfLiteTypeFromPyType(input_py_type);
+  TfLiteType output_type = TfLiteTypeFromPyType(output_py_type);
+  TfLiteType activations_type = TfLiteTypeFromPyType(activations_py_type);
+  TfLiteType bias_type = TfLiteTypeFromPyType(bias_py_type);
+
+  if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Input/output type cannot be kTfLiteNoType");
+    return nullptr;
+  }
+  auto tflite_model = CreateMutableModel(*model_->GetModel());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = kTfLiteOk;
+
+  status = QuantizeModelSelectedOperators(
+      &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+      TfLiteTypeToSchemaType(output_type), allow_float,
+      TfLiteTypeToSchemaType(activations_type),
+      TfLiteTypeToSchemaType(bias_type), disable_per_channel,
+      error_reporter_.get(), selected_op_names);
+
+  if (status != kTfLiteOk) {
+    error_reporter_->exception();
+    return nullptr;
+  }
+
+  return ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(
