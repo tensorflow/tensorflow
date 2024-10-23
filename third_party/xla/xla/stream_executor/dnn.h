@@ -802,6 +802,7 @@ class ProfileResult {
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
+  size_t scratch_size() const { return scratch_size_; }
   void set_scratch_size(size_t val) { scratch_size_ = val; }
 
  private:

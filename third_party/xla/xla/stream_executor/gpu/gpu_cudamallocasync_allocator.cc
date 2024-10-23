@@ -28,14 +28,13 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #endif  // GOOGLE_CUDA
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
