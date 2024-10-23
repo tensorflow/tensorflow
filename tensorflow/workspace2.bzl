@@ -816,8 +816,8 @@ def _tf_repositories():
     #   - patch upb so that it's compatible with Bazel 6.0, the latest version of upb doesn't work with the old grpc version.
     tf_http_archive(
         name = "io_bazel_rules_go",
-        sha256 = "16e9fca53ed6bd4ff4ad76facc9b7b651a89db1689a2877d6fd7b82aa824e366",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_go/releases/download/v0.34.0/rules_go-v0.34.0.zip"),
+        sha256 = "bc7a7e4c2bbb4f21ce09cc75a5bab583ad647d29699f91e8b454f52e5b0e6b6c",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_go/releases/download/v0.47.1/rules_go-v0.47.1.zip"),
     )
 
     tf_http_archive(
