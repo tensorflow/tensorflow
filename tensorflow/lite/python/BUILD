@@ -492,6 +492,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/distutils",
     ],
 )
 
