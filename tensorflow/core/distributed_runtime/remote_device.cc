@@ -19,15 +19,17 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/process_util.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
