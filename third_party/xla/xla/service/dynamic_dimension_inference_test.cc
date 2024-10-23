@@ -35,8 +35,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
 
