@@ -36,11 +36,12 @@ class DataServiceWorkerClient : public DataServiceClientBase {
  public:
   DataServiceWorkerClient(
       const std::string& address, const std::string& protocol,
-      const std::string& transfer_protocol,
+      const std::string& transfer_protocol, bool fall_back_to_grpc,
       const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
       Allocator* allocator)
       : DataServiceClientBase(address, protocol),
         transfer_protocol_(transfer_protocol),
+        fall_back_to_grpc_(fall_back_to_grpc),
         accelerator_device_info_(accelerator_device_info),
         allocator_(allocator) {}
 
@@ -51,12 +52,18 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   // Makes a best effort to cancel all outstanding calls in progress for the
   // client, and causes further calls to return Cancelled status.
   void TryCancel();
+
   // Returns an error if the client is incompatible with a server which has the
   // properties described in `compatibility_info`.
   absl::Status CheckCompatibility(
       const std::string& server_compatibility_info) const {
     return client_->CheckCompatibility(server_compatibility_info);
   }
+
+  // If `true`, the data service client should fall back to gRPC if `GetElement`
+  // fails in a way that doesn't indicate a preemption or downscaling.
+  bool FallBackToGrpc() const { return fall_back_to_grpc_; }
+
   // Returns the data transfer protocol, preferring to use the local transfer
   // protocol if a local tf.data worker exists.
   std::string GetDataTransferProtocol() const;
@@ -66,6 +73,7 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 
  private:
   std::string transfer_protocol_;
+  bool fall_back_to_grpc_;
   const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
   Allocator* allocator_;
 
