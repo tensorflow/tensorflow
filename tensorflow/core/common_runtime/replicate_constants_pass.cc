@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
