@@ -38,6 +38,11 @@ class CustomCallShardingHelper {
   // Infer sharding from the operands of an instruction.
   virtual std::optional<HloSharding> InferShardingFromOperands(
       const HloInstruction* instruction) const;
+  // `instruction` is a custom call and `operand` is one of its operands.
+  // Returns the sharding of `operand` if it can be inferred from other operands
+  // of `instruction`.
+  virtual std::optional<HloSharding> InferOperandShardingFromOtherOperands(
+      const HloInstruction* instruction, const HloInstruction* operand) const;
   // Returns if the instruction passed as parameter is a supported custom-call
   // for which the functions of this class are implemented.
   virtual bool IsCustomCallShardable(const HloInstruction* instruction) const;
