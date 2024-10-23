@@ -20,6 +20,7 @@
     environment variable is used by GCC compiler.
 """
 
+#load("//third_party/clang_toolchain:download_clang.bzl", "download_llvm_clang")
 load(
     "//third_party/gpus:compiler_common_tools.bzl",
     "get_cxx_inc_directories",
@@ -35,6 +36,10 @@ load(
 def _find_cc(repository_ctx):
     """Find the C++ compiler."""
     cc_name = "clang"
+
+    if _flag_enabled(repository_ctx, _TF_DOWNLOAD_CLANG):
+        # return "extra_tools/bin/clang"
+        return repository_ctx.path(repository_ctx.attr.clang_binary)
 
     cc_name_from_env = get_host_environ(
         repository_ctx,
@@ -267,6 +272,15 @@ def _setup_toolchains(repository_ctx, cc, cuda_version):
     is_nvcc_for_cuda = _use_nvcc_for_cuda(repository_ctx)
     tf_sysroot = _tf_sysroot(repository_ctx)
 
+    # should_download_clang = _flag_enabled(
+    #    repository_ctx,
+    #    _TF_DOWNLOAD_CLANG,
+    # )
+    # if should_download_clang:
+    #    download_llvm_clang(repository_ctx, "crosstool/extra_tools")
+
+    # cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
+    # cc_fullpath = cc if not should_download_clang else repository_ctx.attr.clang_binary.workspace_root
     host_compiler_includes = get_cxx_inc_directories(
         repository_ctx,
         cc,
@@ -527,6 +541,7 @@ _HERMETIC_CUDA_COMPUTE_CAPABILITIES = "HERMETIC_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
 TF_CUDA_VERSION = "TF_CUDA_VERSION"
+_TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 TF_NEED_CUDA = "TF_NEED_CUDA"
 _TF_NVCC_CLANG = "TF_NVCC_CLANG"
 _CUDA_NVCC = "CUDA_NVCC"
@@ -543,6 +558,7 @@ _ENVIRONS = [
     HERMETIC_CUDA_VERSION,
     _TF_CUDA_COMPUTE_CAPABILITIES,
     _HERMETIC_CUDA_COMPUTE_CAPABILITIES,
+    _TF_DOWNLOAD_CLANG,
     _TF_SYSROOT,
     "TMP",
     _TMPDIR,
@@ -564,6 +580,7 @@ cuda_configure = repository_rule(
         "curand_version": attr.label(default = Label("@cuda_curand//:version.txt")),
         "cusolver_version": attr.label(default = Label("@cuda_cusolver//:version.txt")),
         "cusparse_version": attr.label(default = Label("@cuda_cusparse//:version.txt")),
+        "clang_binary": attr.label(default = Label("@local_config_download_clang//:bin/clang")),
         "nvcc_binary": attr.label(default = Label("@cuda_nvcc//:bin/nvcc")),
         "nvcc_version": attr.label(default = Label("@cuda_nvcc//:version.txt")),
         "nvjitlink_version": attr.label(default = Label("@cuda_nvjitlink//:version.txt")),

@@ -203,6 +203,7 @@ tf_staging/third_party/arm_neon_2_x86_sse.BUILD:
 tf_staging/third_party/boringssl/BUILD:
 tf_staging/third_party/clang_toolchain/BUILD:
 tf_staging/third_party/clang_toolchain/cc_configure_clang.bzl:
+tf_staging/third_party/clang_toolchain/cc_configure_hermetic_clang.bzl:
 tf_staging/third_party/clang_toolchain/download_clang.bzl:
 tf_staging/third_party/codegen.BUILD:
 tf_staging/third_party/compute_library/BUILD:
