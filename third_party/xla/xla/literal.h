@@ -1362,13 +1362,13 @@ class Literal : public MutableLiteralBase {
   // of literals which can be expensive.
   Literal(const Literal& other) = delete;
   Literal& operator=(const Literal& other) = delete;
-  Literal(Literal&& other);
+  Literal(Literal&& other) noexcept;
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
   // to nullptr.
   Literal(const Shape& shape, bool allocate_arrays,
           ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
-  Literal& operator=(Literal&& other);
+  Literal& operator=(Literal&& other) noexcept;
 
   // Similar to CopyFrom, but with move semantics. The subshape of this literal
   // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
