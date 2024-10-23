@@ -15,11 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 
+#include "absl/status/status.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/grappler/costs/virtual_scheduler.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace grappler {
