@@ -30,6 +30,7 @@ limitations under the License.
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -867,8 +868,8 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   if (GetEnvVar(kStatCacheMaxEntries, strings::safe_strtou64, &value)) {
     stat_cache_max_entries = value;
   }
-  stat_cache_.reset(new ExpiringLRUCache<GcsFileStat>(stat_cache_max_age,
-                                                      stat_cache_max_entries));
+  stat_cache_ = std::make_unique<ExpiringLRUCache<GcsFileStat>>(
+      stat_cache_max_age, stat_cache_max_entries);
   // Apply overrides for the matching paths cache max age and max entries, if
   // provided.
   uint64 matching_paths_cache_max_age = kMatchingPathsCacheDefaultMaxAge;
@@ -881,16 +882,17 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
                 &value)) {
     matching_paths_cache_max_entries = value;
   }
-  matching_paths_cache_.reset(new ExpiringLRUCache<std::vector<string>>(
-      matching_paths_cache_max_age, matching_paths_cache_max_entries));
+  matching_paths_cache_ =
+      std::make_unique<ExpiringLRUCache<std::vector<string>>>(
+          matching_paths_cache_max_age, matching_paths_cache_max_entries);
 
-  bucket_location_cache_.reset(new ExpiringLRUCache<string>(
-      kCacheNeverExpire, kBucketLocationCacheMaxEntries));
+  bucket_location_cache_ = std::make_unique<ExpiringLRUCache<string>>(
+      kCacheNeverExpire, kBucketLocationCacheMaxEntries);
 
   int64_t resolve_frequency_secs;
   if (GetEnvVar(kResolveCacheSecs, strings::safe_strto64,
                 &resolve_frequency_secs)) {
-    dns_cache_.reset(new GcsDnsCache(resolve_frequency_secs));
+    dns_cache_ = std::make_unique<GcsDnsCache>(resolve_frequency_secs);
     VLOG(1) << "GCS DNS cache is enabled.  " << kResolveCacheSecs << " = "
             << resolve_frequency_secs;
   } else {
@@ -909,8 +911,9 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
       absl::string_view header_value = add_header_contents.substr(split + 1);
 
       if (!header_name.empty() && !header_value.empty()) {
-        additional_header_.reset(new std::pair<const string, const string>(
-            string(header_name), string(header_value)));
+        additional_header_ =
+            std::make_unique<std::pair<const string, const string>>(
+                string(header_name), string(header_value));
 
         VLOG(1) << "GCS additional header ENABLED. "
                 << "Name: " << additional_header_->first << ", "
@@ -1015,11 +1018,11 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
   if (cache_enabled_) {
-    result->reset(new GcsRandomAccessFile(fname, [this, bucket, object](
-                                                     const string& fname,
-                                                     uint64 offset, size_t n,
-                                                     absl::string_view* result,
-                                                     char* scratch) {
+    *result = std::make_unique<
+        GcsRandomAccessFile>(fname, [this, bucket, object](
+                                        const string& fname, uint64 offset,
+                                        size_t n, absl::string_view* result,
+                                        char* scratch) {
       tf_shared_lock l(block_cache_lock_);
       GcsFileStat stat;
       TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
@@ -1044,9 +1047,9 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
                                   " bytes requested.");
       }
       return absl::OkStatus();
-    }));
+    });
   } else {
-    result->reset(new BufferedGcsRandomAccessFile(
+    *result = std::make_unique<BufferedGcsRandomAccessFile>(
         fname, block_size_,
         [this, bucket, object](const string& fname, uint64 offset, size_t n,
                                absl::string_view* result, char* scratch) {
@@ -1061,7 +1064,7 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
                                       " bytes requested.");
           }
           return absl::OkStatus();
-        }));
+        });
   }
   return absl::OkStatus();
 }
@@ -1349,11 +1352,11 @@ absl::Status GcsFileSystem::NewWritableFile(
     return absl::OkStatus();
   };
 
-  result->reset(new GcsWritableFile(
+  *result = std::make_unique<GcsWritableFile>(
       bucket, object, this, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
-      generation_getter));
+      generation_getter);
   return absl::OkStatus();
 }
 
@@ -1429,11 +1432,11 @@ absl::Status GcsFileSystem::NewAppendableFile(
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
-  result->reset(new GcsWritableFile(
+  *result = std::make_unique<GcsWritableFile>(
       bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
-      generation_getter));
+      generation_getter);
   return absl::OkStatus();
 }
 
@@ -1450,7 +1453,7 @@ absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   absl::string_view piece;
   TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
 
-  result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
+  *result = std::make_unique<GcsReadOnlyMemoryRegion>(std::move(data), size);
   return absl::OkStatus();
 }
 

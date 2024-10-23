@@ -25,7 +25,7 @@ class ComputeEngineZoneProvider : public ZoneProvider {
  public:
   explicit ComputeEngineZoneProvider(
       std::shared_ptr<ComputeEngineMetadataClient> google_metadata_client);
-  virtual ~ComputeEngineZoneProvider();
+  ~ComputeEngineZoneProvider() override;
 
   absl::Status GetZone(string* zone) override;
 

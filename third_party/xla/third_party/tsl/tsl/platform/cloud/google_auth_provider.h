@@ -35,7 +35,7 @@ class GoogleAuthProvider : public AuthProvider {
                               std::shared_ptr<ComputeEngineMetadataClient>
                                   compute_engine_metadata_client,
                               Env* env);
-  virtual ~GoogleAuthProvider() {}
+  ~GoogleAuthProvider() override {}
 
   /// \brief Returns the short-term authentication bearer token.
   ///
