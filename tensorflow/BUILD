@@ -1440,7 +1440,6 @@ tf_cc_shared_library(
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:reference_ops",
