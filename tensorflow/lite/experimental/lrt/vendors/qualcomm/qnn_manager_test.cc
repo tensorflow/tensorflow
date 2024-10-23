@@ -15,7 +15,6 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/tools/dump.h"
 
 namespace {
