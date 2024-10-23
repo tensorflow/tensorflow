@@ -20,9 +20,10 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
@@ -31,20 +32,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 
 namespace mlir::mhlo {
-
-// Creates an integer constant that is either a tensor (if shape is provided) or
-// a scalar.
-template <typename T>
-arith::ConstantOp createConst(ImplicitLocOpBuilder& b,
-                              mlir::IntegerType intType, T value,
-                              std::optional<ArrayRef<int64_t>> shape) {
-  if (shape.has_value()) {
-    auto tensorType = mlir::RankedTensorType::get(shape.value(), intType);
-    return b.create<arith::ConstantOp>(mlir::DenseElementsAttr::get(
-        tensorType, mlir::APInt(intType.getIntOrFloatBitWidth(), value)));
-  }
-  return b.create<arith::ConstantOp>(b.getIntegerAttr(intType, value));
-}
 
 // Returns the input value with a reduced precision as specified by the target
 // exponent and mantissa bits. This function will preserve the input shape on
@@ -65,9 +52,9 @@ Value reducePrecision(Location loc, Value input, int destExponentBits,
 
   Type intType = intScalarType;
   std::optional<std::vector<int64_t>> shape;
-  if (auto tensorType = llvm::dyn_cast<TensorType>(input.getType())) {
-    shape = tensorType.getShape().vec();
-    intType = tensorType.clone(intScalarType);
+  if (auto shapedType = dyn_cast<ShapedType>(input.getType())) {
+    shape = shapedType.getShape().vec();
+    intType = shapedType.clone(intScalarType);
   }
 
   Value xAsInt = b.create<BitCastOp>(intType, input);
@@ -85,7 +72,7 @@ Value reducePrecision(Location loc, Value input, int destExponentBits,
   expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
 
   auto createConstant = [&](const APInt& v) {
-    return createConst(b, intScalarType, v.getZExtValue(), shape);
+    return createScalarOrSplatConstant(b, loc, intType, v);
   };
 
   Value xAbsBits =
@@ -103,8 +90,8 @@ Value reducePrecision(Location loc, Value input, int destExponentBits,
     // mantissa bit is 1.
     APInt baseRoundingBias = lastMantissaBitMask.lshr(1) - 1;
 
-    Value mantissaDiff = createConst(b, intScalarType,
-                                     srcMantissaBits - destMantissaBits, shape);
+    Value mantissaDiff =
+        createConstant(APInt(nbits, srcMantissaBits - destMantissaBits));
 
     Value highestMantissaMaskVal = createConstant(lastMantissaBitMask);
     Value baseRoundingBiasVal = createConstant(baseRoundingBias);
