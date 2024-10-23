@@ -3,6 +3,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+    "if_cuda_newer_than",
 )
 load("//xla:xla.bzl", "xla_cc_binary")
 load("//xla/service/gpu:build_defs.bzl", "gpu_kernel_library")
@@ -391,11 +392,15 @@ cc_library(
     ],
     deps = [
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16",
+        ":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
         ":cutlass_gemm_kernel_bf16xbf16_to_f32",
         ":cutlass_gemm_kernel_bf16xs8_to_f32",
         ":cutlass_gemm_kernel_f32xbf16_to_f32",
         ":cutlass_gemm_kernel_f32xf32_to_f32",
-    ],
+    ] + if_cuda_newer_than(
+        "12_0",
+        [":cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90"],
+    ),
 )
 
 # CUTLASS requires all loops to be unrolled, and in some kernels defined below we force Clang/LLVM
@@ -417,6 +422,46 @@ cuda_library(
     tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_adaptor",
+        "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80",
+    srcs = ["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm80.cu.cc"],
+    copts = [
+        "-mllvm",
+        "-unroll-threshold=100000",
+    ] + if_windows(
+        [],
+        ["-Wno-unknown-attributes"],
+    ),
+    tags = ["no_rocm"],
+    deps = [
+        ":cutlass_gemm_adaptor",
+        "@cutlass_archive//:cutlass",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cuda_library(
+    name = "cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90",
+    srcs = ["cutlass_gemm_kernel_bf16xbf16_to_bf16_sm90.cu.cc"],
+    copts = [
+        "-mllvm",
+        "-unroll-threshold=100000",
+    ] + if_windows(
+        [],
+        [
+            "-Wno-ctad-maybe-unsupported",
+            "-Wno-unknown-attributes",
+        ],
+    ),
+    tags = ["no_rocm"],
+    deps = [
+        ":cutlass_gemm_adaptor",
+        ":cutlass_gemm_epilogue",
         "@cutlass_archive//:cutlass",
         "@local_config_cuda//cuda:cuda_headers",
     ],
