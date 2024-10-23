@@ -1754,6 +1754,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":backend_config_proto_cc",
+        ":onednn_config_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@eigen_archive//:eigen3",
