@@ -228,7 +228,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       # is wrapped in a tf.function.
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
-          r"Trying to read variable with wrong dtype. "
+          r"Trying to read variable '.*' with wrong dtype. "
           r"Expected (float|int32) got (int32|float)"):
         _ = resource_variable_ops.read_variable_op(handle, dtype=dtypes.float32)
 
