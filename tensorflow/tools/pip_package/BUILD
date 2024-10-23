@@ -3,6 +3,11 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
+load(
+    "@local_tsl//third_party/py:python_wheel_library.bzl",
+    "wheel_library",
+)
+load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
@@ -311,7 +316,7 @@ genrule(
 )
 
 py_test(
-    name = "import_api_packages_test_cpu",
+    name = "prebuilt_wheel_import_api_packages_test",
     srcs = if_wheel_dependency(
         ["import_api_packages_test.py"],
         [":empty_test"],
@@ -319,19 +324,56 @@ py_test(
     main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
     tags = [
         "cpu",
+        "gpu",
+        "windows_excluded",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()),
 )
 
 py_test(
-    name = "import_api_packages_test_gpu",
-    srcs = if_wheel_dependency(
-        ["import_api_packages_test.py"],
-        [":empty_test"],
-    ),
-    main = if_wheel_dependency("import_api_packages_test.py", "empty_test.py"),
+    name = "import_api_packages_test",
+    srcs = ["import_api_packages_test.py"],
+    main = "import_api_packages_test.py",
     tags = [
+        "cpu",
         "gpu",
+        "windows_excluded",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()),
+    deps = [
+        ":tf_wheel_library",
+    ],
+)
+
+wheel_library(
+    name = "tf_wheel_library",
+    wheel = ":wheel",
+    wheel_deps = if_cuda_libs([
+        "@cuda_cublas//:cublas",
+        "@cuda_cublas//:cublasLt",
+        "@cuda_cudart//:cudart",
+        "@cuda_cudnn//:cudnn",
+        "@cuda_cufft//:cufft",
+        "@cuda_cupti//:cupti",
+        "@cuda_curand//:curand",
+        "@cuda_cusolver//:cusolver",
+        "@cuda_cusparse//:cusparse",
+        "@cuda_nccl//:nccl",
+        "@cuda_nvjitlink//:nvjitlink",
+        "@cuda_nvrtc//:nvrtc",
+    ]),
+    deps = [
+        "@pypi_absl_py//:pkg",
+        "@pypi_astunparse//:pkg",
+        "@pypi_flatbuffers//:pkg",
+        "@pypi_gast//:pkg",
+        "@pypi_ml_dtypes//:pkg",
+        "@pypi_numpy//:pkg",
+        "@pypi_opt_einsum//:pkg",
+        "@pypi_packaging//:pkg",
+        "@pypi_protobuf//:pkg",
+        "@pypi_requests//:pkg",
+        "@pypi_termcolor//:pkg",
+        "@pypi_typing_extensions//:pkg",
+        "@pypi_wrapt//:pkg",
+    ],
 )

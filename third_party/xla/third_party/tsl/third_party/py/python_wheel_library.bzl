@@ -2,12 +2,31 @@
 
 def _unpacked_wheel_impl(ctx):
     output_dir = ctx.actions.declare_directory(ctx.label.name)
-    ctx.actions.run(
-        inputs = [ctx.file.wheel],
-        outputs = [output_dir],
-        executable = ctx.executable.zipper,
-        arguments = ["x", ctx.file.wheel.path, "-d", output_dir.path],
+    libs = []
+    for dep in ctx.attr.deps:
+        linker_inputs = dep[CcInfo].linking_context.linker_inputs.to_list()
+        for linker_input in linker_inputs:
+            if linker_input.libraries and linker_input.libraries[0].dynamic_library:
+                lib = linker_input.libraries[0].dynamic_library
+                libs.append(lib)
+    script = """
+    {zipper} x {wheel} -d {output}
+    for lib in {libs}; do
+        cp $lib {output}/tensorflow
+    done
+    """.format(
+        zipper = ctx.executable.zipper.path,
+        wheel = ctx.file.wheel.path,
+        output = output_dir.path,
+        libs = " ".join(["'%s'" % lib.path for lib in libs]),
     )
+    ctx.actions.run_shell(
+        inputs = [ctx.file.wheel] + libs,
+        command = script,
+        outputs = [output_dir],
+        tools = [ctx.executable.zipper],
+    )
+
     return [
         DefaultInfo(files = depset([output_dir])),
     ]
@@ -21,14 +40,16 @@ _unpacked_wheel = rule(
             cfg = "exec",
             executable = True,
         ),
+        "deps": attr.label_list(providers = [CcInfo]),
     },
 )
 
-def wheel_library(name, wheel, deps):
+def wheel_library(name, wheel, deps = [], wheel_deps = []):
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
         wheel = wheel,
+        deps = wheel_deps,
     )
     native.py_library(
         name = name,
