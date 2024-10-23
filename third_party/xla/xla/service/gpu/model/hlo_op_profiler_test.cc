@@ -19,17 +19,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using HloOpProfilerTest = HloTestBase;
+class HloOpProfilerTest : public HloTestBase {
+  void SetUp() override {
+#ifndef GOOGLE_CUDA
+    GTEST_SKIP() << "Not built with --config=cuda";
+#endif
+  }
+};
 
 TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
-#ifndef GOOGLE_CUDA
-  GTEST_SKIP() << "Not built with --config=cuda";
-#endif
   HloOpProfiler profiler(test_runner_as_hlo_runner());
   // f32 is fast but measurable.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, F32)
@@ -46,6 +51,12 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
                 .value()
                 .clock_cycles(),
             1000);
+}
+
+TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
+  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  EXPECT_THAT(profiler.MeasureClockCyclesPerOp(HloOpcode::kCbrt, S8),
+              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
 }  // namespace
