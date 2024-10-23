@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 
 namespace xla {
@@ -85,6 +86,13 @@ struct IfrtIRCompileOptions
   std::shared_ptr<absl::flat_hash_map<
       std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
       compile_options_overrides;
+
+  // Constructs `IfrtIRCompileOptions` from `IfrtIrCompileOptionsProto`.
+  static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
+      const IfrtIrCompileOptionsProto& proto);
+
+  // Returns a `IfrtIrCompileOptionsProto` representation.
+  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto() const;
 
   static char ID;  // NOLINT
 };
