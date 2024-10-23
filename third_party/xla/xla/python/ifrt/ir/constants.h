@@ -56,6 +56,13 @@ inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 // Name of StringAttr used to store the HloSharding.
 inline constexpr llvm::StringLiteral kHloShardingAttrName = "mhlo.sharding";
 
+inline constexpr llvm::StringLiteral kIfrtModuleTypeAttrName =
+    "ifrt.module_type";
+
+inline constexpr llvm::StringLiteral kIfrtModuleTypeXla = "xla";
+inline constexpr llvm::StringLiteral kIfrtModuleTypeMpmdReshard =
+    "mpmd_reshard";
+
 }  // namespace ifrt
 }  // namespace xla
 

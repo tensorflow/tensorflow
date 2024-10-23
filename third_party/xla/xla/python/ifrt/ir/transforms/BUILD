@@ -30,6 +30,7 @@ cc_library(
     name = "passes",
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
+        "ifrt_lower_mpmd_reshard_to_call_pass.cc",
         "ifrt_lower_sharding_to_xla_pass.cc",
         "ifrt_merge_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
@@ -52,10 +53,12 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/support:sharding_conversions",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -63,6 +66,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:fingerprint",
         "@stablehlo//:stablehlo_ops",
     ],
 )
