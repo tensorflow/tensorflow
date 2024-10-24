@@ -521,6 +521,11 @@ REGISTER_OP("DecodeAndCropJpeg")
       const Tensor* crop_window = c->input_tensor(1);
       if (crop_window != nullptr) {
         auto crop_window_vec = crop_window->vec<int32>();
+        if (crop_window_vec(2) < 0  || crop_window_vec(3) < 0 ){
+          return errors::InvalidArgument(
+            "crop_window must have non-negative values. "
+            );        
+        }
         h = c->MakeDim(crop_window_vec(2));
         w = c->MakeDim(crop_window_vec(3));
       }
