@@ -141,10 +141,9 @@ bool IsNoOp(const NodeDef& node, const MutableGraphView& graph,
 
 }  // namespace
 
-Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
-                                                const GrapplerItem& item,
-                                                GraphDef* output,
-                                                OptimizationStats* stats) {
+absl::Status NoOpElimination::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
