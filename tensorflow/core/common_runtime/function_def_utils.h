@@ -19,9 +19,11 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

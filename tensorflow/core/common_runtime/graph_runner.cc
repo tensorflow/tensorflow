@@ -16,29 +16,32 @@ limitations under the License.
 // TODO(skyewm): this is necessary to make the single_threaded_cpu_device.h
 // include work. Some other include must be including eigen without defining
 // this. Consider defining in this in a BUILD rule.
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/control_flow.h"
+#include "tensorflow/core/framework/node_properties.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/common_runtime/graph_runner.h"
-
-#include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
