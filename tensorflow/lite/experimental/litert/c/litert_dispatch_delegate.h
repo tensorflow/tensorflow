@@ -20,6 +20,7 @@
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 #ifdef __cplusplus
 #include <memory>
@@ -37,12 +38,7 @@ typedef struct LiteRtDispatchDelegateOptions LiteRtDispatchDelegateOptions;
 LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions();
 
 TfLiteStatus LiteRtAddDispatchDelegateOption(
-    LiteRtDispatchDelegateOptions* options, const char* option_name,
-    const char* option_value);
-
-// Specify a directory for loading dynamic libraries.
-TfLiteStatus LiteRtAddDispatchDelegateSharedLibraryDirOption(
-    LiteRtDispatchDelegateOptions* options, const char* shared_library_dir);
+    LiteRtDispatchDelegateOptions* options, LiteRtDispatchOption option);
 
 // Add NPU executable information keyed by a provided tag.
 TfLiteStatus LiteRtAddDispatchDelegateExecInfoOption(

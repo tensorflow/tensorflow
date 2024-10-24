@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
         "//tensorflow/lite/experimental/litert/c:litert_tensor_buffer",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/core:utils",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
         "@com_google_absl//absl/base",

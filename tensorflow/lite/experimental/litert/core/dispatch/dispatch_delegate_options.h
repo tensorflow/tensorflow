@@ -20,12 +20,14 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/litert/c/litert_dispatch_delegate.h"
+#include "tensorflow/lite/experimental/litert/vendors/c/litert_dispatch.h"
 
 class LiteRtDispatchDelegateOptions {
  public:
@@ -36,22 +38,7 @@ class LiteRtDispatchDelegateOptions {
     std::optional<std::string> function_name;
   };
 
-  void AddOption(absl::string_view key, absl::string_view value) {
-    options_[std::string{key}] = std::string{value};
-  }
-
-  std::optional<std::string> GetOption(const std::string& key) const {
-    if (auto iter = options_.find(key); iter != options_.end()) {
-      return iter->second;
-    }
-    return {};
-  }
-
-  void SetSharedLibraryDir(absl::string_view dir) { shared_library_dir_ = dir; }
-
-  const std::optional<std::string>& GetSharedLibraryDir() const {
-    return shared_library_dir_;
-  }
+  void AddOption(LiteRtDispatchOption option) { options_.push_back(option); }
 
   // Store a given ExecInfo object and associated it to a given tag.
   void AddExecInfo(absl::string_view exec_tag, ExecInfo&& exec_info) {
@@ -66,12 +53,14 @@ class LiteRtDispatchDelegateOptions {
     return absl::NotFoundError("ExecInfo not found");
   }
 
+  const std::vector<LiteRtDispatchOption>& GetDispatchOptions() const {
+    return options_;
+  }
+
  private:
-  // Options are stored as (key, value) pairs.
-  std::map<std::string, std::string> options_;
+  std::vector<LiteRtDispatchOption> options_;
   // ExecInfos are stored as (tag, ExecInfo) pairs.
   std::map<std::string, ExecInfo> exec_infos_;
-  std::optional<std::string> shared_library_dir_;
 };
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LITERT_CORE_DISPATCH_DISPATCH_DELEGATE_OPTIONS_H_

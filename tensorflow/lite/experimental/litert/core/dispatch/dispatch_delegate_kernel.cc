@@ -74,10 +74,9 @@ DispatchDelegateKernel::~DispatchDelegateKernel() {
 
 absl::StatusOr<DispatchDelegateKernel::Ptr> DispatchDelegateKernel::Create(
     std::string&& graph_name, const LiteRtDispatchDelegateOptions& options) {
-  auto shared_library_dir = options.GetSharedLibraryDir();
-  if (auto status = LiteRtDispatchInitialize(shared_library_dir.has_value()
-                                                 ? shared_library_dir->data()
-                                                 : nullptr);
+  auto dispatch_options = options.GetDispatchOptions();
+  if (auto status = LiteRtDispatchInitialize(dispatch_options.data(),
+                                             dispatch_options.size());
       status != kLiteRtStatusOk) {
     LITERT_LOG(LITERT_ERROR, "Failed to initialize Dispatch API: %d", status);
     return absl::InternalError("Failed to initialize Dispatch API");

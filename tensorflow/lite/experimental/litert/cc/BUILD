@@ -20,6 +20,7 @@ package(
 cc_library(
     name = "litert_cc_api",
     hdrs = [
+        "litert_any.h",
         "litert_model.h",
         "litert_support.h",
         "//tensorflow/lite/experimental/litert/vendors/c:litert_compiler_plugin.h",
@@ -30,6 +31,18 @@ cc_library(
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "any_cc_test",
+    srcs = [
+        "any_cc_test.cc",
+    ],
+    deps = [
+        ":litert_cc_api",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

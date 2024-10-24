@@ -120,11 +120,13 @@ cc_library(
         "litert_dispatch_delegate.h",
     ],
     deps = [
+        ":litert_c_api",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_opaque",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
+        "//tensorflow/lite/experimental/litert/vendors/c:litert_dispatch_c_api",
     ],
 )
 

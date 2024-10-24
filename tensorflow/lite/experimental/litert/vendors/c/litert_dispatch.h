@@ -62,12 +62,21 @@ typedef enum LiteRtDispatchExecutableType {
   kLiteRtDispatchExecutableTypeMlModel = 2,     // Vendor-specific ML model
 } LiteRtDispatchExecutableType;
 
+typedef struct LiteRtDispatchOption {
+  const char* name;
+  LiteRtAny value;
+} LiteRtDispatchOption;
+
+// This option can be used to specify a directory from where to load shared
+// libraries.
+static const char* kDispatchOptionSharedLibraryDir = "shared_library_dir";
+
 // Initialize the Dispatch API runtime.
 //
 // This function should be called before calling any other Dispatch API
-// functions. Parameter `shared_library_dir` is optional (it can be NULL) and
-// can be used to specify a directory from where to load shared libraries.
-LiteRtStatus LiteRtDispatchInitialize(const char* shared_library_dir);
+// functions.
+LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
+                                      int num_options);
 
 // Return the version of the Dispatch API runtime.
 LiteRtStatus LiteRtDispatchGetApiVersion(LiteRtDispatchApiVersion* api_version);

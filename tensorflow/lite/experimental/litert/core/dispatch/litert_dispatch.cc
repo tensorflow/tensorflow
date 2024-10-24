@@ -17,6 +17,7 @@
 #include <dlfcn.h>
 
 #include <cstddef>
+#include <cstring>
 #include <string>
 
 #include "absl/strings/str_format.h"
@@ -73,8 +74,19 @@ LiteRtDispatchApi TheApi = {
     /*.graph_interface=*/nullptr,
 };
 
-LiteRtStatus Initialize(const char* shared_library_dir) {
-  INVOKE_FUNC(initialize, shared_library_dir);
+LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
+  INVOKE_FUNC(initialize, options, num_options);
+}
+
+std::string GetSharedLibraryPath(const LiteRtDispatchOption* options,
+                                 int num_options) {
+  for (auto i = 0; i < num_options; ++i) {
+    auto& option = options[i];
+    if (!strcmp(option.name, kDispatchOptionSharedLibraryDir)) {
+      return absl::StrFormat("%s/%s", option.value.str_value, kSharedLibName);
+    }
+  }
+  return kSharedLibName;
 }
 
 }  // namespace
@@ -83,15 +95,13 @@ LiteRtStatus Initialize(const char* shared_library_dir) {
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LiteRtStatus LiteRtDispatchInitialize(const char* shared_library_dir) {
+LiteRtStatus LiteRtDispatchInitialize(const LiteRtDispatchOption* options,
+                                      int num_options) {
   if (IsTheApiInitialized) {
     return kLiteRtStatusOk;
   }
 
-  std::string shared_lib_path =
-      (shared_library_dir != nullptr)
-          ? absl::StrFormat("%s/%s", shared_library_dir, kSharedLibName)
-          : kSharedLibName;
+  auto shared_lib_path = GetSharedLibraryPath(options, num_options);
   void* lib_handle = ::dlopen(shared_lib_path.data(), RTLD_NOW | RTLD_LOCAL);
   if (!lib_handle) {
     LITERT_LOG(LITERT_ERROR, "Failed to load dispatch library: %s",
@@ -126,7 +136,7 @@ LiteRtStatus LiteRtDispatchInitialize(const char* shared_library_dir) {
     return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  auto status = Initialize(shared_library_dir);
+  auto status = Initialize(options, num_options);
   if (status == kLiteRtStatusOk) {
     IsTheApiInitialized = true;
   }

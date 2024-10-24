@@ -35,7 +35,7 @@ TEST(Qualcomm, DispatchApiWithFastRpc) {
       << "This test is specific to Android devices with a Qualcomm NPU";
 #endif
 
-  EXPECT_EQ(LiteRtDispatchInitialize(/*shared_library_dir=*/nullptr),
+  EXPECT_EQ(LiteRtDispatchInitialize(/*options=*/nullptr, /*num_options=*/0),
             kLiteRtStatusOk);
 
   const char* vendor_id;
@@ -286,7 +286,7 @@ TEST(Qualcomm, DispatchApiWithDmaBuf) {
       << "This test is specific to Android devices with a Qualcomm NPU";
 #endif
 
-  EXPECT_EQ(LiteRtDispatchInitialize(/*shared_library_dir=*/nullptr),
+  EXPECT_EQ(LiteRtDispatchInitialize(/*options=*/nullptr, /*num_options=*/0),
             kLiteRtStatusOk);
 
   const char* vendor_id;

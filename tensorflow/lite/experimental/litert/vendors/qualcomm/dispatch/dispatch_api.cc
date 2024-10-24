@@ -48,7 +48,19 @@ char BuildId[256];
 // Basic Execution API
 // /////////////////////////////////////////////////////////////////////////////
 
-LiteRtStatus Initialize(const char* shared_library_dir) {
+const char* GetSharedLibraryDir(const LiteRtDispatchOption* options,
+                                int num_options) {
+  for (auto i = 0; i < num_options; ++i) {
+    auto& option = options[i];
+    if (!strcmp(option.name, kDispatchOptionSharedLibraryDir)) {
+      return option.value.str_value;
+    }
+  }
+  return nullptr;
+}
+
+LiteRtStatus Initialize(const LiteRtDispatchOption* options, int num_options) {
+  auto* shared_library_dir = GetSharedLibraryDir(options, num_options);
   std::optional<std::string> shared_library_dir_opt =
       shared_library_dir ? std::make_optional(std::string(shared_library_dir))
                          : std::nullopt;
