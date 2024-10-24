@@ -16,10 +16,15 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/counter.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "util/symbolize/symbolized_stacktrace.h"
 
 namespace xla {
 namespace {
@@ -39,6 +44,10 @@ auto* compiled_programs_count = tsl::monitoring::Counter<0>::New(
 auto* xla_device_binary_size = tsl::monitoring::Gauge<int64_t, 0>::New(
     "/xla/service/gpu/xla_device_binary_size",
     "The size of the XLA binary loaded onto the GPU device.");
+
+auto* gpu_compiler_stacktrace_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/compiler/xla/gpu/compiler_stacktrace_count",
+    "The number of times a compiler stacktrace was called.", "stacktrace");
 
 }  // namespace
 
@@ -91,6 +100,25 @@ void ResetCompiledProgramsCountForTesting() {
 
 void RecordXlaDeviceBinarySize(const int64_t size) {
   xla_device_binary_size->GetCell()->Set(size);
+}
+
+void RecordGpuCompilerStacktrace() {
+  std::vector<std::string> stack;
+  util::GetSymbolizedStackTrace(&stack, /*max_depth=*/20, /*skip_count=*/0,
+                                /*demangle=*/true);
+
+  // Stack traces with addresses would make too many unique streamz cells.
+  // We only care about the actual call stack.
+  for (std::string& s : stack) {
+    s = std::string(absl::ClippedSubstr(s, s.find(' ') + 1));
+  }
+
+  std::string stacktrace = absl::StrJoin(stack, ";\n");
+  gpu_compiler_stacktrace_count->GetCell(stacktrace)->IncrementBy(1);
+}
+
+int GetGpuCompilerStacktraceCount(std::string stacktrace) {
+  return gpu_compiler_stacktrace_count->GetCell(stacktrace)->value();
 }
 
 }  // namespace xla

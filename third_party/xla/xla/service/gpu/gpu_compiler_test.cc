@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
@@ -121,6 +122,50 @@ ENTRY main {
                         /*is_autotuning_compilation=*/false})
           .value();
   EXPECT_EQ(GetCompiledProgramsCount(), 1);
+}
+
+TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+
+  // clang-format off
+  // NOLINTBEGIN(whitespace/line_length)
+  std::vector<std::string> expected_stack_trace = {
+    "xla::RecordGpuCompilerStacktrace();",
+    "xla::gpu::GpuCompiler::RunBackend(std::__u::unique_ptr<xla::HloModule, std::__u::default_delete<xla::HloModule>>, stream_executor::StreamExecutor*, xla::Compiler::CompileOptions const&);",
+    "xla::gpu::(anonymous namespace)::GpuCompilerTest_RecordsStreamzStackTrace_Test::TestBody();",
+    "testing::Test::Run();",
+    "testing::TestInfo::Run();",
+    "testing::TestSuite::Run();",
+    "testing::internal::UnitTestImpl::RunAllTests();",
+    "testing::UnitTest::Run();",
+    "main;",
+    "__libc_start_main;",
+    "_start",
+  };
+  // NOLINTEND(whitespace/line_length)
+  // clang-format on
+
+  std::string expected_stacktrace = absl::StrJoin(expected_stack_trace, "\n");
+  EXPECT_EQ(GetGpuCompilerStacktraceCount(expected_stacktrace), 1);
 }
 
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {

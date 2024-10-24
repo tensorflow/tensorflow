@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_METRICS_H_
 
 #include <cstdint>
+#include <string>
 
 namespace xla {
 
@@ -51,6 +52,13 @@ int64_t GetCompiledProgramsCount();
 
 // Records the size of the XLA device binary in bytes.
 void RecordXlaDeviceBinarySize(int64_t size);
+
+// Records the stacktrace of the GPU compiler.
+void RecordGpuCompilerStacktrace();
+
+// Returns the number of times the GPU compiler was called with the given
+// stacktrace.
+int GetGpuCompilerStacktraceCount(std::string stacktrace);
 
 }  // namespace xla
 
