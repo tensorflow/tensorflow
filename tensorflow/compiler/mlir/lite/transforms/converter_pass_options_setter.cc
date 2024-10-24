@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
+#include "tensorflow/compiler/mlir/lite/transforms/variable_freezing_pipeline_options.h"
 
 namespace mlir {
 namespace TFL {
@@ -25,6 +26,11 @@ void ConverterPassOptionsSetter::SetOptions(
     OptimizePassOptions& options) const {
   options.enable_canonicalization = true;
   options.disable_fuse_mul_and_fc = converter_flags_.disable_fuse_mul_and_fc();
+}
+
+void ConverterPassOptionsSetter::SetOptions(
+    VariableFreezingPipelineOptions& options) const {
+  options.enable_tflite_variables = pass_config_.enable_tflite_variables;
 }
 
 void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}

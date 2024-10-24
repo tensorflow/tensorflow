@@ -402,6 +402,22 @@ cc_library(
 )
 
 cc_library(
+    name = "pipeline",
+    hdrs = ["transforms/pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":pass_options_setter",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "pass_options_setter",
     hdrs = ["transforms/pass_options_setter.h"],
     compatible_with = get_compatible_with_portable(),
@@ -420,6 +436,7 @@ cc_library(
     deps = [
         ":pass_options",
         ":pass_options_setter",
+        ":variable_freezing_pipeline_options",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite:optimize_pass_options",
@@ -493,8 +510,34 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":pass",
+        ":pass_options",
+        ":pipeline",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "variable_freezing_pipeline_options",
+    hdrs = ["transforms/variable_freezing_pipeline_options.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "variable_freezing_pipeline",
+    hdrs = ["transforms/variable_freezing_pipeline.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass_options",
+        ":pass_registry_utils",
+        ":pipeline",
+        ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":variable_freezing_pipeline_options",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -509,6 +552,7 @@ cc_library(
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
         "transforms/unfreeze_global_constants.h",
+        "transforms/variable_freezing_pipeline.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
     ],
@@ -518,7 +562,9 @@ cc_library(
         ":cost_estimators",
         ":optimize_pass_options",
         ":pass",
+        ":pass_options",
         ":pass_registry_utils",
+        ":pipeline",
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
@@ -528,6 +574,8 @@ cc_library(
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":variable_freezing_pipeline",
+        ":variable_freezing_pipeline_options",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -538,6 +586,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1594,6 +1643,7 @@ cc_library(
         ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":variable_freezing_pipeline",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",

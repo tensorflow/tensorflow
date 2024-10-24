@@ -72,6 +72,7 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 // mutable global tensors. `pass_config` is used to determine whether to freeze
 // variables and `pass_manager` will be populated with the passes to run.
 void AddVariableFreezingFromGlobalTensorsPasses(
+    const tflite::ConverterFlags& converter_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 
