@@ -50,8 +50,8 @@ namespace {
 //               If num_of_elem is -1, this function will calculate
 //               the number of data based on size and dtype.
 // Returns: OkStatus() on success, -1 otherwise
-Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
-                      int num_of_elem) {
+absl::Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
+                            int num_of_elem) {
   int array_len = num_of_elem;
   size_t bytes_per_elem = 0;
 
@@ -155,13 +155,13 @@ bool IsByteSwappable(DataType dtype) {
   }
 }
 
-Status ByteSwapTensor(Tensor* t) {
+absl::Status ByteSwapTensor(Tensor* t) {
   char* buff = const_cast<char*>((t->tensor_data().data()));
   return ByteSwapBuffer(buff, t->tensor_data().size(), t->dtype(),
                         t->NumElements());
 }
 
-Status ByteSwapTensorContentInNode(NodeDef& node) {
+absl::Status ByteSwapTensorContentInNode(NodeDef& node) {
   if (node.op() == "Const") {
     auto node_iterator = node.mutable_attr()->find("value");
     if (node_iterator != node.mutable_attr()->end()) {
@@ -201,7 +201,7 @@ Status ByteSwapTensorContentInNode(NodeDef& node) {
   return absl::OkStatus();
 }
 
-Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
+absl::Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
   for (auto& function : *meta_graph_def->mutable_graph_def()
                              ->mutable_library()
                              ->mutable_function())
@@ -210,7 +210,7 @@ Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
   return absl::OkStatus();
 }
 
-Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
+absl::Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
   for (auto& node : *graph_def->mutable_node())
     TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
   return absl::OkStatus();
