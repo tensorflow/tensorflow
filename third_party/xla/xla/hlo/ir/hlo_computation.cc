@@ -620,10 +620,11 @@ void HloComputation::ForEachInstructionPostOrderImpl(
   auto* dfs_stack = dfs_stack_scratch;
   dfs_stack->clear();
 
-  // Pushes instruction to dfs stack only if it was not already processed.
+  // Pushes instruction to dfs stack only if it wasn't already pushed to the
+  // stack.
   auto dfs_stack_push = [&](HloInstruction* instr) {
     VisitState state = visited.GetState(instr->index_in_parent_);
-    if (state != VisitState::kVisited) dfs_stack->push_back(instr);
+    if (state == VisitState::kNew) dfs_stack->push_back(instr);
   };
 
   dfs_stack_push(root);
