@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

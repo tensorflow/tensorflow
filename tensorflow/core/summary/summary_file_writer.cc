@@ -16,16 +16,26 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/summary_interface.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/summary/summary_converter.h"
+#include "tensorflow/core/util/event.pb.h"
 #include "tensorflow/core/util/events_writer.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace {
