@@ -53,7 +53,7 @@ static Node* AddNoOp(StringPiece name, Graph* g) {
   NodeDef ndef;
   ndef.set_name(g->NewName(absl::StrCat(kNodeLabel, "/", name)));
   ndef.set_op("NoOp");
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   return ret;
@@ -66,7 +66,7 @@ static Node* AddIdentity(StringPiece name, Graph* g, Endpoint input) {
   ndef.set_op("Identity");
   ndef.add_input(input.name());
   AddNodeAttr("T", BaseType(input.dtype()), &ndef);
-  Status s;
+  absl::Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
   g->AddEdge(input.node, input.index, ret, 0);
@@ -259,8 +259,8 @@ bool RemoveListArrayConverter(Graph* g) {
   return removed_any;
 }
 
-Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
-                                    NameAttrList* function) {
+absl::Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                          NameAttrList* function) {
   if (call_def.op() == "PartitionedCall" ||
       call_def.op() == "StatefulPartitionedCall") {
     TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", function));
@@ -271,9 +271,9 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
   return absl::OkStatus();
 }
 
-Status InstantiateFunctionCall(const NodeDef& call_def,
-                               FunctionLibraryRuntime* flr,
-                               FunctionLibraryRuntime::Handle* handle) {
+absl::Status InstantiateFunctionCall(const NodeDef& call_def,
+                                     FunctionLibraryRuntime* flr,
+                                     FunctionLibraryRuntime::Handle* handle) {
   NameAttrList function;
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(call_def, &function));
   return flr->Instantiate(function.name(), AttrSlice(&function.attr()), handle);
