@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"

@@ -66,11 +66,11 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
