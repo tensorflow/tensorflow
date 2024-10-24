@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_CONDITIONAL_CANONICALIZER_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_CONDITIONAL_CANONICALIZER_H_
 
-#include <utility>
-
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 

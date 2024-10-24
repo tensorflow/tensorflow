@@ -15,31 +15,46 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 
+#include <stack>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
-absl::Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
-  TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
-  for (auto* branch : conditional->called_computations()) {
-    HloInstruction* root = branch->root_instruction();
-    TF_RET_CHECK(!root->shape().IsTuple());
 
-    HloInstruction* tuple =
-        branch->AddInstruction(HloInstruction::CreateTuple({root}));
-    branch->set_root_instruction(tuple, /*accept_different_shape=*/true);
-  }
+absl::StatusOr<HloInstruction*> CanonicalizeNonTupleConditional(
+    HloInstruction* conditional) {
+  HloModule* module = conditional->parent()->parent();
+  TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
   auto parent = conditional->parent();
   const Shape& root_shape = conditional->shape();
   auto new_shape = ShapeUtil::MakeTupleShape(absl::MakeSpan(&root_shape, 1));
   auto new_conditional =
       parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
+  new_conditional->ReplaceCalledComputations([&](HloComputation* comp) {
+    HloComputation* branch_clone =
+        module->AddEmbeddedComputation(comp->Clone());
+    HloInstruction* root = branch_clone->root_instruction();
+    HloInstruction* tuple =
+        branch_clone->AddInstruction(HloInstruction::CreateTuple({root}));
+    branch_clone->set_root_instruction(tuple, /*accept_different_shape=*/true);
+    return branch_clone;
+  });
   auto gte = parent->AddInstruction(
       HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
   TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
-  return absl::OkStatus();
+  return new_conditional;
 }
 }  // namespace
 
@@ -49,15 +64,29 @@ absl::StatusOr<bool> ConditionalCanonicalizer::Run(
   XLA_VLOG_LINES(
       2, "ConditionalCanonicalizer::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
+  std::stack<HloComputation*> agenda;
+  agenda.push(module->entry_computation());
+  absl::flat_hash_set<HloComputation*> visited;
+  while (!agenda.empty()) {
+    HloComputation* comp = agenda.top();
+    agenda.pop();
+    if (!visited.insert(comp).second) {
+      continue;
+    }
     for (auto* inst : comp->MakeInstructionPostOrder()) {
+      // Conditional canonicalization may change the called computations, so do
+      // that first.
       if (inst->opcode() == HloOpcode::kConditional &&
           !inst->shape().IsTuple()) {
-        TF_RETURN_IF_ERROR(CanonicalizeNonTupleConditional(inst));
+        TF_ASSIGN_OR_RETURN(inst, CanonicalizeNonTupleConditional(inst));
         changed = true;
+      }
+      for (HloComputation* child : inst->called_computations()) {
+        agenda.push(child);
       }
     }
   }
+  TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
   XLA_VLOG_LINES(
       2, "ConditionalCanonicalizer::Run(), after:\n" + module->ToString());
   return changed;
