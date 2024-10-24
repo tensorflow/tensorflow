@@ -785,13 +785,9 @@ class KernelCacheTest : public HloTestBase {
     CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
-    se::GpuComputeCapability cc = backend()
-                                      .default_stream_executor()
-                                      ->GetDeviceDescription()
-                                      .cuda_compute_capability();
     TF_ASSERT_OK_AND_ASSIGN(bool can_use_link_modules,
                             dynamic_cast<GpuCompiler*>(backend().compiler())
-                                ->CanUseLinkModules(config, cc));
+                                ->CanUseLinkModules(config));
     if (!can_use_link_modules) {
       GTEST_SKIP() << "Caching compiled kernels requires support of linking.";
     }

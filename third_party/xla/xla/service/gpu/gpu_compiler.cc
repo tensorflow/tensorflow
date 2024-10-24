@@ -2225,12 +2225,9 @@ GpuCompiler::CompileToBackendResult(
 
   // Test whether LinkModules is supported.
   bool can_use_link_modules = (executor != nullptr);
-  se::GpuComputeCapability gpu_compute_capability =
-      gpu_device_info.gpu_compute_capability();
   if (can_use_link_modules) {
-    TF_ASSIGN_OR_RETURN(
-        can_use_link_modules,
-        CanUseLinkModules(module->config(), gpu_compute_capability));
+    TF_ASSIGN_OR_RETURN(can_use_link_modules,
+                        CanUseLinkModules(module->config()));
   }
   const bool split_modules =
       can_use_link_modules &&

@@ -118,8 +118,7 @@ class GpuCompiler : public LLVMCompiler {
   }
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
-      const HloModuleConfig& config,
-      se::GpuComputeCapability& gpu_compute_capability) {
+      const HloModuleConfig& config) {
     return false;
   }
 
