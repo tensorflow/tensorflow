@@ -22,11 +22,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
