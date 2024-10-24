@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"

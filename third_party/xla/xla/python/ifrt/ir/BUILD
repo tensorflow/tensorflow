@@ -216,6 +216,7 @@ xla_cc_test(
         ":ifrt_ir_program",
         ":ifrt_ir_program_serdes",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/support:module_parsing",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
