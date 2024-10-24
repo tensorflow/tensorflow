@@ -157,9 +157,7 @@ struct GpuPerformanceModelOptions {
   }
 
   static GpuPerformanceModelOptions ForModule(const HloModule* module) {
-    return module->config().debug_options().xla_gpu_enable_priority_fusion()
-               ? PriorityFusion()  // Only cache within priority fusion.
-               : Default();
+    return PriorityFusion();
   }
 };
 

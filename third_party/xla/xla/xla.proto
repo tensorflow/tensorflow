@@ -707,8 +707,6 @@ message DebugOptions {
 
   reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
 
-  bool xla_gpu_enable_priority_fusion = 221;
-
   reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
   // File to write autotune results to. It will be a binary file unless the name
@@ -1056,7 +1054,8 @@ message DebugOptions {
   // xla_gpu_single_wave_autotuning
   // xla_gpu_enable_persistent_temp_buffers
   // xla_gpu_enable_triton_gemm_int4
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206, 320;
+  // xla_gpu_enable_priority_fusion
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320;
 }
 
 // Contains flags which affects the GPU compilation result.
