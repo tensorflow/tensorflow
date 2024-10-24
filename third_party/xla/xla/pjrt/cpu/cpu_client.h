@@ -291,6 +291,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_name() const override { return CpuName(); }
 
+  // TODO(b/375253127): This should return "CPU".
   absl::string_view platform_version() const override { return "<unknown>"; }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
