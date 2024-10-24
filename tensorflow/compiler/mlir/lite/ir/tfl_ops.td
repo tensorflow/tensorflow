@@ -1632,9 +1632,9 @@ def TFL_EluOp: TFL_Op<"elu", [
     element-wise.
   }];
 
-  let arguments = (ins TFL_TensorOf<[F32, I8]>:$x);
+  let arguments = (ins TFL_TensorOf<[F32, I8, QUI8, QI8, TFL_Quint8, QI16]>:$x);
 
-  let results = (outs TFL_TensorOf<[F32, I8]>:$y);
+  let results = (outs TFL_TensorOf<[F32, I8, QUI8, QI8, TFL_Quint8, QI16]>:$y);
 
   let hasOptions = 0;
 }
