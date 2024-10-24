@@ -45,7 +45,7 @@ class CostRecorder {
   // Writes the op cost map (in format of `OpCostMapProto`) to a file specified
   // by the env var name `MesuredCostPathEnvVarName()`.
   // TODO(b/263837451): Fix the op_key unstableness during serialization.
-  Status WriteToFile() const;
+  absl::Status WriteToFile() const;
 
   size_t size() const;
 

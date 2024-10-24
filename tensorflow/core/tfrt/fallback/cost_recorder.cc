@@ -51,7 +51,7 @@ uint64_t CostRecorder::GetCost(int64_t op_key) const {
   return r;
 }
 
-Status CostRecorder::WriteToFile() const {
+absl::Status CostRecorder::WriteToFile() const {
   OpCostMapProto op_cost_map_proto;
   {
     tf_shared_lock l(op_cost_map_mutex_);
