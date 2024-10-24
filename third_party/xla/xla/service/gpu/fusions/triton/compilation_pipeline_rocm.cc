@@ -91,7 +91,6 @@ absl::Status CreateTritonPipeline(
     pm.addPass(mlir::createTritonAMDGPUStreamPipelinePass());
     pm.addPass(mlir::createCanonicalizerPass());
   }
-  pm.addPass(mt::createInsertInstructionSchedHintsPass());
   pm.addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm.addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm.addPass(mt::gpu::createTritonGPUReduceDataDuplication());
