@@ -20,8 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {

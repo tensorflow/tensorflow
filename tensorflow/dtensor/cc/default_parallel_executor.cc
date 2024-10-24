@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/parallel_executor.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {

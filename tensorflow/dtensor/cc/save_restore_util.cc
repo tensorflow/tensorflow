@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 
-#include "llvm/ADT/SmallVector.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 namespace tensorflow {
 namespace dtensor {
