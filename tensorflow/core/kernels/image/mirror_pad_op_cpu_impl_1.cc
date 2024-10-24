@@ -14,5 +14,4 @@ limitations under the License.
 ==============================================================================*/
 
 #define CPU_PROVIDED_IXDIM 1
-#include "tensorflow/core/kernels/image/mirror_pad_op_cpu_impl.h"
 #undef CPU_PROVIDED_IXDIM
