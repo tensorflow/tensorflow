@@ -190,8 +190,8 @@ StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
   return a.getSExtValue();
 }
 
-Status ExtractConstVectorFromValue(mlir::Value value,
-                                   llvm::SmallVector<int64_t, 4>* out_vector) {
+absl::Status ExtractConstVectorFromValue(
+    mlir::Value value, llvm::SmallVector<int64_t, 4>* out_vector) {
   value = GetForwardedInput(value);
   if (value.isa<mlir::BlockArgument>())
     return errors::Internal("unable get constant value from block argument");
