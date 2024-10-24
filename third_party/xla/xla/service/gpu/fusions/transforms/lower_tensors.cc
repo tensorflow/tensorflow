@@ -325,45 +325,67 @@ struct RewriteTensorInsert : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
     auto linear_index = GetLinearIndex(op.getIndices(), b);
-    auto element_type = tensor_dest.getType().getElementType();
-    Value is_low_nibble = nullptr;
-
-    if (element_type == rewriter.getI4Type()) {
-      std::tie(linear_index, is_low_nibble) =
-          GetI4IndexAndNibble(linear_index, b);
-    }
-
-    auto gep = CreateGep(tensor_dest, linear_index, b);
     auto scalar_value = op.getScalar();
 
-    if (is_low_nibble) {
-      Value current_value =
-          b.create<mlir::LLVM::LoadOp>(gep.getElemType(), gep);
-      auto ty = current_value.getType();
+    // For i4 we store 2 values into one byte. This needs special handling here.
+    if (tensor_dest.getType().getElementType() == rewriter.getI4Type()) {
+      // We need to use directly op.getDest() as input, otherwise the following
+      // rewrite might remove the only user of it.
+      tensor_dest = op.getDest();
+      Value is_low_nibble;
+      std::tie(linear_index, is_low_nibble) =
+          GetI4IndexAndNibble(linear_index, b);
+
+      // Technically we should half the number of elements when going to i8
+      // element type, but it doesn't really matter because we only actually use
+      // the element type. Indexing is done by linear index, and GEP ops don't
+      // care about the number of elements. The tensor types will disappear
+      // completely after the LowerTensors pass.
+      Type ty = b.getI8Type();
+      Type tensor_ty = tensor_dest.getType().clone(ty);
+      auto tensor_dest_i8 =
+          b.create<mlir::UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
+              .getResult(0);
       scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
-      Value low_updated = b.create<mlir::arith::OrIOp>(
-          b.create<mlir::arith::AndIOp>(
-              current_value, b.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
-          b.create<mlir::arith::AndIOp>(
-              scalar_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
-      Value high_updated = b.create<mlir::arith::OrIOp>(
-          b.create<mlir::arith::AndIOp>(
-              current_value, b.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
-          b.create<mlir::arith::ShLIOp>(
-              scalar_value, b.create<mlir::arith::ConstantIntOp>(4, ty)));
-      scalar_value = b.create<mlir::arith::SelectOp>(is_low_nibble, low_updated,
-                                                     high_updated);
+
+      // We need AtomicRMWOp because it can happen that different threads try to
+      // access the same memory location.
+      auto atomic_rmw = b.create<AtomicRMWOp>(tensor_dest_i8, linear_index);
+      mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
+                                              atomic_rmw.getBodyBuilder());
+      Value current_value = atomic_rmw.getCurrentValue();
+      Value low_updated = body_builder.create<mlir::arith::OrIOp>(
+          body_builder.create<mlir::arith::AndIOp>(
+              current_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0xf0, ty)),
+          body_builder.create<mlir::arith::AndIOp>(
+              scalar_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)));
+      Value high_updated = body_builder.create<mlir::arith::OrIOp>(
+          body_builder.create<mlir::arith::AndIOp>(
+              current_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(0x0f, ty)),
+          body_builder.create<mlir::arith::ShLIOp>(
+              scalar_value,
+              body_builder.create<mlir::arith::ConstantIntOp>(4, ty)));
+      Value new_value = body_builder.create<mlir::arith::SelectOp>(
+          is_low_nibble, low_updated, high_updated);
+      body_builder.create<mlir::scf::YieldOp>(new_value);
+      Value casted_result = b.create<mlir::UnrealizedConversionCastOp>(
+                                 tensor_dest.getType(), atomic_rmw.getResult())
+                                .getResult(0);
+      op.replaceAllUsesWith(casted_result);
+    } else {
+      auto gep = CreateGep(tensor_dest, linear_index, b);
+      mlir::LLVMTypeConverter converter(getContext());
+      auto llvm_type = converter.convertType(scalar_value.getType());
+      scalar_value =
+          b.create<mlir::UnrealizedConversionCastOp>(llvm_type, scalar_value)
+              .getResult(0);
+      b.create<mlir::LLVM::StoreOp>(scalar_value, gep);
+      op.replaceAllUsesWith(op.getDest());
     }
 
-    mlir::LLVMTypeConverter converter(getContext());
-    auto llvm_type = converter.convertType(scalar_value.getType());
-    scalar_value = rewriter
-                       .create<mlir::UnrealizedConversionCastOp>(
-                           gep.getLoc(), llvm_type, scalar_value)
-                       .getResult(0);
-    rewriter.create<mlir::LLVM::StoreOp>(gep.getLoc(), scalar_value, gep);
-
-    op.replaceAllUsesWith(op.getDest());
     op.erase();
     return success();
   }
@@ -1054,6 +1076,10 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
       Value addr = load.getAddr();
       while (auto gep = addr.getDefiningOp<mlir::LLVM::GEPOp>()) {
         addr = gep.getBase();
+      }
+      while (auto cast =
+                 addr.getDefiningOp<mlir::UnrealizedConversionCastOp>()) {
+        addr = cast.getOperand(0);
       }
       if (addr.getDefiningOp<mlir::LLVM::AddrSpaceCastOp>() ||
           addr.getDefiningOp<mlir::LLVM::AddressOfOp>() ||
