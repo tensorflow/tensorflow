@@ -20,7 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/tsl/profiler/utils/group_events.h"
+#include <gmock/gmock.h>
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
