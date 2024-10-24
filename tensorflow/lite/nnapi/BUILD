@@ -62,6 +62,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":nnapi_implementation_headers",
+        ":nnapi_lib",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
     ],
@@ -100,6 +101,7 @@ cc_test(
     deps = [
         ":nnapi_handler",
         ":nnapi_implementation",
+        ":nnapi_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
