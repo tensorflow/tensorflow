@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -415,7 +414,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   // session runtime.
   import_config.restrict_functionalization_to_compiled_nodes = true;
 
-  auto module_ref_status = ConvertGraphToMlir(
+  auto module_ref_status = tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       **options.graph, debug_info, *options.flib_def, import_config, &context);
   if (!module_ref_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) {
