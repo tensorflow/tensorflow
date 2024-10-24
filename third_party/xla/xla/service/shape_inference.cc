@@ -974,6 +974,84 @@ absl::Status ValidateDotDimensionNumbers(
   return result;
 }
 
+// Ragged dot has two modes:
+// 1. [m,k], [g,k,n], [g] -> [m,n]. Here the ragged dimension is the
+//    non-contracting dimension (m) of the lhs.
+// 2. [m,k], [k,n], [g] -> [g,m,n]. Here the ragged dimension is the
+//    contracting dimension (k) of the lhs and rhs.
+/* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedDotOpShape(
+    const Shape& lhs, const Shape& rhs, const Shape& group_sizes) {
+  TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of ragged dot"));
+  TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of ragged dot"));
+
+  auto fail = [lhs, rhs](const std::string& addendum) -> absl::Status {
+    std::string message = StrFormat(
+        "Cannot infer shape for ragged dot operation: %s <ragged_dot> %s.",
+        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
+    if (!addendum.empty()) {
+      message += " " + addendum;
+    }
+    return InvalidArgument("%s", message);
+  };
+
+  const int64_t expected_lhs_rank = 2;
+  const int64_t expected_rhs_rank_ragged_non_contracting = 3;
+  const int64_t expected_rhs_rank_ragged_contracting = 2;
+
+  if (lhs.rank() != expected_lhs_rank) {
+    return fail(StrFormat("The lhs is expected to have rank=%d, got %d",
+                          expected_lhs_rank, lhs.rank()));
+  }
+
+  const bool is_ragged_non_contracting =
+      rhs.rank() == expected_rhs_rank_ragged_non_contracting;
+
+  if (!(is_ragged_non_contracting ||
+        rhs.rank() == expected_rhs_rank_ragged_contracting)) {
+    return fail(StrFormat("The rhs is expected to have rank=%d or %d, got %d",
+                          expected_rhs_rank_ragged_non_contracting,
+                          expected_rhs_rank_ragged_contracting, rhs.rank()));
+  }
+
+  const int64_t rhs_contracting_dim = is_ragged_non_contracting ? 1 : 0;
+
+  // Check that the contracting dimension sizes match.
+  if (!CompatibleDimensionSizes(lhs.dimensions(1),
+                                rhs.dimensions(rhs_contracting_dim))) {
+    return fail("Contracting dimension sizes are not compatible.");
+  }
+
+  // Check that the group sizes has rank=1.
+  if (group_sizes.rank() != 1) {
+    return fail(StrFormat("The group sizes is expected to have rank=1, got %d",
+                          group_sizes.rank()));
+  }
+  const int64_t num_groups = group_sizes.dimensions(0);
+
+  PrimitiveType type = ShapeUtil::HigherPrecisionElementType(lhs, rhs);
+  std::vector<int64_t> dimensions;
+  std::vector<bool> is_dynamic;
+  if (is_ragged_non_contracting) {
+    // Ragged non-contracting: [m,k], [g,k,n], [g] -> [m,n].
+    if (num_groups != rhs.dimensions(0)) {
+      return fail(
+          StrFormat("The group sizes is expected to have shape=[%d], got [%d]",
+                    rhs.dimensions(0), num_groups));
+    }
+    dimensions = {lhs.dimensions(0), rhs.dimensions(2)};
+    is_dynamic = {lhs.is_dynamic_dimension(0), rhs.is_dynamic_dimension(2)};
+  } else {
+    // Ragged contracting: [m,k], [k,n], [g] -> [g,m,n].
+    dimensions = {num_groups, lhs.dimensions(0), rhs.dimensions(1)};
+    is_dynamic = {group_sizes.is_dynamic_dimension(0),
+                  lhs.is_dynamic_dimension(0), rhs.is_dynamic_dimension(1)};
+  }
+  Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
+  return result;
+}
+
 /* static */ absl::StatusOr<Shape> ShapeInference::InferSparseDotMetadataShape(
     const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
     const SparsityDescriptor& sparsity, PrimitiveType element_type) {

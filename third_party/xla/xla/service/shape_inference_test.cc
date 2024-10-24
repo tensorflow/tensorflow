@@ -1708,6 +1708,38 @@ TEST_F(ShapeInferenceTest, BroadcastScalar) {
   }
 }
 
+// <ragged_dot> : [m,k], [g,k,n], [g] -> [m,n]
+TEST_F(ShapeInferenceTest, RaggedDotNonContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(S32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(F32, {11, 7});
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(lhs_shape, rhs_shape,
+                                            group_sizes_shape);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
+// <ragged_dot> : [m,k], [k,n], [g] -> [g,m,n]
+TEST_F(ShapeInferenceTest, RaggedDotContracting) {
+  const Shape lhs_shape = ShapeUtil::MakeShape(F32, {11, 5});
+  const Shape rhs_shape = ShapeUtil::MakeShape(F32, {5, 7});
+  const Shape group_sizes_shape = ShapeUtil::MakeShape(S32, {3});
+  const Shape output_shape = ShapeUtil::MakeShape(F32, {3, 11, 7});
+
+  const absl::StatusOr<Shape> inferred_shape_match =
+      ShapeInference::InferRaggedDotOpShape(lhs_shape, rhs_shape,
+                                            group_sizes_shape);
+  ASSERT_IS_OK(inferred_shape_match.status());
+  ASSERT_TRUE(ShapeUtil::Equal(*inferred_shape_match, output_shape))
+      << "inferred: " << ShapeUtil::HumanString(*inferred_shape_match)
+      << " expected: " << ShapeUtil::HumanString(output_shape);
+}
+
 // scalar <dot> vector: ok
 TEST_F(ShapeInferenceTest, ScalarDotVector) {
   DotDimensionNumbers dot_dnums;

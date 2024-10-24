@@ -464,6 +464,26 @@ absl::Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleRaggedDot(
+    const HloInstruction* ragged_dot) {
+  DotDimensionNumbers dnum;
+  dnum.add_lhs_contracting_dimensions(1);
+  const bool is_ragged_non_contracting =
+      ragged_dot->operand(1)->shape().rank() == 3;
+  dnum.add_rhs_contracting_dimensions(is_ragged_non_contracting ? 1 : 0);
+  Shape result_shape;
+  if (is_ragged_non_contracting) {
+    // Get a new output shape with the group dimension removed.
+    result_shape = ShapeUtil::DeleteDimension(0, ragged_dot->shape());
+  } else {
+    result_shape = ragged_dot->shape();
+  }
+
+  current_properties_[kFlopsKey] =
+      GetDotFlops(ragged_dot->operand(0)->shape(), result_shape, dnum);
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleInfeed(const HloInstruction* infeed) {
   // Count nested infeed output tuples.
   int64_t size = 0;

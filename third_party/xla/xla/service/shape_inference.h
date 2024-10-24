@@ -363,6 +363,12 @@ class ShapeInference {
       const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
       const SparsityDescriptor& sparsity, PrimitiveType element_type = U16);
 
+  // Helper that infers the shape produced by performing a ragged dot operation
+  // with the given LHS and RHS shapes.
+  static absl::StatusOr<Shape> InferRaggedDotOpShape(const Shape& lhs,
+                                                     const Shape& rhs,
+                                                     const Shape& group_sizes);
+
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension
   // numbers.
