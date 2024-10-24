@@ -124,8 +124,16 @@ DerivedXEventBuilder::DerivedXEventBuilder(XEventBuilder event,
     : event_(std::move(event)), group_id_(group_id) {}
 
 bool DerivedXEventBuilder::ShouldExpand(const XEventMetadata& event_metadata,
-                                        std::optional<int64_t> group_id) const {
-  return event_.MetadataId() == event_metadata.id() && group_id_ == group_id;
+                                        std::optional<int64_t> group_id,
+                                        std::optional<int64_t> next_ps) const {
+  // If the gap between two events is too large, we will not expand the event.
+  // This is work around for preventing two consecutive framework ops being
+  // merged into one single event, before we have a better way to identify
+  // framework ops.
+  static constexpr int64_t kMaxContiousEventGapPs = 20 * 1000 * 1000;  // 20us
+  return event_.MetadataId() == event_metadata.id() && group_id_ == group_id &&
+         (!next_ps.has_value() ||
+          *next_ps - event_.GetTimespan().end_ps() < kMaxContiousEventGapPs);
 }
 
 void DerivedXEventBuilder::Expand(tsl::profiler::Timespan event_span) {
@@ -173,7 +181,12 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     const XEventMetadata& event_metadata, tsl::profiler::Timespan event_span,
     std::optional<int64_t> group_id, int level) {
   auto& last_event = last_event_by_level_[level];
-  if (last_event && last_event->ShouldExpand(event_metadata, group_id)) {
+  if (last_event.has_value() &&
+      last_event->ShouldExpand(
+          event_metadata, group_id,
+          check_next_event_start_
+              ? std::optional<int64_t>{event_span.begin_ps()}
+              : std::nullopt)) {
     // Expand the last event to cover the given event.
     last_event->Expand(event_span);
   } else {
@@ -304,6 +317,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
   DerivedXLineBuilder source(&plane_builder, kThreadIdSource, kSourceLineName,
                              start_timestamp_ns, {});
 
+  // To fix the issue that two or more framework op scopes of same
+  // prefix/name are merged into one. See b/373464518
+  tf_name_scope.SetCheckNextEventStart(true);
   for (const XEventVisitor& event :
        GetSortedEvents<XEventVisitor>(plane_visitor)) {
     GpuEventStats stats(&event);
@@ -343,9 +359,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
       }
 
       if (!symbol.tf_op_name.empty()) {
-        ProcessTfOpEvent(symbol.tf_op_name,
-                         event_span, stats.group_id, plane_builder,
-                         tf_name_scope, tf_ops);
+        ProcessTfOpEvent(symbol.tf_op_name, event_span, stats.group_id,
+                         plane_builder, tf_name_scope, tf_ops);
       }
       if (!symbol.source_info.empty()) {
         source.ExpandOrAddEvent(
@@ -353,9 +368,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
             event_span, stats.group_id);
       }
     } else if (stats.IsTfOp()) {
-      ProcessTfOpEvent(stats.tf_op_fullname,
-                       event_span, stats.group_id, plane_builder, tf_name_scope,
-                       tf_ops);
+      ProcessTfOpEvent(stats.tf_op_fullname, event_span, stats.group_id,
+                       plane_builder, tf_name_scope, tf_ops);
     }
   }
   RemoveEmptyLines(device_trace);
