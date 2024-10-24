@@ -40,14 +40,18 @@ class AllGatherDynamicSliceSimplifierTest : public HloTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, int64_t num_replicas,
-      int64_t num_partitions, bool expect_change) {
+      int64_t num_partitions, bool expect_change,
+      bool allow_multiple_users = false) {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
     config.set_use_spmd_partitioning(num_partitions > 1);
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
-    auto changed = AllGatherDynamicSliceSimplifier().Run(module.get());
+    AllGatherDynamicSliceSimplifier::Config pass_config;
+    pass_config.allow_multiple_users = allow_multiple_users;
+    auto changed =
+        AllGatherDynamicSliceSimplifier(pass_config).Run(module.get());
     if (!changed.ok()) {
       return changed.status();
     }
@@ -198,6 +202,29 @@ TEST_F(AllGatherDynamicSliceSimplifierTest, IncorrectAllGatherDimension) {
                   op::Constant()));
 }
 
+TEST_F(AllGatherDynamicSliceSimplifierTest,
+       AllGatherDimDoesNotMatchDynamicSlice) {
+  absl::string_view hlo_string = R"(
+  HloModule m
+
+  ENTRY root {
+    param = f32[2,16] parameter(0)
+    ag = f32[16,16] all-gather(%param), dimensions={0}
+    pid = u32[] partition-id()
+    pid_s32 = s32[] convert(%pid)
+    slice_size = s32[] constant(2)
+    offset = s32[] multiply(%pid_s32, %slice_size)
+    zero = s32[] constant(0)
+    ROOT _ = f32[16,2] dynamic-slice(ag, zero, offset),
+      dynamic_slice_sizes={16,2}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/1,
+                                               /*num_partitions=*/8,
+                                               /*expect_change=*/false));
+}
+
 // Test cancellation of all-gather followed by dynamic-slice across all replicas
 // with reshape and multiple users of the all-gather.
 TEST_F(AllGatherDynamicSliceSimplifierTest,
@@ -223,7 +250,8 @@ TEST_F(AllGatherDynamicSliceSimplifierTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
                                                /*num_replicas=*/1,
                                                /*num_partitions=*/8,
-                                               /*expect_change=*/true));
+                                               /*expect_change=*/true,
+                                               /*allow_multiple_users=*/true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Reshape(op::Parameter(0)),
                         op::AllGather(op::Parameter(0))));

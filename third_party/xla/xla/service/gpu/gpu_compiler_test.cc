@@ -1307,6 +1307,16 @@ TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
                   /*last_pass_regex=*/"collective-pipeliner.*");
 }
 
+TEST_F(PassOrderTest,
+       AllGatherDynamicSliceSimplifierRunsAfterAllGatherOptimizer) {
+  DebugOptions options = GetDebugOptionsForTest();
+  SetDebugOptions(options);
+
+  VerifyPassOrder(
+      /*first_pass_regex=*/".*all-gather-optimizer.*",
+      /*last_pass_regex=*/".*all-gather-dynamic-slice-simplifier.*");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -32,6 +32,20 @@ namespace xla {
 
 class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
  public:
+  struct Config {
+    bool allow_multiple_split_dims = false;
+    bool allow_intervening_reshape = true;
+    int min_rank = 1;
+    bool allow_intervening_bitcast = false;
+    bool allow_multiple_users = false;
+  };
+
+  static Config DefaultConfig() { return {}; }
+
+  explicit AllGatherDynamicSliceSimplifier(
+      Config config = AllGatherDynamicSliceSimplifier::DefaultConfig())
+      : config_(std::move(config)) {}
+
   absl::string_view name() const override {
     return "all-gather-dynamic-slice-simplifier";
   }
@@ -41,6 +55,9 @@ class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
 
   absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
+
+ private:
+  Config config_;
 };
 
 }  // namespace xla

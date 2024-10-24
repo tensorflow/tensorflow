@@ -343,7 +343,6 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_opt_utils",
-        "//xla/service:hlo_creation_utils",
         "//xla/service:op_expander_pass",
     ],
 )
