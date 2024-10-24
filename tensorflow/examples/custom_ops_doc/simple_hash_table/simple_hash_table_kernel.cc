@@ -49,16 +49,17 @@ namespace custom_op_examples {
 template <class K, class V>
 class SimpleHashTableResource : public ::tensorflow::ResourceBase {
  public:
-  Status Insert(const Tensor& key, const Tensor& value) {
+  absl::Status Insert(const Tensor& key, const Tensor& value) {
     const K key_val = key.flat<K>()(0);
     const V value_val = value.flat<V>()(0);
 
     mutex_lock l(mu_);
     table_[key_val] = value_val;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Find(const Tensor& key, Tensor* value, const Tensor& default_value) {
+  absl::Status Find(const Tensor& key, Tensor* value,
+                    const Tensor& default_value) {
     // Note that tf_shared_lock could be used instead of mutex_lock
     // in ops that do not not modify data protected by a mutex, but
     // go/totw/197 recommends using exclusive lock instead of a shared
@@ -70,21 +71,21 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     const K key_val = key.flat<K>()(0);
     auto value_val = value->flat<V>();
     value_val(0) = gtl::FindWithDefault(table_, key_val, default_val);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Remove(const Tensor& key) {
+  absl::Status Remove(const Tensor& key) {
     mutex_lock l(mu_);
 
     const K key_val = key.flat<K>()(0);
     if (table_.erase(key_val) != 1) {
       return errors::NotFound("Key for remove not found: ", key_val);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Save all key, value pairs to tensor outputs to support SavedModel
-  Status Export(OpKernelContext* ctx) {
+  absl::Status Export(OpKernelContext* ctx) {
     mutex_lock l(mu_);
     int64_t size = table_.size();
     Tensor* keys;
@@ -100,11 +101,11 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Load all key, value pairs from tensor inputs to support SavedModel
-  Status Import(const Tensor& keys, const Tensor& values) {
+  absl::Status Import(const Tensor& keys, const Tensor& values) {
     const auto key_values = keys.flat<K>();
     const auto value_values = values.flat<V>();
 
@@ -113,7 +114,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     for (int64_t i = 0; i < key_values.size(); ++i) {
       gtl::InsertOrUpdate(&table_, key_values(i), value_values(i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create a debug string with the content of the map if this is small,
@@ -173,13 +174,13 @@ class SimpleHashTableCreateOpKernel : public OpKernel {
 // input in "ctx" and saves it in "resource" without increasing
 // the reference count for that resource.
 template <class K, class V>
-Status GetResource(OpKernelContext* ctx,
-                   SimpleHashTableResource<K, V>** resource) {
+absl::Status GetResource(OpKernelContext* ctx,
+                         SimpleHashTableResource<K, V>** resource) {
   const Tensor& handle_tensor = ctx->input(0);
   const ResourceHandle& handle = handle_tensor.scalar<ResourceHandle>()();
   typedef SimpleHashTableResource<K, V> resource_type;
   TF_ASSIGN_OR_RETURN(*resource, handle.GetResource<resource_type>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <class K, class V>
