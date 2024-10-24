@@ -3213,3 +3213,22 @@ func.func @testDilate(%arg0: tensor<3x4x5xf32>) -> tensor<5x7x9xf32> {
   func.return %0 : tensor<5x7x9xf32>
   // CHECK: return %0 : tensor<5x7x9xf32>
 }
+
+// -----
+
+func.func private @thenBranch(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %1 = "tfl.add"(%arg0, %arg0) { fused_activation_function = "NONE" } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32> 
+  func.return %1 : tensor<2xi32>
+}
+
+func.func private @elseBranch(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  %1 = "tfl.mul"(%arg0, %arg0) { fused_activation_function = "NONE" } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32> 
+  func.return %1 : tensor<2xi32>
+}
+
+func.func @testIfOp(%arg0: tensor<i1>, %arg1: tensor<2xi32>) -> tensor<2xi32> {
+  %1 = "tfl.functional_if"(%arg0, %arg1) {
+    then_branch = @thenBranch, else_branch = @elseBranch
+  } : (tensor<i1>, tensor<2xi32>) -> tensor<2xi32>
+  func.return %1 : tensor<2xi32>
+}
