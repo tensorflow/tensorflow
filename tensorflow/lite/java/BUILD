@@ -692,6 +692,7 @@ java_test_with_tflite(
 #         "src/testdata/add.bin",
 #         "src/testdata/add_unknown_dimensions.bin",
 #         "src/testdata/mul_add_signature_def.bin",
+#         "src/testdata/multi_signature_def.bin",
 #         "src/testdata/tile_with_bool_input.bin",
 #         "//tensorflow/lite:testdata/dynamic_shapes.bin",
 #         "//tensorflow/lite:testdata/multi_add.bin",
