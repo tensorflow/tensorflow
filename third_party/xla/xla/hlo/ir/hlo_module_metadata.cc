@@ -16,12 +16,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module_metadata.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/metrics.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/protobuf.h"
@@ -101,6 +103,17 @@ absl::Status HloModuleMetadata::set_custom_metadata(
                  << pass_metadata->pass_id();
     return Internal("failed to pack custom metadata");
   };
+  return absl::OkStatus();
+}
+
+absl::Status HloModuleMetadata::add_generic_stats(const std::string& key,
+                                                  int64_t value) {
+  TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                      GetCurrentHloPassMetadata());
+  GenericPassStats* stats = pass_metadata->add_stats();
+  stats->set_metric_key(key);
+  stats->set_metric_value(value);
+
   return absl::OkStatus();
 }
 

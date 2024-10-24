@@ -52,6 +52,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         "//xla:xla_data_proto",
+        "//xla/service:metrics_proto",
     ] + if_google(["@com_google_protobuf//:any"]),
     visibility = ["//visibility:public"],
 )

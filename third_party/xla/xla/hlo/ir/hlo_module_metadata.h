@@ -68,6 +68,7 @@ class HloModuleMetadata {
     module_metadata_.add_partitioned_module_ids(id);
   }
   absl::Status set_custom_metadata(const ::tsl::protobuf::Message& message);
+  absl::Status add_generic_stats(const std::string& key, int64_t value);
 
   absl::StatusOr<int64_t> current_pass_id() {
     TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
