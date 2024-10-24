@@ -1,16 +1,17 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/*
+    Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+       http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 ==============================================================================*/
 
 syntax = "proto3";
@@ -24,7 +25,6 @@ import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 
-option cc_enable_arenas = true;
 option java_outer_classname = "DistributedRuntimeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
@@ -311,6 +311,7 @@ message RunCallableRequest {
   // REQUIRED: session_handle must be returned by a CreateSession call
   // to the same master service.
   string session_handle = 1;
+
   // REQUIRED: handle must be returned by a MakeCallable call to the same
   // master service.
   int64 handle = 2;
