@@ -811,6 +811,19 @@ static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static void* XLA_FFI_INTERNAL_PlatformStream_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    auto* stream = gpu->stream->platform_specific_handle().stream;
+    DCHECK(stream != nullptr) << "Platform stream is not supported";
+    return stream;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
     XLA_FFI_ExecutionContext* ctx) {
   return ctx->device_ordinal;
@@ -868,6 +881,7 @@ static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_ExecutionContext_Get,
     XLA_FFI_INTERNAL_ExecutionState_Get,
     XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
+    XLA_FFI_INTERNAL_PlatformStream_Get,
 };
 
 static XLA_FFI_Api api = {

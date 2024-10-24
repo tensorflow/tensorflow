@@ -83,6 +83,11 @@ typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(
 typedef void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
     XLA_FFI_ExecutionContext* ctx);
 
+// Returns a pointer to the underlying platform stream (i.e. cudaStream_t for
+// CUDA backend).
+typedef void* XLA_FFI_INTERNAL_PlatformStream_Get(
+    XLA_FFI_ExecutionContext* ctx);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -100,6 +105,7 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionContext_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionState_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_IntraOpThreadPool_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_PlatformStream_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD
