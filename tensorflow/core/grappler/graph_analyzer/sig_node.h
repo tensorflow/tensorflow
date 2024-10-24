@@ -256,7 +256,7 @@ struct Signature {
 
   // Using the map, computes the rest of the fields of a signature.
   // Returns an error is the graph is too big.
-  Status Compute();
+  absl::Status Compute();
 
   // Convert the computed signature to a string representation.
   string ToString() const;
