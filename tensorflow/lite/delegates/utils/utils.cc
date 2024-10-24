@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite::delegates::utils {
