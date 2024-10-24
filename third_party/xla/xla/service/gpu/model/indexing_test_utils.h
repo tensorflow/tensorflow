@@ -123,9 +123,6 @@ absl::Status VerifyExprsAreIdentical(
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges);
 
-// Returns the trip counts for each symbol in the indexing map.
-std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map);
-
 }  // namespace gpu
 }  // namespace xla
 
