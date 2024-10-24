@@ -31,7 +31,7 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
-tensorflow::Status FuncToGraph(GraphFuncOp func) {
+absl::Status FuncToGraph(GraphFuncOp func) {
   MLIRContext *context = func->getContext();
   auto version = func->getAttrOfType<VersionAttr>("tfg.lifted_graph_version");
   if (!version) {
