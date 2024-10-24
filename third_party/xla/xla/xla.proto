@@ -1026,7 +1026,12 @@ message DebugOptions {
   //   coll.2-done = collective(coll.2-start)
   int32 xla_gpu_experimental_parallel_collective_overlap_limit = 336;
 
-  // Next id: 339
+  // If set >= 0, this controls the total bytes(combined sizes of both
+  // operands in bytes) to enable windowed einsum and
+  // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
+  int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
+
+  // Next id: 340
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
