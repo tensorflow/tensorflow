@@ -2061,16 +2061,14 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
     int64_t dim_size = LayoutUtil::MaxSplitSize(shape, minor_to_major[dim]);
     num_of_elements *= dim_size;
   }
-
+  if (shape.layout().tail_padding_alignment_in_elements() != 1) {
+    num_of_elements = RoundUpTo(
+        num_of_elements, shape.layout().tail_padding_alignment_in_elements());
+  }
   if (shape.layout().element_size_in_bits() != 0) {
     const int64_t num_bits =
         num_of_elements * shape.layout().element_size_in_bits();
     return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
-  }
-
-  if (shape.layout().tail_padding_alignment_in_elements() != 1) {
-    num_of_elements = RoundUpTo(
-        num_of_elements, shape.layout().tail_padding_alignment_in_elements());
   }
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
