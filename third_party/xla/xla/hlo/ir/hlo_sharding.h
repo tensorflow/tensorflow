@@ -423,6 +423,8 @@ class HloSharding {
     return tuple_elements_;
   }
 
+  int64_t ComputeShardedDimension(const Shape& shape, int64_t dim,
+                                  int64_t num_devices) const;
   // Gets the tile shape.
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape) const;
