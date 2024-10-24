@@ -144,6 +144,14 @@ message DebugOptions {
   // Pre-existing block-level fusions are left unmodified.
   bool xla_gpu_experimental_enable_fusion_block_level_rewriter = 334;
 
+  // When enabled, the PriorityFusion pass will try to make Triton fusions first
+  // and foremost where it is possible.
+  //
+  // A kCustom fusion with underlying kTritonFusionKind will be created if it
+  // can be tiled correctly, and if all the instructions it contains are
+  // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
+  bool xla_gpu_experimental_enable_triton_heroless_priority_fusion = 340;
+
   // Gates the experimental feature coupling the Triton Softmax pattern matcher
   // with priority fusion.
   bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
@@ -1031,7 +1039,7 @@ message DebugOptions {
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
 
-  // Next id: 340
+  // Next id: 341
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
