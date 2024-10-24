@@ -19,7 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/repeated_field.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
