@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -43,12 +44,25 @@ namespace stream_executor::gpu {
 // GpuCommandBuffer provides platform-specific CommandBuffer implementation
 // (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
 class GpuCommandBuffer : public CommandBuffer {
+  // GraphNodeHandleImpl is an opaque type that won't be ODR used, hence doesn't
+  // need to fully defined. It's an implementation details of the GpuNodeHandle
+  // below.
+  struct GraphNodeHandleImpl;
+
  public:
+  // A graph node handle is an opaque handle that identifies a graph node in the
+  // graph associated with a command buffer. GraphNodeHandles are created by
+  // node factory functions and can be referenced in node update functions.
+  // The handle has the same properties as a pointer (can be constructed from a
+  // nullptr, trivial copyable, POD, etc.), that's why we use a pointer to
+  // define it.
+  using GraphNodeHandle = GraphNodeHandleImpl*;
+
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
   struct GpuGraphNodeInfo {
     // A handle to the gpu graph node corresponding to a command.
-    GpuGraphNodeHandle handle = nullptr;
+    GraphNodeHandle handle{};
   };
 
   // A handle to Gpu graph barrier and metadata describing its properties. Each
@@ -58,7 +72,7 @@ class GpuCommandBuffer : public CommandBuffer {
     // It can be a handle to a `GpuGraphNodeInfo` node or a handle to an empty
     // node created to be a barrier. We try to reuse existing nodes as barriers
     // if possible to reduce the size of constructed gpu graphs.
-    GpuGraphNodeHandle handle = nullptr;
+    GraphNodeHandle handle{};
 
     // If `true` it means `handle` corresponds to an empty node specifically
     // created to act as an execution barrier, otherwise `handle` points to one
@@ -124,7 +138,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status Submit(Stream* stream) override;
 
   GpuGraphExecHandle executable() const { return exec_; }
-  GpuGraphHandle graph() const { return graph_; }
 
   Mode mode() const override { return mode_; }
   State state() const override { return state_; }
@@ -159,10 +172,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
 
- private:
-  using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
-
  protected:
+  using Dependencies = absl::InlinedVector<GraphNodeHandle, 1>;
+
   using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
@@ -282,10 +294,6 @@ class GpuCommandBuffer : public CommandBuffer {
   absl::Status CheckNumCommandBuffers(
       const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers);
 
-  // Creates a new no-op node acting as a barrier.
-  absl::StatusOr<GpuGraphNodeHandle> CreateBarrierNode(
-      const Dependencies& dependencies);
-
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
 
@@ -301,12 +309,16 @@ class GpuCommandBuffer : public CommandBuffer {
 
   GpuExecutor* parent_;  // not owned, must outlive *this
 
+  // TODO(hebecker): Move fields to subclasses once we have moved all GpuDriver
+  // calls.
+ protected:
   GpuGraphHandle graph_ = nullptr;  // owned if `is_owned_graph_`
   bool is_owned_graph_ = true;      // ownership of `graph_`
 
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
+ private:
   // ExecutionScope holds the state of an underlying CUDA graph (nodes an
   // barriers added to a graph) for a single execution scope.
   struct ExecutionScope {
@@ -350,6 +362,56 @@ class GpuCommandBuffer : public CommandBuffer {
   // The given graph will not be owned by the created command buffer.
   virtual std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       GpuGraphHandle graph) = 0;
+
+  // Adds a new memset node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemsetNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      BitPattern bit_pattern, size_t num_elements) = 0;
+
+  // Updates an existing memset node. Note that `node_handle` needs to be refer
+  // to a node created by `CreateMemsetNode`.
+  virtual absl::Status UpdateMemsetNode(GraphNodeHandle node_handle,
+                                        DeviceMemoryBase destination,
+                                        BitPattern bit_pattern,
+                                        size_t num_elements) = 0;
+
+  // Adds a new memcpy node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
+                                           DeviceMemoryBase destination,
+                                           DeviceMemoryBase source,
+                                           uint64_t size) = 0;
+
+  // Adds a new nested command buffer node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
+      const Dependencies& dependencies, const CommandBuffer& nested) = 0;
+
+  // Associate another command buffer with this child node. Will return an
+  // error if the given node has not been created as a child node. This
+  // function will become pure virtual once all GpuDriver calls were moved
+  // into subclasses.
+  virtual absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+                                       const CommandBuffer& nested) = 0;
+
+  // Adds a new kernel launch node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateKernelNode(
+      const Dependencies& dependencies, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
+
+  // Updates the kernel launch node with the given parameters. Will return an
+  // error if the given node has not been created as a kernel launch node.
+  virtual absl::Status UpdateKernelNode(
+      GraphNodeHandle node_handle, const ThreadDim& threads,
+      const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& args) = 0;
+
+  // Creates a new no-op node acting as a barrier and adds it to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
+      const Dependencies& dependencies) = 0;
 };
 
 }  // namespace stream_executor::gpu
