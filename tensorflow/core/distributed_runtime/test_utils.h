@@ -122,7 +122,7 @@ class TestWorkerInterface : public WorkerInterface {
 
 class TestWorkerCache : public WorkerCacheInterface {
  public:
-  virtual ~TestWorkerCache() {}
+  ~TestWorkerCache() override {}
 
   void AddWorker(const string& target, WorkerInterface* wi) {
     workers_[target] = wi;
