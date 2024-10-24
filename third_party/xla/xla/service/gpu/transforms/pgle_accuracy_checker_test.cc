@@ -148,6 +148,10 @@ TEST_F(PGLEAccuracyCheckerTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
   *module->mutable_config().mutable_fdo_profile() = kProfileString;
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_pgle_accuracy_checker(
+          DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR);
 
   auto pgle_estimator = GetProfileGuidedLatencyEstimator(profile);
   PGLEAccuracyChecker pgle_accuracy_checker(*pgle_estimator);
