@@ -13,9 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "base/tracer.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "tensorflow/core/lib/histogram/histogram.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/profiler/lib/traceme.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/framework/run_handler.h"
 
 #include <algorithm>
 #include <cmath>
@@ -23,6 +32,7 @@ limitations under the License.
 #include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -31,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tsl/platform/tracing.h"
 
 namespace tensorflow {
