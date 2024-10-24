@@ -49,36 +49,36 @@ Type convertShapedType(ShapedType shapedType) {
   return shapedType;
 }
 
-std::optional<Value> materializeCastFromIllegal(OpBuilder& builder, Type type,
+Value materializeCastFromIllegal(OpBuilder& builder, Type type,
                                                 ValueRange inputs,
                                                 Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
       !toType.isSignlessInteger())
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signful->signless conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> materializeCastToIllegal(OpBuilder& builder, Type type,
+Value materializeCastToIllegal(OpBuilder& builder, Type type,
                                               ValueRange inputs, Location loc) {
   Type fromType = getElementTypeOrSelf(inputs[0].getType());
   Type toType = getElementTypeOrSelf(type);
   if (!fromType.isSignlessInteger() ||
       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
-    return std::nullopt;
+    return Value();
   // Use unrealized conversion casts to do signless->signful conversions.
   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
       ->getResult(0);
 }
 
-std::optional<Value> scalarToTensor(OpBuilder& builder, Type type,
+Value scalarToTensor(OpBuilder& builder, Type type,
                                     ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   if (mlir::isa<ShapedType>(inputs.front().getType())) {
-    return std::nullopt;
+    return Value();
   }
   Value result =
       builder

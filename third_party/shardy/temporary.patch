@@ -1,105 +1,117 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 1697b8f..7bed258 100644
+index 7bed258..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,44 +1,43 @@
+@@ -1,43 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/source/Utility/DiagnosticsRendering.cpp b/lldb/source/Utility/DiagnosticsRendering.cpp
----- a/lldb/source/Utility/DiagnosticsRendering.cpp
--+++ b/lldb/source/Utility/DiagnosticsRendering.cpp
--@@ -99,10 +99,10 @@
-+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
-+--- a/llvm/lib/Target/X86/X86ISelLowering.cpp
-++++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
-+@@ -50049,8 +50049,9 @@
-+   SDValue X, Y, Z;
-+   if (sd_match(N, m_And(m_Value(X),
-+                         m_OneUse(m_Or(m_Value(Y), m_Not(m_Value(Z))))))) {
-+-    // Don't fold if Y is a constant to prevent infinite loops.
-+-    if (!isa<ConstantSDNode>(Y))
-++    // Don't fold if Y or Z are constants to prevent infinite loops.
-++    if (!DAG.isConstantIntBuildVectorOrConstantInt(Y) &&
-++        !DAG.isConstantIntBuildVectorOrConstantInt(Z))
-+       return DAG.getNode(
-+           ISD::AND, DL, VT, X,
-+           DAG.getNOT(
-+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr108731.ll b/llvm/test/CodeGen/X86/pr108731.ll
-+--- a/llvm/test/CodeGen/X86/pr108731.ll
-++++ b/llvm/test/CodeGen/X86/pr108731.ll
-+@@ -192,3 +192,23 @@
-+   ret void
-+ }
-  
--   // Sort the diagnostics.
--   auto sort = [](auto &ds) {
---    llvm::sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
--+    std::stable_sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
--       auto l1 = d1.source_location.value_or(DiagnosticDetail::SourceLocation{});
--       auto l2 = d2.source_location.value_or(DiagnosticDetail::SourceLocation{});
---      return std::pair(l1.line, l2.column) < std::pair(l1.line, l2.column);
--+      return std::tie(l1.line, l1.column) < std::tie(l2.line, l2.column);
--     });
--   };
--   sort(remaining_details);
--diff -ruN --strip-trailing-cr a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
----- a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
--+++ b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
--@@ -46,16 +46,20 @@
--     std::string result =
--         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
--                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
---    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
--+    // Unintuitively the later diagnostic appears first in the string:
--+    //    ^   ^
--+    //    |   second
--+    //    first
--+    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
--   }
--   {
--     // Test that diagnostics in reverse order are emitted correctly.
---    SourceLocation loc1 = {FileSpec{"a.c"}, 2, 10, 0, false, true};
--+    SourceLocation loc1 = {FileSpec{"a.c"}, 1, 10, 0, false, true};
--     SourceLocation loc2 = {FileSpec{"a.c"}, 1, 20, 0, false, true};
--     std::string result =
--         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
--                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
---    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
--+    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
--   }
--   {
--     // Test that range diagnostics are emitted correctly.
-++define void @PR113240(i64 %a) {
-++; CHECK-LABEL: PR113240:
-++; CHECK:       # %bb.0: # %entry
-++; CHECK-NEXT:    movq %rdi, %rax
-++; CHECK-NEXT:    notq %rax
-++; CHECK-NEXT:    movabsq $8796093022206, %rcx # imm = 0x7FFFFFFFFFE
-++; CHECK-NEXT:    notq %rcx
-++; CHECK-NEXT:    orq %rax, %rcx
-++; CHECK-NEXT:    andq %rdi, %rcx
-++; CHECK-NEXT:    movq %rcx, 0
-++; CHECK-NEXT:    retq
-++entry:
-++  %and = and i64 %a, 8796093022206
-++  %bf.value = and i64 8796093022206, 0
-++  %not = xor i64 %and, -1
-++  %and4 = and i64 %a, %not
-++  store i64 %and4, ptr null, align 8
-++  ret void
-++}
-++
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
+---- a/llvm/lib/Target/X86/X86ISelLowering.cpp
+-+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
+-@@ -50049,8 +50049,9 @@
+-   SDValue X, Y, Z;
+-   if (sd_match(N, m_And(m_Value(X),
+-                         m_OneUse(m_Or(m_Value(Y), m_Not(m_Value(Z))))))) {
+--    // Don't fold if Y is a constant to prevent infinite loops.
+--    if (!isa<ConstantSDNode>(Y))
+-+    // Don't fold if Y or Z are constants to prevent infinite loops.
+-+    if (!DAG.isConstantIntBuildVectorOrConstantInt(Y) &&
+-+        !DAG.isConstantIntBuildVectorOrConstantInt(Z))
+-       return DAG.getNode(
+-           ISD::AND, DL, VT, X,
+-           DAG.getNOT(
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr108731.ll b/llvm/test/CodeGen/X86/pr108731.ll
+---- a/llvm/test/CodeGen/X86/pr108731.ll
+-+++ b/llvm/test/CodeGen/X86/pr108731.ll
+-@@ -192,3 +192,23 @@
+-   ret void
+- }
+- 
+-+define void @PR113240(i64 %a) {
+-+; CHECK-LABEL: PR113240:
+-+; CHECK:       # %bb.0: # %entry
+-+; CHECK-NEXT:    movq %rdi, %rax
+-+; CHECK-NEXT:    notq %rax
+-+; CHECK-NEXT:    movabsq $8796093022206, %rcx # imm = 0x7FFFFFFFFFE
+-+; CHECK-NEXT:    notq %rcx
+-+; CHECK-NEXT:    orq %rax, %rcx
+-+; CHECK-NEXT:    andq %rdi, %rcx
+-+; CHECK-NEXT:    movq %rcx, 0
+-+; CHECK-NEXT:    retq
+-+entry:
+-+  %and = and i64 %a, 8796093022206
+-+  %bf.value = and i64 8796093022206, 0
+-+  %not = xor i64 %and, -1
+-+  %and4 = and i64 %a, %not
+-+  store i64 %and4, ptr null, align 8
+-+  ret void
+-+}
+-+
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index fbc37d2..a3d8da0 100644
+index a3d8da0..2d60ea0 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f58ce1152703ca753794b8cef36da30bd2668d0f"
--    LLVM_SHA256 = "cfb4610ba8b15cfe0e1ec3b6b680416983a2a5cd6883147f0fe0043c61bbcb7c"
-+    LLVM_COMMIT = "6c4267fb1779bc5550bb413f33250f9365acfbc6"
-+    LLVM_SHA256 = "7010ee8fe86246fabcaedbed21fa9ac2bd2542e0d2ad6172a4481e0294fdf354"
+-    LLVM_COMMIT = "6c4267fb1779bc5550bb413f33250f9365acfbc6"
+-    LLVM_SHA256 = "7010ee8fe86246fabcaedbed21fa9ac2bd2542e0d2ad6172a4481e0294fdf354"
++    LLVM_COMMIT = "33363521ca24f912cc25530f6cecbca53acce8a3"
++    LLVM_SHA256 = "3fd9cbd992ed880e348d81715f39138538fd6c8e9164b981551a97181a3b7b24"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 4a1d725..2eb32ea 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,49 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++@@ -47,36 +47,36 @@
++   return shapedType;
++ }
++ 
++-std::optional<Value> materializeCastFromIllegal(OpBuilder &builder, Type type,
+++Value materializeCastFromIllegal(OpBuilder &builder, Type type,
++                                                 ValueRange inputs,
++                                                 Location loc) {
++   Type fromType = getElementTypeOrSelf(inputs[0].getType());
++   Type toType = getElementTypeOrSelf(type);
++   if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
++       !toType.isSignlessInteger())
++-    return std::nullopt;
+++    return Value();
++   // Use unrealized conversion casts to do signful->signless conversions.
++   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
++       ->getResult(0);
++ }
++ 
++-std::optional<Value> materializeCastToIllegal(OpBuilder &builder, Type type,
+++Value materializeCastToIllegal(OpBuilder &builder, Type type,
++                                               ValueRange inputs, Location loc) {
++   Type fromType = getElementTypeOrSelf(inputs[0].getType());
++   Type toType = getElementTypeOrSelf(type);
++   if (!fromType.isSignlessInteger() ||
++       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
++-    return std::nullopt;
+++    return Value();
++   // Use unrealized conversion casts to do signless->signful conversions.
++   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
++       ->getResult(0);
++ }
++ 
++-std::optional<Value> scalarToTensor(OpBuilder &builder, Type type,
+++Value scalarToTensor(OpBuilder &builder, Type type,
++                                     ValueRange inputs, Location loc) {
++   assert(inputs.size() == 1);
++   if (mlir::isa<ShapedType>(inputs.front().getType())) {
++-    return std::nullopt;
+++    return Value();
++   }
++   Value result =
++       builder
+ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
+ --- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
+ +++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
