@@ -121,7 +121,7 @@ Status ImportShapeFunction(InferenceContext* c) {
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(
       c->Merge(c->Dim(keys, 0), c->Dim(c->input(2), 0), &unused));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Note that if an op has any Input or Output of type "resource", it
