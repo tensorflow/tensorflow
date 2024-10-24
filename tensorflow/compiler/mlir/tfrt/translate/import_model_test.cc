@@ -15,17 +15,57 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 
 namespace tensorflow {
 namespace {
 
+using ::testing::SizeIs;
+
 TEST(GetTfrtPipelineOptions, BatchPaddingPolicy) {
   tensorflow::TfrtCompileOptions options;
   options.batch_padding_policy = "PAD_TEST_OPTION";
   auto pipeline_options = GetTfrtPipelineOptions(options);
   EXPECT_EQ(pipeline_options->batch_padding_policy, "PAD_TEST_OPTION");
+}
+
+TEST(GetTfrtPipelineOptions, NumBatchThreads) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_num_batch_threads(2);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->num_batch_threads, 2);
+}
+
+TEST(GetTfrtPipelineOptions, MaxBatchSize) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_max_batch_size(8);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->max_batch_size, 8);
+}
+
+TEST(GetTfrtPipelineOptions, BatchTimeoutMicros) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_batch_timeout_micros(5000);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->batch_timeout_micros, 5000);
+}
+
+TEST(GetTfrtPipelineOptions, AllowedBatchSizes) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.add_allowed_batch_sizes(2);
+  options.batch_options.add_allowed_batch_sizes(4);
+  options.batch_options.add_allowed_batch_sizes(8);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_THAT(pipeline_options->allowed_batch_sizes, SizeIs(3));
+}
+
+TEST(GetTfrtPipelineOptions, MaxEnqueuedBatches) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_max_enqueued_batches(250);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->max_enqueued_batches, 250);
 }
 
 }  // namespace
