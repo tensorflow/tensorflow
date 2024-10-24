@@ -47,9 +47,12 @@ ENTRY main {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 
@@ -101,8 +104,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 
@@ -154,8 +160,11 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                           PlatformUtil::GetStreamExecutors(platform));
 
-  AutotuneConfig autotune_config{DeviceConfig{executors.at(0), nullptr},
-                                 GetDebugOptionsForTest()};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          executors.at(0)->CreateStream());
+  AutotuneConfig autotune_config{
+      DeviceConfig{executors.at(0), nullptr, stream.get()},
+      GetDebugOptionsForTest()};
 
   auto& root = *module->entry_computation()->root_instruction();
 

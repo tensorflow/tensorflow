@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/mock_gpu_executor.h"
+#include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/filecheck.h"
@@ -111,6 +112,9 @@ class DeterminismTest : public GpuCodegenTest {
     TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * default_platform,
                             PlatformUtil::GetDefaultPlatform());
     stream_executor::gpu::MockGpuExecutor executor(default_platform, 0);
+    EXPECT_CALL(executor, CreateStream).WillRepeatedly([&]() {
+      return backend().default_stream_executor()->CreateStream();
+    });
     EXPECT_CALL(executor, CreateEventBasedTimer).Times(0);
     EXPECT_CALL(executor, GetDeviceDescription)
         .WillRepeatedly([this]() -> const se::DeviceDescription& {

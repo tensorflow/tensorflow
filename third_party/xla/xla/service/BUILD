@@ -1457,6 +1457,7 @@ cc_library(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
