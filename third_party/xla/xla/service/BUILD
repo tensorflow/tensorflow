@@ -2081,15 +2081,17 @@ cc_library(
     srcs = ["scatter_expander.cc"],
     hdrs = ["scatter_expander.h"],
     deps = [
-        ":call_inliner",
+        ":gather_scatter_utils",
         ":hlo_creation_utils",
         ":scatter_utils",
         ":while_util",
         "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms:op_expander_pass",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2126,6 +2128,7 @@ xla_cc_test(
         "//xla:test",
         "//xla:types",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
