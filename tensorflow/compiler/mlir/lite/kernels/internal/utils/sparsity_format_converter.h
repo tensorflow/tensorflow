@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
-#include "tensorflow/compiler/mlir/lite/core/c/dimension_type.h"
+#include "tensorflow/compiler/mlir/lite/core/c/tflite_types.h"
 
 namespace tflite_migration {
 namespace internal {
