@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
