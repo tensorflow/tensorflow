@@ -181,3 +181,21 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+cc_library(
+    name = "copy_on_write",
+    hdrs = ["copy_on_write.h"],
+    deps = [
+    ],
+)
+
+xla_cc_test(
+    name = "copy_on_write_test",
+    srcs = [
+        "copy_on_write_test.cc",
+    ],
+    deps = [
+        ":copy_on_write",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
