@@ -35,6 +35,7 @@ import enum
 import logging
 import os
 import pathlib
+import platform
 import shutil
 import subprocess
 import sys
@@ -192,8 +193,9 @@ class RocmCompiler(ArgparseableEnum):
 
 
 class OS(ArgparseableEnum):
+  """Modeled after the values returned by `platform.system()`."""
   LINUX = enum.auto()
-  MACOS = enum.auto()
+  DARWIN = enum.auto()
   WINDOWS = enum.auto()
 
 
@@ -290,6 +292,9 @@ class XLAConfigOptions:
     dpav.get_relevant_paths_and_versions(self)
     rc = []
     build_and_test_tag_filters = list(_DEFAULT_BUILD_AND_TEST_TAG_FILTERS)
+
+    if self.os == OS.DARWIN:
+      build_and_test_tag_filters.append("-no_mac")
 
     # Platform independent options based on host compiler
     if self.host_compiler == HostCompiler.GCC:
@@ -415,7 +420,7 @@ def _parse_args():
       required=True,
   )
   parser.add_argument(
-      "--os", type=OS.from_str, choices=list(OS), default="linux"
+      "--os", type=OS.from_str, choices=list(OS), default=platform.system()
   )
   parser.add_argument(
       "--host_compiler",
