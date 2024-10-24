@@ -6,8 +6,6 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
-option cc_enable_arenas = true;
-
 // This file contains protocol buffers for working with tf.data Datasets.
 
 // Metadata describing a compressed component of a dataset element.
@@ -31,8 +29,10 @@ message CompressedComponentMetadata {
 message CompressedElement {
   // Compressed tensor bytes for all components of the element.
   bytes data = 1;
+
   // Metadata for the components of the element.
   repeated CompressedComponentMetadata component_metadata = 2;
+
   // Version of the CompressedElement. CompressedElements may be stored on disk
   // and read back by later versions of code, so we store a version number to
   // help readers understand which version they are reading. When you add a new
