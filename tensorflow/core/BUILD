@@ -16,7 +16,6 @@
 #     util/: General low-level TensorFlow-specific libraries
 #     framework/: Support for adding new ops & kernels
 #     example/: Wrappers to simplify access to Example proto
-#     //third_party/tensorflow/lite/kernels/shim: Template for writing ops supporting TF & TF Lite.
 # ":ops" - defines TensorFlow ops, but no implementations / kernels
 #     ops/: Standard ops
 #     user_ops/: User-supplied ops
@@ -433,7 +432,6 @@ tf_cuda_library(
         "//tensorflow/core/util:framework_srcs",
         "//tensorflow/core/util:memmapped_file_system_hdrs",
         "//tensorflow/core/util/sparse:framework_group",
-        "//tensorflow/lite/kernels/shim:tf_headers",
         "@local_xla//xla/tsl/framework:allocator_hdrs",
         "@local_xla//xla/tsl/framework:cancellation_hdrs",
         "@local_xla//xla/tsl/framework:device_type.h",
