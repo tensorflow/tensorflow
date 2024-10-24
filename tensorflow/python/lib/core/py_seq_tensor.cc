@@ -115,9 +115,9 @@ PyObject* ZeroDimArrayToScalar(PyObject* obj, ConverterState* state) {
 
 // Sets *elem to a NEW reference to an element in seq on success.
 // REQUIRES: PySequence_Check(seq) && PySequence_Length(seq) > 0.
-Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
+absl::Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
   *elem = PySequence_GetItem(seq, 0);
-  if (*elem != nullptr) return OkStatus();
+  if (*elem != nullptr) return absl::OkStatus();
   // seq may implement the sequence protocol (i.e., implement __getitem__)
   // but may legitimately not have a 0-th element (__getitem__(self, 0)
   // raises a KeyError). For example:
@@ -145,13 +145,13 @@ Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
                                    Py_TYPE(seq)->tp_name,
                                    " object since it is an empty sequence");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tstring PyRepr(PyObject* obj);
 bool IsPyDimension(PyObject* obj);
 
-Status InferShapeAndType(PyObject* obj, ConverterState* state) {
+absl::Status InferShapeAndType(PyObject* obj, ConverterState* state) {
   std::vector<Safe_PyObjectPtr> refs_to_clean;
   while (true) {
     // Convert any zero dimensional numpy arrays to scalars first of all.
@@ -208,7 +208,7 @@ Status InferShapeAndType(PyObject* obj, ConverterState* state) {
                                      ") with an unsupported type (",
                                      PyRepr(PyType(obj)), ") to a Tensor.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -281,8 +281,9 @@ struct Converter {
     return nullptr;
   }
 
-  static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
-                        TFE_TensorHandle** h, const char** error) {
+  static absl::Status Convert(TFE_Context* ctx, PyObject* obj,
+                              ConverterState* state, TFE_TensorHandle** h,
+                              const char** error) {
     // TODO(josh11b): Allocator & attributes
     AbstractTensorInterface* t;
     if (state->inferred_shape.empty()) { /* Scalar case */
@@ -311,7 +312,7 @@ struct Converter {
     }
     *h = tensorflow::wrap(tensorflow::unwrap(ctx)->CreateLocalHandle(t));
     t->Release();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -690,7 +691,7 @@ typedef Converter<bool> BoolConverter;
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   Safe_TF_TensorPtr tf_tensor = make_safe(static_cast<TF_Tensor*>(nullptr));
-  Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
+  absl::Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
 
   if (TF_PREDICT_FALSE(!status.ok())) {
     PyErr_SetString(PyExc_ValueError,
@@ -784,9 +785,9 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   ConverterState state;
-  Status status = InferShapeAndType(obj, &state);
+  absl::Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
+    PyErr_SetString(PyExc_ValueError, absl::StatusMessageAsCStr(status));
     return nullptr;
   }
   DataType requested_dtype = DT_INVALID;
@@ -915,7 +916,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
+    PyErr_SetString(PyExc_ValueError, absl::StatusMessageAsCStr(status));
     return nullptr;
   }
 

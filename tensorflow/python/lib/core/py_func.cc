@@ -85,7 +85,8 @@ bool IsCPUDevice(const Device* d) {
 
 // Given the 'call', prepares the token and inputs as a python tuple that is
 // appropriate for calling the trampoline.
-Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
+absl::Status MakeArgTuple(const PyCall* call, TFE_Context* ctx,
+                          PyObject** tuple) {
   int64_t n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
@@ -109,7 +110,7 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
         return errors::Internal("Unable to procure EagerTensor from Tensor.");
       }
     } else {
-      Status s = TensorToNdarray(call->ins[i], &arg);
+      absl::Status s = TensorToNdarray(call->ins[i], &arg);
       if (!s.ok()) {
         Py_DECREF(lst);
         return s;
@@ -124,7 +125,7 @@ Status MakeArgTuple(const PyCall* call, TFE_Context* ctx, PyObject** tuple) {
         "Failed to create python tuple. Please make sure `token` is a "
         "well-formed UTF-8 string.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IsSingleNone(PyObject* obj) {
@@ -151,10 +152,10 @@ bool IsSingleNone(PyObject* obj) {
 // It may be nice to copy the tensor to the right device instead of failing if
 // it isn't already there. This is left as a future exercise.  The required
 // device-copying logic is implemented in Python at the moment.
-tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
-                                                TFE_Context* ctx,
-                                                const Device* expected_device,
-                                                const Tensor** output_tensor) {
+absl::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
+                                          TFE_Context* ctx,
+                                          const Device* expected_device,
+                                          const Tensor** output_tensor) {
   tensorflow::TensorHandle* handle = down_cast<tensorflow::TensorHandle*>(
       tensorflow::unwrap(ctx)->TFTensorHandleFromInterface(
           tensorflow::unwrap(EagerTensor_Handle(eager_tensor))));
@@ -162,7 +163,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
-  if (expected_device == actual_device) return OkStatus();
+  if (expected_device == actual_device) return absl::OkStatus();
   const string& expected_device_name = expected_device->attributes().name();
   if (actual_device == nullptr) {
     if (!IsCPUDevice(expected_device)) {
@@ -171,7 +172,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
           expected_device_name,
           ", but is actually backed by local host memory. This is a bug.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   // NOTE(ebrevdo): Here we could try comparing "actual_device_name"
   // (actual_device->attributes()->name()) to expected_device_name and ensure
@@ -183,11 +184,11 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
   // able to perform a proper comparison.  Furthermore, we can't check
   // IsCPUDevice(actual_device) because the kernel's device may indeed be a
   // GPU device (the python interpreter doesn't use it, however).
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Calls the registered py function through the trampoline.
-Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
+absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   *out_log_on_error = true;
   PyObject* trampoline = GetPyTrampoline();
   if (trampoline == nullptr) {
@@ -216,7 +217,7 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   // Invokes the trampoline.
   PyObject* result = PyObject_Call(trampoline, args, nullptr);
   Py_DECREF(args);
-  Status s = OkStatus();
+  absl::Status s = absl::OkStatus();
   if (result == nullptr) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
@@ -363,7 +364,7 @@ class PyFuncOp : public OpKernel {
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
     bool log_on_error;
-    Status s = DoCallPyFunc(&call, &log_on_error);
+    absl::Status s = DoCallPyFunc(&call, &log_on_error);
     // Sometimes py_funcs can be called without a session and leak memory. This
     // ensures we clear the decref cache so this doesn't happen.
     ClearDecrefCache();
