@@ -63,5 +63,6 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
