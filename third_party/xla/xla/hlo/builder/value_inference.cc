@@ -710,25 +710,22 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
         }
       }
 
-      return dfs.AddVisit(
-          [root,
-           context](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
-            std::vector<Literal> results;
-            results.reserve(operands.size());
-            // Conservatively set each element of the tensor to the max value.
-            for (int64_t i = 0; i < operands.size(); ++i) {
-              auto max = LiteralUtil::MaxElement(operands[i]);
-              results.emplace_back(
-                  max.Broadcast(operands[i].shape(), {}).value());
-            }
-            if (ShapeUtil::GetSubshape(Shape(root->shape()),
-                                       context.shape_index)
-                    .IsTuple()) {
-              return LiteralUtil::MakeTupleOwned(std::move(results));
-            } else {
-              return std::move(results[0]);
-            }
-          });
+      return dfs.AddVisit([root, context](absl::Span<Literal> operands)
+                              -> absl::StatusOr<Literal> {
+        std::vector<Literal> results;
+        results.reserve(operands.size());
+        // Conservatively set each element of the tensor to the max value.
+        for (int64_t i = 0; i < operands.size(); ++i) {
+          auto max = LiteralUtil::MaxElement(operands[i]);
+          results.emplace_back(max.Broadcast(operands[i].shape(), {}).value());
+        }
+        if (ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index)
+                .IsTuple()) {
+          return LiteralUtil::MakeTupleOwned(std::move(results));
+        } else {
+          return std::move(results[0]);
+        }
+      });
     }
     case HloOpcode::kNegate: {
       // upper-bound(negate(operand)) = negate(lower-bound(operand))
@@ -1402,35 +1399,36 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           .AddDependency(root->operand_ids(1), type, context)
           // rhs dependency.
           .AddDependency(root->operand_ids(2), type, context)
-          .AddVisit([root](absl::Span<Literal> operands)
-                        -> absl::StatusOr<Literal> {
-            OptionalLiteral optional_selector_literal(std::move(operands[0]),
-                                                      std::move(operands[1]));
-            Literal lhs = std::move(operands[2]);
-            Literal rhs = std::move(operands[3]);
-            auto result = CreatePredLiteral(true, Shape(root->shape()));
-            result.MutableEachCell<bool>(
-                [&](absl::Span<const int64_t> indices, bool value) {
-                  std::optional<bool> optional_selector =
-                      optional_selector_literal.Get<bool>(indices);
+          .AddVisit(
+              [root](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
+                OptionalLiteral optional_selector_literal(
+                    std::move(operands[0]), std::move(operands[1]));
+                Literal lhs = std::move(operands[2]);
+                Literal rhs = std::move(operands[3]);
+                auto result = CreatePredLiteral(true, Shape(root->shape()));
+                result.MutableEachCell<bool>(
+                    [&](absl::Span<const int64_t> indices, bool value) {
+                      std::optional<bool> optional_selector =
+                          optional_selector_literal.Get<bool>(indices);
 
-                  bool lhs_value = lhs.Get<bool>(indices);
-                  bool rhs_value = rhs.Get<bool>(indices);
-                  if (optional_selector.has_value()) {
-                    // Manually evaluate the selection without using Evaluator.
-                    if (*optional_selector) {
-                      return lhs_value;
-                    } else {
-                      return rhs_value;
-                    }
-                  } else {
-                    // Conservatively assume value is dynamic if selector is
-                    // dynamic.
-                    return true;
-                  }
-                });
-            return result;
-          });
+                      bool lhs_value = lhs.Get<bool>(indices);
+                      bool rhs_value = rhs.Get<bool>(indices);
+                      if (optional_selector.has_value()) {
+                        // Manually evaluate the selection without using
+                        // Evaluator.
+                        if (*optional_selector) {
+                          return lhs_value;
+                        } else {
+                          return rhs_value;
+                        }
+                      } else {
+                        // Conservatively assume value is dynamic if selector is
+                        // dynamic.
+                        return true;
+                      }
+                    });
+                return result;
+              });
     }
     case HloOpcode::kGather: {
       return PostorderDFSNode()
@@ -1462,23 +1460,23 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        return PostorderDFSNode().AddVisit([type,
-                                            root]() -> absl::StatusOr<Literal> {
-          if (type == PostorderDFSNodeType::kBoundIsDynamic) {
-            return CreatePredLiteral(false, Shape(root->shape()));
-          } else {
-            if (root->literal().shape().element_type() == TUPLE) {
-              // First literal of SetBound contains bounds, second literal
-              // contains dynamism indicators.
-              return Literal::CreateFromProto(
-                  root->literal().tuple_literals(1));
-            } else if (type == PostorderDFSNodeType::kValueIsDynamic) {
-              return CreatePredLiteral(true, Shape(root->shape()));
-            } else {
-              return Literal::CreateFromProto(root->literal());
-            }
-          }
-        });
+        return PostorderDFSNode().AddVisit(
+            [type, root]() -> absl::StatusOr<Literal> {
+              if (type == PostorderDFSNodeType::kBoundIsDynamic) {
+                return CreatePredLiteral(false, Shape(root->shape()));
+              } else {
+                if (root->literal().shape().element_type() == TUPLE) {
+                  // First literal of SetBound contains bounds, second literal
+                  // contains dynamism indicators.
+                  return Literal::CreateFromProto(
+                      root->literal().tuple_literals(1));
+                } else if (type == PostorderDFSNodeType::kValueIsDynamic) {
+                  return CreatePredLiteral(true, Shape(root->shape()));
+                } else {
+                  return Literal::CreateFromProto(root->literal());
+                }
+              }
+            });
       } else if (root->custom_call_target() == "Sharding") {
         return result.AddVisit([](Literal operand) { return operand; });
       } else {
@@ -1495,21 +1493,21 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kWhile: {
-      return PostorderDFSNode().AddVisit([root, context]()
-                                             -> absl::StatusOr<Literal> {
-        return CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
-      });
+      return PostorderDFSNode().AddVisit(
+          [root, context]() -> absl::StatusOr<Literal> {
+            return CreatePredLiteral(
+                true, ShapeUtil::GetSubshape(Shape(root->shape()),
+                                             context.shape_index));
+          });
       break;
     }
     default:
-      return PostorderDFSNode().AddVisit([root, context]()
-                                             -> absl::StatusOr<Literal> {
-        return CreatePredLiteral(
-            true,
-            ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
-      });
+      return PostorderDFSNode().AddVisit(
+          [root, context]() -> absl::StatusOr<Literal> {
+            return CreatePredLiteral(
+                true, ShapeUtil::GetSubshape(Shape(root->shape()),
+                                             context.shape_index));
+          });
   }
 }
 
@@ -1634,7 +1632,9 @@ absl::StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle);
       },
-      [&](int64_t handle) { return &(builder_->embedded_[handle]); });
+      [&](int64_t handle) {
+        return &(builder_->embedded_[handle].computation);
+      });
 
   auto result = visitor.PostOrderDFSVisit(
       op.handle(), PostorderDFSNodeType::kValueIsDynamic);
@@ -1797,7 +1797,9 @@ absl::StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle);
       },
-      [&](int64_t handle) { return &(builder_->embedded_[handle]); });
+      [&](int64_t handle) {
+        return &(builder_->embedded_[handle].computation);
+      });
   TF_ASSIGN_OR_RETURN(Shape op_shape, builder_->GetShape(op));
   int64_t handle = op.handle();
   if (ShapeUtil::IsScalar(builder_->GetShape(op).value())) {
