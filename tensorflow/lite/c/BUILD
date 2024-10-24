@@ -9,7 +9,13 @@ load(
     "tflite_linkopts_no_undefined",
     "tflite_self_contained_libs_test_suite",
 )
-load("//tensorflow/lite:special_rules.bzl", "c_api_opaque_internal_visibility_allowlist", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:special_rules.bzl",
+    "c_api_internal_visibility_allowlist",
+    "c_api_opaque_internal_visibility_allowlist",
+    "common_internal_visibility_allowlist",
+    "tflite_portable_test_suite",
+)
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite_with_c_headers_test")
 
 package(
@@ -223,13 +229,14 @@ cc_library_with_tflite_with_c_headers_test(
 
 cc_library(
     name = "c_api_internal",
+    srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite/core/async/c:__subpackages__",
         "//tensorflow/lite/core/c:__subpackages__",
-    ],
+    ] + c_api_internal_visibility_allowlist(),
     deps = [
         ":common_internal",
         "//tensorflow/lite:builtin_ops",
@@ -337,7 +344,7 @@ cc_library(
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
-    ],
+    ] + common_internal_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
