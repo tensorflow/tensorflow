@@ -33,8 +33,15 @@
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_op.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR/qnn_tensor.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/graph_mapper.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/add_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/div_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/mul_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/reshape_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/rsqrt_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/slice_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/sub_op_legalization.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/legalizations/tanh_op_legalization.h"
 #include "tensorflow/lite/experimental/litert/vendors/qualcomm/qnn_manager.h"
 
 namespace litert::qnn {
@@ -44,6 +51,13 @@ namespace {
 LiteRtStatus RegisterAllLegalizations(
     std::vector<std::unique_ptr<Legalization>>& legalizations) {
   legalizations.push_back(MulOpLegalization::Create());
+  legalizations.push_back(SliceOpLegalization::Create());
+  legalizations.push_back(AddOpLegalization::Create());
+  legalizations.push_back(DivOpLegalization::Create());
+  legalizations.push_back(RsqrtOpLegalization::Create());
+  legalizations.push_back(TanhOpLegalization::Create());
+  legalizations.push_back(SubOpLegalization::Create());
+  legalizations.push_back(ReshapeOpLegalization::Create());
   LITERT_LOG(LITERT_INFO, "Scheduling %lu legalizations", legalizations.size());
   return kLiteRtStatusOk;
 }
@@ -98,7 +112,7 @@ LiteRtStatus MapGraph(QnnManager& qnn, Qnn_ContextHandle_t context_handle,
 
 //===----------------------------------------------------------------------===//
 //
-//                                              [WIP] LRT SUBGRAPH -> QNN GRAPH
+//                                           [WIP] LiteRT SUBGRAPH -> QNN GRAPH
 //
 // Core driver for IR translation. Traverses LiteRt Subgraph, iteratively
 // "legalizing" (mapping) LiteRt entities to their QNN counterpart.

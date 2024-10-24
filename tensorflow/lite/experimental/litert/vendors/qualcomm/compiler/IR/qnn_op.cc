@@ -128,6 +128,11 @@ Qnn_OpConfig_t BuildDefaultOp() {
   ResetOp(op);
   return op;
 }
+Qnn_Param_t BuildDefaultParam() {
+  Qnn_Param_t param = QNN_PARAM_INIT;
+  ResetParam(param);
+  return param;
+}
 
 void ResetOp(Qnn_OpConfig_t& op) {
   op = QNN_OPCONFIG_INIT;
@@ -135,6 +140,7 @@ void ResetOp(Qnn_OpConfig_t& op) {
   op.v1 = QNN_OPCONFIG_V1_INIT;
 }
 
+void ResetParam(Qnn_Param_t& param) { param = QNN_PARAM_INIT; }
 LiteRtStatus LegalizeOp(LiteRtOp src, Qnn_OpConfig_t& dest) {
   ResetOp(dest);
 

@@ -41,6 +41,8 @@ Qnn_Tensor_t BuildInputTensor();
 // Constructa a "blank" QNN Tensor meant to be used as a graph output.
 Qnn_Tensor_t BuildOutputTensor();
 
+Qnn_ClientBuffer_t BuildDefaultClientBuffer();
+
 // Adds attributes to given tensor making it amenable for use as graph input.
 void SetInputTensorAttrs(Qnn_Tensor_t& tensor);
 

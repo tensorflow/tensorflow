@@ -150,7 +150,7 @@ inline LiteRtResult<llvm::ArrayRef<LiteRtTensor>> GetOpOuts(LiteRtOp op) {
 }
 
 // Get the only tensor output to given op, bad status if op doesn't have
-// exacty one output.
+// exactly one output.
 inline LiteRtResult<LiteRtTensor> GetOnlyOpOut(LiteRtOp op) {
   LITERT_ASSIGN_OR_RETURN_RESULT(auto outs, GetOpOuts(op), LiteRtTensor);
   if (outs.size() != 1) {
@@ -346,6 +346,20 @@ inline bool ValidateTopology(llvm::ArrayRef<LiteRtOp> ops) {
     }
   }
   return true;
+}
+
+// Get weights behind given tensor.
+template <typename T>
+inline LiteRtResult<llvm::ArrayRef<T>> GetWeights(LiteRtTensor tensor) {
+  LiteRtWeights weights = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetTensorWeights(tensor, &weights),
+                                 llvm::ArrayRef<T>);
+  size_t size;
+  const void* data = nullptr;
+  LITERT_RETURN_RESULT_IF_NOT_OK(GetWeightsInfo(weights, &size, &data),
+                                 llvm::ArrayRef<T>);
+  return LiteRtResult<llvm::ArrayRef<T>>::FromValue(
+      llvm::ArrayRef<T>(static_cast<const T*>(data), size));
 }
 
 // Match weights behind given tensor contains data.
