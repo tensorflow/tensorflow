@@ -90,7 +90,7 @@ absl::string_view Uint64ToHexString(uint64_t v, char* buf);
 // Attempt to parse a uint64 in the form encoded by FastUint64ToHexString.  If
 // successful, stores the value in *v and returns true.  Otherwise,
 // returns false.
-bool HexStringToUint64(const absl::string_view& s, uint64_t* result);
+bool HexStringToUint64(absl::string_view s, uint64_t* result);
 
 // Convert strings to 32bit integer values.
 // Leading and trailing spaces are allowed.
