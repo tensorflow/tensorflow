@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -84,21 +85,15 @@ std::pair<BasicStringArray::Buffers, BasicStringArray::OnDoneWithBuffer>
 MakeBuffersAndOnDoneWithBuffer(
     absl::Span<const absl::string_view> input_strings) {
   BasicStringArray::Buffers buffers;
-  auto string_holder = std::make_shared<std::vector<std::string>>();
-  string_holder->reserve(input_strings.size());
-  auto string_view_holder = std::make_shared<std::vector<absl::string_view>>();
-  string_view_holder->reserve(input_strings.size());
-  for (const auto str : input_strings) {
-    string_holder->push_back(std::string(str));
+  auto strings = std::make_shared<std::vector<absl::Cord>>();
+  strings->reserve(input_strings.size());
+  for (const auto input_str : input_strings) {
+    strings->push_back(absl::Cord(input_str));
   }
-  for (const auto& str : *string_holder) {
-    string_view_holder->push_back(absl::string_view(str));
-  }
-  buffers.push_back(*string_view_holder);
+  buffers.push_back(*strings);
 
   BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
-      [string_holder = std::move(string_holder),
-       string_view_holder = std::move(string_view_holder)]() {};
+      [strings = std::move(strings)]() {};
 
   return std::make_pair(std::move(buffers), std::move(on_done_with_buffer));
 }
@@ -175,7 +170,7 @@ TEST(BasicStringArrayLayoutTest, Equality) {
 TEST(BasicStringArrayTest, CreateSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   BasicStringArray::Buffers buffers;
-  buffers.push_back({"abc", "def"});
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
 
   // This test implicitly tests that the on_done_with_buffer can be a nullptr,
   // and that the destruction of the BasicStringArray object completes
@@ -197,7 +192,7 @@ TEST(BasicStringArrayTest, Destruction) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   BasicStringArray::Buffers buffers;
-  buffers.push_back({"abc", "def"});
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
 
   absl::Notification on_done_with_buffer_called;
   BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
@@ -228,10 +223,10 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
   ASSERT_GE(devices.size(), 1);
 
   // Make a BasicStringArray::Buffer with two shards.
-  auto shard0_data = std::make_shared<std::vector<absl::string_view>>();
-  shard0_data->push_back("abc");
-  auto shard1_data = std::make_shared<std::vector<absl::string_view>>();
-  shard1_data->push_back("def");
+  auto shard0_data = std::make_shared<std::vector<absl::Cord>>();
+  shard0_data->push_back(absl::Cord("abc"));
+  auto shard1_data = std::make_shared<std::vector<absl::Cord>>();
+  shard1_data->push_back(absl::Cord("def"));
   BasicStringArray::Buffers buffers;
   buffers.push_back(*shard0_data);
   buffers.push_back(*shard1_data);
@@ -260,7 +255,7 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
 TEST(BasicStringArrayTest, Delete) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   BasicStringArray::Buffers buffers;
-  buffers.push_back({"abc", "def"});
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
   absl::Notification on_done_with_buffer_called;
   BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
       [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
@@ -294,7 +289,7 @@ TEST(GetReadyFutureTest, SuccessCase) {
 
   // Make the buffers future ready asynchronously.
   BasicStringArray::Buffers buffers;
-  buffers.push_back({"abc", "def"});
+  buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
   tsl::Env::Default()->SchedClosure([&]() { promise.Set(buffers); });
   TF_EXPECT_OK(ready_future.Await());
 }
@@ -326,11 +321,11 @@ TEST(MakeArrayFromHostBufferTest, SuccessCase) {
   std::shared_ptr<const Sharding> sharding =
       SingleDeviceSharding::Create(device, MemoryKind());
 
-  auto string_views = std::make_shared<std::vector<absl::string_view>>();
-  string_views->push_back("abc");
-  string_views->push_back("def");
-  const void* data = string_views->data();
-  auto on_done_with_host_buffer = [string_views = std::move(string_views)]() {};
+  auto strings = std::make_shared<std::vector<absl::Cord>>();
+  strings->push_back(absl::Cord("abc"));
+  strings->push_back(absl::Cord("def"));
+  const void* data = strings->data();
+  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   TF_ASSERT_OK(client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
@@ -345,11 +340,11 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   Device* device = client->addressable_devices().at(0);
   std::shared_ptr<const Sharding> single_device_sharding =
       SingleDeviceSharding::Create(device, MemoryKind());
-  auto string_views = std::make_shared<std::vector<absl::string_view>>();
-  string_views->push_back("abc");
-  string_views->push_back("def");
-  const void* data = string_views->data();
-  auto on_done_with_host_buffer = [string_views = std::move(string_views)]() {};
+  auto strings = std::make_shared<std::vector<absl::Cord>>();
+  strings->push_back(absl::Cord("abc"));
+  strings->push_back(absl::Cord("def"));
+  const void* data = strings->data();
+  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   // MakeArrayFromHostBuffer should check and fail if `byte_strides` in not
   // nullopt.
@@ -398,12 +393,12 @@ absl::StatusOr<tsl::RCReference<Array>> MakeSingleDeviceStringTestArray(
   std::shared_ptr<const Sharding> sharding =
       SingleDeviceSharding::Create(device, MemoryKind());
 
-  auto string_views = std::make_shared<std::vector<absl::string_view>>();
+  auto strings = std::make_shared<std::vector<absl::Cord>>();
   for (const auto& content : contents) {
-    string_views->push_back(content);
+    strings->push_back(absl::Cord(content));
   }
-  const void* data = string_views->data();
-  auto on_done_with_host_buffer = [string_views = std::move(string_views)]() {};
+  const void* data = strings->data();
+  auto on_done_with_host_buffer = [strings = std::move(strings)]() {};
 
   return client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
