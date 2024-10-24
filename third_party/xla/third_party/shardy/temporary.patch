@@ -1,105 +1,262 @@
+diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+index 4eddef7..89fc302 100644
+--- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
++++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
+@@ -20,7 +20,6 @@ limitations under the License.
+ #include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/Operation.h"
+-#include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/SymbolTable.h"
+ #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+ #include "mlir/Support/LLVM.h"
+@@ -82,84 +81,12 @@ bool hasCompatibleFactorShardings(const ShardingProjection& projection) {
+   return true;
+ }
+ 
+-// Insert explicit reshards for operands and results that change by
+-// the given `projection` for a given `op`. The reshards are inserted only to
+-// make the given operation compatible.
+-//
+-// For example,
+-//
+-// ```mlir
+-//   %arg0: tensor<8x32xf32> { sdy.sharding = @mesh, [{}, {"y"}]>}
+-//   %arg1: tensor<32x16xf32> { sdy.sharding = <@mesh, [{"y"}, {"x"}]>}
+-//   %0 = stablehlo.dot %arg0, %arg1 { sdy.sharding = <@mesh, [{"x"}, {}]>,
+-//     sdy.sharding_rule = <([i, k], [k, j])->([i, j])> }
+-//   %1 = stablehlo.negate %0 {sdy.sharding = <@mesh, [{"x"}, {}]>
+-//   return %1
+-// ```
+-//
+-// after a call on the stablehlo.dot operation, by the projection, i: {}, j: {},
+-// k: {"y"}, the module becomes:
+-//
+-// ```mlir
+-//   %arg0: tensor<8x32xf32> { sdy.sharding = @mesh, [{}, {"y"}]>}
+-//   %arg1: tensor<32x16xf32> { sdy.sharding = <@mesh, [{"y"}, {"x"}]>}
+-//   %0 = stablehlo.reshard %arg1 {sdy.sharding = <@mesh, [{"y"}, {}]>}
+-//   %1 = stablehlo.dot %arg0, %0 { sdy.sharding = <@mesh, [{}, {}]>,
+-//     sdy.sharding_rule = <([i, k], [k, j])->([i, j])> }
+-//   %2 = stablehlo.reshard %1 {sdy.sharding = <@mesh, [{"x"}, {}]>}
+-//   %3 = stablehlo.negate %2 {sdy.sharding = <@mesh, [{"x"}, {}]>
+-//   return %3
+-// ```
+-//
+-// In the above example, note that the operand and result shardings for
+-// stablehlo.negate op remained unchanged.
+-//
+-// Assumes factor shardings do not have overflow axes.
+-// TODO(enver): Handle the case when some factor shardings have overflow axes.
+-void insertExplicitReshards(Operation* op, const ShardingProjection& projection,
+-                            IRRewriter& rewriter,
+-                            OpShardingRuleAttr shardingRule, StringRef meshName,
+-                            MeshAttr mesh) {
+-  rewriter.setInsertionPoint(op);
+-  for (const auto& [index, value] : llvm::enumerate(op->getOperands())) {
+-    auto newTensorSharding =
+-        projection.getOperand(index).createTensorShardingAttr(
+-            mesh.getContext(), shardingRule.getOperandMapping(index),
+-            shardingRule.getFactorSizes(), meshName, mesh);
+-    if (newTensorSharding == getSharding(value)) {
+-      continue;
+-    }
+-    auto reshardOp =
+-        rewriter.create<ReshardOp>(value.getLoc(), value, newTensorSharding);
+-    rewriter.modifyOpInPlace(op, [&]() { op->setOperand(index, reshardOp); });
+-  }
+-
+-  rewriter.setInsertionPointAfter(op);
+-  for (const auto& [value, tensorFactorShardings, tensorMapping] :
+-       llvm::zip_equal(op->getResults(), projection.getResults(),
+-                       shardingRule.getResultMappings())) {
+-    // TODO(enver): The following logic is mostly shared between operands and
+-    // results. Use a helper function, instead.
+-    auto newTensorSharding = tensorFactorShardings.createTensorShardingAttr(
+-        mesh.getContext(), tensorMapping, shardingRule.getFactorSizes(),
+-        meshName, mesh);
+-    if (newTensorSharding == getSharding(value)) {
+-      continue;
+-    }
+-    auto reshardOp =
+-        rewriter.create<ReshardOp>(value.getLoc(), value, getSharding(value));
+-    rewriter.replaceAllUsesExcept(value, reshardOp, reshardOp);
+-    setSharding(value, newTensorSharding);
+-  }
+-}
+-
+ struct InsertExplicitReshardsPass
+     : public impl::InsertExplicitReshardsPassBase<InsertExplicitReshardsPass> {
+   using InsertExplicitReshardsPassBase::InsertExplicitReshardsPassBase;
+ 
+   void runOnOperation() final {
+     func::FuncOp funcOp = getOperation();
+-    IRRewriter rewriter(funcOp);
+     SymbolTable symbolTable(funcOp->getParentOfType<ModuleOp>());
+     // TODO(enver): Handle data flow ops.
+     funcOp.walk([&](Operation* op) {
+@@ -180,6 +107,7 @@ struct InsertExplicitReshardsPass
+         // This means none of the operands or results have a sharding attribute
+         // or the sharding attributes use different meshes. Skip if so.
+         // TODO(enver): Actually, we are moving towards supporting multiple
++        // meshes during propagation. We should handle this by inserting
+         // explicit reshards so operands and results are all bound by the same
+         // mesh.
+         return;
+@@ -204,8 +132,7 @@ struct InsertExplicitReshardsPass
+       // TODO(enver): Build a projection where, for each factor, factor
+       // shardings are the same across all operands and results;
+ 
+-      insertExplicitReshards(op, shardingProjection, rewriter, shardingRule,
+-                             *meshName, mesh);
++      // TODO(enver): Insert the explicit reshard ops.
+     });
+   }
+ };
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+index 55b5be7..c70933f 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards.mlir
+@@ -138,25 +138,3 @@ func.func @dot_incompatible_sub_axis_overlaps(%arg0: tensor<8x32xf32> {sdy.shard
+   %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+   return %0 : tensor<8x16xf32>
+ }
+-
+-// CHECK-LABEL: func @dot_reshard_is_local
+-func.func @dot_reshard_is_local(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<8x16xf32> {
+-  // CHECK: stablehlo.negate %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>}
+-  // CHECK: stablehlo.dot %arg0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
+-  // CHECK: stablehlo.negate %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>}
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.negate %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>} : tensor<32x16xf32>
+-  %1 = stablehlo.dot %arg0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %2 = stablehlo.negate %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+-  return %2 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @dot_reshard_does_not_change_input_sharding
+-func.func @dot_reshard_does_not_change_input_sharding(%arg0: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}, %arg1: tensor<32x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>}) -> tensor<8x16xf32> {
+-  // CHECK: stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>
+-  // CHECK: stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>}
+-  // CHECK-NOT: sdy.reshard
+-  %0 = stablehlo.dot %arg0, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>, sdy.sharding_rule = #sdy.op_sharding_rule<([i, k],[k, j])->([i, j]) {i=8, j=16, k=32}>} : (tensor<8x32xf32>, tensor<32x16xf32>) -> tensor<8x16xf32>
+-  %1 = stablehlo.negate %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : tensor<8x16xf32>
+-  return %1 : tensor<8x16xf32>
+-}
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 1697b8f..7bed258 100644
+index 7bed258..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,44 +1,43 @@
+@@ -1,43 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/source/Utility/DiagnosticsRendering.cpp b/lldb/source/Utility/DiagnosticsRendering.cpp
----- a/lldb/source/Utility/DiagnosticsRendering.cpp
--+++ b/lldb/source/Utility/DiagnosticsRendering.cpp
--@@ -99,10 +99,10 @@
-+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
-+--- a/llvm/lib/Target/X86/X86ISelLowering.cpp
-++++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
-+@@ -50049,8 +50049,9 @@
-+   SDValue X, Y, Z;
-+   if (sd_match(N, m_And(m_Value(X),
-+                         m_OneUse(m_Or(m_Value(Y), m_Not(m_Value(Z))))))) {
-+-    // Don't fold if Y is a constant to prevent infinite loops.
-+-    if (!isa<ConstantSDNode>(Y))
-++    // Don't fold if Y or Z are constants to prevent infinite loops.
-++    if (!DAG.isConstantIntBuildVectorOrConstantInt(Y) &&
-++        !DAG.isConstantIntBuildVectorOrConstantInt(Z))
-+       return DAG.getNode(
-+           ISD::AND, DL, VT, X,
-+           DAG.getNOT(
-+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr108731.ll b/llvm/test/CodeGen/X86/pr108731.ll
-+--- a/llvm/test/CodeGen/X86/pr108731.ll
-++++ b/llvm/test/CodeGen/X86/pr108731.ll
-+@@ -192,3 +192,23 @@
-+   ret void
-+ }
-  
--   // Sort the diagnostics.
--   auto sort = [](auto &ds) {
---    llvm::sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
--+    std::stable_sort(ds.begin(), ds.end(), [](auto &d1, auto &d2) {
--       auto l1 = d1.source_location.value_or(DiagnosticDetail::SourceLocation{});
--       auto l2 = d2.source_location.value_or(DiagnosticDetail::SourceLocation{});
---      return std::pair(l1.line, l2.column) < std::pair(l1.line, l2.column);
--+      return std::tie(l1.line, l1.column) < std::tie(l2.line, l2.column);
--     });
--   };
--   sort(remaining_details);
--diff -ruN --strip-trailing-cr a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
----- a/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
--+++ b/lldb/unittests/Utility/DiagnosticsRenderingTest.cpp
--@@ -46,16 +46,20 @@
--     std::string result =
--         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
--                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
---    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
--+    // Unintuitively the later diagnostic appears first in the string:
--+    //    ^   ^
--+    //    |   second
--+    //    first
--+    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
--   }
--   {
--     // Test that diagnostics in reverse order are emitted correctly.
---    SourceLocation loc1 = {FileSpec{"a.c"}, 2, 10, 0, false, true};
--+    SourceLocation loc1 = {FileSpec{"a.c"}, 1, 10, 0, false, true};
--     SourceLocation loc2 = {FileSpec{"a.c"}, 1, 20, 0, false, true};
--     std::string result =
--         Render({DiagnosticDetail{loc2, eSeverityError, "X", "X"},
--                 DiagnosticDetail{loc1, eSeverityError, "Y", "Y"}});
---    ASSERT_LT(StringRef(result).find("Y"), StringRef(result).find("X"));
--+    ASSERT_GT(StringRef(result).find("Y"), StringRef(result).find("X"));
--   }
--   {
--     // Test that range diagnostics are emitted correctly.
-++define void @PR113240(i64 %a) {
-++; CHECK-LABEL: PR113240:
-++; CHECK:       # %bb.0: # %entry
-++; CHECK-NEXT:    movq %rdi, %rax
-++; CHECK-NEXT:    notq %rax
-++; CHECK-NEXT:    movabsq $8796093022206, %rcx # imm = 0x7FFFFFFFFFE
-++; CHECK-NEXT:    notq %rcx
-++; CHECK-NEXT:    orq %rax, %rcx
-++; CHECK-NEXT:    andq %rdi, %rcx
-++; CHECK-NEXT:    movq %rcx, 0
-++; CHECK-NEXT:    retq
-++entry:
-++  %and = and i64 %a, 8796093022206
-++  %bf.value = and i64 8796093022206, 0
-++  %not = xor i64 %and, -1
-++  %and4 = and i64 %a, %not
-++  store i64 %and4, ptr null, align 8
-++  ret void
-++}
-++
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelLowering.cpp b/llvm/lib/Target/X86/X86ISelLowering.cpp
+---- a/llvm/lib/Target/X86/X86ISelLowering.cpp
+-+++ b/llvm/lib/Target/X86/X86ISelLowering.cpp
+-@@ -50049,8 +50049,9 @@
+-   SDValue X, Y, Z;
+-   if (sd_match(N, m_And(m_Value(X),
+-                         m_OneUse(m_Or(m_Value(Y), m_Not(m_Value(Z))))))) {
+--    // Don't fold if Y is a constant to prevent infinite loops.
+--    if (!isa<ConstantSDNode>(Y))
+-+    // Don't fold if Y or Z are constants to prevent infinite loops.
+-+    if (!DAG.isConstantIntBuildVectorOrConstantInt(Y) &&
+-+        !DAG.isConstantIntBuildVectorOrConstantInt(Z))
+-       return DAG.getNode(
+-           ISD::AND, DL, VT, X,
+-           DAG.getNOT(
+-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/pr108731.ll b/llvm/test/CodeGen/X86/pr108731.ll
+---- a/llvm/test/CodeGen/X86/pr108731.ll
+-+++ b/llvm/test/CodeGen/X86/pr108731.ll
+-@@ -192,3 +192,23 @@
+-   ret void
+- }
+- 
+-+define void @PR113240(i64 %a) {
+-+; CHECK-LABEL: PR113240:
+-+; CHECK:       # %bb.0: # %entry
+-+; CHECK-NEXT:    movq %rdi, %rax
+-+; CHECK-NEXT:    notq %rax
+-+; CHECK-NEXT:    movabsq $8796093022206, %rcx # imm = 0x7FFFFFFFFFE
+-+; CHECK-NEXT:    notq %rcx
+-+; CHECK-NEXT:    orq %rax, %rcx
+-+; CHECK-NEXT:    andq %rdi, %rcx
+-+; CHECK-NEXT:    movq %rcx, 0
+-+; CHECK-NEXT:    retq
+-+entry:
+-+  %and = and i64 %a, 8796093022206
+-+  %bf.value = and i64 8796093022206, 0
+-+  %not = xor i64 %and, -1
+-+  %and4 = and i64 %a, %not
+-+  store i64 %and4, ptr null, align 8
+-+  ret void
+-+}
+-+
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index fbc37d2..a3d8da0 100644
+index a3d8da0..2d60ea0 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f58ce1152703ca753794b8cef36da30bd2668d0f"
--    LLVM_SHA256 = "cfb4610ba8b15cfe0e1ec3b6b680416983a2a5cd6883147f0fe0043c61bbcb7c"
-+    LLVM_COMMIT = "6c4267fb1779bc5550bb413f33250f9365acfbc6"
-+    LLVM_SHA256 = "7010ee8fe86246fabcaedbed21fa9ac2bd2542e0d2ad6172a4481e0294fdf354"
+-    LLVM_COMMIT = "6c4267fb1779bc5550bb413f33250f9365acfbc6"
+-    LLVM_SHA256 = "7010ee8fe86246fabcaedbed21fa9ac2bd2542e0d2ad6172a4481e0294fdf354"
++    LLVM_COMMIT = "33363521ca24f912cc25530f6cecbca53acce8a3"
++    LLVM_SHA256 = "3fd9cbd992ed880e348d81715f39138538fd6c8e9164b981551a97181a3b7b24"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 4a1d725..2eb32ea 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,49 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/TypeConversion.cpp
++@@ -47,36 +47,36 @@
++   return shapedType;
++ }
++ 
++-std::optional<Value> materializeCastFromIllegal(OpBuilder &builder, Type type,
+++Value materializeCastFromIllegal(OpBuilder &builder, Type type,
++                                                 ValueRange inputs,
++                                                 Location loc) {
++   Type fromType = getElementTypeOrSelf(inputs[0].getType());
++   Type toType = getElementTypeOrSelf(type);
++   if ((!fromType.isSignedInteger() && !fromType.isUnsignedInteger()) ||
++       !toType.isSignlessInteger())
++-    return std::nullopt;
+++    return Value();
++   // Use unrealized conversion casts to do signful->signless conversions.
++   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
++       ->getResult(0);
++ }
++ 
++-std::optional<Value> materializeCastToIllegal(OpBuilder &builder, Type type,
+++Value materializeCastToIllegal(OpBuilder &builder, Type type,
++                                               ValueRange inputs, Location loc) {
++   Type fromType = getElementTypeOrSelf(inputs[0].getType());
++   Type toType = getElementTypeOrSelf(type);
++   if (!fromType.isSignlessInteger() ||
++       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
++-    return std::nullopt;
+++    return Value();
++   // Use unrealized conversion casts to do signless->signful conversions.
++   return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
++       ->getResult(0);
++ }
++ 
++-std::optional<Value> scalarToTensor(OpBuilder &builder, Type type,
+++Value scalarToTensor(OpBuilder &builder, Type type,
++                                     ValueRange inputs, Location loc) {
++   assert(inputs.size() == 1);
++   if (mlir::isa<ShapedType>(inputs.front().getType())) {
++-    return std::nullopt;
+++    return Value();
++   }
++   Value result =
++       builder
+ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
+ --- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
+ +++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_patch.mlir
