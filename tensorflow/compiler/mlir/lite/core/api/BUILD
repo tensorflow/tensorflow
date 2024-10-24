@@ -26,6 +26,7 @@ cc_library(
     hdrs = ["error_reporter.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    visibility = ["//visibility:public"],
     deps = [],
 )
 
