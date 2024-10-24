@@ -14,14 +14,25 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/cc/experimental/libexport/load.h"
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace libexport {
