@@ -234,7 +234,7 @@ def get_compatible_func(op, func):
   op_signature = _remove_annotation(tf_inspect.signature(op))
   func_signature = _remove_annotation(tf_inspect.signature(func))
 
-  # Identitical signatures, no need to apply compatibility fixes.
+  # Identical signatures, no need to apply compatibility fixes.
   if op_signature == func_signature:
     return func
 
@@ -395,7 +395,7 @@ def dispatch_for_api(api, *signatures):
   being overridden.  In particular, parameters must have the same names, and
   must occur in the same order.  The dispatch target may optionally elide the
   "name" parameter, in which case it will be wrapped with a call to
-  `tf.name_scope` when appropraite.
+  `tf.name_scope` when appropriate.
 
   Args:
     api: The TensorFlow API to override.
@@ -797,7 +797,7 @@ def _signature_from_annotations(func):
 # decorators.
 #
 # _ELEMENTWISE_API_TARGETS: Dict mapping from argument type(s) to lists of
-# `(api, dispatch_target)` pairs.  Used to impelement
+# `(api, dispatch_target)` pairs.  Used to implement
 # `unregister_elementwise_api_handler`.
 _UNARY_ELEMENTWISE_APIS = []
 _BINARY_ELEMENTWISE_APIS = []
@@ -1206,7 +1206,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
   need to be handled specially during dispatch, since just iterating over an
   iterable uses up its values.  In the following example, we define a new API
   whose second argument can be an iterable value; and then override the default
-  implementatio of that API when the iterable contains MaskedTensors:
+  implementation of that API when the iterable contains MaskedTensors:
 
   >>> @add_dispatch_support(iterable_parameters=['ys'])
   ... def add_tensor_to_list_of_tensors(x, ys):
@@ -1245,7 +1245,7 @@ def add_dispatch_support(target=None, iterable_parameters=None):
 
     @traceback_utils.filter_traceback
     def op_dispatch_handler(*args, **kwargs):
-      """Call `dispatch_target`, peforming dispatch when appropriate."""
+      """Call `dispatch_target`, performing dispatch when appropriate."""
 
       # Type-based dispatch system (dispatch v2):
       if api_dispatcher is not None:
