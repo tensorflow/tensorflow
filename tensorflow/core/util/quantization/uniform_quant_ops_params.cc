@@ -27,7 +27,7 @@ namespace {
 
 using tensorflow::errors::InvalidArgument;
 
-Status ValidDim(int64_t dims, int64_t dim) {
+absl::Status ValidDim(int64_t dims, int64_t dim) {
   if (dim < 0 || dim >= dims) {
     return InvalidArgument(
         "Each dimension number must be in region [0, rank). Given rank ", dims,
@@ -36,7 +36,7 @@ Status ValidDim(int64_t dims, int64_t dim) {
   return absl::OkStatus();
 }
 
-Status ValidSpatialDimensions(
+absl::Status ValidSpatialDimensions(
     int64_t dims, const protobuf::RepeatedField<int64_t>& spatial_dimensions) {
   if (spatial_dimensions.size() != dims - 2) {
     return InvalidArgument(
@@ -51,17 +51,18 @@ Status ValidSpatialDimensions(
 
 }  // namespace
 
-Status UniformQuantizedConvolutionParams::LoadFromAttrs(
+absl::Status UniformQuantizedConvolutionParams::LoadFromAttrs(
     const OpKernelConstruction& context) {
   return LoadFromAttrsInternal(context);
 }
 
-Status UniformQuantizedConvolutionParams::LoadFromAttrs(
+absl::Status UniformQuantizedConvolutionParams::LoadFromAttrs(
     const shape_inference::InferenceContext& context) {
   return LoadFromAttrsInternal(context);
 }
 
-Status UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
+absl::Status
+UniformQuantizedConvolutionParams::ValidateOrFillParamsAndValidateShape(
     const TensorShape& lhs_shape, const TensorShape& rhs_shape) {
   if (lhs_shape.dims() != rhs_shape.dims()) {
     return InvalidArgument(
@@ -249,7 +250,7 @@ UniformQuantizedConvolutionParams::CalculateOutputShape(
 }
 
 template <typename ContextT>
-Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
+absl::Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
     const ContextT& context) {
   TF_RETURN_IF_ERROR(context.GetAttr("window_strides", &window_strides_));
   TF_RETURN_IF_ERROR(context.GetAttr("lhs_dilation", &lhs_dilation_));
@@ -282,7 +283,7 @@ Status UniformQuantizedConvolutionParams::LoadFromAttrsInternal(
   return absl::OkStatus();
 }
 
-Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
+absl::Status UniformQuantizedConvolutionParams::ValidateOrFillPaddingList(
     const TensorShape& lhs_shape, const TensorShape& rhs_shape) {
   const int64_t dims = lhs_shape.dims();
   const int64_t padding_list_size = 2 * (dims - 2);
