@@ -165,6 +165,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kPartitionId:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
+    case HloOpcode::kRaggedDot:
     case HloOpcode::kReal:
     case HloOpcode::kReduce:
     case HloOpcode::kRemainder:
@@ -3174,6 +3175,43 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       return builder->AddInstruction(HloInstruction::CreateDot(
           *shape, operands[0], operands[1], dnum, precision_config, sparsity,
           absl::MakeSpan(operands).subspan(HloDotInstruction::kOperands)));
+    }
+    case HloOpcode::kRaggedDot: {
+      optional<std::vector<PrecisionConfig::Precision>> operand_precision;
+      attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
+                                    &operand_precision};
+
+      LocTy loc = lexer_.GetLoc();
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+
+      int expected_size = HloRaggedDotInstruction::kOperands;
+      if (operands.size() != expected_size) {
+        Error(loc, StrCat("expects ", expected_size, " operands, but has ",
+                          operands.size(), " operands"));
+        return nullptr;
+      }
+
+      PrecisionConfig precision_config;
+      if (operand_precision) {
+        *precision_config.mutable_operand_precision() = {
+            operand_precision->begin(), operand_precision->end()};
+      } else {
+        // Only the lhs and rhs operands have precision.
+        precision_config.mutable_operand_precision()->Resize(
+            HloRaggedDotInstruction::kOperands - 1, PrecisionConfig::DEFAULT);
+      }
+      if (!maybe_infer_shape([&] {
+            return ShapeInference::InferRaggedDotOpShape(operands[0]->shape(),
+                                                         operands[1]->shape(),
+                                                         operands[2]->shape());
+          })) {
+        return nullptr;
+      }
+      return builder->AddInstruction(HloInstruction::CreateRaggedDot(
+          *shape, operands[0], operands[1], operands[2], precision_config));
     }
     case HloOpcode::kGather: {
       optional<std::vector<int64_t>> offset_dims;
