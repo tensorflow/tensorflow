@@ -17,6 +17,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/log/check.h"
@@ -218,7 +219,8 @@ Value EmitReducePrecision(Value value, int exponent_bits, int mantissa_bits,
   return mlir::mhlo::MhloOpToStdScalarOp::mapOpOfType<
       mlir::mhlo::ReducePrecisionOp>(
       b.getLoc(), value.getType(), {value.getType()},
-      mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties), &b);
+      mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties),
+      /*attributes=*/std::nullopt, &b);
 }
 
 Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {

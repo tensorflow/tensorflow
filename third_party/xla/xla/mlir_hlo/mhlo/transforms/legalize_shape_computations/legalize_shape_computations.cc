@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -103,7 +104,8 @@ class MhloElementwiseConverter : public OpRewritePattern<OpTy> {
       }
 
       Value scalarOp = mhlo::MhloOpToStdScalarOp::mapOp(
-          op, resultTy.getElementType(), extracts, &rewriter);
+          op, resultTy.getElementType(), extracts, /*attributes=*/std::nullopt,
+          &rewriter);
       operands.push_back(scalarOp);
     }
 
