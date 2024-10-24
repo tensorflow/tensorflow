@@ -39,7 +39,7 @@ class DispatchDelegate : public tflite::SimpleOpaqueDelegateInterface {
  public:
   static TfLiteOpaqueDelegate* Create(LiteRtDispatchDelegateOptions* options_) {
     litert::DispatchDelegateOptionsPtr options(
-        options_, LiteRtDispatchDelegateOptionsDelete);
+        options_, LiteRtDestroyDispatchDelegateOptions);
     if (!options) {
       LITERT_LOG(LITERT_ERROR, "Null input");
       return nullptr;
@@ -105,23 +105,23 @@ DispatchDelegate::CreateDelegateKernelInterface() {
 
 }  // namespace
 
-LiteRtDispatchDelegateOptions* LiteRtDispatchDelegateOptionsCreateDefault() {
+LiteRtDispatchDelegateOptions* LiteRtCreateDefaultDispatchDelegateOptions() {
   return new LiteRtDispatchDelegateOptions;
 }
 
-TfLiteStatus LiteRtDispatchDelegateOptionsAddOption(
-    LiteRtDispatchDelegateOptions* options, const char* key,
-    const char* value) {
-  if (!options || !key || !value) {
+TfLiteStatus LiteRtAddDispatchDelegateOption(
+    LiteRtDispatchDelegateOptions* options, const char* option_name,
+    const char* option_value) {
+  if (!options || !option_name || !option_value) {
     LITERT_LOG(LITERT_ERROR, "Null input");
     return kTfLiteError;
   }
 
-  options->AddOption(key, value);
+  options->AddOption(option_name, option_value);
   return kTfLiteOk;
 }
 
-TfLiteStatus LiteRtDispatchDelegateOptionsAddSharedLibraryDir(
+TfLiteStatus LiteRtAddDispatchDelegateSharedLibraryDirOption(
     LiteRtDispatchDelegateOptions* options, const char* shared_library_dir) {
   if (!options || !shared_library_dir) {
     LITERT_LOG(LITERT_ERROR, "Null input");
@@ -132,7 +132,7 @@ TfLiteStatus LiteRtDispatchDelegateOptionsAddSharedLibraryDir(
   return kTfLiteOk;
 }
 
-TfLiteStatus LiteRtDispatchDelegateOptionsExecInfo(
+TfLiteStatus LiteRtAddDispatchDelegateExecInfoOption(
     LiteRtDispatchDelegateOptions* options, const char* exec_tag,
     const void* bytecode_addr, size_t bytecode_size,
     const char* function_name) {
@@ -152,31 +152,30 @@ TfLiteStatus LiteRtDispatchDelegateOptionsExecInfo(
   return kTfLiteOk;
 }
 
-void LiteRtDispatchDelegateOptionsDelete(
+void LiteRtDestroyDispatchDelegateOptions(
     LiteRtDispatchDelegateOptions* options) {
   delete options;
 }
 
-TfLiteDelegate* LiteRtDispatchDelegateCreate(
+TfLiteDelegate* LiteRtCreateDispatchDelegate(
     LiteRtDispatchDelegateOptions* options) {
   return DispatchDelegate::Create(options);
 }
 
-void LiteRtDispatchDelegateDelete(TfLiteOpaqueDelegate* delegate) {
+void LiteRtDestroyDispatchDelegate(TfLiteOpaqueDelegate* delegate) {
   tflite::TfLiteOpaqueDelegateFactory::DeleteSimpleDelegate(delegate);
 }
 
 namespace litert {
 
-DispatchDelegateOptionsPtr DispatchDelegateOptionsCreateDefaultPtr() {
-  return {LiteRtDispatchDelegateOptionsCreateDefault(),
-          LiteRtDispatchDelegateOptionsDelete};
+DispatchDelegateOptionsPtr CreateDispatchDelegateOptionsPtr() {
+  return {LiteRtCreateDefaultDispatchDelegateOptions(),
+          LiteRtDestroyDispatchDelegateOptions};
 }
 
-tflite::TfLiteOpaqueDelegateUniquePtr DispatchDelegateCreatePtr(
+DispatchDelegatePtr CreateDispatchDelegatePtr(
     DispatchDelegateOptionsPtr&& options) {
-  return tflite::TfLiteOpaqueDelegateUniquePtr(
-      LiteRtDispatchDelegateCreate(options.release()),
-      LiteRtDispatchDelegateDelete);
+  return DispatchDelegatePtr(LiteRtCreateDispatchDelegate(options.release()),
+                             LiteRtDestroyDispatchDelegate);
 }
 }  // namespace litert

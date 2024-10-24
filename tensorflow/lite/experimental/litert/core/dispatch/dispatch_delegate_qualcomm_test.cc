@@ -52,15 +52,14 @@ TEST(DispatchDelegate, Qualcomm) {
   EXPECT_EQ(interpreter->outputs().size(), 1);
   ASSERT_EQ(interpreter->execution_plan().size(), 1);
 
-  auto dispatch_delegate_options =
-      litert::DispatchDelegateOptionsCreateDefaultPtr();
+  auto dispatch_delegate_options = litert::CreateDispatchDelegateOptionsPtr();
   ASSERT_EQ(
-      LiteRtDispatchDelegateOptionsExecInfo(
+      LiteRtAddDispatchDelegateExecInfoOption(
           dispatch_delegate_options.get(), "npu_bytecode", npu_model->data(),
           npu_model->size(), /*function_name=*/"simple"),
       kTfLiteOk);
   auto dispatch_delegate =
-      litert::DispatchDelegateCreatePtr(std::move(dispatch_delegate_options));
+      litert::CreateDispatchDelegatePtr(std::move(dispatch_delegate_options));
 
 #if !defined(__ANDROID__)
   GTEST_SKIP() << "The rest of this test is specific to Android devices with a "
