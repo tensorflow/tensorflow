@@ -36,7 +36,7 @@ struct TF_TensorWrapper {
 
 void TestShapeMatch(TensorShape shape) {
   Tensor tensor(DT_FLOAT, shape);
-  Status status;
+  absl::Status status;
   TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status);
   TF_TensorWrapper tensor_wrapper = TF_TensorWrapper(tf_tensor);
   ASSERT_TRUE(status.ok()) << status.ToString();

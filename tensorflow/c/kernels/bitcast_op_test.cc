@@ -35,7 +35,7 @@ class DummyDevice : public DeviceBase {
 
 void TestBitcastOp(Tensor* input_tensor, DataType out_type,
                    TensorShape expected_shape, error::Code expected_code) {
-  Status status;
+  absl::Status status;
   NodeDef def;
   def.set_op("Bitcast");
   def.set_device(DEVICE_CPU);
