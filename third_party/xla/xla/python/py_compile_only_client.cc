@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/python/lib/core/numpy.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -381,6 +382,11 @@ class CompileOnlyPyClient : public PyClient {
     mlir::MLIRContext context;
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         ParseMlirModuleString(mlir_module, context));
+    if (options.executable_build_options.use_shardy_partitioner()) {
+      // Since Shardy is located in the middle of the XLA pipeline, we need to
+      // export it before going to HLO while preserving Shardy ops and attrs.
+      TF_RETURN_IF_ERROR(ExportShardyForHloRoundTrip(*module));
+    }
     auto* ifrt_client =
         llvm::dyn_cast_or_null<CompileOnlyIfRtClient>(this->ifrt_client());
     CHECK(ifrt_client) << "CompileOnlyPyClient requires ifrt_client be a "
