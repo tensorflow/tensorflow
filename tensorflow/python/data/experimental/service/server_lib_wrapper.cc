@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "Python.h"
-#include "absl/strings/str_cat.h"
 #include "pybind11/chrono.h"  // from @pybind11
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/detail/common.h"  // from @pybind11
@@ -32,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
