@@ -26,6 +26,7 @@ limitations under the License.
 #include "Dialect/NVGPU/IR/Dialect.h"
 #include "nvidia/include/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/PTXAsmFormat.h"
+#include "nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
@@ -517,8 +518,10 @@ struct SparseLocalLoadToLLVMPass
               op.getType().getEncoding());
         });
     LowerToLLVMOptions option(context);
-    TritonGPUToLLVMTypeConverter typeConverter(context, option);
-    auto pattern = std::make_unique<SparseLocalLoadToLLVM>(typeConverter);
+    auto compute_capability = getNVIDIAComputeCapability(mod);
+    mlir::triton::NVIDIA::TargetInfo target_info(compute_capability);
+    TritonGPUToLLVMTypeConverter type_converter(context, option, target_info);
+    auto pattern = std::make_unique<SparseLocalLoadToLLVM>(type_converter);
     RewritePatternSet patterns(context, std::move(pattern));
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
@@ -864,7 +867,10 @@ struct SparseDotOpToLLVMPass
     target.addIllegalOp<triton::gpu::SparseDotOp>();
     target.addIllegalDialect<mlir::gpu::GPUDialect>();
     LowerToLLVMOptions option(context);
-    TritonGPUToLLVMTypeConverter typeConverter(context, option);
+    ModuleOp module = getOperation();
+    auto computeCapability = getNVIDIAComputeCapability(module);
+    mlir::triton::NVIDIA::TargetInfo targetInfo(computeCapability);
+    TritonGPUToLLVMTypeConverter typeConverter(context, option, targetInfo);
     RewritePatternSet patterns(context);
     patterns.add<SparseDotOpConversion>(typeConverter);
     // TODO(b/358375493): Remove this once TritonGPUToLLVMTypeConverter is
