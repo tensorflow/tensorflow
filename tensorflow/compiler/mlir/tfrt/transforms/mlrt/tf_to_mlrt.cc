@@ -1056,7 +1056,7 @@ class TfToMlrtConversionPass
     type_converter_.addSourceMaterialization(
         [](mlir::OpBuilder &builder, mlir::Type result_type,
            mlir::ValueRange inputs,
-           mlir::Location loc) -> std::optional<mlir::Value> {
+           mlir::Location loc) -> mlir::Value {
           return builder
               .create<mlir::UnrealizedConversionCastOp>(loc, result_type,
                                                         inputs)
