@@ -1434,10 +1434,6 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
     }
     auto bit_dims = original_map[op_dim];
     for (int64_t bitcast_dim : bit_dims) {
-      if (result_shape.dimensions(bitcast_dim) == 1) {
-        // Postpone all degenerated dimensions (those with size 1) to the end.
-        continue;
-      }
       VLOG(3) << "Add new reshaped dimension:" << bitcast_dim << "\n";
       if (bitcast_pos < 0 ||
           (*reshaped_dimensions)[bitcast_pos] != bitcast_dim) {
@@ -1447,6 +1443,10 @@ std::optional<Shape> AlgebraicSimplifierVisitor::ReshapeLayoutDimensions(
         if (bitcast_pos >= reshaped_dimensions->size()) {
           VLOG(3) << "bitcast pos is over incremented:" << bitcast_pos << "\n";
           return std::nullopt;
+        }
+        if (result_shape.dimensions(bitcast_dim) == 1) {
+          // Postpone all degenerated dimensions (those with size 1) to the end.
+          continue;
         }
         (*reshaped_dimensions)[bitcast_pos] = bitcast_dim;
       }

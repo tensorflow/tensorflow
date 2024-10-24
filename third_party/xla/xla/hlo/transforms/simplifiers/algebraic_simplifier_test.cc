@@ -11025,6 +11025,28 @@ TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy) {
               GmockMatch(m::Bitcast(m::Copy(m::Parameter()))));
 }
 
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopyDimSize1) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     param.8 = f32[9, 1, 12]{2,1,0} parameter(0)
+     transpose.1 = f32[1,12,9]{1,0,2} transpose(param.8), dimensions={1,2,0}
+     copy.4 = f32[1,12,9]{2,1,0} copy(transpose.1)
+     bitcast.15 = f32[1,108]{1,0} bitcast(copy.4)
+     copy.1 = f32[1,108]{0,1} copy(bitcast.15)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Bitcast(m::Parameter()))))));
+}
+
 TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {
   const char* kModuleStr = R"(
     HloModule m
