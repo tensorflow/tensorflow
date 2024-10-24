@@ -30,6 +30,7 @@ py_strict_library(
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:numpy_compat",
+        "//third_party/py/distutils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
