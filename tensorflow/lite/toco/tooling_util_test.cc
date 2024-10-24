@@ -12,15 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/toco/tooling_util.h"
+
 #include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/toco_port.h"
-#include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {
 
