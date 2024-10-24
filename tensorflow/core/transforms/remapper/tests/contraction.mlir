@@ -44,3 +44,20 @@ tfg.func @matmul_test() {
   %Tanh, %ctl_5 = Tanh(%BiasAdd) device("/device:CPU:0") name("Tanh") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
   return
 }
+
+// -----
+// CHECK-LABEL: tfg.func @conv2dsqueezebias_test
+tfg.func @conv2dsqueezebias_test() {
+  // CHECK: %[[PLACEHOLDER:.*]], {{.*}} name("input_tensor")
+  %Placeholder, %ctl = Placeholder device("/device:CPU:0") name("input_tensor") {dtype = f32, shape = #tf_type.shape<1x3x3x1>} : () -> (tensor<*xf32>)
+  // CHECK: %[[FILTER:.*]], {{.*}} name("Const")
+  %Const, %ctl_1 = Const device("/device:CPU:0") name("Const") {dtype = f32, value = dense<[[[[1.11986792, -3.0272491]]]]> : tensor<1x1x1x2xf32>} : () -> (tensor<*xf32>)
+  // CHECK: %[[BIAS:.*]], {{.*}} name("Const_1")
+  %Const_1, %ctl_3 = Const device("/device:CPU:0") name("Const_1") {dtype = f32, value = dense<[0.531091094, -0.719168067]> : tensor<2xf32>} : () -> (tensor<*xf32>)
+  // CHECK: Squeeze({{.*}}) {{.*}} name("BiasAdd")
+  %Conv2D, %ctl_4 = Conv2D(%Placeholder, %Const) device("/device:CPU:0") name("Conv2D") {T = f32, data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  %Squeeze, %ctl_5 = Squeeze(%Conv2D) device("/device:CPU:0") name("Squeeze") {T = f32, squeeze_dims = [2]} : (tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: _FusedConv2D(%[[PLACEHOLDER]], %[[FILTER]], %[[BIAS]]) {{.*}} name("Conv2D") {{.*}} fused_ops = ["BiasAdd"]
+  %BiasAdd, %ctl_6 = BiasAdd(%Squeeze, %Const_1) device("/device:CPU:0") name("BiasAdd") {T = f32, data_format = "NHWC"} : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>)
+  return
+}
