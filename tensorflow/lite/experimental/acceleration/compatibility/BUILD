@@ -222,8 +222,11 @@ cc_test(
         "no_cuda_asan",  # TODO(b/181032551).
     ],
     deps = [
+        ":android_info",
         ":devicedb_sample",
         ":gpu_compatibility",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_googletest//:gtest_main",
     ],
 )

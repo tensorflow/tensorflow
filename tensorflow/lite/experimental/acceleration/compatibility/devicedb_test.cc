@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb-sample.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace acceleration {
