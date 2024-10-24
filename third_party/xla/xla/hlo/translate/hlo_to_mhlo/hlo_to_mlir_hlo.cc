@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LLVM.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"

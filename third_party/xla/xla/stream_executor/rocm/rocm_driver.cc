@@ -141,55 +141,6 @@ absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
   return absl::UnimplementedError("unsupported node type");
 }
 
-absl::Status GpuDriver::GraphAddKernelNode(
-    hipGraphNode_t* node, hipGraph_t graph,
-    absl::Span<const hipGraphNode_t> deps, absl::string_view kernel_name,
-    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
-    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
-    unsigned int block_dim_z, unsigned int shared_mem_bytes,
-    void** kernel_params, void** extra) {
-  VLOG(2) << "Add kernel node to a graph " << graph
-          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
-
-  hipKernelNodeParams params;
-  memset(&params, 0, sizeof(params));
-
-  params.func = function;
-  params.gridDim.x = grid_dim_x;
-  params.gridDim.y = grid_dim_y;
-  params.gridDim.z = grid_dim_z;
-  params.blockDim.x = block_dim_x;
-  params.blockDim.y = block_dim_y;
-  params.blockDim.z = block_dim_z;
-  params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams = kernel_params;
-  params.extra = extra;
-
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipFuncSetAttribute(function,
-                                  hipFuncAttributeMaxDynamicSharedMemorySize,
-                                  shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
-
-  return ToStatus(wrap::hipGraphAddKernelNode(node, graph, deps.data(),
-                                              deps.size(), &params),
-                  "Failed to add kernel node to a HIP graph");
-}
-
-absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(hipGraph_t graph) {
-  VLOG(2) << "Get node count in graph " << graph;
-  size_t numNodes;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphGetNodes(graph, nullptr, &numNodes),
-                              "Failed to get HIP graph node count"));
-
-  return numNodes;
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

@@ -218,49 +218,6 @@ absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
   return absl::UnimplementedError("unsupported node type");
 }
 
-absl::Status GpuDriver::GraphAddKernelNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
-    absl::string_view kernel_name, CUfunction function, unsigned int grid_dim_x,
-    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
-    unsigned int block_dim_y, unsigned int block_dim_z,
-    unsigned int shared_mem_bytes, void** kernel_params, void** extra) {
-  VLOG(2) << "Add kernel node to a graph " << graph
-          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes
-          << "; deps: " << deps.size();
-
-  CUDA_KERNEL_NODE_PARAMS params;
-  memset(&params, 0, sizeof(params));
-
-  params.func = function;
-  params.gridDimX = grid_dim_x;
-  params.gridDimY = grid_dim_y;
-  params.gridDimZ = grid_dim_z;
-  params.blockDimX = block_dim_x;
-  params.blockDimY = block_dim_y;
-  params.blockDimZ = block_dim_z;
-  params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams = kernel_params;
-  params.extra = extra;
-
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
-
-  return cuda::ToStatus(
-      cuGraphAddKernelNode(node, graph, deps.data(), deps.size(), &params),
-      "Failed to add kernel node to a CUDA graph");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
@@ -277,13 +234,6 @@ absl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuDriverGetVersion(&version),
                                     "Could not get driver version"));
   return version;
-}
-
-absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(GpuGraphHandle graph) {
-  size_t num_nodes;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuGraphGetNodes(graph, /*nodes=*/nullptr, &num_nodes)));
-  return num_nodes;
 }
 
 }  // namespace gpu

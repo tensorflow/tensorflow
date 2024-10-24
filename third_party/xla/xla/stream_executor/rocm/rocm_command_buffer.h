@@ -54,7 +54,6 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::StatusOr<SetForConditionKernel*> GetSetForConditionKernel() override;
   absl::StatusOr<SetWhileConditionKernel*> GetSetWhileConditionKernel()
       override;
-  absl::StatusOr<NoOpKernel*> GetNoOpKernel() override;
 
   std::unique_ptr<GpuCommandBuffer> CreateNestedCommandBuffer(
       hipGraph_t graph) override;
@@ -104,6 +103,10 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                        bool enabled) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
+
+  absl::StatusOr<size_t> GetNodeCount() const override;
+
+  absl::Status PrepareFinalization() override;
 
   GpuExecutor* parent_;
 };
