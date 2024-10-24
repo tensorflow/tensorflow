@@ -1831,9 +1831,17 @@ cc_library(
     srcs = ["simplifiers/conditional_canonicalizer.cc"],
     hdrs = ["simplifiers/conditional_canonicalizer.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -1842,15 +1850,11 @@ xla_cc_test(
     srcs = ["simplifiers/conditional_canonicalizer_test.cc"],
     deps = [
         ":conditional_canonicalizer",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:literal_test_util",
-        "//xla/tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
 )

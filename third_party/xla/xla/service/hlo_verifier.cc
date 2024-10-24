@@ -2515,11 +2515,6 @@ absl::Status VerifyChannels(const HloModule& module,
             << "channel " << pair.first
             << " is used for different types of channel instructions";
       }
-      if (sendrecv->is_host_transfer()) {
-        TF_RET_CHECK(instructions.size() == 2)
-            << "channel " << pair.first
-            << " is used for multiple host send/recv instructions";
-      }
     } else {
       for (const HloInstruction* instr : instructions) {
         if (opts.verify_unique_channel_ids) {

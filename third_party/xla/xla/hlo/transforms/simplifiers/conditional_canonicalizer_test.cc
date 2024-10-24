@@ -17,16 +17,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/shape_util.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
-#include "xla/util.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -64,6 +58,38 @@ ENTRY entry {
   EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement(op::Conditional()));
+}
+
+TEST_F(ConditionalCanonicalizerTest, SharedBranches) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule _
+true_branch {
+  true_param = (s32[3,2]) parameter(0)
+  ROOT root = s32[] constant(0)
+}
+
+false_branch {
+  false_param = (s32[3,2]) parameter(0)
+  ROOT root = s32[] constant(1)
+}
+
+ENTRY entry {
+  param0 = s32[3,2] parameter(0)
+  branch = pred[] constant(false)
+  param_tuple = (s32[3 ,2]) tuple(param0)
+  conditional = s32[] conditional(branch, param_tuple, param_tuple),
+    true_computation=true_branch, false_computation=false_branch
+  conditional2 = s32[] conditional(branch, param_tuple, param_tuple),
+    true_computation=true_branch, false_computation=false_branch
+  ROOT tuple = (s32[],s32[]) tuple(conditional, conditional2)
+}
+)")
+                    .value();
+  ConditionalCanonicalizer pass;
+  EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Conditional()),
+                        op::GetTupleElement(op::Conditional())));
 }
 
 }  // namespace
