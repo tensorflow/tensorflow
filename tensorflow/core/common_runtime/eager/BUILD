@@ -40,7 +40,7 @@ tf_cuda_library(
     srcs = [
         "core.cc",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":context",
         ":eager_operation",
@@ -103,7 +103,7 @@ tf_cuda_library(
     hdrs = [
         "context.h",
     ],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         ":custom_device",
         ":eager_executor",

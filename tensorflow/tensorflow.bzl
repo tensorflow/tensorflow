@@ -185,8 +185,8 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
 
 def tf_portable_full_lite_protos(full, lite):
     return select({
-        "//tensorflow:mobile_lite_protos": lite,
-        "//tensorflow:mobile_full_protos": full,
+        clean_dep("//tensorflow:mobile_lite_protos"): lite,
+        clean_dep("//tensorflow:mobile_full_protos"): full,
         # The default should probably be lite runtime, but since most clients
         # seem to use the non-lite version, let's make that the default for now.
         "//conditions:default": full,
