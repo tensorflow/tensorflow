@@ -99,10 +99,8 @@ Open a Chrome Browser, type URL `chrome://tracing`, and load the json file.
 
 Below are 2 examples of graph view and scope view.
 
-<left>
 ![CodeTimeline](graph_timeline.png)
 ![CodeTimeline](scope_timeline.png)
-</left>
 
 ### Multi-step Profiling
 

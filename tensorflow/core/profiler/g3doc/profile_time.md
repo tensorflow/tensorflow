@@ -107,9 +107,8 @@ tfprof_node = model_analyzer.print_model_analysis(
 
 You can generate some visualization in code view:
 Set ```-output timeline:outfile=<filename>``` to generate timeline instead of stdout.
-<left>
+
 ![CodeTimeline](code_timeline.png)
-</left>
 
 
 ### Profile by Operation Type
@@ -145,10 +144,7 @@ Usually, use graph view to generate a timeline to visualize the result.
 In the chrome://tracing UI, click "Flow Event" in "View Options" of upper
 right corner to see the flow of tensors.
 
-<left>
-TODO(xpan): Show the image correctly in github.
 ![Timeline](graph_timeline.png)
-</left>
 
 tfprof options allow users to generate timeline in some advanced ways.
 
