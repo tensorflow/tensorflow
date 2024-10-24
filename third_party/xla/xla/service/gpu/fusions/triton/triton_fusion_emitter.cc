@@ -462,6 +462,42 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
   return Broadcast(b, mlir::cast<TensorValue>(range), padded_tile_sizes);
 }
 
+// Reshapes a non-0D tensor of shape [1, 1, 1, ...] to a scalar.
+ScalarOrTensor ReshapeTensorToScalar(ImplicitLocOpBuilder& b, Value input) {
+  auto element_type = mlir::cast<ShapedType>(input.getType()).getElementType();
+
+  // First, reshape to a 1D tensor if not already the case. This is needed
+  // because triton::ReduceOp can only reduce 1 dimension at a time.
+  auto single_dim_tensor = input;
+  if (mlir::cast<ShapedType>(input.getType()).getRank() > 1) {
+    Type output_tensor_type = mlir::RankedTensorType::get({1}, element_type);
+    single_dim_tensor = b.create<mt::ReshapeOp>(output_tensor_type, input,
+                                                /*allow_reorder=*/true);
+  }
+
+  // Second, reduce to a scalar.
+  mt::ReduceOp reduction =
+      b.create<mt::ReduceOp>(single_dim_tensor, /*axis=*/0);
+
+  mlir::Location loc = b.getLoc();
+  mlir::Block* reducer = b.createBlock(
+      &reduction->getRegion(0), /*insertPt=*/{},
+      /*argTypes=*/{element_type, element_type}, /*locs=*/{loc, loc});
+
+  b.setInsertionPointToStart(reducer);
+  Value result = mlir::isa<mlir::IntegerType>(element_type)
+                     ? b.create<ma::AddIOp>(reducer->getArgument(0),
+                                            reducer->getArgument(1))
+                           .getResult()
+                     : b.create<ma::AddFOp>(reducer->getArgument(0),
+                                            reducer->getArgument(1))
+                           .getResult();
+  b.create<mt::ReduceReturnOp>(SmallVector<Value>({result}));
+  b.setInsertionPointAfter(reduction);
+
+  return ScalarOrTensor(reduction.getResult().front());
+}
+
 absl::StatusOr<ScalarOrTensor> EmitTiledReshape(ImplicitLocOpBuilder& b,
                                                 ArrayRef<int64_t> tile_sizes,
                                                 ScalarOrTensor input) {
@@ -480,12 +516,12 @@ absl::StatusOr<ScalarOrTensor> EmitTiledReshape(ImplicitLocOpBuilder& b,
 
   auto input_shaped_type = mlir::cast<ShapedType>(input.Type());
 
-  // TODO(b/370012383): Implement support for reshapes of the kind [] reshape
-  // ([1,1,1...]). This requires a reduction.
+  // Handle the case of reshaping [1,1,1...] to a scalar.
   if (tile_sizes.empty()) {
-    return absl::InternalError(
-        "Reshapes of the kind [] reshape ([1,1,1...]) are not supported.");
+    return ReshapeTensorToScalar(b, input.UnwrapTensor());
   }
+
+  // At this point we know that neither the input nor the output are 0D tensors.
 
   Type output_tensor_type = mlir::RankedTensorType::get(
       padded_tile_sizes, input_shaped_type.getElementType());
@@ -585,9 +621,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
         EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
 
     // Some types are stored using different types, e.g. i1 is stored in memory
-    // as i8. It's important to type checking that we perform a conversion
-    // after loading if the type of the loaded parameter does not match what
-    // is expected.
+    // as i8. It's important to type checking that we perform a conversion after
+    // loading if the type of the loaded parameter does not match what is
+    // expected.
     Type loaded_element_type = getElementTypeOrSelf(parameter.Type());
     TF_ASSIGN_OR_RETURN(Type expected_element_type,
                         TritonType(b, hlo->shape().element_type()));
