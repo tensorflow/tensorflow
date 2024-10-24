@@ -16,10 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
