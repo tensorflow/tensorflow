@@ -110,6 +110,13 @@ class AnyBuffer {
 
   void* untyped_data() const { return buf_->data; }
 
+  template <typename T>
+  T* typed_data() const {
+    DCHECK(primitive_util::NativeToPrimitiveType<T>() == element_type())
+        << "Template type must match the underlying buffer dtype";
+    return reinterpret_cast<T*>(buf_->data);
+  }
+
   se::DeviceMemoryBase device_memory() const {
     return se::DeviceMemoryBase(untyped_data(), size_bytes());
   }

@@ -530,6 +530,8 @@ TEST(FfiTest, AnyBufferArgument) {
   auto fn = [&](AnyBuffer buffer) {
     EXPECT_EQ(buffer.element_type(), PrimitiveType::F32);
     EXPECT_EQ(buffer.untyped_data(), storage.data());
+    EXPECT_EQ(buffer.typed_data<float>(),
+              reinterpret_cast<float*>(storage.data()));
     AnyBuffer::Dimensions dimensions = buffer.dimensions();
     EXPECT_EQ(dimensions.size(), 2);
     EXPECT_EQ(dimensions[0], 2);
