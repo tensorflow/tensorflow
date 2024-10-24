@@ -22,16 +22,23 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/util/message_differencer.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
-#include "tensorflow/core/platform/ctstring_internal.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
+#include "tsl/platform/ctstring.h"
+#include "tsl/platform/ctstring_internal.h"
 
 namespace tensorflow {
 namespace dtensor {
