@@ -688,8 +688,7 @@ bool getTransposeConv2dPaddingValues(
       return false;
     }
 
-    int total_padding = ((ifm_size - 1) * dim_stride + filter_size - ofm_size);
-    total_padding = total_padding > 0 ? total_padding : 0;
+    int total_padding = ofm_size - ((ifm_size - 1) * dim_stride + filter_size);
 
     pad_before = total_padding / 2;
     pad_after = total_padding - pad_before;
