@@ -2554,6 +2554,33 @@ class Subgraph {
     return default_scale;
   }
 
+  static TfLiteStatus CheckTensorsRequantizationScale(
+      TfLiteContext* context, const TfLiteTensor& input_tensor,
+      const TfLiteTensor& filter_tensor, const TfLiteTensor& output_tensor,
+      float requant_scale_max, BuiltinOperator op_type, int node_index) {
+    if (input_tensor.type == kTfLiteInt8 || input_tensor.type == kTfLiteUInt8) {
+      const float input_scale = static_cast<const TfLiteAffineQuantization*>(
+                                    input_tensor.quantization.params)
+                                    ->scale->data[0];
+      const float filter_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     filter_tensor.quantization.params)
+                                     ->scale->data[0];
+      const float output_scale = static_cast<const TfLiteAffineQuantization*>(
+                                     output_tensor.quantization.params)
+                                     ->scale->data[0];
+
+      const float requantization_scale =
+          input_scale * filter_scale / output_scale;
+      if (requantization_scale >= requant_scale_max) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported requantization_scale scale in %s node #%d",
+            EnumNameBuiltinOperator(op_type), node_index);
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorsInputOutputScale(
       TfLiteContext* context, const TfLiteTensor& input_tensor,
       const TfLiteTensor& output_tensor, float scale_min, float scale_max,
@@ -3622,6 +3649,11 @@ class Subgraph {
       return kTfLiteError;
     }
 
+    const float requant_scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsRequantizationScale(
+        logging_context, input_tensor, filter_tensor, output_tensor, requant_scale_max,
+        BuiltinOperator_CONV_2D, node_index));
+
     uint32_t flags;
     TF_LITE_ENSURE_STATUS(CalculatePadding(
         logging_context, conv_params->padding, &flags, node_index));
@@ -4195,6 +4227,11 @@ class Subgraph {
           input_channels, node_index);
       return kTfLiteError;
     }
+
+    const float requant_scale_max = 256.0f;
+    TF_LITE_ENSURE_STATUS(CheckTensorsRequantizationScale(
+        logging_context, input_tensor, filter_tensor, output_tensor, requant_scale_max,
+        BuiltinOperator_FULLY_CONNECTED, node_index));
 
     float output_min = -std::numeric_limits<float>::infinity();
     float output_max = +std::numeric_limits<float>::infinity();
