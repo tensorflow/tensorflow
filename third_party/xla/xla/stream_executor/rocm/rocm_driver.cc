@@ -67,54 +67,6 @@ absl::Status GpuDriver::DestroyGraph(hipGraph_t graph) {
   return ToStatus(wrap::hipGraphDestroy(graph), "Failed to destroy HIP graph");
 }
 
-static std::string_view StreamCaptureModeToString(
-    GpuDriver::StreamCaptureMode mode) {
-  switch (mode) {
-    case GpuDriver::StreamCaptureMode::kGlobal:
-      return "global";
-    case GpuDriver::StreamCaptureMode::kThreadLocal:
-      return "threadlocal";
-    case GpuDriver::StreamCaptureMode::kRelaxed:
-      return "relaxed";
-  }
-}
-
-absl::Status GpuDriver::StreamBeginCapture(GpuStreamHandle stream,
-                                           StreamCaptureMode mode) {
-  hipStreamCaptureMode hip_mode;
-  switch (mode) {
-    case StreamCaptureMode::kGlobal:
-      hip_mode = hipStreamCaptureModeGlobal;
-      break;
-    case StreamCaptureMode::kThreadLocal:
-      hip_mode = hipStreamCaptureModeThreadLocal;
-      break;
-    case StreamCaptureMode::kRelaxed:
-      hip_mode = hipStreamCaptureModeRelaxed;
-      break;
-  }
-
-  VLOG(2) << "Beging stream " << stream << " capture in "
-          << StreamCaptureModeToString(mode) << " mode";
-  return ToStatus(wrap::hipStreamBeginCapture(stream, hip_mode),
-                  "Failed to begin stream capture");
-}
-
-absl::Status GpuDriver::StreamBeginCaptureToGraph(GpuStreamHandle stream,
-                                                  GpuGraphHandle graph,
-                                                  StreamCaptureMode mode) {
-  return absl::UnimplementedError(
-      "StreamBeginCaptureToGraph is not implemented");
-}
-
-absl::Status GpuDriver::StreamEndCapture(GpuStreamHandle stream,
-                                         hipGraph_t* graph) {
-  VLOG(2) << "End stream " << stream << " capture";
-
-  return ToStatus(wrap::hipStreamEndCapture(stream, graph),
-                  "Failed to end stream capture");
-}
-
 absl::Status GpuDriver::GraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
                                          const GraphInstantiateFlags& flags) {
   VLOG(2) << "Instantiate HIP executable graph from graph " << graph << " ("
@@ -132,16 +84,6 @@ absl::Status GpuDriver::GraphLaunch(hipGraphExec_t exec,
           << stream;
   return ToStatus(wrap::hipGraphLaunch(exec, stream),
                   "Failed to launch HIP graph");
-}
-
-absl::Status GpuDriver::GraphNodeSetEnabled(hipGraphExec_t exec,
-                                            hipGraphNode_t node, bool enabled) {
-  // Node is enabled if value != 0, otherwise the node is disabled.
-  unsigned value = enabled ? 1 : 0;
-  VLOG(2) << "Set HIP executable graph " << exec << " node " << node
-          << " enabled flag to " << value;
-  return ToStatus(wrap::hipGraphNodeSetEnabled(exec, node, value),
-                  "Failed to set HIP graph node enabled flag");
 }
 
 absl::Status GpuDriver::GraphExecUpdate(hipGraphExec_t exec, hipGraph_t graph,
@@ -251,16 +193,6 @@ absl::StatusOr<GpuDriver::GpuGraphNodeResult> GpuDriver::GraphAddNode(
   return absl::UnimplementedError("unsupported node type");
 }
 
-absl::Status GpuDriver::GraphAddEmptyNode(
-    hipGraphNode_t* node, hipGraph_t graph,
-    absl::Span<const hipGraphNode_t> deps) {
-  VLOG(2) << "Add empty node to a graph " << graph << "; deps: " << deps.size();
-
-  return ToStatus(
-      wrap::hipGraphAddEmptyNode(node, graph, deps.data(), deps.size()),
-      "Failed to add empty node to a HIP graph");
-}
-
 absl::Status GpuDriver::GraphAddKernelNode(
     hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<const hipGraphNode_t> deps, absl::string_view kernel_name,
@@ -308,179 +240,6 @@ absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(hipGraph_t graph) {
                               "Failed to get HIP graph node count"));
 
   return numNodes;
-}
-
-/*static*/ absl::Status GpuDriver::GraphExecKernelNodeSetParams(
-    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    absl::string_view kernel_name, hipFunction_t function,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
-    unsigned int block_dim_z, unsigned int shared_mem_bytes,
-    void** kernel_params, void** extra) {
-  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
-          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
-          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
-          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
-          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
-
-  hipKernelNodeParams params;
-  memset(&params, 0, sizeof(params));
-
-  params.func = function;
-  params.gridDim.x = grid_dim_x;
-  params.gridDim.y = grid_dim_y;
-  params.gridDim.z = grid_dim_z;
-  params.blockDim.x = block_dim_x;
-  params.blockDim.y = block_dim_y;
-  params.blockDim.z = block_dim_z;
-  params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams = kernel_params;
-  params.extra = extra;
-
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipFuncSetAttribute(function,
-                                  hipFuncAttributeMaxDynamicSharedMemorySize,
-                                  shared_mem_bytes),
-        "Failed to set shared memory size"));
-  }
-
-  return ToStatus(wrap::hipGraphExecKernelNodeSetParams(exec, node, &params),
-                  "Failed to set HIP graph kernel node params");
-}
-
-absl::Status GpuDriver::GraphAddChildNode(hipGraphNode_t* node,
-                                          hipGraph_t graph,
-                                          absl::Span<const hipGraphNode_t> deps,
-                                          hipGraph_t child) {
-  VLOG(2) << "Create a new node by cloning the child graph " << child
-          << " and add it to " << graph << "; deps: " << deps.size();
-
-  return ToStatus(
-      wrap::hipGraphAddChildGraphNode(node, graph, deps.data(), deps.size(),
-                                      child),
-      "Failed to create a child graph node and add it to a HIP graph");
-}
-
-/*static*/ absl::Status GpuDriver::GraphExecChildNodeSetParams(
-    GpuGraphExecHandle exec, GpuGraphNodeHandle node, GpuGraphHandle child) {
-  VLOG(2) << "Set child node params " << node << " in graph executable " << exec
-          << "to params contained in " << child;
-
-  return ToStatus(wrap::hipGraphExecChildGraphNodeSetParams(exec, node, child),
-                  "Failed to set HIP graph child node params");
-}
-
-absl::Status GpuDriver::GraphAddMemcpyD2DNode(
-    Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<const GpuGraphNodeHandle> deps, hipDeviceptr_t gpu_dst,
-    hipDeviceptr_t gpu_src, uint64_t size) {
-  VLOG(2) << "Add memcpy d2d node to a graph " << graph
-          << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context << "; deps: " << deps.size();
-
-  return ToStatus(wrap::hipGraphAddMemcpyNode1D(node, graph, deps.data(),
-                                                deps.size(), gpu_dst, gpu_src,
-                                                size, hipMemcpyDeviceToDevice),
-                  "Failed to add memcpy d2d node to a HIP graph");
-}
-
-absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src, uint64_t size) {
-  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
-          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context;
-
-  return ToStatus(
-      wrap::hipGraphExecMemcpyNodeSetParams1D(exec, node, gpu_dst, gpu_src,
-                                              size, hipMemcpyDeviceToDevice),
-      "Failed to set memcpy d2d node params");
-}
-
-namespace {
-
-struct BitPatternToString {
-  std::string operator()(uint8_t pattern) {
-    return absl::StrCat("u8:", pattern);
-  }
-  std::string operator()(uint16_t pattern) {
-    return absl::StrCat("u16:", pattern);
-  }
-  std::string operator()(uint32_t pattern) {
-    return absl::StrCat("u32:", pattern);
-  }
-};
-
-// Broadcasts a pattern value of 1/2/4 bytes to a 4 byte value.
-struct BitPatternToValue {
-  std::pair<unsigned, unsigned> operator()(uint8_t pattern) {
-    unsigned value = pattern;
-    return {(value << 24) | (value << 16) | (value << 8) | value,
-            /*element_size=*/1};
-  }
-  std::pair<unsigned, unsigned> operator()(uint16_t pattern) {
-    unsigned value = pattern;
-    return {(value << 16) | value, /*element_size=*/2};
-  }
-  std::pair<unsigned, unsigned> operator()(uint32_t pattern) {
-    return {pattern, /*element_size=*/4};
-  }
-};
-
-}  // namespace
-
-absl::Status GpuDriver::GraphAddMemsetNode(
-    Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<const GpuGraphNodeHandle> deps, hipDeviceptr_t dst,
-    std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
-    uint64_t num_elements) {
-  VLOG(2) << "Add memset node to a graph " << graph
-          << "; dst: " << reinterpret_cast<void*>(dst)
-          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
-          << "; num_elements: " << num_elements << "; context: " << context
-          << "; deps: " << deps.size();
-
-  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
-
-  hipMemsetParams params{
-      .dst = dst,
-      .elementSize = element_size,
-      .height = 1,
-      .pitch = 0,  // unused if height is 1
-      .value = value,
-      .width = num_elements,
-  };
-
-  return ToStatus(wrap::hipGraphAddMemsetNode(node, graph, deps.data(),
-                                              deps.size(), &params),
-                  "Failed to add memset node to a HIP graph");
-}
-
-absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
-    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    hipDeviceptr_t dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
-    uint64_t num_elements) {
-  VLOG(2) << "Set memset node params " << node << " in graph executable "
-          << exec << "; dst: " << reinterpret_cast<void*>(dst)
-          << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
-          << "; num_elements: " << num_elements << "; context: " << context;
-
-  auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
-
-  hipMemsetParams params{
-      .dst = dst,
-      .elementSize = element_size,
-      .height = 1,
-      .pitch = 0,  // unused if height is 1
-      .value = value,
-      .width = num_elements,
-  };
-
-  return ToStatus(wrap::hipGraphExecMemsetNodeSetParams(exec, node, &params),
-                  "Failed to set memset node params");
 }
 
 int GpuDriver::GetDeviceCount() {
