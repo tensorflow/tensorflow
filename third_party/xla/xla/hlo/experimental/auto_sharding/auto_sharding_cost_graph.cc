@@ -163,28 +163,31 @@ EdgeReshardingCostMatrix CostGraph::CreateEdgeCost(
   CHECK_LT(src_idx, node_lens_.size());
   CHECK_LT(dst_idx, node_lens_.size());
   EdgeReshardingCostMatrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
-  const auto& strategies = strategy_group->GetStrategies();
-  for (NodeStrategyIdx k = 0; k < strategies.size(); ++k) {
-    const ShardingStrategy& strategy = strategies[k];
+  const auto& strategy_input_shardings =
+      strategy_group->GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const NodeStrategyIdx k =
+        strategy_group->GetStrategyIdxForInputShardings(iid);
     size_t start_idx = 0;
-    CHECK_LT(in_node_idx, strategy.memory_resharding_costs.size())
+    CHECK_LT(in_node_idx, input_shardings.memory_resharding_costs.size())
         << strategy_group->node_idx;
-    if (strategy.memory_resharding_costs[in_node_idx].size() >
+    if (input_shardings.memory_resharding_costs[in_node_idx].size() >
         node_lens_[src_idx]) {
-      start_idx = strategy.memory_resharding_costs[in_node_idx].size() -
+      start_idx = input_shardings.memory_resharding_costs[in_node_idx].size() -
                   node_lens_[src_idx];
     }
     for (size_t j = start_idx;
-         j < strategy.memory_resharding_costs[in_node_idx].size(); ++j) {
+         j < input_shardings.memory_resharding_costs[in_node_idx].size(); ++j) {
       double communication_cost = 0;
       double memory_cost = 0;
       if (!zero_cost) {
         communication_cost =
-            strategy.communication_resharding_costs[in_node_idx][j];
-        memory_cost = strategy.memory_resharding_costs[in_node_idx][j];
+            input_shardings.communication_resharding_costs[in_node_idx][j];
+        memory_cost = input_shardings.memory_resharding_costs[in_node_idx][j];
       }
-      edge_cost(j - start_idx, k) =
-          EdgeReshardingCost(communication_cost, memory_cost);
+      edge_cost(j - start_idx, k)
+          .take_max(EdgeReshardingCost(communication_cost, memory_cost));
     }
   }
   return edge_cost;

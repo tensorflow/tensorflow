@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdlib>
 #include <string>
@@ -41,6 +42,11 @@ struct EdgeReshardingCost {
 
   EdgeReshardingCost(double communication_cost_, double memory_cost_)
       : communication_cost(communication_cost_), memory_cost(memory_cost_) {}
+
+  void take_max(const EdgeReshardingCost& other) {
+    communication_cost = std::max(communication_cost, other.communication_cost);
+    memory_cost = std::max(memory_cost, other.memory_cost);
+  }
 
   EdgeReshardingCost operator+(const EdgeReshardingCost& other) const {
     return EdgeReshardingCost(other.communication_cost + communication_cost,

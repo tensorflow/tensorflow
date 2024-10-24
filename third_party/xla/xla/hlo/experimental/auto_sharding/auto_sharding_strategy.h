@@ -82,6 +82,12 @@ using ReshardingCosts = std::vector<std::vector<double>>;
 struct InputShardings {
   std::string name;
   std::vector<std::optional<HloSharding>> shardings;
+  // resharding_costs[i][j] is the resharding cost from the output of
+  // i-th operand's j-th strategy to this strategy.
+  // If there is only one tuple operand,resharding_costs[i][j] is the resharding
+  // cost from i-th tuple element's j-th strategy.
+  ReshardingCosts communication_resharding_costs;
+  ReshardingCosts memory_resharding_costs;
 
   std::string ToString() const {
     std::string str = absl::StrCat(name, " ");
@@ -102,26 +108,7 @@ struct InputShardings {
         }
       }
     }
-    return str;
-  }
-};
 
-// One sharding strategy
-struct ShardingStrategy {
-  HloSharding output_sharding;
-  double compute_cost;
-  double communication_cost;
-  double memory_cost;
-  // resharding_costs[i][j] is the resharding cost from the output of
-  // i-th operand's j-th strategy to this strategy.
-  // If there is only one tuple operand,resharding_costs[i][j] is the resharding
-  // cost from i-th tuple element's j-th strategy.
-  ReshardingCosts communication_resharding_costs;
-  ReshardingCosts memory_resharding_costs;
-
-  std::string ToString() const { return output_sharding.ToString(); }
-
-  std::string ToStringLong() const {
     std::vector<std::string> communication_resharding_vector_strings;
     communication_resharding_vector_strings.reserve(
         communication_resharding_costs.size());
@@ -140,23 +127,35 @@ struct ShardingStrategy {
     }
     std::string memory_resharding_cost_str = absl::StrCat(
         "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
+    absl::StrAppend(&str, ", communication_resharding_costs=",
+                    communication_resharding_cost_str,
+                    ", memory_resharding_costs=", memory_resharding_cost_str);
 
-    return absl::StrCat(
-        output_sharding.ToString(), ", compute_cost=", compute_cost,
-        ", communication_cost=", communication_cost,
-        ", memory_cost=", memory_cost,
-        ", communication_resharding_costs=", communication_resharding_cost_str,
-        ", memory_resharding_costs=", memory_resharding_cost_str);
+    return str;
+  }
+};
+
+// One sharding strategy
+struct ShardingStrategy {
+  HloSharding output_sharding;
+  double compute_cost;
+  double communication_cost;
+  double memory_cost;
+
+  std::string ToString() const { return output_sharding.ToString(); }
+
+  std::string ToStringLong() const {
+    return absl::StrCat(output_sharding.ToString(),
+                        ", compute_cost=", compute_cost,
+                        ", communication_cost=", communication_cost,
+                        ", memory_cost=", memory_cost);
   }
 
   bool operator==(const ShardingStrategy& other) const {
     return output_sharding == other.output_sharding &&
            compute_cost == other.compute_cost &&
            communication_cost == other.communication_cost &&
-           memory_cost == other.memory_cost &&
-           communication_resharding_costs ==
-               other.communication_resharding_costs &&
-           memory_resharding_costs == other.memory_resharding_costs;
+           memory_cost == other.memory_cost;
   }
 };
 
@@ -324,6 +323,10 @@ struct StrategyGroup {
   }
 
   const InputShardings& GetInputShardings(size_t input_sharding_idx) const {
+    return strategy_input_shardings[input_sharding_idx];
+  }
+
+  InputShardings& GetMutableInputShardings(size_t input_sharding_idx) {
     return strategy_input_shardings[input_sharding_idx];
   }
 
