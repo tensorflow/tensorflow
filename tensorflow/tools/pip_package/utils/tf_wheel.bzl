@@ -31,7 +31,7 @@ load(
     "WHEEL_COLLAB",
     "WHEEL_NAME",
 )
-load("//tensorflow:tensorflow.bzl", "VERSION")
+load("//tensorflow:tensorflow.bzl", "VERSION", "WHEEL_VERSION")
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -50,7 +50,7 @@ def _get_full_wheel_name(platform_name, platform_tag):
     python_version = HERMETIC_PYTHON_VERSION.replace(".", "")
     return "{wheel_name}-{wheel_version}-cp{python_version}-cp{python_version}-{wheel_platform_tag}.whl".format(
         wheel_name = WHEEL_NAME,
-        wheel_version = VERSION,
+        wheel_version = WHEEL_VERSION.replace("-", "."),
         python_version = python_version,
         wheel_platform_tag = _get_wheel_platform_name(platform_name, platform_tag),
     )
