@@ -2993,12 +2993,13 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     });
 
 REGISTER_OP("QuantizeV2")
-    .Input("input: float")
+    .Input("input: dtype")
     .Input("min_range: float")
     .Input("max_range: float")
     .Output("output: T")
     .Output("output_min: float")
     .Output("output_max: float")
+    .Attr("dtype: {bfloat16, float} = DT_FLOAT")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
     .Attr(
