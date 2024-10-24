@@ -19,13 +19,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/full_type_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

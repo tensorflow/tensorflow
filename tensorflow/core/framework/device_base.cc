@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/device_base.h"

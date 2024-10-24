@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/log_memory.h"
 
+#include "absl/log/log.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
