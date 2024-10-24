@@ -370,6 +370,7 @@ cc_library(
         ":test_util",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -395,6 +396,7 @@ cc_library(
         ":attribute_map",
         ":ifrt",
         "//xla:test",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
@@ -574,6 +576,7 @@ xla_cc_test(
     deps = [
         ":device_test_util",
         ":ifrt",
+        ":remap_plan_proto_cc",
         ":sharding_serdes",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/functional:bind_front",

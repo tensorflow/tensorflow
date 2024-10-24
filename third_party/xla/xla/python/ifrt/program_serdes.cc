@@ -17,11 +17,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/status/statusor.h"
-#include "llvm/Support/Casting.h"
-#include "xla/python/ifrt/serdes.h"
-#include "xla/util.h"
-
 namespace xla {
 namespace ifrt {
 
