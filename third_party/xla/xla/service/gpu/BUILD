@@ -21,6 +21,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//xla:xla.bzl", "xla_cc_test", "xla_internal")
 load(
     "//xla/service/gpu:build_defs.bzl",
@@ -2723,9 +2724,23 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
+        "//util/symbolize",
         "//xla/tsl/lib/monitoring:counter",
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/lib/monitoring:sampler",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tf_cc_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.cc"],
+    deps = [
+        ":metrics",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
