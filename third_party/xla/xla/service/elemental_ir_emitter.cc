@@ -2098,7 +2098,47 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
     llvm::Value* b_signed_zero = llvm_ir::EmitCallToIntrinsic(
         llvm::Intrinsic::copysign, {zero, b}, {b->getType()}, b_);
     llvm::Value* neg_b_signed_zero = FMul(b_signed_zero, neg_one);
-
+// The below is for a specific edge case where when the input is (inf, snan)
+// arm expects the output to be (nan, nan) while x86 expects (0, 0)
+#ifdef __aarch64__
+    llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {a}, {a->getType()}, b_);
+    llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
+                                                      {b}, {b->getType()}, b_);
+    if (prim_type == PrimitiveType::F32) {
+      // F32 because in EmitComplexUnaryOp C64 is converted to F32
+      llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+      real_part = Select(is_zero_zero, inf,
+                         Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)),
+                                   FCmpOEQ(abs_a, inf)),
+                                a_signed_zero, FMul(r, cos)));
+      imag_part = Select(is_zero_zero, nan,
+                         Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)),
+                                   FCmpOEQ(abs_a, inf)),
+                                neg_b_signed_zero, FMul(r, sin)));
+    } else if (prim_type == PrimitiveType::F64) {
+      // F64 because in EmitComplexUnaryOp C128 is converted to F64
+      auto* is_snan = b_->createIsFPClass(b, llvm::FPClassTest::fcSNan);
+      llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
+      llvm::Value* is_zero_zero = And(FCmpOEQ(b, zero), FCmpOEQ(a, zero));
+      llvm::Value* is_a_inf_b_nan =
+          And(Or(FCmpOEQ(a, inf), FCmpOEQ(a, neg_inf)), FCmpUNO(b, b));
+      llvm::Value* should_propagate_nan = And(is_a_inf_b_nan, is_snan);
+      real_part =
+          Select(should_propagate_nan, nan,
+                 Select(is_zero_zero, inf,
+                        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)),
+                                  FCmpOEQ(abs_a, inf)),
+                               a_signed_zero, FMul(r, cos))));
+      imag_part =
+          Select(should_propagate_nan, nan,
+                 Select(is_zero_zero, nan,
+                        Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)),
+                                  FCmpOEQ(abs_a, inf)),
+                               neg_b_signed_zero, FMul(r, sin))));
+    }
+#endif
+#ifdef __x86_64__
     llvm::Value* abs_a = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
                                                       {a}, {a->getType()}, b_);
     llvm::Value* abs_b = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
@@ -2113,6 +2153,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
         is_zero_zero, nan,
         Select(Or(And(FCmpOEQ(abs_b, inf), FCmpUNO(a, a)), FCmpOEQ(abs_a, inf)),
                neg_b_signed_zero, FMul(r, sin)));
+#endif
   } else {
     llvm::Value* zero = llvm::ConstantFP::get(type, 0);
     llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
