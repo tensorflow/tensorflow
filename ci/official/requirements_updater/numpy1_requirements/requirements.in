@@ -13,6 +13,7 @@ termcolor == 2.3.0
 wrapt == 1.16.0
 tblib == 2.0.0
 ml_dtypes >= 0.4.0, < 0.5.0
+auditwheel ~= 6.1.0
 # Install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
