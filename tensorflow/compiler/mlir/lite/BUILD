@@ -1767,10 +1767,7 @@ exports_files(srcs = ["utils/control_edges.h"])
 cc_library(
     name = "control_edges",
     hdrs = ["utils/control_edges.h"],
-    visibility = [
-        "//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__",
-        "//tensorflow/lite:__pkg__",
-    ],
+    visibility = ["//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__"],
 )
 
 tf_cc_test(
