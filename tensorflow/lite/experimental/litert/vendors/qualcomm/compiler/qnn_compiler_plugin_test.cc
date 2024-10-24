@@ -26,6 +26,14 @@
 #include "tensorflow/lite/experimental/litert/vendors/c/litert_compiler_plugin.h"
 
 namespace {
+static constexpr absl::string_view kOpTpl = "simple_%s_op.tflite";
+// clang-format off
+const auto kSupportedOps =
+    testing::Values(
+                    "mul",
+                    "slice"
+                    );
+// clang-format on
 
 UniqueLiteRtCompilerPlugin GetQnnPlugin() {
   LiteRtCompilerPlugin qnn_plugin;
@@ -93,5 +101,46 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
 
   LiteRtCompiledResultDestroy(compiled);
 }
+
+class QnnPluginOpCompatibilityTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(QnnPluginOpCompatibilityTest, SupportedOpsTest) {
+  auto plugin = GetQnnPlugin();
+  auto model =
+      litert::testing::LoadTestFileModel(absl::StrFormat(kOpTpl, GetParam()));
+
+  ASSERT_RESULT_OK_ASSIGN(auto subgraph,
+                          ::graph_tools::GetSubgraph(model.get()));
+
+  LiteRtCompiledResult compiled;
+  ASSERT_STATUS_OK(
+      LiteRtPluginCompile(plugin.get(), "V75", &subgraph, 1, &compiled));
+
+  const void* byte_code;
+  size_t byte_code_size;
+
+  ASSERT_STATUS_OK(
+      LiteRtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
+
+  std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
+                               byte_code_size);
+  ASSERT_FALSE(byte_code_string.empty());
+
+  const void* op_data;
+  size_t op_data_size;
+
+  ASSERT_STATUS_OK(
+      LiteRtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
+
+  std::string op_data_string(reinterpret_cast<const char*>(op_data),
+                             op_data_size);
+  ASSERT_EQ("qnn_partition_0", op_data_string);
+
+  LiteRtCompiledResultDestroy(compiled);
+}
+
+INSTANTIATE_TEST_SUITE_P(SupportedOpsTest, QnnPluginOpCompatibilityTest,
+                         kSupportedOps);
 
 }  // namespace

@@ -91,6 +91,9 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflCustom:
       out << "TFL_CUSTOM_OP";
       break;
+    case kLiteRtOpCodeTflSlice:
+      out << "TFL_SLICE";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;
@@ -323,7 +326,7 @@ void DumpOptions(const LiteRtOpT& op, std::ostream& out) {
       }
       break;
     default:
-      out << "UKNOWN_OP_CODE: " << op.op_code;
+      out << "No options for op code: " << op.op_code;
       break;
   }
 }

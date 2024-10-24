@@ -38,7 +38,7 @@ LiteRtStatus MulOpLegalization::LegalizeOp(LiteRtOpManager& src,
                                            Qnn_OpConfig_t& dest,
                                            GraphMapper& graph_mapper) {
   if (src.Code() != kLiteRtOpCodeTflMul) {
-    return kLrtStatusLegalizeNoMatch;
+    return kLiteRtStatusLegalizeNoMatch;
   }
   std::string op_name = absl::StrFormat(kMulOpFmt, op_counter_++);
   LITERT_RETURN_STATUS_IF_NOT_OK(SetOpInfo(op_name.c_str(),
