@@ -25,7 +25,7 @@ namespace libexport {
 // Writes a saved model to disk.
 //
 // Writes a saved model to the given `export_dir`.
-TF_EXPORT Status Save(const std::string& export_dir);
+TF_EXPORT absl::Status Save(const std::string& export_dir);
 
 }  // namespace libexport
 }  // namespace tensorflow
