@@ -30,6 +30,7 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -175,6 +176,7 @@ cc_library(
     hdrs = ["in_memory_key_value_store.h"],
     deps = [
         ":key_value_store_interface",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
