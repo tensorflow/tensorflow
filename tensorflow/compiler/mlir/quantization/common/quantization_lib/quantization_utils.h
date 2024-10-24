@@ -246,8 +246,8 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         maxs.push_back(rmax);
       }
       quant_type = quantfork::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, *op.getAxis(), mins, maxs, narrow_range,
-          expressed, is_signed);
+          op.getLoc(), num_bits, *op.getAxis(), mins, maxs,
+          num_bits == 16 ? true : narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, mins, maxs, op->getLoc());
       }
@@ -270,9 +270,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         rmin = -rmax;
       }
       TensorRangeSanityCheck(op, rmin, rmax);
-      quant_type =
-          quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
-                                          narrow_range, expressed, is_signed);
+      quant_type = quantfork::fakeQuantAttrsToType(
+          op.getLoc(), num_bits, rmin, rmax,
+          num_bits == 16 ? true : narrow_range, expressed, is_signed);
       if (legacy_float_scale) {
         quant_type = DownCastScale(quant_type, rmin, rmax, op->getLoc());
       }
