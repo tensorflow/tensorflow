@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/c_api.h"
 
@@ -761,6 +762,55 @@ TEST(TestTfLiteOpaqueNode, CustomOpWithData) {
 
   TfLiteInterpreterDelete(interpreter);
   TfLiteOperatorDelete(reg);
+  TfLiteModelDelete(model);
+}
+
+namespace npu_op {
+
+void* Init(TfLiteOpaqueContext* context, const char* buffer, size_t length) {
+  return nullptr;
+}
+
+void Free(TfLiteOpaqueContext* context, void* buffer) {}
+
+TfLiteStatus Prepare(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+  const char* data;
+  size_t bytes;
+  TF_LITE_ENSURE_STATUS(
+      TfLiteOpaqueContextGetMetadata(context, "NPU_BYTE_CODE", &data, &bytes));
+
+  return static_cast<TfLiteStatus>(data == nullptr || bytes == 0);
+}
+
+TfLiteStatus Invoke(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node) {
+  return kTfLiteOk;
+}
+
+}  // namespace npu_op
+
+TEST(TestTfLiteOpaqueContext, TestGetMetadata) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/with_metadata.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteOperator* reg =
+      TfLiteOperatorCreate(kTfLiteBuiltinCustom, "NPU_OP", /*version=*/1,
+                           /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepare(reg, npu_op::Prepare);
+  TfLiteOperatorSetInit(reg, npu_op::Init);
+  TfLiteOperatorSetFree(reg, npu_op::Free);
+  TfLiteOperatorSetInvoke(reg, npu_op::Invoke);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOperator(options, reg);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // Allocate tensors calls prepare.
+  EXPECT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  TfLiteOperatorDelete(reg);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
   TfLiteModelDelete(model);
 }
 

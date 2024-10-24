@@ -627,6 +627,13 @@ TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
   return tflite::GetSizeOfType(Convert(context), type, bytes);
 }
 
+TfLiteStatus TfLiteOpaqueContextGetMetadata(TfLiteOpaqueContext* context,
+                                            const char* name, const char** ptr,
+                                            size_t* bytes) {
+  auto* tflite_context = Convert(context);
+  return tflite_context->GetModelMetadata(tflite_context, name, ptr, bytes);
+}
+
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
                                     const char* format, ...) {
   va_list vlist;
