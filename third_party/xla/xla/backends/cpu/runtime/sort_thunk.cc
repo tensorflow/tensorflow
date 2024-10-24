@@ -502,7 +502,9 @@ static void Sort1DArrInplace(const SortDims& sort_dims, int64_t offset,
   using NativeT = typename primitive_util::PrimitiveTypeToNative<Type>::type;
   DCHECK_EQ(data.size(), 1);
 
-  NativeT* begin = reinterpret_cast<NativeT*>(data[0].opaque()) + offset;
+  SortIterator<NativeT, NativeT&, NativeT*> begin(
+      (reinterpret_cast<NativeT*>(data[0].opaque()) + offset),
+      /*stride=*/sort_dims.inner_dim_size);
 
   if (direction == SortThunk::SortDirection::kAscending) {
     if (is_stable) {

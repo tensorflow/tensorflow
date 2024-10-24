@@ -854,6 +854,7 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter2",
         ":target_machine_features",
+        "//xla:comparison_util",
         "//xla:cpu_function_runtime",
         "//xla:shape_util",
         "//xla:status_macros",
