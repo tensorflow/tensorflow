@@ -37,14 +37,14 @@ static const int kInputBufferSize = 1 * 1024 * 1024; /* bytes */
 static const int kLineNumber = -1;
 static const int kWholeLine = -2;
 
-Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
-                             int64_t* num_lines) {
+absl::Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
+                                   int64_t* num_lines) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
 
   io::InputBuffer input_buffer(file.get(), kInputBufferSize);
   string line;
-  Status s = input_buffer.ReadLine(&line);
+  absl::Status s = input_buffer.ReadLine(&line);
   int64_t next_id = 0;
   while (s.ok()) {
     next_id++;
@@ -81,9 +81,9 @@ class TextFileLineIterator
   // - Index -1 means the line number stored in int64.
   // - Index >= 0 represent index (starting at zero) of the split line based on
   //   delimiter.
-  Status Init(const string& filename, int64_t vocab_size, char delimiter,
-              DataType key_dtype, int64_t key_index, DataType value_dtype,
-              int64_t value_index, int64_t offset, Env* env) {
+  absl::Status Init(const string& filename, int64_t vocab_size, char delimiter,
+                    DataType key_dtype, int64_t key_index, DataType value_dtype,
+                    int64_t value_index, int64_t offset, Env* env) {
     filename_ = filename;
     vocab_size_ = vocab_size;
     delimiter_ = delimiter;
@@ -172,12 +172,12 @@ class TextFileLineIterator
 
   const Tensor& values() const override { return value_; }
 
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
 
   int64_t total_size() const override {
     if (vocab_size_ == -1) {
       int64_t new_size = -1;
-      Status status = GetNumLinesInTextFile(env_, filename_, &new_size);
+      absl::Status status = GetNumLinesInTextFile(env_, filename_, &new_size);
       if (!status.ok()) {
         LOG(WARNING) << "Unable to get line count: " << status;
         new_size = -1;
@@ -199,15 +199,15 @@ class TextFileLineIterator
   int64_t vocab_size_;
   string filename_;
   char delimiter_;
-  Status status_;
+  absl::Status status_;
   bool ignore_split_;
   std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 
   // Set the corresponding value from line or tokens based on 'index' into the
   // tensor 't'. The value is transformed to the given data type 'dtype'.
-  Status SetValue(const string& line, const std::vector<string>& tokens,
-                  int64_t index, Tensor* tensor) {
+  absl::Status SetValue(const string& line, const std::vector<string>& tokens,
+                        int64_t index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64_t>()(0) = next_id_ + offset_;
       return absl::OkStatus();
@@ -266,8 +266,8 @@ class TextFileLineIterator
   void operator=(const TextFileLineIterator&) = delete;
 };
 
-Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
-                      string* container, string* table_handle) {
+absl::Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
+                            string* container, string* table_handle) {
   {
     mutex* mu;
     TF_RETURN_IF_ERROR(ctx->input_ref_mutex(input_name, &mu));
@@ -288,16 +288,18 @@ Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
 
 }  // namespace
 
-Status GetResourceLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                              LookupInterface** table) {
+absl::Status GetResourceLookupTable(StringPiece input_name,
+                                    OpKernelContext* ctx,
+                                    LookupInterface** table) {
   const Tensor* handle_tensor;
   TF_RETURN_IF_ERROR(ctx->input(input_name, &handle_tensor));
   const ResourceHandle& handle = handle_tensor->scalar<ResourceHandle>()();
   return LookupResource(ctx, handle, table);
 }
 
-Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                               LookupInterface** table) {
+absl::Status GetReferenceLookupTable(StringPiece input_name,
+                                     OpKernelContext* ctx,
+                                     LookupInterface** table) {
   string container;
   string table_handle;
   TF_RETURN_IF_ERROR(
@@ -316,8 +318,9 @@ absl::Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
   }
 }
 
-Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
-                                   InitializableLookupTable** table) {
+absl::Status GetInitializableLookupTable(StringPiece input_name,
+                                         OpKernelContext* ctx,
+                                         InitializableLookupTable** table) {
   LookupInterface* lookup_table;
   DataType handle_dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &handle_dtype));
@@ -348,8 +351,9 @@ Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
   return absl::OkStatus();
 }
 
-Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
-                           DataType value_dtype, const string& table_name) {
+absl::Status CheckTableDataTypes(const LookupInterface& table,
+                                 DataType key_dtype, DataType value_dtype,
+                                 const string& table_name) {
   if (table.key_dtype() != key_dtype || table.value_dtype() != value_dtype) {
     return errors::InvalidArgument(
         "Conflicting key/value dtypes ", DataTypeString(key_dtype), "->",
@@ -361,16 +365,17 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
 }
 
 // Helper function to initialize an InitializableLookupTable from a text file.
-Status InitializeTableFromTextFile(const string& filename, int64_t vocab_size,
-                                   char delimiter, int32_t key_index,
-                                   int32_t value_index, int64_t offset,
-                                   Env* env, InitializableLookupTable* table) {
+absl::Status InitializeTableFromTextFile(const string& filename,
+                                         int64_t vocab_size, char delimiter,
+                                         int32_t key_index, int32_t value_index,
+                                         int64_t offset, Env* env,
+                                         InitializableLookupTable* table) {
   return InitializeTableFromTextFile(filename, vocab_size, delimiter, key_index,
                                      value_index, offset, env,
                                      /*serializer=*/nullptr, table);
 }
 
-Status InitializeTableFromTextFile(
+absl::Status InitializeTableFromTextFile(
     const string& filename, int64_t vocab_size, char delimiter,
     int32_t key_index, int32_t value_index, int64_t offset, Env* env,
     std::unique_ptr<InitializableLookupTable::InitializerSerializer> serializer,
@@ -409,7 +414,7 @@ Status InitializeTableFromTextFile(
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same
   // time.
-  Status s = table->Initialize(iter, std::move(serializer));
+  absl::Status s = table->Initialize(iter, std::move(serializer));
   if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
