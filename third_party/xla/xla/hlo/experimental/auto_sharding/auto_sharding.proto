@@ -51,6 +51,7 @@ message AutoShardingSolverRequest {
   repeated int64 s_hint = 5;
   repeated int64 peak_times = 35;
   repeated Pair edges = 6;
+  repeated Nodes hyperedges = 42;
   repeated Nodes live = 7;
   repeated Edges live_edges = 28;
   repeated Pair node_intervals = 36;
@@ -63,6 +64,7 @@ message AutoShardingSolverRequest {
   repeated Costs memory_edge_costs = 29;
   repeated Costs departure_costs = 11;
   repeated Costs resharding_costs = 12;
+  repeated Costs hyperedge_costs = 43;
   repeated Costs duration_costs = 13;
   repeated Pair aliases = 14;
   repeated Costs value_costs = 15;

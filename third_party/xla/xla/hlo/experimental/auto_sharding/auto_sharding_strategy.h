@@ -161,8 +161,10 @@ struct ShardingStrategy {
 
 using NodeIdx = int64_t;          // An index into the solver's node list.
 using EdgeIdx = int64_t;          // An index into the solver's edge list.
+using HyperedgeIdx = int64_t;     // An index into the solver's hyperedge list.
 using NodeStrategyIdx = int64_t;  // An index into a node's strategy vector.
 using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
+using HyperedgeStrategyIdx = int64_t;  // Index into a h-edge's strategy vector.
 using LivenessIdx = int64_t;      // An index into the liveness vector.
 using AliasIdx = int64_t;         // An index into the alias vector.
 

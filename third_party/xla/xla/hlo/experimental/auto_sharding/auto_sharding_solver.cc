@@ -964,13 +964,14 @@ bool CostComponents::operator==(const CostComponents& other) const {
   return communication_cost == other.communication_cost &&
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
+         hyperedge_cost == other.hyperedge_cost &&
          overbudget_cost == other.overbudget_cost &&
          makespan_cost == other.makespan_cost;
 }
 
 double CostComponents::cost() const {
   return communication_cost + computation_cost + resharding_cost +
-         overbudget_cost + makespan_cost;
+         hyperedge_cost + overbudget_cost + makespan_cost;
 }
 
 bool AutoShardingEvaluation::operator==(
@@ -985,6 +986,7 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   const auto& c = request.computation_costs();
   const auto& d = request.communication_costs();
   const auto& r = request.resharding_costs();
+  const auto& h = request.hyperedge_costs();
   const auto& v = request.value_costs();
   const auto& p = request.departure_costs();
   const std::vector<NodeStrategyIdx>& s_val = result.s_val;
@@ -992,6 +994,15 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     const auto& edge = request.edges(edge_idx);
     return s_val[edge.first()] * request.s_len(edge.second()) +
            s_val[edge.second()];
+  };
+  const auto h_val = [&](HyperedgeIdx hedge_idx) {
+    const auto& hedge = request.hyperedges(hedge_idx);
+    HyperedgeStrategyIdx result = 0;
+    for (size_t tuple_idx = 0; tuple_idx < hedge.nodes_size(); ++tuple_idx) {
+      result *= request.s_len(hedge.nodes(tuple_idx));
+      result += s_val[hedge.nodes(tuple_idx)];
+    }
+    return result;
   };
   AutoShardingEvaluation evaluation;
   // Compute violations.
@@ -1018,6 +1029,12 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   }
   for (EdgeIdx edge_idx = 0; edge_idx < request.edges_size(); ++edge_idx) {
     if (r.at(edge_idx).costs(e_val(edge_idx)) >= kInfinityCost) {
+      evaluation.violation_codes.insert(kInfiniteCostViolationCode);
+    }
+  }
+  for (HyperedgeIdx hedge_idx = 0; hedge_idx < request.hyperedges_size();
+       ++hedge_idx) {
+    if (h.at(hedge_idx).costs(h_val(hedge_idx)) >= kInfinityCost) {
       evaluation.violation_codes.insert(kInfiniteCostViolationCode);
     }
   }
@@ -1167,6 +1184,12 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
     evaluation.total.resharding_cost += r.at(edge_idx).costs(e_val(edge_idx));
     evaluation.lower_bound.resharding_cost += *std::min_element(
         r.at(edge_idx).costs().begin(), r.at(edge_idx).costs().end());
+  }
+  for (HyperedgeIdx hedge_idx = 0; hedge_idx < request.hyperedges_size();
+       ++hedge_idx) {
+    evaluation.total.hyperedge_cost += h.at(hedge_idx).costs(h_val(hedge_idx));
+    evaluation.lower_bound.hyperedge_cost += *std::min_element(
+        h.at(hedge_idx).costs().begin(), h.at(hedge_idx).costs().end());
   }
   evaluation.total_makespan = EvaluateMakespan(request, result, evaluation);
   return evaluation;

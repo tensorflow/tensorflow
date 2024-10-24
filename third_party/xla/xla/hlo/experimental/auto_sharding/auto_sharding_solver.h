@@ -52,6 +52,7 @@ struct CostComponents {
   double communication_cost = 0.0;
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
+  double hyperedge_cost = 0.0;
   double overbudget_cost = 0.0;
   double makespan_cost = 0.0;
 
