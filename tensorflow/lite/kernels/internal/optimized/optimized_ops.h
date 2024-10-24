@@ -3299,8 +3299,6 @@ inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
   const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
   auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   Eigen::VectorXf in_square(in_mat.rows());
-  Eigen::VectorXf out_count(out_mat.cols());
-  out_count.setZero();
   // Prefill the output to 0.
   out_mat.setZero();
   for (int b = 0; b < batches; ++b) {
@@ -3329,16 +3327,13 @@ inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
           for (int pw = w_start; pw < w_end; ++pw) {
             const int out_offset = pw + output_width * (ph + output_height * b);
             out_mat.col(out_offset) += in_square;
-            out_count(out_offset)++;
           }
         }
       }
     }
   }
 
-  out_count = out_count.array().inverse();
-  out_mat =
-      (out_mat.array().rowwise() * out_count.transpose().array()).cwiseSqrt();
+  out_mat = out_mat.cwiseSqrt();
 
   const int flat_size = output_shape.FlatSize();
   for (int i = 0; i < flat_size; ++i) {
