@@ -898,6 +898,9 @@ class TritonAlgorithmTest : public TritonTest {
 };
 
 TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Triton currently disabled on ROCM.";
+  }
   const std::string kHloText = R"(
     HloModule t
 
@@ -918,6 +921,9 @@ TEST_F(TritonAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
 }
 
 TEST_F(TritonAlgorithmTest, Algorithm_BF16_BF16_F32) {
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Triton currently disabled on ROCM.";
+  }
   if (!SupportsBF16(GpuComputeComp())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
