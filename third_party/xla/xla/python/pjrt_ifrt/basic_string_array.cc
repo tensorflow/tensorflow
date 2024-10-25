@@ -298,7 +298,37 @@ Future<> BasicStringArray::CopyToHostBuffer(
     void* data, std::optional<absl::Span<const int64_t>> byte_strides,
     ArrayCopySemantics semantics) {
   DCHECK(this);
-  return Future<>(absl::UnimplementedError("Not implemented"));
+  absl::MutexLock lock(&mu_);
+  if (is_deleted_) {
+    return Future<>(
+        absl::FailedPreconditionError("Array has already been deleted"));
+  }
+
+  if (sharding_->devices()->size() != 1) {
+    return Future<>(absl::InvalidArgumentError(absl::StrFormat(
+        "CopyToHostBuffer only supports single device string arrays. This "
+        "array has been sharded over %d devices.",
+        sharding_->devices()->size())));
+  }
+
+  auto copy_completion_promise = Future<>::CreatePromise();
+  auto copy_completion_future = Future<>(copy_completion_promise);
+
+  buffers_.OnReady(
+      [copy_completion_promise = std::move(copy_completion_promise),
+       host_buffer = static_cast<absl::Cord*>(data)](
+          absl::StatusOr<Buffers> input_buffers) mutable {
+        if (!input_buffers.ok()) {
+          copy_completion_promise.Set(input_buffers.status());
+          return;
+        }
+        const absl::Span<const absl::Cord>& input_buffer = (*input_buffers)[0];
+        for (int i = 0; i < input_buffer.size(); ++i) {
+          host_buffer[i] = input_buffer[i];
+        }
+        copy_completion_promise.Set(absl::OkStatus());
+      });
+  return copy_completion_future;
 }
 
 absl::StatusOr<tsl::RCReference<Array>> BasicStringArray::Copy(
