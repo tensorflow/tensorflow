@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -838,6 +839,11 @@ absl::StatusOr<std::string> CompileMlirToXlaHlo(
       use_tuple_args, enable_op_fallback, use_return_tuple,
       shape_determination_fns, custom_legalization_passes, module_name,
       lower_to_xla_hlo));
+
+  if (failed(mlir::verify(module_op))) {
+    return absl::AbortedError(
+        "Verification failure. MLIR to Xla conversion aborted.");
+  }
 
   auto mlir_compilation = SerializeMlirModule(module_op);
 
