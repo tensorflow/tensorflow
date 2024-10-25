@@ -31,8 +31,14 @@ namespace litert::qnn {
 // Construct a "blank" QNN Op.
 Qnn_OpConfig_t BuildDefaultOp();
 
+// Construct a "blank" QNN Param.
+Qnn_Param_t BuildDefaultParam();
+
 // Reset the given tensor, deallocating anything on the heap that it points to.
 void ResetOp(Qnn_OpConfig_t& op);
+
+// Reset the given param, deallocating anything on the heap that it points to.
+void ResetParam(Qnn_Param_t& param);
 
 //
 // Legalize LiteRt Op to Analogous QNN Construct.
