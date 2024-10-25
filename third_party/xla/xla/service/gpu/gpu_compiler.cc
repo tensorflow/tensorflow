@@ -1565,11 +1565,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
-    // Do not split small reduction dimensions unless priority fusion is
-    // enabled, which handles such cases well.
-    bool ignore_small_reduce_dims =
-        !debug_options.xla_gpu_enable_priority_fusion();
-    pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>(
+        /*ignore_small_reduce_dims=*/false);
     pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
     // Normalization passes might have introduced s4 tensors without bit width
     // annotations, this pass will add the annotations.

@@ -59,21 +59,14 @@ HloPassPipeline FusionPipeline(
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts)),
       "hlo verifier (debug)");
 
-  if (debug_options.xla_gpu_enable_priority_fusion()) {
-    GpuHloCostAnalysis::Options cost_analysis_options{
-        shape_size_bytes_function,
-        /*per_second_rates=*/{},
-        /*min_latencies_seconds=*/{},
-        /*count_multiple_input_accesses=*/true};
-    fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info,
-                                   std::move(cost_analysis_options));
-  } else {
-    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
-                                         gpu_device_info);
-    fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
-                                         gpu_device_info);
-    fusion.AddPass<FusionMerger>(gpu_device_info, shape_size_bytes_function);
-  }
+  GpuHloCostAnalysis::Options cost_analysis_options{
+      shape_size_bytes_function,
+      /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
+      /*count_multiple_input_accesses=*/true};
+  fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info,
+                                 std::move(cost_analysis_options));
+
   // Running CSE affects how many users an op has. This plays a role in what
   // we detect as a tiled transpose fusion.
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
