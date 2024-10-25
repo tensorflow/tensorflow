@@ -119,7 +119,11 @@ class TRTEngineResourceOpsTest
     return layer->getOutput(0);
   }
 
-  TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {
+  std::pair<TrtUniquePtrType<nvinfer1::ICudaEngine>,
+            TrtUniquePtrType<nvinfer1::IRuntime>>
+  CreateTRTEngine() {
+    TrtUniquePtrType<nvinfer1::IRuntime> runtime(
+        nvinfer1::createInferRuntime(logger_));
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(logger_));
     TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
@@ -155,8 +159,13 @@ class TRTEngineResourceOpsTest
     // Build the engine
     TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
         builder->createBuilderConfig());
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     builder_config->setMaxWorkspaceSize(1 << 10);
     builder->setMaxBatchSize(1);
+#else   // IS_TRT_VERSION_GE(10, 0, 0, 0)
+    builder_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE,
+                                       1 << 10);
+#endif  // IS_TRT_VERSION_GE(10, 0, 0, 0)
 
     if (this->param_.dynamic_shape) {
       TrtShapeOptimizationProfile profile;
@@ -205,11 +214,18 @@ class TRTEngineResourceOpsTest
                                            network.get()));
     }
     VLOG(2) << "ConfigureBuilder Finished";
+#if !IS_TRT_VERSION_GE(10, 0, 0, 0)
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
         builder->buildEngineWithConfig(*network, *builder_config));
+#else
+    TrtUniquePtrType<nvinfer1::IHostMemory> serialized(
+        builder->buildSerializedNetwork(*network, *builder_config));
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
+        runtime->deserializeCudaEngine(serialized->data(), serialized->size()));
+#endif
     VLOG(2) << "Engine constructed";
     EXPECT_NE(nullptr, engine);
-    return engine;
+    return {std::move(engine), std::move(runtime)};
   }
   Logger& logger_ = *Logger::GetLogger();
   TestParam param_;
@@ -278,7 +294,11 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   EXPECT_EQ(0, resource->cache_.size());
 
   // Create an engine and add it to the cache of the resource.
-  TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
+  auto engine_and_runtime = CreateTRTEngine();
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine =
+      std::move(engine_and_runtime.first);
+  TrtUniquePtrType<nvinfer1::IRuntime> runtime =
+      std::move(engine_and_runtime.second);
   ExecutionContext context = ExecutionContext::Create(engine.get());
 
   std::vector<TensorShape> engine_input_shape(1);
@@ -288,7 +308,8 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   }
   resource->cache_.emplace(
       engine_input_shape,
-      std::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      std::make_unique<EngineContext>(std::move(runtime), std::move(engine),
+                                      std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
