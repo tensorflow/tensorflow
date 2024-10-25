@@ -1075,6 +1075,21 @@ TEST(FfiTest, MetadataTraits) {
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
 }
 
+// Use opaque struct to define a platform stream type just like platform
+// stream for GPU backend (e.g. `CUstream_st`  and `cudaStream_t`).
+struct TestStreamSt;
+using TestStream = TestStreamSt*;
+
+template <>
+struct CtxBinding<TestStream> {
+  using Ctx = PlatformStream<TestStream>;
+};
+
+TEST(FfiTest, PlatformStream) {
+  // We only check that it compiles.
+  (void)Ffi::BindTo(+[](TestStream stream) { return absl::OkStatus(); });
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
