@@ -21,7 +21,7 @@ from xla.python import xla_client
 jax_jit = xla_client._xla.jax_jit
 pytree = xla_client._xla.pytree
 
-pytree_registry = pytree.default_registry()
+pytree_registry = pytree.PyTreeRegistry()
 
 
 class JaxJitTest(absltest.TestCase):
