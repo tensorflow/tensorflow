@@ -98,7 +98,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/triton/emitter_helpers.h"
 #include "xla/service/gpu/fusions/triton/passes.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter_legacy_matmul.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -147,7 +146,6 @@ using ::xla::gpu::triton::Cast;
 using ::xla::gpu::triton::CreateConst;
 using ::xla::gpu::triton::EmitConstant;
 using ::xla::gpu::triton::EmitElementwise;
-using ::xla::gpu::triton::EmitUnpackInt4;
 using ::xla::gpu::triton::GetPaddedTileSizes;
 using ::xla::gpu::triton::ScalarOrTensor;
 using ::xla::gpu::triton::StorageType;
@@ -738,19 +736,8 @@ absl::StatusOr<ScalarOrTensor> EmitScope(
     absl::flat_hash_map<const HloInstruction*, ScalarOrTensor>& values) {
   for (const HloInstruction* hlo : instructions) {
     ScalarOrTensor result;
-    if (hlo->opcode() == HloOpcode::kConvert &&
-        hlo->operand(0)->shape().element_type() == S4) {
-      TF_ASSIGN_OR_RETURN(
-          auto unpacked,
-          EmitUnpackInt4(b, hlo, /*unpack_dim_idx=*/0,
-                         values[hlo->operand(0)].UnwrapUnsafe()));
-      std::vector<Value> operands({unpacked});
-      TF_ASSIGN_OR_RETURN(
-          Value elementwise_result,
-          EmitElementwise(b, libdevice_path, device_info, *hlo, operands));
-      result = ScalarOrTensor(elementwise_result);
-    } else if (hlo->opcode() == HloOpcode::kConcatenate ||
-               hlo->opcode() == HloOpcode::kDynamicSlice) {
+    if (hlo->opcode() == HloOpcode::kConcatenate ||
+        hlo->opcode() == HloOpcode::kDynamicSlice) {
       // Parameter loads and their concatenations are handled outside EmitScope.
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
@@ -1090,6 +1077,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     Type ir_type;
     if (type == U16) {
       ir_type = b.getI16Type();
+    } else if (type == S4) {
+      ir_type = b.getI8Type();
     } else {
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
