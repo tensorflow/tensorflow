@@ -94,6 +94,24 @@ void Dump(LiteRtOpCode code, std::ostream& out) {
     case kLiteRtOpCodeTflSlice:
       out << "TFL_SLICE";
       break;
+    case kLiteRtOpCodeTflDiv:
+      out << "TFL_DIV";
+      break;
+    case kLiteRtOpCodeTflRsqrt:
+      out << "TFL_RSQRT";
+      break;
+    case kLiteRtOpCodeTflTanh:
+      out << "TFL_TANH";
+      break;
+    case kLiteRtOpCodeTflSub:
+      out << "TFL_SUB";
+      break;
+    case kLiteRtOpCodeTflReshape:
+      out << "TFL_RESHAPE";
+      break;
+    case kLiteRtOpCodeTflBatchMatmul:
+      out << "TFL_BATCH_MATMUL";
+      break;
     default:
       out << "UKNOWN_OP_CODE: " << code;
       break;

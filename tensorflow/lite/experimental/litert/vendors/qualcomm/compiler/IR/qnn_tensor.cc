@@ -24,23 +24,13 @@
 #include "tensorflow/lite/experimental/litert/c/litert_support.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_support.h"
 #include "tensorflow/lite/experimental/litert/cc/litert_tensor.h"
+#include "tensorflow/lite/experimental/litert/vendors/qualcomm/common.h"
 
 namespace litert::qnn {
 
 using ::litert::LiteRtTensorManager;
 
 namespace {
-
-LiteRtStatus LegalizeElementType(LiteRtElementType src, Qnn_DataType_t& dest) {
-  switch (src) {
-    case kLiteRtElementTypeFloat32:
-      dest = QNN_DATATYPE_FLOAT_32;
-      return kLiteRtStatusOk;
-    default:
-      return kLiteRtStatusErrorUnsupported;
-      // TODO: Finish legalizing datatypes.
-  }
-}
 
 LiteRtStatus LegalizeShapeInfo(const LiteRtTensorManager& src,
                                Qnn_Tensor_t& dest) {
@@ -131,8 +121,9 @@ LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest) {
   LITERT_RETURN_STATUS_IF_NOT_OK(
       LiteRtTensorManager::MakeFromTensor(src, src_tensor));
 
+  Qnn_DataType_t* qnn_data_type = &dest.v2.dataType;
   LITERT_RETURN_STATUS_IF_NOT_OK(
-      LegalizeElementType(src_tensor->ElementType(), dest.v2.dataType));
+      LegalizeElementType(src_tensor->ElementType(), qnn_data_type));
 
   LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeShapeInfo(*src_tensor, dest));
 

@@ -32,6 +32,93 @@ litert_lib(
 )
 
 litert_lib(
+    name = "add_op_legalization",
+    srcs = ["add_op_legalization.cc"],
+    hdrs = ["add_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
+    name = "batch_matmul_op_legalization",
+    srcs = ["batch_matmul_op_legalization.cc"],
+    hdrs = ["batch_matmul_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
+    name = "div_op_legalization",
+    srcs = ["div_op_legalization.cc"],
+    hdrs = ["div_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
     name = "mul_op_legalization",
     srcs = ["mul_op_legalization.cc"],
     hdrs = ["mul_op_legalization.h"],
@@ -62,6 +149,64 @@ litert_lib(
 )
 
 litert_lib(
+    name = "reshape_op_legalization",
+    srcs = ["reshape_op_legalization.cc"],
+    hdrs = ["reshape_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
+    name = "rsqrt_op_legalization",
+    srcs = ["rsqrt_op_legalization.cc"],
+    hdrs = ["rsqrt_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
     name = "slice_op_legalization",
     srcs = ["slice_op_legalization.cc"],
     hdrs = ["slice_op_legalization.h"],
@@ -79,6 +224,64 @@ litert_lib(
         # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
         "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/c:litert_logging",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
+    name = "sub_op_legalization",
+    srcs = ["sub_op_legalization.cc"],
+    hdrs = ["sub_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
+        "//tensorflow/lite/experimental/litert/cc:litert_op",
+        "//tensorflow/lite/experimental/litert/cc:litert_tensor",
+        "//tensorflow/lite/experimental/litert/core:graph_tools",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:common",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm:qnn_manager",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler:graph_mapper",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_op",
+        "//tensorflow/lite/experimental/litert/vendors/qualcomm/compiler/IR:qnn_tensor",
+    ],
+)
+
+litert_lib(
+    name = "tanh_op_legalization",
+    srcs = ["tanh_op_legalization.cc"],
+    hdrs = ["tanh_op_legalization.h"],
+    tags = [
+        # Don't build/test in OS until qnn is available.
+        "nobuilder",
+    ],
+    visibility = ["//tensorflow/lite/experimental/litert:__subpackages__"],
+    deps = [
+        ":legalization",
+        ":util",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        # copybara:uncomment "//third_party/qairt/latest:qnn_lib_headers",
+        "//tensorflow/lite/experimental/litert/c:litert_c_api",
         "//tensorflow/lite/experimental/litert/cc:litert_cc_api",
         "//tensorflow/lite/experimental/litert/cc:litert_op",
         "//tensorflow/lite/experimental/litert/cc:litert_tensor",

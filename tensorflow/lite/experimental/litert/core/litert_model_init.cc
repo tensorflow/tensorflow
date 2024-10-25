@@ -148,6 +148,20 @@ static LiteRtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts,
   return kLiteRtStatusOk;
 }
 
+LiteRtElementType MapElementType(tflite::TensorType type) {
+  switch (type) {
+    case tflite::TensorType_FLOAT32:
+      return kLiteRtElementTypeFloat32;
+    case tflite::TensorType_FLOAT16:
+      return kLiteRtElementTypeFloat16;
+    case tflite::TensorType_INT32:
+      return kLiteRtElementTypeInt32;
+    case tflite::TensorType_BOOL:
+      return kLiteRtElementTypeBool;
+    default:
+      return kLiteRtElementTypeNone;
+  }
+}
 //===----------------------------------------------------------------------===//
 //                               Load                                         //
 //===----------------------------------------------------------------------===//
@@ -196,7 +210,7 @@ LiteRtStatus ModelUnpacker::ConvertTensor(const tflite::TensorT& tensor,
 
   auto& ranked_tensor = target->type_detail.ranked_tensor_type;
 
-  ranked_tensor.element_type = kLiteRtElementTypeFloat32;
+  ranked_tensor.element_type = MapElementType(tensor.type);
   ranked_tensor.layout.rank = tensor.shape.size();
   ranked_tensor.layout.dimensions = tensor.shape.data();
   ranked_tensor.layout.strides =
