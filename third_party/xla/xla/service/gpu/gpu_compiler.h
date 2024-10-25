@@ -245,6 +245,18 @@ class GpuCompiler : public LLVMCompiler {
     return Unimplemented("LinkModules is not implemented.");
   }
 
+  // Creates an AutotuneConfig for the given options.
+  absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
+      se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+      const GpuCompiler::CompileOptions& options,
+      const Compiler::TargetConfig& gpu_target_config);
+
+  // Runs verification passes after fusion.
+  absl::Status RunPostFusionVerificationPasses(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      const GpuCompiler::CompileOptions& options,
+      const Compiler::TargetConfig& gpu_target_config);
+
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.
@@ -255,6 +267,9 @@ class GpuCompiler : public LLVMCompiler {
 
   // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   const int64_t pointer_size_;
+
+  // A stream to use for autotuning if none is provided.
+  std::unique_ptr<se::Stream> compute_stream_;
 
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;

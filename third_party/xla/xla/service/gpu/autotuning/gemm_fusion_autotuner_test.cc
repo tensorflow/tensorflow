@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
@@ -192,8 +193,10 @@ class StatelessAutotunerTest : public HloTestBase {
     ccc->set_major(compute_capability.major);
     ccc->set_minor(compute_capability.minor);
 
+    static se::Stream* stream =
+        backend().default_stream_executor()->CreateStream().value().release();
     DeviceConfig test_config{backend().default_stream_executor(),
-                             backend().memory_allocator()};
+                             backend().memory_allocator(), stream};
     AutotuneConfig autotune_config{test_config, debug_options};
     GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                       debug_options, nullptr);
@@ -210,8 +213,12 @@ class StatelessAutotunerTest : public HloTestBase {
   // Returns the config for the current device.
   absl::StatusOr<std::vector<GemmFusionAutotunerImpl::BackendConfig>>
   GetPossibleMatmulAutotuneConfigs(const HloModule& module) {
+    static se::Stream* stream =
+        backend().default_stream_executor()->CreateStream().value().release();
+
     DeviceConfig device_config{backend().default_stream_executor(),
                                backend().memory_allocator()};
+    device_config.compute_stream = stream;
     AutotuneConfig autotune_config{device_config, GetDebugOptionsForTest()};
     GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                       GetDebugOptionsForTest(), nullptr);
@@ -317,11 +324,14 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
                                         tsl::port::MaxParallelism());
     DebugOptions opts;
     MultiProcessKeyValueStore key_value_store;
-    pipeline.AddPass<GemmFusionAutotuner>(
-        AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                    backend().memory_allocator()},
-                       opts},
-        GetToolkitVersion(), &thread_pool, key_value_store);
+    static se::Stream* stream =
+        backend().default_stream_executor()->CreateStream().value().release();
+    DeviceConfig device_config{backend().default_stream_executor(),
+                               backend().memory_allocator()};
+    device_config.compute_stream = stream;
+    pipeline.AddPass<GemmFusionAutotuner>(AutotuneConfig{device_config, opts},
+                                          GetToolkitVersion(), &thread_pool,
+                                          key_value_store);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
@@ -703,9 +713,12 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kHloText));
 
   DebugOptions opts;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          backend().default_stream_executor()->CreateStream());
+
   AutotuneConfig autotune_config{
       DeviceConfig{backend().default_stream_executor(),
-                   backend().memory_allocator()},
+                   backend().memory_allocator(), stream.get()},
       opts};
   AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
                              *module->entry_computation()->root_instruction());
@@ -1254,11 +1267,12 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
   std::unique_ptr<VerifiedHloModule> module =
       ParseAndReturnVerifiedModule(kHlo).value();
 
+  static se::Stream* stream =
+      backend().default_stream_executor()->CreateStream().value().release();
   DebugOptions opts;
-  AutotuneConfig autotune_config{
-      DeviceConfig{backend().default_stream_executor(),
-                   backend().memory_allocator()},
-      opts};
+  DeviceConfig device_config{backend().default_stream_executor(),
+                             backend().memory_allocator(), stream};
+  AutotuneConfig autotune_config{device_config, opts};
   AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
                              *module->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
