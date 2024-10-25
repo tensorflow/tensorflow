@@ -52,7 +52,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -65,7 +67,9 @@ limitations under the License.
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -424,8 +428,23 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       .compile_metadata = compile_metadata,
       .shape_representation_fn = shape_representation_fn_,
   };
-  TF_ASSIGN_OR_RETURN(tf2hlo_arg.topology, ifrt_client_->GetTopologyForDevices(
-                                               assigned_device_list_));
+
+  absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> topology =
+      ifrt_client_->GetTopologyForDevices(assigned_device_list_);
+  if (topology.ok()) {
+    tf2hlo_arg.topology = *std::move(topology);
+  } else if (ifrt_client_->platform_name() == xla::CudaName()) {
+    // TODO (deqiangc/siqiaowu): some ifrt client does not return topology for
+    // gpu. Create a dummy one to make the tf2xla key generation happy. We
+    // should fix ifrt client to return topology for gpu.
+    tf2hlo_arg.topology = std::make_shared<xla::ifrt::PjRtTopology>(
+        std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
+            xla::CudaId(), xla::CudaName(), /*gpu_topology=*/nullptr));
+  } else {
+    // Replace with TF_ASSIGN_OR_RETURN after the above TODO is fixed.
+    return topology.status();
+  }
+
   TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
                       persistent_compilation_cache_->LookupTf2HloResultOrCreate(
                           tf2hlo_arg, assigned_device_list_));
