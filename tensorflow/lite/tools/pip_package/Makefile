@@ -14,7 +14,7 @@
 
 # Values: debian:<version>, ubuntu:<version>
 BASE_IMAGE ?= ubuntu:20.04
-PYTHON_VERSION ?= 3.11
+PYTHON_VERSION ?= 3.10
 NUMPY_VERSION ?= 1.23.2
 
 # Values: rpi, aarch64, native
