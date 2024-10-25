@@ -1409,6 +1409,37 @@ xla_test(
 )
 
 cc_library(
+    name = "dot_normalizer",
+    srcs = ["dot_normalizer.cc"],
+    hdrs = ["dot_normalizer.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:op_expander_pass",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:errors",
+    ],
+)
+
+xla_cc_test(
+    name = "dot_normalizer_test",
+    srcs = ["dot_normalizer_test.cc"],
+    deps = [
+        ":dot_normalizer",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
+        "//xla/service:pattern_matcher_gmock",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "dot_operand_converter",
     srcs = ["dot_operand_converter.cc"],
     hdrs = ["dot_operand_converter.h"],
