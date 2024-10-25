@@ -50,6 +50,8 @@ struct DeviceConfig {
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
   se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
+
+  se::Stream* compute_stream = nullptr;
 };
 
 struct DevicelessConfig {
@@ -177,7 +179,8 @@ class AutotuneConfig {
 
   absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
+    se::Stream* stream = std::get<DeviceConfig>(config_).compute_stream;
+    return stream;
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {

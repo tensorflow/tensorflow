@@ -79,7 +79,9 @@ class TritonFusionNumericsVerifierTest
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
     TF_EXPECT_OK(executors_or);
-    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr},
+    static se::Stream* stream =
+        executors_or->at(0)->CreateStream().value().release();
+    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr, stream},
                           GetDebugOptionsForTest()};
   }
 
@@ -294,8 +296,11 @@ ENTRY main {
 
   std::unique_ptr<HloModule> module =
       *ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config{
-      DeviceConfig{backend().default_stream_executor(), GetAllocator()},
+      DeviceConfig{backend().default_stream_executor(), GetAllocator(),
+                   stream.get()},
       module->config().debug_options()};
   TritonFusionNumericsVerifier verifier(autotune_config);
   TF_EXPECT_OK(RunHloPass(verifier, module.get()));

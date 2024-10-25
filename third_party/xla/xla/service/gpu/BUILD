@@ -2983,6 +2983,7 @@ xla_test(
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:mock_stream",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:mock_gpu_executor",

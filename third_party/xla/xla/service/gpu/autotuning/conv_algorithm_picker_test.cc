@@ -78,6 +78,8 @@ ENTRY main {
                           PlatformUtil::GetStreamExecutors(platform));
   ASSERT_GT(executors.size(), 0);
   se::StreamExecutor* stream_exec = executors[0];
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          stream_exec->CreateStream());
 
   const se::GpuComputeCapability& cc = backend()
                                            .default_stream_executor()
@@ -88,7 +90,7 @@ ENTRY main {
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr, stream.get()}, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -200,7 +202,9 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          stream_exec->CreateStream());
+  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr, stream.get()}, opts};
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);

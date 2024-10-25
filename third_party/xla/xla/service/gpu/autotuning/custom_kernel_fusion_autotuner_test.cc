@@ -66,9 +66,12 @@ TEST_F(CustomKernelFusionAutotunerTest, DontRunOnNonCustomFusions) {
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          backend().default_stream_executor()->CreateStream());
+
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
+                                  backend().memory_allocator(), stream.get()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 
@@ -100,9 +103,11 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
+                                  backend().memory_allocator(), stream.get()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
   ASSERT_TRUE(pipeline.Run(hlo_module.get()).ok());
@@ -131,9 +136,11 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config =
       AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
+                                  backend().memory_allocator(), stream.get()},
                      debug_options};
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 

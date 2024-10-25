@@ -145,6 +145,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
