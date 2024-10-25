@@ -16,21 +16,6 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "mlir_bridge_rollout_policy",
-    srcs = ["mlir_bridge_rollout_policy.cc"],
-    hdrs = ["mlir_bridge_rollout_policy.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/types:optional",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 alias(
     name = "compile_mlir_util",
     actual = "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_mlir_util_no_tf_dialect_passes",
