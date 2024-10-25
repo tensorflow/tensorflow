@@ -2630,7 +2630,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<SanitizeConstantNames>();
   }
 
-  if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
+  if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==
+      DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
     AddHloVerifier(
         &main_pipeline,
         module->config().debug_options().xla_experimental_ignore_channel_id(),
