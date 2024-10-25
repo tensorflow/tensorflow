@@ -1,0 +1,47 @@
+
+--- a/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp	2024-08-05 02:40:13.000000000 -0700
++++ b/lib/Conversion/TritonToTritonGPU/TritonGPUConversion.cpp	2024-10-25 05:04:54.000000000 -0700
+@@ -56,7 +56,7 @@
+   // This will create newArg, and map(origArg, newArg)
+   addArgumentMaterialization([&](OpBuilder &builder,
+                                  RankedTensorType tensorType, ValueRange inputs,
+-                                 Location loc) -> std::optional<Value> {
++                                 Location loc) -> Value {
+     // Allows partial TTIR to TTGIR conversion by materializing a conversion for
+     // remaining arguments that have been converted to a new type.
+     // We use this to rewrite triton_gpu.sparse_dot in a separate pass after
+@@ -65,14 +65,14 @@
+                                                         inputs);
+     llvm_unreachable("Argument rematerialization should not happen in Triton "
+                      "-> TritonGPU conversion");
+-    return std::nullopt;
++    return Value();
+   });
+ 
+   // If the origValue still has live user(s), use this to
+   // convert origValue to newValue
+   addSourceMaterialization([&](OpBuilder &builder, RankedTensorType tensorType,
+                                ValueRange inputs,
+-                               Location loc) -> std::optional<Value> {
++                               Location loc) -> Value {
+     // Allows partial TTIR to TTGIR conversion by materializing a conversion for
+     // remaining uses of values that have been converted to a new type.
+     // We use this to rewrite triton_gpu.sparse_dot in a separate pass after
+@@ -81,7 +81,7 @@
+                                                         inputs);
+     llvm_unreachable("Source rematerialization should not happen in Triton -> "
+                      "TritonGPU Conversion");
+-    return std::nullopt;
++    return Value();
+   });
+ 
+   // This will be called when (desiredType != newOperandType)
+@@ -91,7 +91,7 @@
+                                ValueRange inputs, Location loc) {
+     auto cast =
+         builder.create<triton::gpu::ConvertLayoutOp>(loc, tensorType, inputs);
+-    return std::optional<Value>(cast.getResult());
++    return Value(cast.getResult());
+   });
+ }
+ 
