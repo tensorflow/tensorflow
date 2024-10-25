@@ -307,6 +307,18 @@ MaybeOwningThreadPool CreateMaybeOwningThreadPool(
   }
 }
 
+absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
+    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
+    const GpuCompiler::CompileOptions& options,
+    const Compiler::TargetConfig& gpu_target_config) {
+  if (stream_exec) {
+    return AutotuneConfig{DeviceConfig{stream_exec, options.device_allocator},
+                          debug_options};
+  }
+  return AutotuneConfig{DevicelessConfig{gpu_target_config.device_description},
+                        debug_options};
+}
+
 se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
 }
@@ -463,24 +475,6 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       data_layout_(data_layout),
       pointer_size_(llvm::DataLayout(data_layout)
                         .getPointerSize(0 /* default address space */)) {}
-
-absl::StatusOr<AutotuneConfig> GpuCompiler::GetAutotuneConfig(
-    se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
-    const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config) {
-  if (stream_exec) {
-    if ((options.compute_stream == nullptr) && (compute_stream_ == nullptr)) {
-      TF_ASSIGN_OR_RETURN(compute_stream_, stream_exec->CreateStream());
-    }
-    return AutotuneConfig{
-        DeviceConfig{stream_exec, options.device_allocator,
-                     options.compute_stream != nullptr ? options.compute_stream
-                                                       : compute_stream_.get()},
-        debug_options};
-  }
-  return AutotuneConfig{DevicelessConfig{gpu_target_config.device_description},
-                        debug_options};
-}
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
@@ -1201,6 +1195,26 @@ absl::Status RunPostFusionSimplificationPasses(
   return pipeline.Run(hlo_module).status();
 }
 
+absl::Status RunPostFusionVerificationPasses(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const GpuCompiler::CompileOptions& options,
+    const Compiler::TargetConfig& gpu_target_config) {
+  HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
+
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_verify_triton_fusion_numerics()) {
+    TF_ASSIGN_OR_RETURN(
+        AutotuneConfig autotune_config,
+        GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
+                          options, gpu_target_config));
+
+    pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
+  }
+
+  return pipeline.Run(hlo_module).status();
+}
+
 absl::Status RunLayoutNormalizationPasses(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version) {
   HloPassPipeline layout_normalization_pipeline("layout normalization");
@@ -1276,26 +1290,6 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
       [this, stream_exec](const HloModule* module) {
         return RequiresCollectiveScheduleLinearizer(module, stream_exec);
       });
-  return pipeline.Run(hlo_module).status();
-}
-
-absl::Status GpuCompiler::RunPostFusionVerificationPasses(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const GpuCompiler::CompileOptions& options,
-    const Compiler::TargetConfig& gpu_target_config) {
-  HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
-
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_verify_triton_fusion_numerics()) {
-    TF_ASSIGN_OR_RETURN(
-        AutotuneConfig autotune_config,
-        GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
-                          options, gpu_target_config));
-
-    pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
-  }
-
   return pipeline.Run(hlo_module).status();
 }
 

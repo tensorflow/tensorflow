@@ -3223,6 +3223,7 @@ xla_test(
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
+        "//xla:test_helpers",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -3231,7 +3232,6 @@ xla_test(
         "//xla/service/gpu/autotuning:autotuner_compile_util",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
@@ -3239,7 +3239,6 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

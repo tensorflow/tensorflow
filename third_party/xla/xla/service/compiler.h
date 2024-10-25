@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/threadpool.h"
@@ -159,10 +158,6 @@ class Compiler {
     std::optional<TargetConfig> target_config;
 
     MultiProcessKeyValueStore key_value_store;
-
-    // If compute_stream is set, this is the stream used for all autotuning
-    // during compilation.
-    se::Stream* compute_stream = nullptr;
   };
 
   virtual ~Compiler() = default;

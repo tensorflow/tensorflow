@@ -32,13 +32,11 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -81,9 +79,7 @@ class TritonFusionNumericsVerifierTest
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
     TF_EXPECT_OK(executors_or);
-    static se::Stream* stream =
-        executors_or->at(0)->CreateStream().value().release();
-    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr, stream},
+    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr},
                           GetDebugOptionsForTest()};
   }
 
@@ -298,11 +294,8 @@ ENTRY main {
 
   std::unique_ptr<HloModule> module =
       *ParseAndReturnVerifiedModule(hlo_text, GetModuleConfigForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
-                          backend().default_stream_executor()->CreateStream());
   AutotuneConfig autotune_config{
-      DeviceConfig{backend().default_stream_executor(), GetAllocator(),
-                   stream.get()},
+      DeviceConfig{backend().default_stream_executor(), GetAllocator()},
       module->config().debug_options()};
   TritonFusionNumericsVerifier verifier(autotune_config);
   TF_EXPECT_OK(RunHloPass(verifier, module.get()));
