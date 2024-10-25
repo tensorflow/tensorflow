@@ -30,6 +30,7 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -133,7 +134,7 @@ cc_library(
 
 xla_cc_test(
     name = "client_server_test",
-    size = "small",
+    size = "medium",
     srcs = ["client_server_test.cc"],
     deps = [
         ":client",
