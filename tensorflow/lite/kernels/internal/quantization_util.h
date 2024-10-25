@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_QUANTIZATION_UTIL_H_
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
