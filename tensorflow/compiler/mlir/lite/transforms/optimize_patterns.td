@@ -1614,6 +1614,7 @@ def FuseReshapesAroundBatchMatMulLHS: Pat<
 // 1. The rank of rhs is 2
 // 2. The original input reshape has a) reduction in leading broadcast dim and
 //    b) flattening of the contracting dims.
+// 3. non-broadcasting, non-contracting dims of the rhs are not flattened.
 def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
   (TFL_ReshapeOp:$final_shape_change
     (TFL_BatchMatMulOp:$bmm_tmp_output
@@ -1633,6 +1634,7 @@ def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
    (AnyStaticShapeTensor $final_shape_change),
    (IsBroadcastDimEqualToOne $input),
    (IsBroadcastDimEqualToOne $final_shape_change),
+   (TrailingDimValuesEqual $bmm_tmp_output, $final_shape_change),
    (ContractingDimsProductEqual<2> $input, $initial_shape_change),
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $final_shape_change, $bmm_tmp_output)]>;
