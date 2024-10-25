@@ -3284,7 +3284,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       version = self.backend.platform_version
       logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
-        self.assertEqual(version, "<unknown>")
+        self.assertEqual(version, "cpu")
       elif self.backend.platform in ("gpu", "cuda", "rocm"):
         # Following is false if not built with --config=cuda
         if version != "<unknown>":
