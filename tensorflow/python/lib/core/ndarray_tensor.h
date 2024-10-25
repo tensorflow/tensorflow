@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
 
+#include "absl/base/attributes.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tf_status_helper.h"
