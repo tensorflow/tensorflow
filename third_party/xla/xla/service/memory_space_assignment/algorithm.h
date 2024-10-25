@@ -244,7 +244,7 @@ struct AllocationSegmentContext {
   // Index of the AllocationValue in allocation_values that is being processed
   // in AllocateAllocationValues(), whose allocation sequence we will be
   // updated.
-  int updates_allocation_value_idx;
+  int allocation_value_to_update_idx;
   // If true, the use is only processed to extend the lifetime of its operand's
   // allocation, and the use will not receive a new allocation.
   bool only_extend_existing_allocation;
@@ -545,10 +545,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     // the allocation_value
     bool required_copy_for_slice;
     // The resulting Allocation will be added to the AllocationSequence of
-    // updates_allocation_value. We only expect updates_allocation_value to be
-    // different from allocation_value in the case of a synchronous memory
+    // allocation_value_to_update. We only expect allocation_value_to_update to
+    // be different from allocation_value in the case of a synchronous memory
     // operation conversion to asynchronous, otherwise, they should be the same.
-    AllocationValue* updates_allocation_value;
+    AllocationValue* allocation_value_to_update;
     // No new Allocation is needed to be created and we will only extend an
     // existing one.
     bool only_extend_existing_allocation;
@@ -879,13 +879,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // and conditionals. Also calculates the timing for prefetching, taking into
   // account instruction schedules, operation type (e.g., sequential vs.
   // non-sequential calls), and prior usage patterns. We add the resulting
-  // Allocation to the AllocationSequence of updates_allocation_value. When
+  // Allocation to the AllocationSequence of allocation_value_to_update. When
   // only_extend_existing_allocation is true, no new Allocations will be created
   // while processing the resulting AllocationRequest, and we only need to
   // extend an existing Allocation's end_time.
   AllocationRequest CreateAllocationRequest(
       AllocationValue& allocation_value,
-      AllocationValue& updates_allocation_value,
+      AllocationValue& allocation_value_to_update,
       const AllocationValue::Use& use, const AllocationValue::Use* previous_use,
       AliasedOffset* preferred_offset, int64_t definition_time,
       bool require_no_copy_alternate_mem_allocation,
