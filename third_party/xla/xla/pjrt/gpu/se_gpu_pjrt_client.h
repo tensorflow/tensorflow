@@ -201,6 +201,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       std::shared_ptr<const GpuTopology> gpu_topology);
 
+  std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
+      const override {
+    return kv_store_;
+  }
+
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 

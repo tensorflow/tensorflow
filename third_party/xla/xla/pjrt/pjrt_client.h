@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -543,6 +544,12 @@ class PjRtClient {
   // Returns a string containing human-readable, platform-specific version info
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // Returns the key value store used by the client.
+  virtual std::optional<std::shared_ptr<KeyValueStoreInterface>>
+  key_value_store() const {
+    return std::nullopt;
+  }
 
   // Returns information about the underlying PJRT C API plugin if such a plugin
   // is being used, otherwise returns nullopt.
