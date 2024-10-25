@@ -56,6 +56,7 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 using ::testing::HasSubstr;
+using ::testing::status::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS
@@ -507,6 +508,131 @@ TEST(Tf2HloTest, GpuCompile) {
   EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
                                HasSubstr("CUDA or ROCM build required")));
 #endif
+}
+
+TEST(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
+                                            mlir::ParserConfig(&context));
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  xla::TfrtCpuTopologyDescription cpu_topology =
+      xla::TfrtCpuTopologyDescription::Create(
+          xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
+          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*machine_attributes=*/std::vector<std::string>{});
+  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+
+  Tf2HloArg arg0{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+  };
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_clone =
+      mlir::OwningOpRef<mlir::ModuleOp>(mlir_module->clone());
+  Tf2HloArg arg1{
+      .module = mlir_module_clone.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+  };
+
+  EXPECT_THAT(arg0.Key(), IsOkAndHolds(arg1.Key().value()));
+}
+
+TEST(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
+                                            mlir::ParserConfig(&context));
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  xla::TfrtCpuTopologyDescription cpu_topology =
+      xla::TfrtCpuTopologyDescription::Create(
+          xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
+          /*devices=*/std::vector<std::unique_ptr<xla::TfrtCpuDevice>>{},
+          /*machine_attributes=*/std::vector<std::string>{});
+  std::shared_ptr<xla::TfrtCpuTopologyDescription> cpu_topology_ptr =
+      std::make_shared<xla::TfrtCpuTopologyDescription>(cpu_topology);
+
+  Tf2HloArg arg0{
+      .module = mlir_module.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+  };
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module_clone =
+      mlir::OwningOpRef<mlir::ModuleOp>(mlir_module->clone());
+  compile_metadata.set_num_replicas(11111);
+  Tf2HloArg arg1{
+      .module = mlir_module_clone.get(),
+      .input_dtypes_and_shapes = dtype_and_shapes,
+      .entry_function_name = "main",
+      .compile_metadata = compile_metadata,
+      .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
+      .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+  };
+
+  ASSERT_OK_AND_ASSIGN(std::string key0, arg0.Key());
+  ASSERT_OK_AND_ASSIGN(std::string key1, arg1.Key());
+  EXPECT_NE(key0, key1);
 }
 
 }  // namespace

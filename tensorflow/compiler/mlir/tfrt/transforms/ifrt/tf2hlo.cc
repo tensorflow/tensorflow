@@ -103,6 +103,13 @@ absl::StatusOr<std::string> Tf2HloArg::Key() {
   }
   fingerprint = tsl::FingerprintCat64(fingerprint,
                                       tsl::Fingerprint64(entry_function_name));
+  std::string serialized_compile_metadata;
+  if (!tsl::SerializeToStringDeterministic(compile_metadata,
+                                           &serialized_compile_metadata)) {
+    return absl::InternalError("Failed to serialize compile metadata");
+  }
+  fingerprint = tsl::FingerprintCat64(
+      fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
   return absl::StrCat(absl::Hex(fingerprint));
 }
 
