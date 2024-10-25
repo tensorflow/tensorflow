@@ -62,6 +62,8 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
@@ -121,6 +123,44 @@ ENTRY main {
                         /*is_autotuning_compilation=*/false})
           .value();
   EXPECT_EQ(GetCompiledProgramsCount(), 1);
+}
+
+TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  p = f32[10]{0} parameter(0)
+  ROOT neg = f32[10]{0} negate(p)
+}
+)";
+
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+
+  std::unique_ptr<Executable> executable =
+      backend()
+          .compiler()
+          ->RunBackend(std::move(module), backend().default_stream_executor(),
+                       {/*device_allocator=*/nullptr,
+                        /*thread_pool=*/nullptr,
+                        /*layout_canonicalization_callback=*/{},
+                        /*is_autotuning_compilation=*/false})
+          .value();
+
+  const std::string kGpuCompilerStacktraceMetricName =
+      "/xla/service/gpu/compiler_stacktrace_count";
+  tsl::monitoring::CollectionRegistry::CollectMetricsOptions options;
+  std::unique_ptr<tsl::monitoring::CollectedMetrics> metrics =
+      tsl::monitoring::CollectionRegistry::Default()->CollectMetrics(options);
+
+  EXPECT_TRUE(metrics->point_set_map.find(kGpuCompilerStacktraceMetricName) !=
+              metrics->point_set_map.end());
+
+  // Since Streamz is recorded every call, we expect at least one point.
+  // All other callers may increment the counter as well.
+  EXPECT_GT(
+      metrics->point_set_map[kGpuCompilerStacktraceMetricName]->points.size(),
+      0);
 }
 
 TEST_F(GpuCompilerTest, GenerateDebugInfoForNonAutotuningCompilations) {
