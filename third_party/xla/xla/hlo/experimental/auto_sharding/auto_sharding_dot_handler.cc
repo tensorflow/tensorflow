@@ -337,11 +337,10 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
   strategy_group_->AddStrategy(
       ShardingStrategy({output_spec, compute_cost, communication_cost,
                         static_cast<double>(ByteSizeOfShapeWithSharding(
-                            ins_->shape(), output_spec))}),
-      {name,
-       {input_specs.begin(), input_specs.end()},
-       communication_resharding_costs,
-       memory_resharding_costs});
+                            ins_->shape(), output_spec)),
+                        communication_resharding_costs,
+                        memory_resharding_costs}),
+      {name, {input_specs.begin(), input_specs.end()}});
 }
 
 // Given lhs and rhs dim maps, infers a sharding for the output by relying

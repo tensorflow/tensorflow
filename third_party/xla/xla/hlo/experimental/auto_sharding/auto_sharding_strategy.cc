@@ -351,14 +351,12 @@ BuildStrategyAndCost(
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, scatter_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
-          input_shardings_optional.communication_resharding_costs =
-              std::move(resharding_costs.first);
-          input_shardings_optional.memory_resharding_costs =
-              std::move(resharding_costs.second);
 
           strategy_group->AddStrategy(
               ShardingStrategy({scatter_sharding, compute_cost,
-                                communication_cost, memory_cost}),
+                                communication_cost, memory_cost,
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second)}),
               input_shardings_optional);
         };
 
@@ -404,14 +402,12 @@ BuildStrategyAndCost(
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, output_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
-          input_shardings_optional.communication_resharding_costs =
-              std::move(resharding_costs.first);
-          input_shardings_optional.memory_resharding_costs =
-              std::move(resharding_costs.second);
 
           strategy_group->AddStrategy(
               ShardingStrategy({output_sharding, compute_cost,
-                                communication_cost, memory_cost}),
+                                communication_cost, memory_cost,
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second)}),
               input_shardings_optional);
         };
 
@@ -562,12 +558,13 @@ BuildStrategyAndCost(
               MemoryReshardingCostVector(src_strategy_group, operand->shape(),
                                          input_spec, cluster_env);
           strategy_group->AddStrategy(
-              ShardingStrategy(
-                  {output_spec, compute_cost, communication_cost, memory_cost}),
-              {name,
-               {input_spec},
-               {communication_resharding_costs},
-               {memory_resharding_costs}});
+              ShardingStrategy({output_spec,
+                                compute_cost,
+                                communication_cost,
+                                memory_cost,
+                                {communication_resharding_costs},
+                                {memory_resharding_costs}}),
+              {name, {input_spec}});
         }
         break;
       }
@@ -699,11 +696,9 @@ BuildStrategyAndCost(
 
           strategy_group->AddStrategy(
               ShardingStrategy({*output_spec, compute_cost, communication_cost,
-                                memory_cost}),
-              {name,
-               {input_spec},
-               std::move(resharding_costs.first),
-               std::move(resharding_costs.second)});
+                                memory_cost, std::move(resharding_costs.first),
+                                std::move(resharding_costs.second)}),
+              {name, {input_spec}});
         }
 
         if (strategy_group->GetStrategies().empty()) {

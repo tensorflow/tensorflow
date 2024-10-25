@@ -846,7 +846,7 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
     const InputShardings& input_shardings = strategy_input_shardings[iid];
     const ShardingStrategy& strategy =
         strategy_group.GetStrategyForInputShardings(iid);
-    if (AllInfinityCosts(input_shardings.communication_resharding_costs)) {
+    if (AllInfinityCosts(strategy.communication_resharding_costs)) {
       num_skipped_due_to_infinity_costs++;
       continue;
     }
