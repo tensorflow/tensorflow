@@ -2568,6 +2568,13 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   return InferVariadicOpShape(HloOpcode::kTuple, operand_shapes);
 }
 
+/* static */ absl::StatusOr<Shape> ShapeInference::InferRaggedAllToAllShape(
+    absl::Span<const Shape* const> operand_shapes) {
+  TF_RETURN_IF_ERROR(
+      ExpectArray(*(operand_shapes[1]), "operand 1 of ragged-all-to-all"));
+  return *(operand_shapes[1]);
+}
+
 /* static */ absl::StatusOr<Shape>
 ShapeInference::InferCollectiveBroadcastShape(
     absl::Span<const Shape* const> operand_shapes) {

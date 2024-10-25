@@ -194,6 +194,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleAllReduceStart(HloInstruction* hlo) override;
   absl::Status HandleAllReduceDone(HloInstruction* hlo) override;
   absl::Status HandleAllToAll(HloInstruction* hlo) override;
+  absl::Status HandleRaggedAllToAll(HloInstruction* hlo) override;
   absl::Status HandleCollectiveBroadcast(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermute(HloInstruction* hlo) override;
   absl::Status HandleCollectivePermuteStart(HloInstruction* hlo) override;

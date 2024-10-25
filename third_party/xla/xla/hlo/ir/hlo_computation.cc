@@ -689,6 +689,7 @@ HloComputation::ChannelDependencies HloComputation::ComputeChannelDependencies()
       case HloOpcode::kAllToAll:
       case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
+      case HloOpcode::kRaggedAllToAll:
       case HloOpcode::kReduceScatter: {
         HloInstruction* instruction = inst.inst();
         std::optional<int64_t> channel_id = instruction->channel_id();
