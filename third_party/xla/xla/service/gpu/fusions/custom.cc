@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -251,26 +253,86 @@ absl::Status CollectSliceInfo(
   return absl::OkStatus();
 }
 
+// This function assumes that the computation graph for `fusion_instr` looks
+// like:
+//
+//   ...
+//   root_tuple_operand = (... ty[shape], ...) ...
+//   ROOT root_tuple = (... (... ty[shape], ...), ...)
+//     tuple(... root_tuple_operand, ...)
+//
+// Given such a pattern and a (complete) index into `root_tuple_operand`, we
+// recover the slice of `root_tuple` that corresponds to that index.
+absl::StatusOr<BufferAllocation::Slice> GetResultSliceForPartiallyUnnestedTuple(
+    const BufferAssignment& buffer_assignment,
+    const HloFusionInstruction& fusion_instr,
+    const HloInstruction& root_tuple_operand,
+    const ShapeIndex& root_tuple_operand_shape_idx,
+    const HloInstruction& root_tuple) {
+  int64_t operand_index = root_tuple.operand_index(&root_tuple_operand);
+  ShapeIndex slice_shape_index;
+  slice_shape_index.push_back(operand_index);
+  absl::c_copy(root_tuple_operand_shape_idx,
+               std::back_inserter(slice_shape_index));
+  return GetAllocationSlice(buffer_assignment, &fusion_instr,
+                            slice_shape_index);
+}
+
 absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     const BufferAssignment& buffer_assignment, const HloFusionAdaptor& adaptor,
-    const HloInstruction& fusion_instr, const HloInstruction& start_instr,
+    const HloFusionInstruction& fusion_instr, const HloInstruction& start_instr,
     std::vector<HloInstruction*>& slice_instrs, const ShapeIndex& shape_idx,
     unsigned arg_idx) {
   auto* start = const_cast<HloInstruction*>(&start_instr);
+  if (start->IsRoot()) {
+    return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
+  }
+
   // Walk through ShapeIndex to find the real "user" (i.e. not get-tuple-element
   // user). Otherwise one sliced element will mark all buffers of all other
   // elements "sliced" too.
   if (start->shape().IsTuple()) {
-    for (auto idx : shape_idx) {
-      std::vector<HloGetTupleElementInstruction*> gte_users(
-          start->shape().tuple_shapes_size(), nullptr);
-      for (auto* user : start->users())
-        if (auto* gte = DynCast<HloGetTupleElementInstruction>(user))
-          gte_users[gte->tuple_index()] = gte;
+    for (auto [index_nesting_level, index_in_shape] :
+         llvm::enumerate(shape_idx)) {
+      HloInstruction* gte_user = nullptr;
+      for (auto* user : start->users()) {
+        if (user->opcode() == HloOpcode::kGetTupleElement &&
+            user->tuple_index() == index_in_shape) {
+          gte_user = user;
+          break;
+        }
+      }
 
-      start = static_cast<HloInstruction*>(gte_users[idx]);
-      if (start == nullptr)
-        return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
+      if (gte_user == nullptr) {
+        // At this point, two things are known:
+        //   1. `start` was not the root instruction of the fusion at the
+        //      beginning of this function call;
+        //   2. `start` still has a tuple shape because we haven't managed to
+        //      unwrap the entire shape index.
+        // We also know, by definition of the surrounding pass, that all the
+        // results of the custom call must be materialized at the output of
+        // the fusion, which indicates that `start` is currently *not* the
+        // root. Since we can't slice/bitcast/reshape a tuple, then the
+        // only possible consumer should be a `tuple` instruction, which
+        // logically should be the root of the fusion.
+        HloInstruction* start_user = start->users().front();
+        if (start->user_count() != 1 ||
+            start_user->opcode() != HloOpcode::kTuple ||
+            !start_user->IsRoot()) {
+          return absl::InternalError(
+              "Expected the user of a nested tuple shape to be a root tuple "
+              "instruction."
+              "Expected a single user of the tuple-shaped instruction");
+        }
+
+        ShapeIndex remaining_shape_index(
+            shape_idx.begin() + index_nesting_level, shape_idx.end());
+        return GetResultSliceForPartiallyUnnestedTuple(
+            buffer_assignment, fusion_instr, *start, remaining_shape_index,
+            *start_user);
+      }
+
+      start = gte_user;
     }
   }
 
@@ -296,7 +358,56 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     }
   }
 
-  return GetAllocationSlice(buffer_assignment, &fusion_instr, shape_idx);
+  constexpr absl::string_view kNonContiguousDynamicUpdateSliceError =
+      "DynamicSliceFusion only handles contiguous slices currently";
+
+  // At this point, we've fully unfolded a tuple that was not the root of the
+  // computation. There are two options; either, the root is a tuple, or it is
+  // not.
+  //
+  // If the root is not a tuple, we can simply get the buffer slice assigned to
+  // the fusion itself---there is nothing else to choose from.
+  if (fusion_instr.shape().IsArray()) {
+    HloInstruction* root = fusion_instr.fused_expression_root();
+    if (root->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        !IsContiguousSlice(*root)) {
+      return absl::InternalError(kNonContiguousDynamicUpdateSliceError);
+    }
+    return GetAllocationSlice(buffer_assignment, &fusion_instr, {});
+  }
+
+  // If the root is a tuple however, it may be a nested tuple. Go all the way
+  // to the root to figure out the index that our array occupies within that
+  // tuple.
+  HloInstruction* current_hlo = start;
+  std::vector<int64_t> reversed_shape_index;
+  do {
+    TF_RET_CHECK(current_hlo->user_count() == 1);
+    HloInstruction* user = current_hlo->users().front();
+    // We may encounter three ops here: dynamic-update-slice, tuple, or bitcast.
+    switch (user->opcode()) {
+      case HloOpcode::kBitcast:
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
+        if (!IsContiguousSlice(*user)) {
+          return absl::InternalError(kNonContiguousDynamicUpdateSliceError);
+        }
+        break;
+      case HloOpcode::kTuple:
+        reversed_shape_index.push_back(user->operand_index(current_hlo));
+        break;
+      default:
+        return absl::InternalError(
+            absl::StrCat("Unexpected opcode while processing the epilogue of a "
+                         "DynamicSliceFusion: ",
+                         HloOpcodeString(user->opcode())));
+    };
+    current_hlo = user;
+  } while (!current_hlo->IsRoot());
+
+  return GetAllocationSlice(
+      buffer_assignment, &fusion_instr,
+      ShapeIndex(reversed_shape_index.rbegin(), reversed_shape_index.rend()));
 }
 
 absl::StatusOr<FusionEmissionResult> EmitGemm(
@@ -634,15 +745,15 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   auto ffi_thunk = [&](Slices ops, Slices res) {
     auto& called_computations = custom_call.called_computations();
     return CustomCallThunk::Create(
-        thunk_info, registration->bundle, std::move(ops), std::move(res),
-        std::move(attributes),
+        thunk_info, call_target_name, registration->bundle, std::move(ops),
+        std::move(res), std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0]);
   };
 
   auto legacy_thunk = [&](Slices ops, Slices res) {
-    return CustomCallThunk::Create(thunk_info, std::move(custom_call_target),
-                                   std::move(ops), std::move(res),
-                                   std::move(opaque));
+    return CustomCallThunk::Create(
+        thunk_info, call_target_name, std::move(custom_call_target),
+        std::move(ops), std::move(res), std::move(opaque));
   };
 
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(num_args);

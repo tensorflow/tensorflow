@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 
+#include <gmock/gmock.h>
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -618,7 +621,7 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   XlaCompiler compiler(DefaultOptions());
 
   XlaCompiler::CompilationResult result;
-  Status status =
+  absl::Status status =
       compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
@@ -708,7 +711,7 @@ TEST_F(XlaCompilerTest, ConstantOutputsOfFunctionalNode) {
     foo.set_name("foo");
     foo.set_op("foo");
     *foo.add_input() = "input_arg";
-    Status status;
+    absl::Status status;
     scope.graph()->AddNode(foo, &status);
     TF_ASSERT_OK(status);
     NodeDef retval_1;
@@ -771,7 +774,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
 
   // Compiles the graph.
   auto options = DefaultOptions();
-  std::function<Status(ResourceMgr*)> populate_function =
+  std::function<absl::Status(ResourceMgr*)> populate_function =
       [resource](ResourceMgr* rm) {
         resource->Ref();
         return rm->Create(rm->default_container(), "dummy", resource);
@@ -988,7 +991,7 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
   XlaCompiler::CompilationResult result;
   NameAttrList name_attr;
   name_attr.set_name("Function_NotDefined_");
-  Status status =
+  absl::Status status =
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
@@ -1034,7 +1037,7 @@ TEST_F(XlaCompilerTest, FunctionCallWithConstants) {
                    .Input(value.name(), 0, DT_INT32)
                    .Input(shape.name(), 1, DT_INT32)
                    .Finalize(&def));
-  Status status;
+  absl::Status status;
   Node* fill = scope.graph()->AddNode(def, &status);
   TF_ASSERT_OK(status);
   TF_ASSERT_OK(scope.DoShapeInference(fill));
@@ -1065,7 +1068,7 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
   XlaCompiler::CompilationResult result;
   NameAttrList name_attr;
   name_attr.set_name("XTimesTwo");
-  Status status =
+  absl::Status status =
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
 
@@ -1121,7 +1124,7 @@ TEST_F(XlaCompilerTest, SliceWithDynamicBegins) {
                    .Input(begin.node()->name(), 1, DT_INT32)
                    .Input(size.name(), 2, DT_INT32)
                    .Finalize(&def));
-  Status status;
+  absl::Status status;
   Node* slice = scope.graph()->AddNode(def, &status);
   TF_ASSERT_OK(status);
   TF_ASSERT_OK(scope.DoShapeInference(slice));
@@ -1554,7 +1557,7 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
                    .Input(value.name(), 0, DT_INT32)
                    .Input(shape.name(), 1, DT_INT32)
                    .Finalize(&def));
-  Status status;
+  absl::Status status;
   Node* fill = scope.graph()->AddNode(def, &status);
   TF_ASSERT_OK(status);
   TF_ASSERT_OK(scope.DoShapeInference(fill));
@@ -1584,7 +1587,7 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   shape.set_op("Shape");
   (*shape.mutable_attr())["T"].set_type(DT_INT32);
   (*shape.mutable_attr())["out_type"].set_type(DT_BOOL); /* invalid type */
-  Status status;
+  absl::Status status;
   Node* shape_node = graph->AddNode(shape, &status);
   TF_ASSERT_OK(status);
   graph->AddControlEdge(graph->source_node(), shape_node);
@@ -1607,7 +1610,7 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
   NodeDef no_op;
   no_op.set_name("NoOp");
   no_op.set_op("NoOp");
-  Status status;
+  absl::Status status;
   graph->AddNode(no_op, &status);
   TF_ASSERT_OK(status);
 
@@ -1645,7 +1648,7 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
               std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
   AddNodeAttr(kXlaOriginalOutsideCompilationNodeName, side_effecting_op.name(),
               &side_effecting_op);
-  Status status;
+  absl::Status status;
   graph->AddNode(side_effecting_op, &status);
   TF_ASSERT_OK(status);
   EXPECT_TRUE(FixupSourceAndSinkEdges(graph.get()));
@@ -1998,7 +2001,7 @@ TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
   std::vector<TensorShape> shapes2{TensorShape({1})};
 
   TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
-  Status status = compiler.SetDeviceToHostMetadata(key, types2, shapes2);
+  absl::Status status = compiler.SetDeviceToHostMetadata(key, types2, shapes2);
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
 }
 
@@ -2027,8 +2030,29 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   std::vector<TensorShape> shapes2{TensorShape({1})};
 
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
-  Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
+  absl::Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
+TEST_F(XlaCompilerTest, GetChannelHandleIndependently) {
+  XlaCompiler compiler1(DefaultOptions());
+  XlaCompiler compiler2(DefaultOptions());
+  int num_channels = 3;
+  std::vector<int> channel_ids1, channel_ids2;
+  for (int j = 0; j < num_channels; ++j) {
+    xla::ChannelHandle channel_handle;
+    TF_ASSERT_OK(
+        compiler1.GetChannelHandle(/*key=*/absl::StrCat(j), &channel_handle));
+    channel_ids1.push_back(channel_handle.handle());
+  }
+  for (int j = 0; j < num_channels; ++j) {
+    xla::ChannelHandle channel_handle;
+    TF_ASSERT_OK(
+        compiler2.GetChannelHandle(/*key=*/absl::StrCat(j), &channel_handle));
+    channel_ids2.push_back(channel_handle.handle());
+  }
+  EXPECT_THAT(channel_ids1, ::testing::UnorderedElementsAreArray({1, 2, 3}));
+  EXPECT_THAT(channel_ids2, ::testing::UnorderedElementsAreArray({1, 2, 3}));
 }
 
 TEST_F(OpsTestBase, BuildSingleOpCompileArgument) {

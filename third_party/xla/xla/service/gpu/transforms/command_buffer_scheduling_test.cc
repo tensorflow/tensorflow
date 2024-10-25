@@ -56,8 +56,10 @@ class CommandBufferSchedulingTest : public HloTestBase {
   }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() {
-    return backend().default_stream_executor()
-        ->GetDeviceDescription().gpu_compute_capability();
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
   }
 };
 

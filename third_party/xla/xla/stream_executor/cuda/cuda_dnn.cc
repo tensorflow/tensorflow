@@ -49,6 +49,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
@@ -57,10 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
@@ -213,16 +211,18 @@ std::string CudnnStatusToString(cudnnStatus_t status) {
 class CudnnHandle {
  public:
   // Takes ownership of the lock to access cuDNN using handle.
-  CudnnHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+  CudnnHandle(StreamExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
               cudnnHandle_t handle)
-      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
+      : context_(executor->Activate()),
+        lock_(std::move(lock)),
+        handle_(handle) {}
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
   cudnnHandle_t handle() const { return handle_; }
 
  private:
-  gpu::ScopedActivateContext context_;
+  std::unique_ptr<ActivateContext> context_;
   std::unique_ptr<absl::MutexLock> lock_;
   cudnnHandle_t handle_;  // Not owned.
 };
@@ -287,7 +287,7 @@ class CudnnAccess {
   // The legacy default stream synchronizes with all other streams and it is
   // therefore a bad idea (performance wise) to call any cuDNN APIs that
   // enqueue work in the stream.
-  CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
+  CudnnHandle GetHandle(StreamExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
@@ -485,10 +485,10 @@ void PreloadCudnnSubLibsHelper(dnn::ConvolutionKind kind) {
 
 }  // namespace
 
-CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
+CudnnSupport::CudnnSupport(StreamExecutor* parent) : parent_(parent) {}
 
 absl::Status CudnnSupport::Init() {
-  ScopedActivateContext context(parent_);
+  std::unique_ptr<ActivateContext> context = parent_->Activate();
 
   // Peek at the last error to give more information in cases of errors.
   cudaError_t cuda_error = cudaPeekAtLastError();
@@ -1909,7 +1909,7 @@ absl::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
 
 class CudnnRnnSequenceTensorDescriptor
     : public dnn::RnnSequenceTensorDescriptor {
-  CudnnRnnSequenceTensorDescriptor(GpuExecutor* parent, int max_seq_length,
+  CudnnRnnSequenceTensorDescriptor(StreamExecutor* parent, int max_seq_length,
                                    int batch_size, int data_size,
                                    RNNDataDescriptor data_handle,
                                    TensorDescriptor handle)
@@ -1925,7 +1925,7 @@ class CudnnRnnSequenceTensorDescriptor
       default;
 
   static absl::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
-      GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
+      StreamExecutor* parent, int max_seq_length, int batch_size, int data_size,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
       return absl::InvalidArgumentError("max_seq_length <= 0");
@@ -1943,7 +1943,7 @@ class CudnnRnnSequenceTensorDescriptor
   }
 
   static absl::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
-      GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
+      StreamExecutor* parent, int max_seq_length, int batch_size, int data_size,
       absl::Span<const int> seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
     if (max_seq_length <= 0) {
@@ -2001,7 +2001,7 @@ class CudnnRnnSequenceTensorDescriptor
 
 class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
  public:
-  CudnnRnnStateTensorDescriptor(GpuExecutor* parent, int num_layers,
+  CudnnRnnStateTensorDescriptor(StreamExecutor* parent, int num_layers,
                                 int batch_size, int data_size,
                                 cudnnDataType_t data_type)
       : handle_(CreateTensorDescriptor()),
@@ -5771,7 +5771,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyConvRunner'.
   static absl::StatusOr<CudnnLegacyConvRunner> Create(
-      GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
+      StreamExecutor* parent, Stream* stream, CudnnAccess* cudnn,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       dnn::DataType output_type, dnn::ConvolutionKind kind,
       CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
@@ -5953,7 +5953,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 
  private:
   // Private to prevent passing in the wrong workspace_size.
-  CudnnLegacyConvRunner(GpuExecutor* parent, CudnnAccess* cudnn,
+  CudnnLegacyConvRunner(StreamExecutor* parent, CudnnAccess* cudnn,
                         int64_t algo_id, bool tensor_ops_enabled,
                         size_t workspace_size, dnn::DataType input_type,
                         dnn::DataType output_type, dnn::ConvolutionKind kind,
@@ -5979,7 +5979,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     return {algo_id_, tensor_ops_enabled_, workspace_size_};
   }
 
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   CudnnAccess* cudnn_;
   int64_t algo_id_;
   bool tensor_ops_enabled_;
@@ -6333,7 +6333,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
   }
 
   static absl::StatusOr<CudnnExecutionPlanRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn,
+      StreamExecutor* parent, CudnnAccess* cudnn,
       cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids,
       bool need_side_input) {
     auto workspace_size = static_cast<uint64_t>(plan.getWorkspaceSize());
@@ -6349,7 +6349,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
   }
 
   static absl::StatusOr<CudnnExecutionPlanRunner> Create(
-      GpuExecutor* parent, CudnnAccess* cudnn,
+      StreamExecutor* parent, CudnnAccess* cudnn,
       cudnn_frontend::ExecutionPlan plan, absl::Span<const int64_t> uids,
       bool need_side_input, std::vector<int64_t> scalar_input_uids,
       std::vector<ScalingParam> scalar_input_values) {
@@ -6360,7 +6360,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
   }
 
  private:
-  CudnnExecutionPlanRunner(GpuExecutor* parent, CudnnAccess* cudnn,
+  CudnnExecutionPlanRunner(StreamExecutor* parent, CudnnAccess* cudnn,
                            cudnn_frontend::ExecutionPlan plan,
                            size_t workspace_size,
                            absl::Span<const int64_t> uids, bool need_side_input,
@@ -6374,7 +6374,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
         need_side_input_(need_side_input),
         scalar_input_uids_(scalar_input_uids),
         scalar_input_values_(scalar_input_values) {}
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   CudnnAccess* cudnn_;
   cudnn_frontend::ExecutionPlan plan_;
   size_t workspace_size_;
@@ -6388,7 +6388,7 @@ namespace {
 
 template <typename Sig>
 absl::Status CreateOpRunners(
-    Stream* stream, CudnnHandle& cudnn, GpuExecutor* gpu_executor,
+    Stream* stream, CudnnHandle& cudnn, StreamExecutor* gpu_executor,
     CudnnAccess* cudnn_access,
     std::unique_ptr<cudnn_frontend::OperationGraph> op_graph,
     dnn::ConvolutionKind kind, dnn::DataType input_type,
@@ -6740,7 +6740,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
  public:
   // Queries the workspace size and constructs a 'CudnnLegacyFusedConvRunner'.
   static absl::StatusOr<CudnnLegacyFusedConvRunner> Create(
-      GpuExecutor* parent, Stream* stream, CudnnAccess* cudnn,
+      StreamExecutor* parent, Stream* stream, CudnnAccess* cudnn,
       const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
       double conv_scale, double side_input_scale,
       CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
@@ -6866,7 +6866,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
  private:
   // Private to prevent passing in the wrong workspace_size.
-  CudnnLegacyFusedConvRunner(GpuExecutor* parent, CudnnAccess* cudnn,
+  CudnnLegacyFusedConvRunner(StreamExecutor* parent, CudnnAccess* cudnn,
                              int64_t algo_id, bool tensor_ops_enabled,
                              size_t workspace_size, dnn::DataType input_type,
                              double conv_scale, double side_input_scale,
@@ -6896,7 +6896,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     return {algo_id_, tensor_ops_enabled_, workspace_size_};
   }
 
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   CudnnAccess* cudnn_;
   int64_t algo_id_;
   bool tensor_ops_enabled_;
@@ -8472,9 +8472,7 @@ absl::Status CudnnGraph::Execute(Stream& stream,
   const CudnnSupport& dnn_support =
       static_cast<CudnnSupport&>(*stream.parent()->AsDnn());
   RETURN_IF_CUDNN_FRONTEND_ERROR(graph_.execute(
-      dnn_support.cudnn_
-          ->GetHandle(ExtractGpuExecutor(stream.parent()), &stream)
-          .handle(),
+      dnn_support.cudnn_->GetHandle(stream.parent(), &stream).handle(),
       tensor_to_ptr_map, workspace.opaque()));
   return absl::OkStatus();
 }
@@ -8487,15 +8485,7 @@ void initialize_cudnn() {
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
           cuda::kCudaPlatformId, "cuDNN",
           [](StreamExecutor* parent) -> dnn::DnnSupport* {
-            gpu::GpuExecutor* cuda_executor =
-                dynamic_cast<gpu::GpuExecutor*>(parent);
-            if (cuda_executor == nullptr) {
-              LOG(ERROR) << "Attempting to initialize an instance of the cuDNN "
-                         << "support library with a non-CUDA StreamExecutor";
-              return nullptr;
-            }
-
-            gpu::CudnnSupport* dnn = new gpu::CudnnSupport(cuda_executor);
+            gpu::CudnnSupport* dnn = new gpu::CudnnSupport(parent);
             if (!dnn->Init().ok()) {
               // Note: Init() will log a more specific error.
               delete dnn;

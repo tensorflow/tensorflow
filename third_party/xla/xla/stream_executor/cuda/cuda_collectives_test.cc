@@ -20,7 +20,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/gpu/runtime/nccl_api.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -42,18 +41,16 @@ TEST(CudaCollectivesTest, CollectiveMemoryAllocation) {
                           PlatformManager::PlatformWithName("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  GpuExecutor* gpu_executor = ExtractGpuExecutor(executor);
 
   constexpr size_t kAllocateSize = 1024;
-  TF_ASSERT_OK_AND_ASSIGN(void* memory,
-                          CudaCollectives::CollectiveMemoryAllocate(
-                              gpu_executor->gpu_context(), kAllocateSize));
+  TF_ASSERT_OK_AND_ASSIGN(
+      void* memory,
+      CudaCollectives::CollectiveMemoryAllocate(executor, kAllocateSize));
 
-  EXPECT_THAT(gpu_executor->GetPointerMemorySpace(memory),
+  EXPECT_THAT(executor->GetPointerMemorySpace(memory),
               IsOkAndHolds(MemoryType::kDevice));
 
-  EXPECT_THAT(CudaCollectives::CollectiveMemoryDeallocate(
-                  gpu_executor->gpu_context(), memory),
+  EXPECT_THAT(CudaCollectives::CollectiveMemoryDeallocate(executor, memory),
               IsOk());
 }
 

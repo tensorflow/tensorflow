@@ -139,7 +139,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
     return false;
   }
   const OpDef* op_def = nullptr;
-  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  absl::Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok() || op_def->output_arg_size() == 0) {
     return false;
   }
@@ -472,7 +472,7 @@ void DependencyOptimizer::CleanControlInputs() {
   }
 }
 
-Status DependencyOptimizer::OptimizeDependencies() {
+absl::Status DependencyOptimizer::OptimizeDependencies() {
   SetVector<int> nodes_to_simplify;
   std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
@@ -532,7 +532,7 @@ void LongestPathsLowerBounds(
 
 }  // namespace
 
-Status DependencyOptimizer::TransitiveReduction() {
+absl::Status DependencyOptimizer::TransitiveReduction() {
   // PRECONDITION: optimized_graph_ must be sorted topologically.
   const int num_nodes = optimized_graph_->node_size();
   // Set up a compressed version of the graph to save a constant factor in the
@@ -747,8 +747,9 @@ void DependencyOptimizer::GroupCrossDeviceControlEdges(bool host_granularity) {
   }
 }
 
-Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                     GraphDef* optimized_graph) {
+absl::Status DependencyOptimizer::Optimize(Cluster* cluster,
+                                           const GrapplerItem& item,
+                                           GraphDef* optimized_graph) {
   optimized_graph_ = optimized_graph;
   *optimized_graph_ = item.graph;
   nodes_to_preserve_ = item.NodesToPreserve();
@@ -758,7 +759,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   const int num_iterations = 2;
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-    Status topo_sort_status;
+    absl::Status topo_sort_status;
     // Perform topological sort to prepare the graph for transitive reduction.
     topo_sort_status = TopologicalSort(optimized_graph_);
     // Set up index-based graph datastructures to speed up analysis steps below.

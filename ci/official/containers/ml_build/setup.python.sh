@@ -51,12 +51,6 @@ for f in $(ls | grep python); do
 done
 popd
 
-# Setup links for TensorFlow to compile.
-# Referenced in devel.usertools/*.bazelrc
-ln -sf /usr/bin/$VERSION /usr/bin/python3
-ln -sf /usr/bin/$VERSION /usr/bin/python
-ln -sf /usr/lib/$VERSION /usr/lib/tf_python
-
 # Python 3.10 include headers fix:
 # sysconfig.get_path('include') incorrectly points to /usr/local/include/python
 # map /usr/include/python3.10 to /usr/local/include/python3.10

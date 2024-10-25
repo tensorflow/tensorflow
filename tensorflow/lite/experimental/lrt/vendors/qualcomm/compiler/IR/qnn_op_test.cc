@@ -16,26 +16,26 @@
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 
 namespace {
 
 TEST(TestInitQnnOp, BuildDefaultOp) {
-  Qnn_OpConfig_t op = lrt::qnn::BuildDefaultOp();
+  Qnn_OpConfig_t op = litert::qnn::BuildDefaultOp();
   ASSERT_EQ(op.version, QNN_OPCONFIG_VERSION_1);
 }
 
 TEST(TestLegalizeOp, SimpleSupportedOp) {
-  auto model = lrt::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
 
-  Qnn_OpConfig_t qnn_op = lrt::qnn::BuildDefaultOp();
-  ASSERT_STATUS_OK(lrt::qnn::LegalizeOp(ops[0], qnn_op));
+  Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
+  ASSERT_STATUS_OK(litert::qnn::LegalizeOp(ops[0], qnn_op));
 
   EXPECT_TRUE(absl::StrContains(qnn_op.v1.name, "mul"));
   EXPECT_STREQ(qnn_op.v1.packageName, "qti.aisw");
@@ -45,20 +45,20 @@ TEST(TestLegalizeOp, SimpleSupportedOp) {
   EXPECT_EQ(qnn_op.v1.numOfOutputs, 0);
   EXPECT_EQ(qnn_op.v1.numOfParams, 0);
 
-  lrt::qnn::ResetOp(qnn_op);
+  litert::qnn::ResetOp(qnn_op);
 }
 
 TEST(TestLegalizeOp, UnsupportedOp) {
-  auto model = lrt::testing::LoadTestFileModel("simple_floor_mod_op.tflite");
+  auto model = litert::testing::LoadTestFileModel("simple_floor_mod_op.tflite");
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto ops, ::graph_tools::GetSubgraphOps(subgraph));
 
-  Qnn_OpConfig_t qnn_op = lrt::qnn::BuildDefaultOp();
-  ASSERT_STATUS_HAS_CODE(lrt::qnn::LegalizeOp(ops[0], qnn_op),
-                         kLrtStatusErrorUnsupported);
+  Qnn_OpConfig_t qnn_op = litert::qnn::BuildDefaultOp();
+  ASSERT_STATUS_HAS_CODE(litert::qnn::LegalizeOp(ops[0], qnn_op),
+                         kLiteRtStatusErrorUnsupported);
 
-  lrt::qnn::ResetOp(qnn_op);
+  litert::qnn::ResetOp(qnn_op);
 }
 
 }  // namespace

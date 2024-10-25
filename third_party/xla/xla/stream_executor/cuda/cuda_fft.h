@@ -27,12 +27,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-
 namespace gpu {
 
 // CUDAFftPlan uses deferred initialization. Only a single call of
@@ -63,7 +62,7 @@ class CUDAFftPlan : public fft::Plan {
   }
 
   // Initialize function for batched plan
-  absl::Status Initialize(GpuExecutor* parent, Stream* stream, int rank,
+  absl::Status Initialize(StreamExecutor* parent, Stream* stream, int rank,
                           uint64_t* elem_count, uint64_t* input_embed,
                           uint64_t input_stride, uint64_t input_distance,
                           uint64_t* output_embed, uint64_t output_stride,
@@ -79,7 +78,7 @@ class CUDAFftPlan : public fft::Plan {
   bool IsInitialized() const { return is_initialized_; }
 
  private:
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
   cufftHandle plan_;
   fft::Type fft_type_;
   DeviceMemory<uint8_t> scratch_;
@@ -93,7 +92,7 @@ class CUDAFftPlan : public fft::Plan {
 // This satisfies the platform-agnostic FftSupport interface.
 //
 // Note that the cuFFT handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent GpuExecutor is tied
+// context (and, as a result, the device) that the parent StreamExecutor is tied
 // to. This simply happens as an artifact of creating the cuFFT handle when a
 // CUDA context is active.
 //
@@ -101,13 +100,13 @@ class CUDAFftPlan : public fft::Plan {
 // context of parent_, so all context is explicit.
 class CUDAFft : public fft::FftSupport {
  public:
-  explicit CUDAFft(GpuExecutor* parent) : parent_(parent) {}
+  explicit CUDAFft(StreamExecutor* parent) : parent_(parent) {}
   ~CUDAFft() override {}
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES
 
  private:
-  GpuExecutor* parent_;
+  StreamExecutor* parent_;
 
   // Two helper functions that execute dynload::cufftExec?2?.
 

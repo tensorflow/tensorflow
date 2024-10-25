@@ -48,7 +48,13 @@ struct ArraySpec {
   // Returns a `ArraySpecProto` representation.
   absl::StatusOr<ArraySpecProto> ToProto() const;
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ArraySpec& array_spec) {
+    sink.Append(array_spec.DebugString());
+  }
 };
 
 }  // namespace ifrt

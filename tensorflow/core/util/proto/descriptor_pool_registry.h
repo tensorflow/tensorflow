@@ -30,7 +30,7 @@ namespace tensorflow {
 
 class DescriptorPoolRegistry {
  public:
-  typedef std::function<Status(
+  typedef std::function<absl::Status(
       tensorflow::protobuf::DescriptorPool const** desc_pool,
       std::unique_ptr<tensorflow::protobuf::DescriptorPool>* owned_desc_pool)>
       DescriptorPoolFn;

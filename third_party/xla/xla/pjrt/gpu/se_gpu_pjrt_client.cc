@@ -46,7 +46,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/local_client.h"
-#include "xla/client/xla_computation.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -509,6 +509,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           tsl::Fingerprint64(platform_name), platform_name,
           std::move(gpu_topology))),
       kv_store_(std::move(kv_store)) {
+  const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
@@ -518,8 +519,8 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         memory_space.get());
     owned_memory_spaces_.push_back(std::move(memory_space));
-    const size_t basePinnedId = devices.size();
-    auto pinned = std::make_unique<PinnedHostMemorySpace>(basePinnedId, device);
+    auto pinned =
+        std::make_unique<PinnedHostMemorySpace>(basePinnedId + id, device);
     tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)->AttachMemorySpace(
         pinned.get());
     owned_memory_spaces_.push_back(std::move(pinned));

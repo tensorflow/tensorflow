@@ -233,8 +233,8 @@ class ThunkExecutor {
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a completed `node` and updates `ready_queue` with
-  // nodes that are ready to execute. If `event` is in error state, aborts the
-  // execution and records the error status to forward it to the caller.
+  // nodes that are ready to execute. If `node_event` is in error state, aborts
+  // the execution and records the error status to forward it to the caller.
   template <typename ReadyQueue>
   void ProcessOutEdges(ExecuteState* state,
                        tsl::AsyncValuePtr<Thunk::ExecuteEvent> node_event,

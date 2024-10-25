@@ -213,51 +213,59 @@ XlaOp Reciprocal(XlaOp operand) { return ScalarLike(operand, 1.0) / operand; }
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 //
-// Precondition: abs(x) >= 1.  Otherwise, use ErfImpl.
+// Precondition: abs(x) >= 1.  Otherwise, use ErfcSmallImpl32.
 //
-// This follows Cephes's f32 implementation of erfc.
-static XlaOp ErfcImpl32(XlaOp x) {
-  // Coefficients for erfc(f32), from Cephes.
-  const double kMaxlog = 88.72283905206835;
-  // erfc(x) = exp(-x^2) P(1/x^2), 1 < x < 2
-  static const std::array<float, 9> kErfcPCoefficient{
-      +2.326819970068386E-2, -1.387039388740657E-1, +3.687424674597105E-1,
-      -5.824733027278666E-1, +6.210004621745983E-1, -4.944515323274145E-1,
-      +3.404879937665872E-1, -2.741127028184656E-1, +5.638259427386472E-1,
-  };
-  // erfc(x) = exp(-x^2) R(1/x^2), 2 <= x < kMaxlog
-  static const std::array<float, 8> kErfcRCoefficient{
-      -1.047766399936249E+1, +1.297719955372516E+1, -7.495518717768503E+0,
-      +2.921019019210786E+0, -1.015265279202700E+0, +4.218463358204948E-1,
-      -2.820767439740514E-1, +5.641895067754075E-1,
-  };
-  XlaOp abs_x = Abs(x);
-  XlaOp z = Exp(-x * x);
-  XlaOp q = ScalarLike(x, 1) / abs_x;
-  XlaOp y = q * q;
-  XlaOp p = Select(Lt(abs_x, ScalarLike(x, 2.0)),
-                   EvaluatePolynomial<float>(y, kErfcPCoefficient),
-                   EvaluatePolynomial<float>(y, kErfcRCoefficient));
-  y = z * q * p;
-  XlaOp y_clamp = Select(Lt(z, ScalarLike(x, -kMaxlog)), ScalarLike(x, 0), y);
-  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0) - y_clamp, y_clamp);
+// This follows Eigen's f32 implementation of erfc.
+static XlaOp ErfcLargeImpl32(XlaOp x) {
+  // Take absolute value and clamp at x=10.06 where erfc(x) is less than the
+  // underflow boundary for float32.
+  XlaOp abs_x = Min(Abs(x), ScalarLike(x, 10.06));
+
+  // erfc(x) = exp(-x^2) * 1/x * P(1/x^2) / Q(1/x^2), 1 < x < 10.06.
+  //
+  // Coefficients for P and Q were generated with Rminimax command:
+  //   ./ratapprox --function="erfc(1/sqrt(x))*exp(1/x)/sqrt(x)"
+  //     --dom='[0.01,1]' --type=[3,4] --numF="[SG]" --denF="[SG]" --log
+  //     --dispCoeff="dec"
+  static const std::array<float, 4> kErfcGammaCoefficient{
+      1.0208116471767425537109375e-01f, 4.2920666933059692382812500e-01f,
+      3.2379078865051269531250000e-01f, 5.3971976041793823242187500e-02f};
+  static const std::array<float, 5> kErfcDeltaCoefficient{
+      1.7251677811145782470703125e-02f, 3.9137163758277893066406250e-01f,
+      1.0000000000000000000000000e+00f, 6.2173241376876831054687500e-01f,
+      9.5662862062454223632812500e-02f};
+
+  XlaOp x2 = x * x;
+  XlaOp z = Exp(-x2);
+  XlaOp q2 = Reciprocal(x2);
+  XlaOp num = EvaluatePolynomial<float>(q2, kErfcGammaCoefficient);
+  XlaOp denom = abs_x * EvaluatePolynomial<float>(q2, kErfcDeltaCoefficient);
+  XlaOp r = num / denom;
+  XlaOp erfc_abs_x = z * r;
+  return Select(Lt(x, ScalarLike(x, 0)), ScalarLike(x, 2.0f) - erfc_abs_x,
+                erfc_abs_x);
 }
 
-// Compute a polynomial approximation of the error function.
+// Compute a polynomial approximation of the complementary error function
+// for abs(x) <= 1.
 //
-// Precondition: abs(x) <= 1.  Otherwise, use ErfcImpl.
+// Precondition: abs(x) <= 1.  Otherwise, use ErfcLargeImpl32.
 //
-// This follows Cephes's f32 implementation of erf.
-static XlaOp ErfImpl32Cephes(XlaOp x) {
-  // Coefficients for by erf(f32), from Cephes.
+static XlaOp ErfcSmallImpl32(XlaOp x) {
+  // erfc(x) = x * P(x^2) + 1, |x| <= 1
   //
-  // erf(x) = x P(x^2), 0 < x < 1
-  static const std::array<float, 7> kErfTCoefficient{
-      +7.853861353153693E-5, -8.010193625184903E-4, +5.188327685732524E-3,
-      -2.685381193529856E-2, +1.128358514861418E-1, -3.761262582423300E-1,
-      +1.128379165726710E+0,
-  };
-  return x * EvaluatePolynomial<float>(x * x, kErfTCoefficient);
+  // Coefficients were generated with Rminimax command:
+  // ./ratapprox --function="erfc(x)-1" --dom='[-1,1]' --type=[11,0] --num="odd"
+  //   --numF="[SG]" --denF="[SG]" --log --dispCoeff="dec"
+  static const std::array<float, 6> kErfcSmallCoefficient{
+      +5.61802298761904239654541015625e-04f,
+      -4.91381669417023658752441406250e-03f,
+      +2.67075151205062866210937500000e-02f,
+      -1.12800106406211853027343750000e-01f,
+      +3.76122951507568359375000000000e-01f,
+      -1.12837910652160644531250000000e+00f};
+  return x * EvaluatePolynomial<float>(x * x, kErfcSmallCoefficient) +
+         ScalarLike(x, 1.0f);
 }
 
 static XlaOp ErfcImpl64(XlaOp x) {
@@ -335,8 +343,8 @@ XlaOp Erfc(XlaOp x) {
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
     return DoWithUpcastToF32(x, {}, [](XlaOp x) {
-      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
-                    ScalarLike(x, 1) - ErfImpl32Cephes(x));
+      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcLargeImpl32(x),
+                    ErfcSmallImpl32(x));
     });
   });
 }

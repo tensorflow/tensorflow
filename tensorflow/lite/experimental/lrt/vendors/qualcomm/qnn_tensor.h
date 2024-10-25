@@ -21,10 +21,10 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 class QnnTensor {
@@ -54,6 +54,6 @@ class QnnTensor {
 };
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_TENSOR_H_

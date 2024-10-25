@@ -15,30 +15,14 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_
 
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnLog.h"
-#include "third_party/qairt/include/QNN/System/QnnSystemInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnLog.h"
 
-namespace lrt::qnn {
-
-//
-// Standalone Dump/Log Funcitonality
-//
-
-// Prints details about this interface.
-void DumpInterface(const QnnInterface_t* interface);
-
-// Prints details about this system interface.
-void DumpSystemInterface(const QnnSystemInterface_t* interface);
-
-//
-// QNN SDK Usage
-//
+namespace litert::qnn {
 
 // Gets a default logger implementation to stdout.
 // This is used when initializing qnn logging.
 QnnLog_Callback_t GetDefaultStdOutLogger();
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_QNN_LOG_H_

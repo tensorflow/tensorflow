@@ -203,7 +203,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     PartialTensorShape partial_shape = r->dtypes_and_shapes().begin()->shape;
     // Set the shape/type of the tensor that the resource points to
     // so that the graph has correct shape/type information that we can use.
-    const Status s =
+    const absl::Status s =
         llvm::cast<ResourceHandleWithLayout>((*result).get())
             ->UpdateShapeAndDType(partial_shape.AsProto(),
                                   r->dtypes_and_shapes().begin()->dtype);
@@ -239,9 +239,9 @@ bool LayoutsAreCompatible(std::optional<Layout> first_layout,
 }
 
 // Parse a pair of attribute of (indices, layouts) into a map.
-Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
-                    absl::string_view layout_attr,
-                    std::map<int, Layout>* indices_layout_map) {
+absl::Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
+                          absl::string_view layout_attr,
+                          std::map<int, Layout>* indices_layout_map) {
   std::vector<std::string> layouts;
   if (!TryGetNodeAttr(node.attrs(), layout_attr, &layouts)) {
     return absl::OkStatus();
@@ -265,14 +265,14 @@ Status ParseAttrMap(const Node& node, absl::string_view indices_attr,
   return absl::OkStatus();
 }
 
-Status ParseResourceArgumentLayouts(
+absl::Status ParseResourceArgumentLayouts(
     const Node& node, std::map<int, Layout>* inferred_resource_input_layouts) {
   return ParseAttrMap(node, kNewResourceLayoutIndices, kNewResourceArgLayouts,
                       inferred_resource_input_layouts);
 }
 
-Status ParseShapeInputLayouts(const Node& node,
-                              std::map<int, Layout>* shape_output_metadata) {
+absl::Status ParseShapeInputLayouts(
+    const Node& node, std::map<int, Layout>* shape_output_metadata) {
   return ParseAttrMap(node, kShapeOpInputLayoutIndices, kShapeOpInputLayout,
                       shape_output_metadata);
 }
@@ -325,7 +325,7 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
 StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
     TFE_TensorHandle* tensor) {
   tensorflow::PartialTensorShape shape;
-  const Status status = tensorflow::unwrap(tensor)->Shape(&shape);
+  const absl::Status status = tensorflow::unwrap(tensor)->Shape(&shape);
   if (status.ok()) {
     return GetTensorShapeAsVector(shape);
   } else {
@@ -516,7 +516,7 @@ StatusOr<std::string> SummarizeValues(
 
 std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
-  Status status;
+  absl::Status status;
   if (layout_.IsSingleDevice() || layout_.IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensors_[0].get())->SummarizeValue(value_summary);
@@ -632,9 +632,9 @@ std::string SparseTensorWithLayout::SummarizeValue() const {
   std::string values_summary;
   std::string dense_shapes_summary;
 
-  Status indices_status;
-  Status values_status;
-  Status dense_shapes_status;
+  absl::Status indices_status;
+  absl::Status values_status;
+  absl::Status dense_shapes_status;
 
   if (layout().IsFullyReplicated()) {
     indices_status = tensorflow::unwrap(indices_->tensor(0))
@@ -724,12 +724,12 @@ StatusOr<bool> ExecutableManager<ExecutionFunctions>::ShouldFoldInput(
       "manager)");
 }
 
-Status InferOutputLayouts(const DTensorOperation& doperation,
-                          const NameAttrList& attributes,
-                          const std::optional<Layout>& default_layout,
-                          tensorflow::Graph* graph,
-                          std::vector<const Layout*>* output_layouts) {
-  tensorflow::Status status;
+absl::Status InferOutputLayouts(const DTensorOperation& doperation,
+                                const NameAttrList& attributes,
+                                const std::optional<Layout>& default_layout,
+                                tensorflow::Graph* graph,
+                                std::vector<const Layout*>* output_layouts) {
+  absl::Status status;
   tensorflow::NodeDef op_node_def;
   op_node_def.set_op(doperation.name);
   op_node_def.set_name("eager_operation");
@@ -756,7 +756,7 @@ Status InferOutputLayouts(const DTensorOperation& doperation,
   return absl::OkStatus();
 }
 
-Status PrepareGraphForMlir(
+absl::Status PrepareGraphForMlir(
     const ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>& module_manager,
     const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation,
@@ -770,7 +770,7 @@ Status PrepareGraphForMlir(
   // determine default layouts.
   ShapeRefiner shape_refiner(TF_GRAPH_DEF_VERSION, &flib_def);
   shape_refiner.set_function_library_for_shape_inference(&flib_def);
-  tensorflow::Status status;
+  absl::Status status;
   {
     // We include an _Arg node for the device ID, but this isn't used by the
     // initial function. It will be provided a value, though, so it's
@@ -962,7 +962,7 @@ StatusOr<std::vector<int64_t>> GetNumLocalOutputs(Node* node) {
 }
 
 namespace {
-Status SetMultiDeviceFunctionOutputs(
+absl::Status SetMultiDeviceFunctionOutputs(
     TranslatedFunction& function, Node* node,
     const std::vector<PartialTensorShape>& global_output_shapes) {
   const AttrValue* serialized_layouts = (node->attrs()).Find(kLayoutAttr);
@@ -1107,11 +1107,12 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
 // be dropped during MLIR lowering.
 // TODO(b/171265131): fix the underlying issue to avoid inserting identity
 // nodes.
-Status MaybeInsertIdentityNodes(const FunctionDef* function_def, Graph* graph) {
+absl::Status MaybeInsertIdentityNodes(const FunctionDef* function_def,
+                                      Graph* graph) {
   if (function_def == nullptr || function_def->control_ret().empty()) {
     return absl::OkStatus();
   }
-  tensorflow::Status status;
+  absl::Status status;
   for (Node* n : graph->nodes()) {
     if (!n->IsRetval()) {
       continue;

@@ -19,24 +19,28 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
 namespace gpu {
 
-class CudaStream : public GpuStream {
+class CudaStream : public StreamCommon {
  public:
   absl::Status WaitFor(Stream* other) override;
   absl::Status RecordEvent(Event* event) override;
@@ -51,25 +55,47 @@ class CudaStream : public GpuStream {
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
+  absl::Status BlockHostUntilDone() override;
+
+  void SetName(std::string name) override;
+
+  Stream::PlatformSpecificHandle platform_specific_handle() const override {
+    return {stream_handle_};
+  }
+
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      bool use_delay_kernel) override {
+    return executor_->CreateEventBasedTimer(this, use_delay_kernel);
+  }
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
-      GpuExecutor* executor,
+      StreamExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~CudaStream() override;
 
+  CUstream stream_handle() const { return stream_handle_; }
+
  private:
-  CudaStream(GpuExecutor* executor, CudaEvent completed_event,
+  CudaStream(StreamExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              CUstream stream_handle)
-      : GpuStream(executor, priority, stream_handle),
+      : StreamCommon(executor, priority),
         executor_(executor),
-        completed_event_(std::move(completed_event)) {}
+        completed_event_(std::move(completed_event)),
+        stream_handle_(stream_handle) {}
 
   absl::Status RecordCompletedEvent();
 
-  GpuExecutor* executor_;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      const Kernel& kernel, const KernelArgs& args) override;
+
+  StreamExecutor* executor_;
   CudaEvent completed_event_;
+  CUstream stream_handle_;
 };
 }  // namespace gpu
 

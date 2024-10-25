@@ -19,11 +19,9 @@
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnLog.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
 
-namespace lrt {
+namespace litert {
 namespace qnn {
 
 QnnTensor::QnnTensor(const QnnTensor& other) : QnnTensor(other.Tensor()) {
@@ -96,4 +94,4 @@ absl::Status QnnTensor::DeepCopy() {
 }
 
 }  // namespace qnn
-}  // namespace lrt
+}  // namespace litert

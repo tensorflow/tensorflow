@@ -73,6 +73,7 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:event",

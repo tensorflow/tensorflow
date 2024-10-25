@@ -18,12 +18,13 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_c_api",
+    name = "litert_c_api",
     hdrs = [
-        "lite_rt_common.h",
-        "lite_rt_model.h",
-        "lite_rt_op_code.h",
-        "lite_rt_support.h",
+        "litert_common.h",
+        "litert_model.h",
+        "litert_op_code.h",
+        "litert_options.h",
+        "litert_support.h",
     ],
     deps = [
         "//tensorflow/lite:builtin_ops",
@@ -32,27 +33,29 @@ cc_library(
 )
 
 cc_library(
-    name = "lite_rt_tensor_buffer_c_api",
+    name = "litert_tensor_buffer_c_api",
     hdrs = [
-        "lite_rt_event.h",
-        "lite_rt_tensor_buffer.h",
-        "lite_rt_tensor_buffer_requirements.h",
+        "litert_event.h",
+        "litert_tensor_buffer.h",
+        "litert_tensor_buffer_requirements.h",
     ],
     deps = [
-        ":lite_rt_c_api",
+        ":litert_c_api",
     ],
 )
 
 cc_library(
-    name = "lite_rt_dispatch_c_api",
+    name = "litert_dispatch_delegate",
     hdrs = [
-        "lite_rt_dispatch.h",
-        "lite_rt_dispatch_api.h",
+        "litert_dispatch_delegate.h",
     ],
     deps = [
-        ":lite_rt_c_api",
-        ":lite_rt_tensor_buffer_c_api",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:c_api_opaque",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/utils:simple_opaque_delegate",
     ],
 )
 
-exports_files(srcs = glob(["lite_rt*.h"]))
+exports_files(srcs = glob(["litert_*.h"]))

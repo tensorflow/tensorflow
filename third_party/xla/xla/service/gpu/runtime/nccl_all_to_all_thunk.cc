@@ -219,7 +219,7 @@ absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
@@ -282,7 +282,7 @@ absl::Status RunMemCpyAllToAll(
   VLOG(3) << "Performing mem-copy-all-to-all from device ordinal: "
           << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 

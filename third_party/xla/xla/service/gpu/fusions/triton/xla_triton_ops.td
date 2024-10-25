@@ -21,17 +21,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
 include "triton/Dialect/Triton/IR/TritonTypeInterfaces.td"
+include "xla/service/gpu/fusions/triton/xla_triton_dialect.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
-
-def XlaTritonDialect : Dialect {
-  let name = "triton_xla";
-
-  let description = [{
-    This dialect contains ops included in the xla extension point for Triton.
-  }];
-
-  let cppNamespace = "::mlir::triton::xla";
-}
 
 class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {

@@ -17,26 +17,27 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_STREAM_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 
 namespace stream_executor {
 namespace gpu {
 
-class RocmStream : public GpuStream {
+class RocmStream : public StreamCommon {
  public:
   absl::Status WaitFor(Stream* other) override;
   absl::Status RecordEvent(Event* event) override;
@@ -51,25 +52,45 @@ class RocmStream : public GpuStream {
                       uint64_t size) override;
   absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
                       const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback) override;
+  absl::Status BlockHostUntilDone() override;
+
+  Stream::PlatformSpecificHandle platform_specific_handle() const override {
+    return {stream_handle_};
+  }
+
+  absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
+      bool use_delay_kernel) override {
+    return executor_->CreateEventBasedTimer(this, use_delay_kernel);
+  }
 
   static absl::StatusOr<std::unique_ptr<RocmStream>> Create(
-      GpuExecutor* executor,
+      StreamExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~RocmStream() override;
 
+  hipStream_t stream_handle() const { return stream_handle_; }
+
  private:
-  RocmStream(GpuExecutor* executor, RocmEvent completed_event,
+  RocmStream(StreamExecutor* executor, RocmEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
              hipStream_t stream_handle)
-      : GpuStream(executor, priority, stream_handle),
+      : StreamCommon(executor, priority),
         executor_(executor),
-        completed_event_(std::move(completed_event)) {}
+        completed_event_(std::move(completed_event)),
+        stream_handle_(stream_handle) {}
 
   absl::Status RecordCompletedEvent();
 
-  GpuExecutor* executor_;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      const Kernel& kernel, const KernelArgs& args) override;
+
+  StreamExecutor* executor_;
   RocmEvent completed_event_;
+  hipStream_t stream_handle_;
 };
 
 }  // namespace gpu

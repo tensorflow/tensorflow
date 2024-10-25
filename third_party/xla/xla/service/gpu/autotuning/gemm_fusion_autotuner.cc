@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -262,20 +263,12 @@ absl::StatusOr<TileSizeLimit> GetLimits(const HloDotInstruction& dot) {
 
 int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
-int64_t PriorityFusionShapeSize(const Shape& shape) {
+HloCostAnalysis::Options PriorityFusionOptions() {
   // The real pointer size is set in GpuCompiler. In HloCostAnalysis, the
   // pointer size is used only to determine the size of tuple types. We
   // shouldn't have any tuples in the autotuned module, so it's safe to use
-  // a constant here, instead of piping the real value.
-  constexpr int64_t kPointerSize = 8;
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
-HloCostAnalysis::Options PriorityFusionOptions() {
-  return {/*shape_size=*/PriorityFusionShapeSize,
-          /*per_second_rates=*/{},
-          /*min_latencies_seconds=*/{},
-          /*count_multiple_input_accesses=*/true};
+  // the default value here, instead of piping the real value.
+  return {.count_multiple_input_accesses = true};
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
@@ -633,13 +626,19 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
       AutotuneResult autotune_result,
       AutotunerUtil::Autotune(
           fusion_instr, config_, [&]() -> absl::StatusOr<AutotuneResult> {
+            absl::Status s;
             if (config_.IsDeviceless()) {
-              return absl::InternalError(absl::StrCat(
+              s = absl::InternalError(absl::StrCat(
                   "Expect autotune result cache hit for deviceless "
                   "compilation (HLO: ",
                   fusion_instr->ToString(), ")"));
+            } else {
+              s = absl::InternalError("Expect autotune result cache hit.");
             }
-            return absl::InternalError("Expect autotune result cache hit.");
+            tsl::errors::InsertPayloads(
+                s, {{std::string(kAutotuneCacheRequiredErrorPayloadKey), ""}});
+
+            return s;
           }));
   VLOG(4) << "Autotuning result: " << autotune_result.ShortDebugString();
 

@@ -42,12 +42,12 @@ class PluggableDeviceUtil {
   // Blocks until all operations queued on the stream associated with
   // 'device' at the time of the call have completed. Returns any
   // error pending on the stream at completion.
-  static Status Sync(Device* device);
+  static absl::Status Sync(Device* device);
 
   // Blocks until all operations queued on all streams associated with the
   // corresponding 'device' at the time of call have completed.
   // Returns any error pending on the stream at completion.
-  static Status SyncAll(Device* device);
+  static absl::Status SyncAll(Device* device);
 
   static void CopyCPUTensorToPluggableDevice(
       const Tensor* cpu_tensor, const DeviceContext* device_context,

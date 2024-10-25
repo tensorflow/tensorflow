@@ -48,7 +48,7 @@ absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   for (DeviceBufferPair& buffer : buffers) {
@@ -232,7 +232,7 @@ absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
   TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
+      MaybeRegisterBuffers(nccl_api, stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 

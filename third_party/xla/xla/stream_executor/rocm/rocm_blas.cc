@@ -20,21 +20,20 @@ limitations under the License.
 #include <assert.h>
 
 #include <complex>
+#include <memory>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
@@ -109,7 +108,7 @@ static std::string ToString(rocblas_status status) {
 }
 
 bool ROCMBlas::Init() {
-  ScopedActivateContext sac{parent_};
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   rocblas_status ret = wrap::rocblas_create_handle(&blas_);
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to create rocBLAS handle: " << ToString(ret);
@@ -136,7 +135,7 @@ bool ROCMBlas::Init() {
   return true;
 }
 
-ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
+ROCMBlas::ROCMBlas(StreamExecutor *parent)
     : parent_(CHECK_NOTNULL(parent)),
       blas_(nullptr)
 #if TF_HIPBLASLT
@@ -148,7 +147,7 @@ ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
-    ScopedActivateContext sac{parent_};
+    std::unique_ptr<ActivateContext> activation = parent_->Activate();
     wrap::rocblas_destroy_handle(blas_);
   }
 }
@@ -350,7 +349,7 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   absl::MutexLock lock{&mu_};
 
   CHECK(blas_ != nullptr);
-  ScopedActivateContext sac{parent_};
+  std::unique_ptr<ActivateContext> activation = parent_->Activate();
   if (!SetStream(stream)) {
     return absl::InternalError("Setting stream failed");
   }
@@ -1271,17 +1270,7 @@ void initialize_rocblas() {
             ->RegisterFactory<PluginRegistry::BlasFactory>(
                 rocm::kROCmPlatformId, "rocBLAS",
                 [](StreamExecutor *parent) -> blas::BlasSupport * {
-                  gpu::GpuExecutor *rocm_executor =
-                      dynamic_cast<gpu::GpuExecutor *>(parent);
-                  if (rocm_executor == nullptr) {
-                    LOG(ERROR)
-                        << "Attempting to initialize an instance of the "
-                           "rocBLAS "
-                        << "support library with a non-ROCM StreamExecutor";
-                    return nullptr;
-                  }
-
-                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(rocm_executor);
+                  gpu::ROCMBlas *blas = new gpu::ROCMBlas(parent);
                   if (!blas->Init()) {
                     // Note: Init() will log a more specific error.
                     delete blas;

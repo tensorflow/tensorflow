@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <random>
@@ -268,11 +269,19 @@ class Array {
 
   // Fills the array with random uniform variables in the [min_value, max_value]
   // range. Defined for integral types.
-  template <typename = typename std::enable_if<std::is_integral<T>::value>>
+  template <typename = typename std::enable_if<is_specialized_integral_v<T>>>
   void FillRandomUniform(const T& min_value, const T& max_value,
                          int seed = 12345) {
+    using RngInputType =
+        std::conditional_t<std::is_integral_v<T>, T,
+                           std::conditional_t<std::numeric_limits<T>::is_signed,
+                                              int64_t, uint64_t>>;
+    static_assert(std::numeric_limits<T>::digits <=
+                  std::numeric_limits<RngInputType>::digits);
     std::mt19937 g(seed);
-    std::uniform_int_distribution<T> distribution(min_value, max_value);
+    std::uniform_int_distribution<RngInputType> distribution(
+        static_cast<RngInputType>(min_value),
+        static_cast<RngInputType>(max_value));
     for (int64_t i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(distribution(g));
     }

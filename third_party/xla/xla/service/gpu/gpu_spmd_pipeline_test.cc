@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/service/algebraic_simplifier.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/shape_util.h"

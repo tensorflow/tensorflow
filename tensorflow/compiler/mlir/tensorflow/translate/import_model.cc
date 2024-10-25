@@ -129,8 +129,6 @@ namespace tensorflow {
 
 constexpr size_t kNumThreadToConvertSignatures = 10;
 
-using ::mlir::NamedAttrList;
-using ::mlir::TensorType;
 using ::mlir::tf_saved_model::AssetOp;
 using ::mlir::tf_saved_model::GlobalTensorOp;
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;

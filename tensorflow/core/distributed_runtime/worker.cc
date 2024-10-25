@@ -59,7 +59,7 @@ void Worker::GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->CreateSession(
+  absl::Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
       request->cluster_device_attributes(), request->isolate_session_state(),
       request->master_task(), request->master_incarnation());
@@ -70,7 +70,7 @@ void Worker::DeleteWorkerSessionAsync(CallOptions* opts,
                                       const DeleteWorkerSessionRequest* request,
                                       DeleteWorkerSessionResponse* response,
                                       StatusCallback done) {
-  Status s = env_->session_mgr->DeleteSession(request->session_handle());
+  absl::Status s = env_->session_mgr->DeleteSession(request->session_handle());
   done(s);
 }
 
@@ -78,7 +78,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
   std::shared_ptr<WorkerSession> session;
-  Status s;
+  absl::Status s;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);
@@ -99,7 +99,7 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
   std::shared_ptr<WorkerSession> session;
-  Status s;
+  absl::Status s;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);
@@ -128,9 +128,9 @@ void Worker::AbortStep(int64_t step_id) {
   });
 }
 
-Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
-                               GraphMgr::NamedTensors* in,
-                               GraphMgr::NamedTensors* out) {
+absl::Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
+                                     GraphMgr::NamedTensors* in,
+                                     GraphMgr::NamedTensors* out) {
   static Tensor empty_tensor(DT_FLOAT);
   if (req->num_sends() > 0) {
     Tensor val;
@@ -149,7 +149,7 @@ void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
                            MutableRunGraphResponseWrapper* response,
                            StatusCallback done) {
   if (request->store_errors_in_response_body()) {
-    done = [response, done](const Status& status) {
+    done = [response, done](const absl::Status& status) {
       response->set_status(status);
       done(absl::OkStatus());
     };
@@ -174,8 +174,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64_t step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
-  Status s = recent_request_ids_.TrackUnique(request->request_id(),
-                                             "RunGraph (Worker)", request);
+  absl::Status s = recent_request_ids_.TrackUnique(
+      request->request_id(), "RunGraph (Worker)", request);
   if (!s.ok()) {
     done(s);
     return;
@@ -234,8 +234,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       request->graph_handle(), step_id, request->exec_opts(), in, session.get(),
       collector, response, cm, env_->session_mgr->GetCoordinationServiceAgent(),
       [this, step_id, response, session, cm, out, token, collector,
-       device_profiler_session, opts, done](const Status& status) {
-        Status s = status;
+       device_profiler_session, opts, done](const absl::Status& status) {
+        absl::Status s = status;
         if (s.ok()) {
           s = session->graph_mgr()->RecvOutputs(step_id, out);
         }
@@ -273,7 +273,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64_t step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
-  Status s = recent_request_ids_.TrackUnique(
+  absl::Status s = recent_request_ids_.TrackUnique(
       request->request_id(), "PartialRunGraph (Worker)", request);
   if (!s.ok()) {
     done(s);
@@ -295,7 +295,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
   s = PrepareRunGraph(request, &in, out);
-  auto finish = [done, out, opts](const Status& s) {
+  auto finish = [done, out, opts](const absl::Status& s) {
     opts->ClearCancelCallback();
     delete out;
     done(s);
@@ -326,7 +326,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
         graph_handle, step_id, request->exec_opts(), in, session.get(),
         /*collector=*/nullptr, /*response=*/nullptr, cm,
         env_->session_mgr->GetCoordinationServiceAgent(),
-        [this, token, step_id, session](Status s) {
+        [this, token, step_id, session](absl::Status s) {
           cancellation_manager_.DeregisterCallback(token);
           partial_run_mgr_.ExecutorDone(step_id, s);
         });
@@ -340,7 +340,8 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   }
 
   session->graph_mgr()->RecvOutputsAsync(
-      step_id, out, [this, out, request, response, step_id, finish](Status s) {
+      step_id, out,
+      [this, out, request, response, step_id, finish](absl::Status s) {
         if (s.ok()) {
           // Construct and return the resp.
           for (const auto& p : *out) {
@@ -419,7 +420,8 @@ void Worker::CompleteGroupAsync(CallOptions* opts,
     group_params->device_type = DeviceType(request->device_type());
     env_->collective_executor_mgr->GetParamResolver()->CompleteGroupAsync(
         request->device_attributes(), group_params, &cancellation_manager_,
-        [response, group_params, done = std::move(done)](const Status& s) {
+        [response, group_params,
+         done = std::move(done)](const absl::Status& s) {
           if (s.ok()) {
             response->set_group_key(group_params->group_key);
             response->set_group_size(group_params->group_size);
@@ -469,8 +471,8 @@ void Worker::GetStepSequenceAsync(const GetStepSequenceRequest* request,
 
 // Helper for RecvTensor. Validates "key" and returns the source
 // device in "*src_dev".
-Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
-                                 Device** src_dev) {
+absl::Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
+                                       Device** src_dev) {
   // Figures out which device the tensor is hosted on.
   string local_name = DeviceNameUtils::LocalName(parsed.src_device);
   TF_RETURN_IF_ERROR(env_->device_mgr->LookupDevice(local_name, src_dev));

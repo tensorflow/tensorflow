@@ -15,11 +15,11 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_
 
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
 //
 // Initialize QNN Op.
@@ -35,13 +35,13 @@ Qnn_OpConfig_t BuildDefaultOp();
 void ResetOp(Qnn_OpConfig_t& op);
 
 //
-// Legalize Lrt Op to Analogous QNN Construct.
+// Legalize LiteRt Op to Analogous QNN Construct.
 //
 
 // Map src op onto dest. Resets dest before doing anything. This only handles
 // attribute-like info. It does not set edges (in/out tensors).
-LrtStatus LegalizeOp(LrtOp src, Qnn_OpConfig_t& dest);
+LiteRtStatus LegalizeOp(LiteRtOp src, Qnn_OpConfig_t& dest);
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_OP_H_

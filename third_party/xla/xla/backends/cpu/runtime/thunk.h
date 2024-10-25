@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/resource_use.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/util.h"
@@ -99,6 +97,8 @@ class Thunk {
     int64_t module_id;
   };
 
+  using Task = std::function<void()>;
+
   // An abstract task runner that can be used by a ThunkExecutor (including
   // thunk executors for nested computations in conditional or while thunks) for
   // running tasks corresponding to thunk execution. It can be a simple inline
@@ -107,8 +107,21 @@ class Thunk {
   // pool with the intra-op thread pool used for compute tasks. We deliberately
   // do not prescribe task runner to be Eigen or any other particular thread
   // pool, and let users make the choice.
-  using Task = std::function<void()>;
-  using TaskRunner = absl::AnyInvocable<void(Task)>;
+  class TaskRunner {
+   public:
+    virtual ~TaskRunner() = default;
+
+    virtual void operator()(Task task) = 0;
+
+    // Returns the current worker id if the caller happens to run on a thread
+    // managed by the task runner. Otherwise returns empty optional. Thunk
+    // executor relies on this information to do a best-effort resource
+    // isolation by making sure that all thunks are executed inside a task
+    // runner, and do not "leak" into arbitrary thread pools in the process,
+    // because by default we resume execution on a thread that completed thunk
+    // execute event AsyncValue, and it can be an external thread pool.
+    virtual std::optional<int64_t> current_worker_id() const = 0;
+  };
 
   Thunk(Kind kind, Info info);
 

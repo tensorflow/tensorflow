@@ -391,9 +391,8 @@ std::vector<mlir_converter::EpilogueSpecification>
 MlirTransposeFusion::GetEpilogues(const HloFusionInstruction& fusion,
                                   MLIRContext* mlir_context) const {
   std::vector<mlir_converter::EpilogueSpecification> epilogues{
-      mlir_converter::EpilogueSpecification::FromOutputIndexing(
-          analysis_, shmem_transposes_, shmem_transpose_roots_, *this,
-          mlir_context)};
+      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
+                                   shmem_transpose_roots_, mlir_context)};
   // Add empty epilogues for the side outputs. This ensures their roots don't
   // get "fused" into the tuple function.
   for (const auto* root : side_output_roots_) {

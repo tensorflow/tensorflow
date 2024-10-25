@@ -16,24 +16,23 @@
 
 #include <cstddef>
 #include <cstdlib>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "third_party/qairt/include/QNN/HTP/QnnHtpDevice.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "third_party/qairt/latest/include/QNN/HTP/QnnHtpDevice.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/lite/experimental/lrt/core/logging.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/qnn_compose_graph.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_manager.h"
 
-using ::lrt::qnn::QnnManager;
-using ::lrt::qnn::SetupAll;
+using ::litert::qnn::QnnManager;
 
 //
 // Configurations
@@ -67,61 +66,60 @@ std::optional<QnnHtpDevice_Arch_t> FindSocModel(
 
 }  // namespace
 
-const char* LrtPluginSocManufacturer() { return kPluginManufacturer; }
+const char* LiteRtPluginSocManufacturer() { return kPluginManufacturer; }
 
-lrt_param_index_t LrtPluginNumSupportedSocModels(
-    LrtCompilerPlugin compiler_plugin) {
+LiteRtParamIndex LiteRtPluginNumSupportedSocModels(
+    LiteRtCompilerPlugin compiler_plugin) {
   return kNumPluginSocModels;
 }
 
-LrtStatus LrtPluginGetSupportedSocModel(LrtCompilerPlugin compiler_plugin,
-                                        lrt_param_index_t soc_model_idx,
-                                        const char** soc_model_name) {
+LiteRtStatus LiteRtPluginGetSupportedSocModel(
+    LiteRtCompilerPlugin compiler_plugin, LiteRtParamIndex soc_model_idx,
+    const char** soc_model_name) {
   if (soc_model_idx < 0 || soc_model_idx >= kNumPluginSocModels) {
-    return kLrtStatusErrorInvalidArgument;
+    return kLiteRtStatusErrorInvalidArgument;
   }
   *soc_model_name = kPluginSocModels[soc_model_idx].first;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
 //
 // Compiled Result Definition
 //
 
-struct LrtCompiledResultT {
+struct LiteRtCompiledResultT {
   std::vector<char> context_bin;
   std::vector<std::string> graph_names;
 };
 
-LrtStatus LrtCompiledResultGetByteCode(LrtCompiledResult compiled_result,
-                                       const void** byte_code,
-                                       size_t* byte_code_size) {
+LiteRtStatus LiteRtCompiledResultGetByteCode(
+    LiteRtCompiledResult compiled_result, const void** byte_code,
+    size_t* byte_code_size) {
   *byte_code = compiled_result->context_bin.data();
   *byte_code_size = compiled_result->context_bin.size();
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
-                                       lrt_param_index_t call_idx,
-                                       const void** call_info,
-                                       size_t* call_info_size) {
+LiteRtStatus LiteRtCompiledResultGetCallInfo(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex call_idx,
+    const void** call_info, size_t* call_info_size) {
   if (call_idx >= compiled_result->graph_names.size()) {
-    return kLrtStatusParamIndexOOB;
+    return kLiteRtStatusErrorIndexOOB;
   }
 
   *call_info = compiled_result->graph_names.at(call_idx).data();
   *call_info_size = compiled_result->graph_names.at(call_idx).size();
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
-                                       lrt_param_index_t* num_calls) {
+LiteRtStatus LiteRtCompiledResultGetNumCalls(
+    LiteRtCompiledResult compiled_result, LiteRtParamIndex* num_calls) {
   *num_calls = compiled_result->graph_names.size();
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
+void LiteRtCompiledResultDestroy(LiteRtCompiledResult compiled_result) {
   delete compiled_result;
 }
 
@@ -130,75 +128,90 @@ void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
 //
 
 // Plugins can hold state.
-struct LrtCompilerPluginT {
-};
+struct LiteRtCompilerPluginT {};
 
-LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
-  auto* plugin = new LrtCompilerPluginT;
+LiteRtStatus LiteRtPluginInit(LiteRtCompilerPlugin* compiler_plugin) {
+  auto* plugin = new LiteRtCompilerPluginT;
   *compiler_plugin = plugin;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin) {
+void LiteRtPluginDestroy(LiteRtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
 
 namespace {
 
-bool IsOpSupported(LrtOp op) {
+bool IsOpSupported(LiteRtOp op) {
   using TyInfo = graph_tools::RankedTypeInfo;
 
   // NOTE: Currently we are demoing by just mapping simple f32 mul ops.
   // In the limit this function withh want to leverage QNN SDK's getSuportedOps
   // feature (along with our op/type mappings).
 
-  static const TyInfo supported_op_type = {kLrtElementTypeFloat32, {2, 2}};
+  static const TyInfo supported_op_type = {kLiteRtElementTypeFloat32, {2, 2}};
   return graph_tools::MatchOpType(op, {supported_op_type, supported_op_type},
-                                  {supported_op_type}, kLrtOpCodeTflMul);
+                                  {supported_op_type}, kLiteRtOpCodeTflMul);
 }
 
 }  // namespace
 
-LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
-                                  LrtModel model, LrtOpList selected_ops) {
-  LRT_ASSIGN_OR_RETURN_STATUS(auto subgraph, graph_tools::GetSubgraph(model));
-  LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(subgraph));
+LiteRtStatus LiteRtPluginPartitionModel(LiteRtCompilerPlugin compiler_plugin,
+                                        LiteRtModel model,
+                                        LiteRtOpList selected_ops) {
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto subgraph,
+                                 graph_tools::GetSubgraph(model));
+  LITERT_ASSIGN_OR_RETURN_STATUS(auto ops,
+                                 graph_tools::GetSubgraphOps(subgraph));
 
   for (auto op : ops) {
     if (!IsOpSupported(op)) {
       continue;
     }
 
-    LRT_RETURN_STATUS_IF_NOT_OK(PushOp(selected_ops, op));
+    LITERT_RETURN_STATUS_IF_NOT_OK(PushOp(selected_ops, op));
   }
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
-                           const char* soc_model, LrtSubgraphArray partitions,
-                           lrt_param_index_t num_partitions,
-                           LrtCompiledResult* compiled_result) {
+LiteRtStatus LiteRtPluginCompile(LiteRtCompilerPlugin compiler_plugin,
+                                 const char* soc_model,
+                                 LiteRtSubgraphArray partitions,
+                                 LiteRtParamIndex num_partitions,
+                                 LiteRtCompiledResult* compiled_result) {
   auto opt_soc_model = FindSocModel(soc_model);
 
-  QnnManager qnn;
-  LRT_RETURN_STATUS_IF_NOT_OK(SetupAll(
-      opt_soc_model, qnn, /*load_system=*/false, /*load_context=*/true));
+  auto backend_configs = QnnManager::DefaultBackendConfigs();
+  auto qnn_manager = QnnManager::Create(backend_configs, opt_soc_model);
+  if (!qnn_manager.ok()) {
+    LITERT_LOG(LITERT_ERROR, "%s", qnn_manager.status().message().data());
+    return kLiteRtStatusErrorRuntimeFailure;
+  }
 
-  auto result = std::make_unique<LrtCompiledResultT>();
+  auto context_configs = QnnManager::DefaultContextConfigs();
+  auto context_handle = (*qnn_manager)->CreateContextHandle(context_configs);
+  if (!context_handle.ok()) {
+    LITERT_LOG(LITERT_ERROR, "%s", context_handle.status().message().data());
+    return kLiteRtStatusErrorRuntimeFailure;
+  }
+
+  auto result = std::make_unique<LiteRtCompiledResultT>();
 
   // TODO: Support multiple partitions in QCC plugin compile.
-  LRT_ENSURE_SUPPORTED(num_partitions, 1);
+  LITERT_ENSURE_SUPPORTED(num_partitions, 1);
   {
     std::string& entry_point_name = result->graph_names.emplace_back();
     entry_point_name = "qnn_partition_0";
-    LRT_RETURN_STATUS_IF_NOT_OK(
-        ComposeGraph(qnn, partitions[0], entry_point_name));
+    LITERT_RETURN_STATUS_IF_NOT_OK(litert::qnn::ComposeGraph(
+        **qnn_manager, context_handle->get(), partitions[0], entry_point_name));
   }
 
-  LRT_RETURN_STATUS_IF_NOT_OK(qnn.GenerateContextBin(result->context_bin));
+  LITERT_RETURN_STATUS_IF_NOT_OK(
+      (*qnn_manager)
+          ->GenerateContextBinary(context_handle->get(), result->context_bin));
 
   *compiled_result = result.release();
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }

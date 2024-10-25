@@ -482,12 +482,23 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
       auto sharding, Sharding::FromProto(
                          absl::bind_front(&Client::LookupDevice, client_.get()),
                          assemble_request.sharding()));
-  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
-                                          assemble_request.copy_semantics()));
+  TF_ASSIGN_OR_RETURN(
+      auto array_copy_semantics,
+      FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
+  SingleDeviceShardSemantics single_device_shard_semantics;
+  if (version_.protocol_version() < 8) {
+    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
+  } else {
+    TF_ASSIGN_OR_RETURN(single_device_shard_semantics,
+                        FromSingleDeviceShardSemanticsProto(
+                            assemble_request.single_device_shard_semantics()));
+  }
 
-  TF_ASSIGN_OR_RETURN(auto array, client_->AssembleArrayFromSingleDeviceArrays(
-                                      std::move(shape), std::move(sharding),
-                                      absl::MakeSpan(arrays), semantics));
+  TF_ASSIGN_OR_RETURN(
+      auto array,
+      client_->AssembleArrayFromSingleDeviceArrays(
+          std::move(shape), std::move(sharding), absl::MakeSpan(arrays),
+          array_copy_semantics, single_device_shard_semantics));
 
   auto ifrt_resp = NewIfrtResponse(request->request_metadata().op_id());
 
@@ -618,15 +629,24 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
 absl::StatusOr<BackendInterface::Response>
 IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
     std::unique_ptr<IfrtRequest> request) {
-  TF_ASSIGN_OR_RETURN(
-      auto array,
-      GetArray(request->disassemble_into_single_device_arrays_request()
-                   .array_handle()));
+  const auto& disassemble_request =
+      request->disassemble_into_single_device_arrays_request();
+  TF_ASSIGN_OR_RETURN(auto array, GetArray(disassemble_request.array_handle()));
+  SingleDeviceShardSemantics single_device_shard_semantics;
+  if (version_.protocol_version() < 8) {
+    single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        single_device_shard_semantics,
+        FromSingleDeviceShardSemanticsProto(
+            disassemble_request.single_device_shard_semantics()));
+  }
 
   // TODO(b/282757875): Consider other ArrayCopySemantics.
   TF_ASSIGN_OR_RETURN(auto single_device_arrays,
                       array->DisassembleIntoSingleDeviceArrays(
-                          xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+                          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+                          single_device_shard_semantics));
 
   // Set up an IfrtResponse with pre-allocated space for the right number of
   // single device array handles.

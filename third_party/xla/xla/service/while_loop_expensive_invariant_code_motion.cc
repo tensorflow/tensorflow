@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "xla/service/while_loop_analysis.h"
+#include "xla/hlo/analysis/while_loop_analysis.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"

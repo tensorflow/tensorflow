@@ -101,14 +101,14 @@ class GraphExecutionState {
 
   // Creates a new `GraphExecutionState` for the given
   // `graph_def`, which represents the entire graph for a session.
-  static Status MakeForBaseGraph(
+  static absl::Status MakeForBaseGraph(
       GraphDef&& graph_def, const GraphExecutionStateOptions& options,
       std::unique_ptr<GraphExecutionState>* out_state);
 
   // Creates a new `GraphExecutionState` and `SimpleClientGraph`
   // for the subgraph of `original_graph_def` defined by
   // `subgraph_options`.
-  static Status MakeForPrunedGraph(
+  static absl::Status MakeForPrunedGraph(
       const GraphExecutionState& base_execution_state,
       const GraphExecutionStateOptions& options,
       const BuildGraphOptions& subgraph_options,
@@ -133,18 +133,18 @@ class GraphExecutionState {
   // Note that using this interface requires setting the value of
   // config.experimental().disable_optimize_for_static_graph() in the state
   // options to `true`, otherwise it will return an error.
-  Status Extend(const GraphDef& extension_def,
-                std::unique_ptr<GraphExecutionState>* out) const;
+  absl::Status Extend(const GraphDef& extension_def,
+                      std::unique_ptr<GraphExecutionState>* out) const;
 
   // Builds a ClientGraph (a sub-graph of the full graph as induced by
   // the Node set specified in "options").  If successful, returns OK
   // and the caller takes the ownership of "*out". Otherwise, returns
   // an error.
-  Status BuildGraph(const BuildGraphOptions& options,
-                    std::unique_ptr<ClientGraph>* out);
+  absl::Status BuildGraph(const BuildGraphOptions& options,
+                          std::unique_ptr<ClientGraph>* out);
 
   // Optimize the graph with the node set specified in `options`.
-  Status OptimizeGraph(
+  absl::Status OptimizeGraph(
       const BuildGraphOptions& options, const Graph& graph,
       const FunctionLibraryDefinition* flib_def,
       std::unique_ptr<Graph>* optimized_graph,
@@ -182,7 +182,7 @@ class GraphExecutionState {
                       std::unique_ptr<FunctionLibraryDefinition>&& flib_def,
                       const GraphExecutionStateOptions& options);
 
-  Status InitBaseGraph(std::unique_ptr<Graph>&& graph);
+  absl::Status InitBaseGraph(std::unique_ptr<Graph>&& graph);
 
   // Map of placed stateful nodes, i.e. nodes for which is_stateful()
   // is true, such as "params" and "queue" nodes.  Once placed these
@@ -195,8 +195,8 @@ class GraphExecutionState {
 
   // Extract the subset of the graph that needs to be run, adding feed/fetch
   // ops as needed.
-  Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
-                    subgraph::RewriteGraphMetadata* out_rewrite_metadata);
+  absl::Status PruneGraph(const BuildGraphOptions& options, Graph* graph,
+                          subgraph::RewriteGraphMetadata* out_rewrite_metadata);
 
   // The GraphExecutionState must store a copy of the original GraphDef if
   // either of the following conditions holds:

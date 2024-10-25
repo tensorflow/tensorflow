@@ -22,13 +22,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
 class GpuContext;
 
-// This class implements Event::PollForStatus for CUDA devices.
+// This class implements Event for CUDA devices.
 class CudaEvent : public Event {
  public:
   Event::Status PollForStatus() override;
@@ -36,7 +36,8 @@ class CudaEvent : public Event {
 
   // Creates a new CudaEvent. If allow_timing is false, the event will not
   // support timing, which is cheaper to create.
-  static absl::StatusOr<CudaEvent> Create(Context* context, bool allow_timing);
+  static absl::StatusOr<CudaEvent> Create(StreamExecutor* executor,
+                                          bool allow_timing);
 
   CUevent GetHandle() const { return handle_; }
 
@@ -47,11 +48,11 @@ class CudaEvent : public Event {
   CudaEvent& operator=(CudaEvent&& other);
 
  private:
-  explicit CudaEvent(Context* context, CUevent handle)
-      : context_(context), handle_(handle) {}
+  explicit CudaEvent(StreamExecutor* executor, CUevent handle)
+      : executor_(executor), handle_(handle) {}
 
-  // The Context used to which this object and GpuEventHandle are bound.
-  Context* context_;
+  // The StreamExecutor to which this object and CUevent are bound.
+  StreamExecutor* executor_;
 
   // The underlying CUDA event handle.
   CUevent handle_;

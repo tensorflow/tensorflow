@@ -93,19 +93,19 @@ class FakeTaskWithoutCriticality {
 using Queue = BatchScheduler<FakeTask>;
 using Scheduler = SharedBatchScheduler<FakeTask>;
 using QueueOptions = Scheduler::QueueOptions;
-using SplitFunc =
-    std::function<Status(std::unique_ptr<FakeTask>* input_task,
-                         int first_output_task_size, int input_batch_size_limit,
-                         std::vector<std::unique_ptr<FakeTask>>* output_tasks)>;
+using SplitFunc = std::function<absl::Status(
+    std::unique_ptr<FakeTask>* input_task, int first_output_task_size,
+    int input_batch_size_limit,
+    std::vector<std::unique_ptr<FakeTask>>* output_tasks)>;
 
 // Creates a FakeTask of size 'task_size' and 'criticality', and calls
 // 'scheduler->Schedule()' on that task. Returns the resulting status.
 // 'criticality' defaults to kCritical.
-Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler,
-                    tsl::criticality::Criticality criticality =
-                        tsl::criticality::Criticality::kCritical) {
+absl::Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler,
+                          tsl::criticality::Criticality criticality =
+                              tsl::criticality::Criticality::kCritical) {
   std::unique_ptr<FakeTask> task(new FakeTask(task_size, criticality));
-  Status status = scheduler->Schedule(&task);
+  absl::Status status = scheduler->Schedule(&task);
   // Schedule() should have consumed 'task' iff it returned Status::OK.
   CHECK_EQ(status.ok(), task == nullptr);
   return status;
@@ -114,11 +114,11 @@ Status ScheduleTask(size_t task_size, BatchScheduler<FakeTask>* scheduler,
 // Helper function similar to the function above. Creates a FakeTask of size
 // 'task_size' and calls 'scheduler->Schedule()' on that task. Returns the
 // resulting status.
-Status ScheduleTaskWithoutCriticality(
+absl::Status ScheduleTaskWithoutCriticality(
     size_t task_size, BatchScheduler<FakeTaskWithoutCriticality>* scheduler) {
   std::unique_ptr<FakeTaskWithoutCriticality> task(
       new FakeTaskWithoutCriticality(task_size));
-  Status status = scheduler->Schedule(&task);
+  absl::Status status = scheduler->Schedule(&task);
   // Schedule() should have consumed 'task' iff it returned Status::OK.
   CHECK_EQ(status.ok(), task == nullptr);
   return status;
@@ -208,7 +208,8 @@ class SharedBatchSchedulerTestBase {
       return
           [](std::unique_ptr<FakeTask>* input_task,
              int open_batch_remaining_slot, int max_batch_size,
-             std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
+             std::vector<std::unique_ptr<FakeTask>>* output_tasks)
+              -> absl::Status {
             std::unique_ptr<FakeTask> owned_input_task = std::move(*input_task);
             const int input_task_size = owned_input_task->size();
 
@@ -453,7 +454,7 @@ TEST_P(
         [](std::unique_ptr<FakeTaskWithoutCriticality>* input_task,
            int open_batch_remaining_slot, int max_batch_size,
            std::vector<std::unique_ptr<FakeTaskWithoutCriticality>>*
-               output_tasks) -> Status {
+               output_tasks) -> absl::Status {
       std::unique_ptr<FakeTaskWithoutCriticality> owned_input_task =
           std::move(*input_task);
       const int input_task_size = owned_input_task->size();
@@ -901,7 +902,7 @@ TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
   // Clog up queue 0.
   TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
   queue_0_processing.WaitForNotification();
-  Status queue_0_status;
+  absl::Status queue_0_status;
   do {
     queue_0_status = ScheduleTask(1, queue_0.get());
   } while (queue_0_status.ok());
@@ -1650,7 +1651,7 @@ void CreateQueues() {
   auto split_func_for_size_one_task =
       [](std::unique_ptr<FakeTask>* input_task, int open_batch_remaining_slot,
          int max_batch_size,
-         std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> Status {
+         std::vector<std::unique_ptr<FakeTask>>* output_tasks) -> absl::Status {
     output_tasks->push_back(std::move(*input_task));
 
     Notification notify;

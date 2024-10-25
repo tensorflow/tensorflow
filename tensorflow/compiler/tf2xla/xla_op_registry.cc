@@ -55,7 +55,7 @@ const char* const DEVICE_GPU_XLA_JIT = "XLA_GPU_JIT";
 const char* const DEVICE_XLA_CPU = "XLA_CPU";
 const char* const DEVICE_XLA_GPU = "XLA_GPU";
 
-static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
+static absl::Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef("XlaLaunch", &op_def));
   NodeDef node_def;
@@ -257,7 +257,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
 
     for (auto& op_registration : op_registrations) {
       const OpDef* op_def;
-      Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
+      absl::Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
       if (!lookup_status.ok()) {
         LOG(ERROR) << lookup_status.message();
         XLA_LOG_LINES(
@@ -428,7 +428,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 }
 
-/* static */ Status XlaOpRegistry::CompileTimeConstantInputs(
+/* static */ absl::Status XlaOpRegistry::CompileTimeConstantInputs(
     const NodeDef& node_def, const OpKernel* op_kernel, const OpDef* op_def,
     std::vector<int>* result) {
   result->clear();

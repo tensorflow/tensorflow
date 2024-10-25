@@ -1659,6 +1659,9 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
     if (!algorithm.ok()) {
       return op.emitError(algorithm.status().ToString());
     }
+    if (precision_config == nullptr) {
+      precision_config = std::make_unique<xla::PrecisionConfig>();
+    }
     precision_config->set_algorithm(algorithm.value());
   }
   auto xlaOp = xla::DotGeneral(

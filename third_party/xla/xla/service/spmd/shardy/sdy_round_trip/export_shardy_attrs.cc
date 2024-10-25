@@ -120,8 +120,8 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   }
 
   funcOp.front().walk([&](Operation* op) {
-    if (auto oldShardingPerValue =
-            op->getAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
+    if (TensorShardingPerValueAttr oldShardingPerValue =
+            mlir::sdy::getShardingPerValue(op)) {
       saveOpShardingPerValueAttr(op, oldShardingPerValue);
     }
     if (auto oldShardingRule =

@@ -2182,6 +2182,10 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
   set_parent(fused_root->parent());
   set_metadata(fused_root->metadata());
   set_frontend_attributes(fused_root->frontend_attributes());
+  // This simplifies some use cases for the original value that involve fusions.
+  if (auto original_value = fused_root->original_value()) {
+    set_original_value(original_value);
+  }
   CHECK(fused_root->IsFusible()) << fused_root->ToString();
   CloneAndAppendInstructionIntoCalledComputation(fused_root);
 }

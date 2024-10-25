@@ -15,17 +15,17 @@
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_TENSOR_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_TENSOR_H_
 
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
 //
 // Initialize QNN Tensors.
 //
 
-// NOTE: Within Lrt land, all Qnn Tensors are treated as "v2". Any
+// NOTE: Within LiteRt land, all Qnn Tensors are treated as "v2". Any
 // referential data (like dimensions : uint32_t*) within a QNN Tensor
 // is allocated with "new" and must be explicitly cleaned up with ResetTensor.
 
@@ -56,12 +56,12 @@ void ResetTensor(Qnn_Tensor_t& tensor);
 uint32_t MoveToId(Qnn_Tensor_t& tensor);
 
 //
-// Legalize Lrt Tensors to Analogous QNN Construct.
+// Legalize LiteRt Tensors to Analogous QNN Construct.
 //
 
 // Map src tensor onto dest. Resets dest before doing anything.
-LrtStatus LegalizeTensor(LrtTensor src, Qnn_Tensor_t& dest);
+LiteRtStatus LegalizeTensor(LiteRtTensor src, Qnn_Tensor_t& dest);
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_VENDORS_QUALCOMM_COMPILER_IR_QNN_TENSOR_H_

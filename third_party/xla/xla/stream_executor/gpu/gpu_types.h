@@ -43,7 +43,6 @@ struct UnsupportedGpuFeature {};
 #if TENSORFLOW_USE_SYCL
 
 using GpuStreamHandle = ::sycl::queue*;
-using GpuEventHandle = ::sycl::event*;
 using GpuFunctionHandle = ::sycl::kernel*;
 using GpuDevicePtr = void*;
 using GpuGraphHandle = UnsupportedGpuFeature;
@@ -54,7 +53,6 @@ using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #elif TENSORFLOW_USE_ROCM
 
 using GpuStreamHandle = hipStream_t;
-using GpuEventHandle = hipEvent_t;
 using GpuFunctionHandle = hipFunction_t;
 using GpuDevicePtr = hipDeviceptr_t;
 using GpuGraphHandle = hipGraph_t;
@@ -64,7 +62,6 @@ using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
 using GpuStreamHandle = CUstream;
-using GpuEventHandle = CUevent;
 using GpuFunctionHandle = CUfunction;
 using GpuDevicePtr = CUdeviceptr;
 using GpuGraphHandle = CUgraph;

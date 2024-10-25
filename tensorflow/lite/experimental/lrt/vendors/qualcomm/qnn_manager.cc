@@ -18,23 +18,25 @@
 #include <iostream>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/qairt/include/QNN/QnnCommon.h"
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnLog.h"
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "third_party/qairt/include/QNN/System/QnnSystemCommon.h"
-#include "third_party/qairt/include/QNN/System/QnnSystemContext.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "third_party/qairt/latest/include/QNN/QnnCommon.h"
+#include "third_party/qairt/latest/include/QNN/QnnInterface.h"
+#include "third_party/qairt/latest/include/QNN/QnnLog.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "third_party/qairt/latest/include/QNN/System/QnnSystemCommon.h"
+#include "third_party/qairt/latest/include/QNN/System/QnnSystemContext.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/dynamic_loading.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/common.h"
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/qnn_log.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
 namespace {
 
@@ -51,15 +53,15 @@ typedef Qnn_ErrorHandle_t (*QnnSystemInterfaceGetProvidersFn_t)(
 
 absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
   QnnInterfaceGetProvidersFn_t get_providers = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(
-      lrt::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
+  LITERT_RETURN_VAL_IF_NOT_OK(
+      litert::ResolveLibSymbol<QnnInterfaceGetProvidersFn_t>(
           lib_so, kLibQnnGetProvidersSymbol, &get_providers),
       {});
 
   const QnnInterface_t** interface_providers = nullptr;
   uint32_t num_providers = 0;
   if (QNN_SUCCESS != get_providers(&interface_providers, &num_providers)) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to get providers\n");
+    LITERT_LOG(LITERT_ERROR, "%s", "Failed to get providers\n");
     return {};
   }
 
@@ -69,15 +71,15 @@ absl::Span<const QnnInterface_t*> LoadProvidersFromLib(void* lib_so) {
 absl::Span<const QnnSystemInterface_t*> LoadSystemProvidersFromLib(
     void* lib_so) {
   QnnSystemInterfaceGetProvidersFn_t get_providers = nullptr;
-  LRT_RETURN_VAL_IF_NOT_OK(
-      lrt::ResolveLibSymbol<QnnSystemInterfaceGetProvidersFn_t>(
+  LITERT_RETURN_VAL_IF_NOT_OK(
+      litert::ResolveLibSymbol<QnnSystemInterfaceGetProvidersFn_t>(
           lib_so, kLibQnnSystemGetProvidersSymbol, &get_providers),
       {});
 
   const QnnSystemInterface_t** interface_providers = nullptr;
   uint32_t num_providers = 0;
   if (QNN_SUCCESS != get_providers(&interface_providers, &num_providers)) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to get system providers\n");
+    LITERT_LOG(LITERT_ERROR, "%s", "Failed to get system providers\n");
     return {};
   }
 
@@ -86,31 +88,21 @@ absl::Span<const QnnSystemInterface_t*> LoadSystemProvidersFromLib(
 
 }  // namespace
 
-LrtStatus QnnManager::LoadLib(absl::string_view path) {
-  LRT_RETURN_STATUS_IF_NOT_OK(lrt::OpenLib(path, &lib_so_));
-  return kLrtStatusOk;
+QnnManager::~QnnManager() {
+  (void)FreeDevice();
+  (void)FreeBackend();
+  (void)FreeLogging();
 }
 
-LrtStatus QnnManager::LoadSystemLib(absl::string_view path) {
-  LRT_RETURN_STATUS_IF_NOT_OK(lrt::OpenLib(path, &lib_system_so_));
-  return kLrtStatusOk;
+LiteRtStatus QnnManager::LoadLib(absl::string_view path) {
+  LITERT_RETURN_STATUS_IF_NOT_OK(litert::OpenLib(path, &lib_so_));
+  return kLiteRtStatusOk;
 }
 
-void QnnManager::DumpLibDetails() const {
-  if (lib_so_ == nullptr) {
-    return;
-  }
-  lrt::DumpLibInfo(lib_so_);
+LiteRtStatus QnnManager::LoadSystemLib(absl::string_view path) {
+  LITERT_RETURN_STATUS_IF_NOT_OK(litert::OpenLib(path, &lib_system_so_));
+  return kLiteRtStatusOk;
 }
-
-void QnnManager::DumpSystemLibDetails() const {
-  if (lib_system_so_ == nullptr) {
-    return;
-  }
-  lrt::DumpLibInfo(lib_system_so_);
-}
-
-void QnnManager::DumpApiDetails() const { DumpInterface(interface_); }
 
 const QnnApi* QnnManager::Api() const {
   if (interface_ == nullptr) {
@@ -119,11 +111,11 @@ const QnnApi* QnnManager::Api() const {
   return &interface_->QNN_INTERFACE_VER_NAME;
 }
 
-LrtStatus QnnManager::ResolveApi() {
+LiteRtStatus QnnManager::ResolveApi() {
   if (lib_so_ == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "%s",
-                "Cannot resolve functions: libQnn*.so has not been loaded.\n");
-    return kLrtStatusDynamicLoadErr;
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "Cannot resolve functions: libQnn*.so has not been loaded.\n");
+    return kLiteRtStatusErrorDynamicLoading;
   }
 
   auto providers = LoadProvidersFromLib(lib_so_);
@@ -144,18 +136,18 @@ LrtStatus QnnManager::ResolveApi() {
   }
 
   if (interface_ == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "No valid interface was provided\n");
-    return kLrtStatusDynamicLoadErr;
+    LITERT_LOG(LITERT_ERROR, "%s", "No valid interface was provided\n");
+    return kLiteRtStatusErrorDynamicLoading;
   }
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus QnnManager::ResolveSystemApi() {
+LiteRtStatus QnnManager::ResolveSystemApi() {
   if (lib_so_ == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "%s",
-                "Cannot resolve functions: libQnn*.so has not been loaded.\n");
-    return kLrtStatusDynamicLoadErr;
+    LITERT_LOG(LITERT_ERROR, "%s",
+               "Cannot resolve functions: libQnn*.so has not been loaded.\n");
+    return kLiteRtStatusErrorDynamicLoading;
   }
 
   auto system_providers = LoadSystemProvidersFromLib(lib_system_so_);
@@ -176,11 +168,11 @@ LrtStatus QnnManager::ResolveSystemApi() {
   }
 
   if (system_interface_ == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "No valid system interface was provided\n");
-    return kLrtStatusDynamicLoadErr;
+    LITERT_LOG(LITERT_ERROR, "%s", "No valid system interface was provided\n");
+    return kLiteRtStatusErrorDynamicLoading;
   }
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
 const QnnSystemApi* QnnManager::SystemApi() const {
@@ -190,129 +182,88 @@ const QnnSystemApi* QnnManager::SystemApi() const {
   return &system_interface_->QNN_SYSTEM_INTERFACE_VER_NAME;
 }
 
-void QnnManager::DumpSystemApiDetails() const {
-  DumpSystemInterface(system_interface_);
-}
-
-LrtStatus QnnManager::FreeSystemContext() {
-  if (system_context_handle_ != nullptr) {
-    if (QNN_SUCCESS != SystemApi()->systemContextFree(system_context_handle_)) {
-      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free system context\n");
-      return kLrtStatusErrorNotFound;
-    }
-  }
-  system_context_handle_ = nullptr;
-  return kLrtStatusOk;
-}
-
-LrtStatus QnnManager::FreeLogging() {
+LiteRtStatus QnnManager::FreeLogging() {
   if (log_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->logFree(log_handle_)) {
-      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free logging\n");
-      return kLrtStatusErrorNotFound;
+      LITERT_LOG(LITERT_ERROR, "%s", "Failed to free logging\n");
+      return kLiteRtStatusErrorNotFound;
     }
   }
   log_handle_ = nullptr;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus QnnManager::FreeBackend() {
+LiteRtStatus QnnManager::FreeBackend() {
   if (backend_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->backendFree(backend_handle_)) {
-      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free backend\n");
-      return kLrtStatusErrorNotFound;
+      LITERT_LOG(LITERT_ERROR, "%s", "Failed to free backend\n");
+      return kLiteRtStatusErrorNotFound;
     }
   }
   backend_handle_ = nullptr;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus QnnManager::FreeDevice() {
+LiteRtStatus QnnManager::FreeDevice() {
   if (device_handle_ != nullptr) {
     if (QNN_SUCCESS != Api()->deviceFree(device_handle_)) {
-      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free device\n");
-      return kLrtStatusErrorNotFound;
+      LITERT_LOG(LITERT_ERROR, "%s", "Failed to free device\n");
+      return kLiteRtStatusErrorNotFound;
     }
   }
   device_handle_ = nullptr;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus QnnManager::FreeContext() {
-  if (context_handle_ != nullptr) {
-    if (QNN_SUCCESS != Api()->contextFree(context_handle_, nullptr)) {
-      LITE_RT_LOG(LRT_ERROR, "%s", "Failed to free context\n");
-      return kLrtStatusErrorNotFound;
-    }
-  }
-  context_handle_ = nullptr;
-  return kLrtStatusOk;
-}
-
-LrtStatus QnnManager::GenerateContextBin(std::vector<char>& buffer) {
+LiteRtStatus QnnManager::GenerateContextBinary(
+    Qnn_ContextHandle_t context_handle, std::vector<char>& buffer) {
   Qnn_ContextBinarySize_t bin_size = 0;
-  if (QNN_SUCCESS != Api()->contextGetBinarySize(ContextHandle(), &bin_size)) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to get context bin size\n");
-    return kLrtStatusErrorNotFound;
+  if (QNN_SUCCESS != Api()->contextGetBinarySize(context_handle, &bin_size)) {
+    LITERT_LOG(LITERT_ERROR, "%s", "Failed to get context bin size\n");
+    return kLiteRtStatusErrorNotFound;
   }
   buffer.clear();
   buffer.resize(bin_size);
 
   Qnn_ContextBinarySize_t written_bin_size = 0;
-  if (QNN_SUCCESS != Api()->contextGetBinary(ContextHandle(), buffer.data(),
+  if (QNN_SUCCESS != Api()->contextGetBinary(context_handle, buffer.data(),
                                              buffer.size(),
                                              &written_bin_size)) {
-    LITE_RT_LOG(LRT_ERROR, "%s", "Failed to generated context binary \n");
-    return kLrtStatusErrorNotFound;
+    LITERT_LOG(LITERT_ERROR, "%s", "Failed to generated context binary \n");
+    return kLiteRtStatusErrorNotFound;
   }
 
-  LITE_RT_LOG(LRT_INFO, "Serialized a context bin of size (bytes): %lu\n",
-              written_bin_size);
+  LITERT_LOG(LITERT_INFO, "Serialized a context bin of size (bytes): %lu\n",
+             written_bin_size);
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
-                   QnnManager& qnn, bool load_system, bool load_context) {
-  LRT_RETURN_STATUS_IF_NOT_OK(qnn.LoadLib(kLibQnnHtpSo));
-  qnn.DumpLibDetails();
+LiteRtStatus QnnManager::Init(absl::Span<const QnnBackend_Config_t*> configs,
+                              std::optional<QnnHtpDevice_Arch_t> soc_model) {
+  LITERT_RETURN_STATUS_IF_NOT_OK(LoadLib(kLibQnnHtpSo));
+  LITERT_RETURN_STATUS_IF_NOT_OK(ResolveApi());
+  LITERT_RETURN_STATUS_IF_NOT_OK(LoadSystemLib(kLibQnnSystemSo));
+  LITERT_RETURN_STATUS_IF_NOT_OK(ResolveSystemApi());
 
-  LRT_RETURN_STATUS_IF_NOT_OK(qnn.ResolveApi());
-
-  if (load_system) {
-    LRT_RETURN_STATUS_IF_NOT_OK(qnn.LoadSystemLib(kLibQnnSystemSo));
-    qnn.DumpSystemLibDetails();
-
-    LRT_RETURN_STATUS_IF_NOT_OK(qnn.ResolveSystemApi());
-
-    if (auto status =
-            qnn.SystemApi()->systemContextCreate(&qnn.SystemContextHandle());
-        status != QNN_SUCCESS) {
-      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN System Context: %d", status);
-      return kLrtStatusErrorRuntimeFailure;
-    }
-  }
-
-  if (auto status = qnn.Api()->logCreate(GetDefaultStdOutLogger(),
-                                         QNN_LOG_LEVEL_DEBUG, &qnn.LogHandle());
+  if (auto status = Api()->logCreate(GetDefaultStdOutLogger(),
+                                     QNN_LOG_LEVEL_INFO, &LogHandle());
       status != QNN_SUCCESS) {
-    LITE_RT_LOG(LRT_ERROR, "Failed to create QNN logger: %d", status);
-    return kLrtStatusErrorRuntimeFailure;
+    LITERT_LOG(LITERT_ERROR, "Failed to create QNN logger: %d", status);
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
-  {
-    auto cfg = qnn::config::GetDefaultHtpConfigs();
-    if (auto status = qnn.Api()->backendCreate(qnn.LogHandle(), cfg.data(),
-                                               &qnn.BackendHandle());
-        status != QNN_SUCCESS) {
-      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN backend: %d", status);
-      return kLrtStatusErrorRuntimeFailure;
-    }
+  if (auto status =
+          Api()->backendCreate(LogHandle(), configs.data(), &BackendHandle());
+      status != QNN_SUCCESS) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create QNN backend: %d", status);
+    return kLiteRtStatusErrorRuntimeFailure;
   }
 
   if (soc_model.has_value()) {
-    LITE_RT_LOG(LRT_INFO, "Initializing QNN backend for device architecture %d",
-                *soc_model);
+    LITERT_LOG(LITERT_INFO,
+               "Initializing QNN backend for device architecture %d",
+               *soc_model);
     QnnHtpDevice_CustomConfig_t arch_custom_config = {};
     arch_custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
     arch_custom_config.arch.arch = *soc_model;
@@ -327,26 +278,75 @@ LrtStatus SetupAll(std::optional<QnnHtpDevice_Arch_t> soc_model,
         nullptr,
     };
 
-    if (auto status = qnn.Api()->deviceCreate(nullptr, device_configs,
-                                              &qnn.DeviceHandle());
-        status != QNN_SUCCESS) {
-      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN device: %d", status);
-      return kLrtStatusErrorRuntimeFailure;
-    }
-  }
-
-  if (load_context) {
-    auto cfg = config::GetDefaultContextConfigs();
     if (auto status =
-            qnn.Api()->contextCreate(qnn.BackendHandle(), qnn.DeviceHandle(),
-                                     cfg.data(), &qnn.ContextHandle());
+            Api()->deviceCreate(nullptr, device_configs, &DeviceHandle());
         status != QNN_SUCCESS) {
-      LITE_RT_LOG(LRT_ERROR, "Failed to create QNN context: %d", status);
-      return kLrtStatusErrorRuntimeFailure;
+      LITERT_LOG(LITERT_ERROR, "Failed to create QNN device: %d", status);
+      return kLiteRtStatusErrorRuntimeFailure;
     }
   }
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-};  // namespace lrt::qnn
+absl::StatusOr<QnnManager::SystemContextHandle>
+QnnManager::CreateSystemContextHandle() {
+  QnnSystemContext_Handle_t system_context_handle;
+  if (auto status = SystemApi()->systemContextCreate(&system_context_handle);
+      status != QNN_SUCCESS) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create QNN system context: %d", status);
+    return absl::InternalError("Failed to create QNN system context");
+  }
+  auto deleter = SystemApi()->systemContextFree;
+  return SystemContextHandle{system_context_handle, deleter};
+}
+
+absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
+    absl::Span<const QnnContext_Config_t*> configs) {
+  Qnn_ContextHandle_t context_handle;
+  if (auto status = Api()->contextCreate(BackendHandle(), DeviceHandle(),
+                                         configs.data(), &context_handle);
+      status != QNN_SUCCESS) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create QNN context: %d", status);
+    return absl::InternalError("Failed to create QNN context");
+  }
+  auto deleter = Api()->contextFree;
+  return ContextHandle{context_handle, /*profile_handle=*/nullptr, deleter};
+}
+
+absl::StatusOr<QnnManager::ContextHandle> QnnManager::CreateContextHandle(
+    absl::Span<const QnnContext_Config_t*> configs,
+    absl::Span<const uint8_t> bytecode, Qnn_ProfileHandle_t profile_handle) {
+  Qnn_ContextHandle_t context_handle;
+  if (auto status = Api()->contextCreateFromBinary(
+          BackendHandle(), DeviceHandle(), configs.data(), bytecode.data(),
+          bytecode.size(), &context_handle, profile_handle);
+      status != QNN_SUCCESS) {
+    LITERT_LOG(LITERT_ERROR, "Failed to create QNN context: %d", status);
+    return absl::InternalError("Failed to create QNN context");
+  }
+  auto deleter = Api()->contextFree;
+  return ContextHandle{context_handle, profile_handle, deleter};
+}
+
+absl::StatusOr<QnnManager::Ptr> QnnManager::Create(
+    absl::Span<const QnnBackend_Config_t*> configs,
+    std::optional<QnnHtpDevice_Arch_t> soc_model) {
+  Ptr qnn_manager(new QnnManager);
+  if (qnn_manager->Init(configs, soc_model) != kLiteRtStatusOk) {
+    return absl::InternalError("Failed to set up QNN manager");
+  }
+  return qnn_manager;
+}
+
+absl::Span<const QnnBackend_Config_t*> QnnManager::DefaultBackendConfigs() {
+  static const QnnBackend_Config_t* configs[] = {nullptr};
+  return absl::MakeSpan(configs);
+}
+
+absl::Span<const QnnContext_Config_t*> QnnManager::DefaultContextConfigs() {
+  static const QnnContext_Config_t* configs[] = {nullptr};
+  return absl::MakeSpan(configs);
+}
+
+};  // namespace litert::qnn

@@ -19,28 +19,10 @@
 #include <cstdio>
 #include <iostream>
 
-#include "third_party/qairt/include/QNN/QnnInterface.h"
-#include "third_party/qairt/include/QNN/QnnLog.h"
+#include "third_party/qairt/latest/include/QNN/QnnLog.h"
 
-namespace lrt::qnn {
+namespace litert::qnn {
 namespace {
-
-// NOLINTBEGIN
-constexpr char kQnnInterfaceDumpTpl[] =
-    "\
-QNN-INTERFACE\n\
-name: %s\n\
-backend_id: %u\n\
-core_api_version: %u.%u.%u\n\
-backend_api_version: %u.%u.%u\n";
-
-constexpr char kQnnSystemInterfaceDumpTpl[] =
-    "\
-QNN-SYTSTEM-INTERFACE\n\
-name: %s\n\
-backend_id: %u\n\
-system_api_version: %u.%u.%u\n";
-// NOLINTEND
 
 void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
                          uint64_t timestamp, va_list argp) {
@@ -77,24 +59,6 @@ void DefaultStdOutLogger(const char* fmt, QnnLog_Level_t level,
 
 }  // namespace
 
-void DumpInterface(const QnnInterface_t* interface) {
-  const auto core_version = interface->apiVersion.coreApiVersion;
-  const auto backend_version = interface->apiVersion.backendApiVersion;
-
-  fprintf(stderr, kQnnInterfaceDumpTpl, interface->providerName,
-          interface->backendId, core_version.major, core_version.minor,
-          core_version.patch, backend_version.major, backend_version.minor,
-          backend_version.patch);
-}
-
-void DumpSystemInterface(const QnnSystemInterface_t* interface) {
-  const auto system_version = interface->systemApiVersion;
-
-  fprintf(stderr, kQnnSystemInterfaceDumpTpl, interface->providerName,
-          interface->backendId, system_version.major, system_version.minor,
-          system_version.patch);
-}
-
 QnnLog_Callback_t GetDefaultStdOutLogger() { return DefaultStdOutLogger; }
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn

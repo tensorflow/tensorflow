@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/thread_annotations.h"

@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
-// This class implements Event::PollForStatus for ROCm devices.
+// This class implements Event for ROCm devices.
 class RocmEvent : public Event {
  public:
   Event::Status PollForStatus() override;
@@ -34,7 +34,8 @@ class RocmEvent : public Event {
 
   // Creates a new RocmEvent. If allow_timing is false, the event will not
   // support timing, which is cheaper to create.
-  static absl::StatusOr<RocmEvent> Create(Context* context, bool allow_timing);
+  static absl::StatusOr<RocmEvent> Create(StreamExecutor* executor,
+                                          bool allow_timing);
 
   hipEvent_t GetHandle() const { return handle_; }
 
@@ -45,11 +46,11 @@ class RocmEvent : public Event {
   RocmEvent& operator=(RocmEvent&& other);
 
  private:
-  explicit RocmEvent(Context* context, hipEvent_t handle)
-      : context_(context), handle_(handle) {}
+  explicit RocmEvent(StreamExecutor* executor, hipEvent_t handle)
+      : executor_(executor), handle_(handle) {}
 
-  // The Context used to which this object and GpuEventHandle are bound.
-  Context* context_;
+  // The Executor used to which this object and hipEvent_t are bound.
+  StreamExecutor* executor_;
 
   // The underlying CUDA event handle.
   hipEvent_t handle_;

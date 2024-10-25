@@ -17,7 +17,7 @@
 
 #include "absl/status/statusor.h"
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 struct IonBuffer {
@@ -30,6 +30,6 @@ struct IonBuffer {
 };
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_ION_BUFFER_H_

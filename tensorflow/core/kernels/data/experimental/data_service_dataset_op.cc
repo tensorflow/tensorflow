@@ -152,7 +152,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override {
     iteration_counter_->Unref();
     if (owns_resource_) {
-      Status s = resource_mgr_->Delete<IterationCounter>(
+      absl::Status s = resource_mgr_->Delete<IterationCounter>(
           iteration_counter_handle_.container(),
           iteration_counter_handle_.name());
       if (!s.ok()) {
@@ -190,21 +190,22 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                is_coordinated_read_);
   }
 
-  Status CheckExternalState() const override {
-    return Status(
+  absl::Status CheckExternalState() const override {
+    return absl::Status(
         absl::StatusCode::kFailedPrecondition,
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
     return absl::OkStatus();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     // Inputs
     std::vector<Node*> inputs;
 
@@ -337,7 +338,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
@@ -349,9 +350,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                              ctx->allocator(attrs));
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       auto ctx_factory = [ctx, this]() {
         return std::make_unique<DataServiceIteratorContext>(
             ctx, this, buffer_size_, model_node());
@@ -374,13 +375,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/std::numeric_limits<double>::max())});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       return errors::Unimplemented("SaveInternal is not yet supported");
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       return errors::Unimplemented("RestoreInternal is not yet supported");
     }
 
@@ -660,7 +661,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(
       ctx, HandleFromInput(ctx, kIterationCounter, &iteration_counter_handle));
   IterationCounter* iteration_counter = nullptr;
-  Status s = ctx->resource_manager()->Lookup<IterationCounter>(
+  absl::Status s = ctx->resource_manager()->Lookup<IterationCounter>(
       iteration_counter_handle.container(), iteration_counter_handle.name(),
       &iteration_counter);
   bool owns_resource = false;

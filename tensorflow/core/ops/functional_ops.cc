@@ -90,7 +90,7 @@ else_branch: A function that takes 'inputs' and returns a list of
     tensors.  whose types are the same as what then_branch returns.
 )doc");
 
-Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
@@ -135,7 +135,7 @@ REGISTER_OP("If")
     .SetIsStateful()
     .SetShapeFn(IfShapeInferenceFn);
 
-Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status CaseShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
@@ -207,7 +207,7 @@ body: A function that takes a list of tensors and returns another
       by T.
 )doc");
 
-Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
+absl::Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs

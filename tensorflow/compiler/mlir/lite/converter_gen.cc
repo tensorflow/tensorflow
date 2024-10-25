@@ -130,7 +130,7 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
     mlir::tblgen::Operator op(*def);
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         // This binds the name of the attribute in the TD file with the name
@@ -433,7 +433,7 @@ static void EmitBuiltinOptionsToAttributes(
     auto *arg_values = def->getValueAsDag("arguments");
     for (unsigned i = 0, e = arg_values->getNumArgs(); i != e; ++i) {
       auto arg = arg_values->getArg(i);
-      DefInit *arg_def = dyn_cast<DefInit>(arg);
+      const auto *arg_def = dyn_cast<DefInit>(arg);
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         StringRef arg_name = arg_values->getArgNameStr(i);
@@ -503,7 +503,7 @@ static bool OperatorWritersMain(raw_ostream &os, const RecordKeeper &records) {
 }
 
 static void GenOperandResultVerifier(raw_ostream &os,
-                                     llvm::ArrayRef<llvm::Init *> values,
+                                     llvm::ArrayRef<const llvm::Init *> values,
                                      StringRef valueKind) {
   mlir::tblgen::FmtContext fctx;
 

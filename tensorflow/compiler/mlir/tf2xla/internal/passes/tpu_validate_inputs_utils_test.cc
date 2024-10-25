@@ -24,11 +24,14 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace internal {
 namespace {
+
+using mlir::mhlo::test::GetMlirModuleFromString;
 
 TEST(IsPotentialUnsupportedOp, ClusterOpReturnsFalse) {
   mlir::MLIRContext context;
@@ -62,6 +65,25 @@ TEST(IsPotentialUnsupportedOp, InfeedDequeueTupleOpReturnsTrue) {
       kDeviceAttr, mlir::StringAttr::get(&context, kTpuReplicatedCoreZeroAttr));
 
   EXPECT_TRUE(IsPotentialUnsupportedOp(infeed_dequeue_tuple));
+}
+
+TEST(HasV1ControlFlow, ReturnsTrue) {
+  static constexpr char kMlirModuleStr[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+    func.func @graph_contains_v1_control_flow() {
+      tf_executor.graph {
+        %control = tf_executor.ControlTrigger {}
+        tf_executor.fetch
+      }
+      func.return
+    }
+  })";
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+  auto module = GetMlirModuleFromString(kMlirModuleStr, &context);
+
+  module->get().walk(
+      [&](GraphOp graph) { EXPECT_TRUE(HasV1ControlFlow(graph)); });
 }
 
 }  // namespace

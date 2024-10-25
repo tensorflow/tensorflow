@@ -111,7 +111,7 @@ class XlaContext : public ResourceBase {
   static const char kXlaContextResourceName[];
 
   // Records the collective information from the nested compilation `result`.
-  Status RecordCollectiveInfoFromNestedCompilationResult(
+  absl::Status RecordCollectiveInfoFromNestedCompilationResult(
       const XlaCompilationResult& result);
 
   // Records the collective configurations for all the collectives in the XLA

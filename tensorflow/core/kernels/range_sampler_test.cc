@@ -171,7 +171,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoExistingFilename) {
   Env* env = Env::Default();
   string fname = "NoExistingFile";
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(9, 0.8, 0, 1, 0);
-  Status s = test_sampler->SetDistributionSampler(env, fname);
+  absl::Status s = test_sampler->SetDistributionSampler(env, fname);
   sampler_.reset(test_sampler);
   EXPECT_TRUE(absl::IsNotFound(s)) << s;
 }
@@ -180,7 +180,7 @@ TEST_F(RangeSamplerTest, FixedUnigramNoMatchingRangeWeights) {
   string fname = io::JoinPath(testing::TmpDir(), "vocab_file");
   TF_CHECK_OK(WriteStringToFile(env, fname, kVocabContent));
   FixedUnigramSampler* test_sampler = new FixedUnigramSampler(8, 0.8, 0, 1, 0);
-  Status s = test_sampler->SetDistributionSampler(env, fname);
+  absl::Status s = test_sampler->SetDistributionSampler(env, fname);
   sampler_.reset(test_sampler);
   EXPECT_TRUE(absl::IsInvalidArgument(s)) << s;
 }

@@ -393,15 +393,21 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
   host_plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     VLOG(3) << "Line " << line.Id() << "\n";
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
-      VLOG(3) << " Event " << *event.Type() << "\n";
+      if (event_idx < expected_event_stat_type.size()) {
+        VLOG(3) << " Event "
+                << (event.Type().has_value() ? std::to_string(*event.Type())
+                                             : "UNKNOWN_TYPE")
+                << "\n";
 
-      absl::optional<XStatVisitor> stat =
-          event.GetStat(expected_event_stat_type[event_idx]);
-      // The stat may not exist if we're looking at the wrong line.
-      if (stat.has_value()) {
-        event_idx += 1;
-        VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
-                << " " << stat->ToString() << "\n";
+        absl::optional<XStatVisitor> stat =
+            event.GetStat(expected_event_stat_type[event_idx]);
+        // The stat may not exist if we're looking at the wrong line.
+        if (stat.has_value()) {
+          event_idx += 1;
+          VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
+                  << " " << stat->ToString() << ", event_idx:" << event_idx
+                  << "\n";
+        }
       }
     });
   });

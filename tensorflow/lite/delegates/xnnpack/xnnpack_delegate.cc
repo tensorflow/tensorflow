@@ -4296,14 +4296,6 @@ class Subgraph {
       return kTfLiteError;
     }
 
-    if (NumDimensions(&input_tensor) == 0) {
-      TF_LITE_MAYBE_KERNEL_LOG(
-          logging_context,
-          "unexpected number of shape dimensions %d in tensor #%d",
-          NumDimensions(&input_tensor), node->inputs->data[0]);
-      return kTfLiteError;
-    }
-
     if (filter_tensor.type == kTfLiteInt4 && input_channels % 2 == 1) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
@@ -7557,7 +7549,6 @@ class Subgraph {
 TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   // Clear previous data, in case the delegate is reused without re-creation.
   static_unpacked_data_map_.clear();
-  static_unpacked_data_.clear();
   static_unpack_nodes_.clear();
   static_sparse_weights_.clear();
   variable_holder_.ClearTensorIdToGlobalId();

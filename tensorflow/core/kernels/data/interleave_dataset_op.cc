@@ -104,20 +104,21 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+  absl::Status InputDatasets(
+      std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
     return absl::OkStatus();
   }
 
-  Status CheckExternalState() const override {
+  absl::Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
   }
 
  protected:
-  Status AsGraphDefInternal(SerializationContext* ctx,
-                            DatasetGraphDefBuilder* b,
-                            Node** output) const override {
+  absl::Status AsGraphDefInternal(SerializationContext* ctx,
+                                  DatasetGraphDefBuilder* b,
+                                  Node** output) const override {
     Node* input_node;
     TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
     Node* cycle_length_node;
@@ -149,7 +150,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
     bool SymbolicCheckpointCompatible() const override { return true; }
 
-    Status Initialize(IteratorContext* ctx) override {
+    absl::Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       input_ckpt_ = std::make_unique<MemoryCheckpoint>(ctx->id_registry());
 
@@ -164,7 +165,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
     }
 
-    Status AdvancePosition(int num_elements) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::Status AdvancePosition(int num_elements)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       block_index_ += num_elements;
       if (block_index_ == dataset()->block_length_) {
         AdvanceToNextInCycle();
@@ -184,9 +186,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence) override {
+    absl::Status GetNextInternal(IteratorContext* ctx,
+                                 std::vector<Tensor>* out_tensors,
+                                 bool* end_of_sequence) override {
       mutex_lock l(mu_);
       while (!end_of_input_ || num_open_ > 0) {
         if (current_elements_[cycle_index_]) {
@@ -231,8 +233,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
-                        bool* end_of_sequence, int* num_skipped) override {
+    absl::Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                              bool* end_of_sequence,
+                              int* num_skipped) override {
       mutex_lock l(mu_);
       *num_skipped = 0;
       while (!end_of_input_ || num_open_ > 0) {
@@ -288,8 +291,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                                kCycleLength, dataset()->cycle_length_)});
     }
 
-    Status SaveInternal(SerializationContext* ctx,
-                        IteratorStateWriter* writer) override {
+    absl::Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
@@ -312,8 +315,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreInternal(IteratorContext* ctx,
-                           IteratorStateReader* reader) override {
+    absl::Status RestoreInternal(IteratorContext* ctx,
+                                 IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t cycle_index;
@@ -385,8 +388,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                                    : (cycle_index);
     }
 
-    Status SaveCurrentElements(SerializationContext* ctx,
-                               IteratorStateWriter* writer)
+    absl::Status SaveCurrentElements(SerializationContext* ctx,
+                                     IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -476,7 +479,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     //    5. `input_impl_->GetNext()` -> put the result at [2] as args
     //
     //    6. ... and so on.
-    Status RestoreArgsListAndInputOffsetCycleIdxMap(
+    absl::Status RestoreArgsListAndInputOffsetCycleIdxMap(
         IteratorContext& ctx, std::vector<InputOffset>& input_element_indices,
         std::vector<std::optional<MemoryCheckpoint>>& checkpoints,
         std::vector<std::vector<Tensor>>& args,
@@ -572,7 +575,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status RestoreCurrentElements(
+    absl::Status RestoreCurrentElements(
         IteratorContext* ctx, IteratorStateReader* reader,
         std::vector<InputOffset>& input_element_indices,
         std::vector<std::optional<MemoryCheckpoint>>&& checkpoints,
@@ -633,7 +636,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    Status MoveToNextElement(IteratorContext* ctx)
+    absl::Status MoveToNextElement(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!end_of_input_) {
         // Get the next element from the input dataset, and create

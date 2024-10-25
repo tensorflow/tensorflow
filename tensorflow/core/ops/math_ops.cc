@@ -1124,7 +1124,7 @@ REGISTER_OP("Max")
 
 namespace {
 
-Status ArgOpShape(shape_inference::InferenceContext* c) {
+absl::Status ArgOpShape(shape_inference::InferenceContext* c) {
   ShapeHandle dimension_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &dimension_shape));
 
@@ -1201,7 +1201,7 @@ REGISTER_OP("ArgMin")
 
 namespace {
 
-Status SegmentReductionShapeFn(InferenceContext* c) {
+absl::Status SegmentReductionShapeFn(InferenceContext* c) {
   ShapeHandle data_shape;
   ShapeHandle segment_ids_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
@@ -1217,7 +1217,7 @@ Status SegmentReductionShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SparseSegmentReductionShapeFn(InferenceContext* c) {
+absl::Status SparseSegmentReductionShapeFn(InferenceContext* c) {
   ShapeHandle data_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
 
@@ -1241,8 +1241,8 @@ Status SparseSegmentReductionShapeFn(InferenceContext* c) {
   return absl::OkStatus();
 }
 
-Status SparseSegmentReductionGradShapeFnImpl(InferenceContext* c,
-                                             bool outputs_unique_indices) {
+absl::Status SparseSegmentReductionGradShapeFnImpl(
+    InferenceContext* c, bool outputs_unique_indices) {
   ShapeHandle data_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
 
@@ -1285,18 +1285,18 @@ Status SparseSegmentReductionGradShapeFnImpl(InferenceContext* c,
   return absl::OkStatus();
 }
 
-Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+absl::Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   return SparseSegmentReductionGradShapeFnImpl(
       c,
       /*outputs_unique_indices=*/false);
 }
 
-Status SparseSegmentReductionGradV2ShapeFn(InferenceContext* c) {
+absl::Status SparseSegmentReductionGradV2ShapeFn(InferenceContext* c) {
   return SparseSegmentReductionGradShapeFnImpl(c,
                                                /*outputs_unique_indices=*/true);
 }
 
-Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
+absl::Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
   ShapeHandle data_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
 
@@ -1621,8 +1621,8 @@ REGISTER_OP("Any")
 namespace {
 
 template <typename T>
-Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
-                 const Tensor* delta_t, InferenceContext* const c) {
+absl::Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
+                       const Tensor* delta_t, InferenceContext* const c) {
   T start = start_t->scalar<T>()();
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();

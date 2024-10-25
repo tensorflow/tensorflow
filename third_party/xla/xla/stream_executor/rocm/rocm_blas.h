@@ -33,7 +33,6 @@ limitations under the License.
 #endif
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/plugin_registry.h"
 #if TF_HIPBLASLT
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
@@ -80,14 +79,14 @@ using RocBlasType_t =
 // This satisfies the platform-agnostic BlasSupport interface.
 //
 // Note that the rocBLAS handle that this encapsulates is implicitly tied to the
-// context (and, as a result, the device) that the parent GpuExecutor is tied
+// context (and, as a result, the device) that the parent StreamExecutor is tied
 // to. This simply happens as an artifact of creating the rocBLAS handle when a
 // ROCM context is active.
 //
 // Thread-safe post-initialization.
 class ROCMBlas : public blas::BlasSupport {
  public:
-  explicit ROCMBlas(GpuExecutor *parent);
+  explicit ROCMBlas(StreamExecutor *parent);
 
   // Allocates a rocBLAS handle.
   bool Init();
@@ -185,9 +184,9 @@ class ROCMBlas : public blas::BlasSupport {
   // mutex that guards the rocBLAS handle for this device.
   mutable absl::Mutex mu_;
 
-  // GpuExecutor which instantiated this ROCMBlas.
+  // StreamExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.
-  GpuExecutor *parent_;
+  StreamExecutor *parent_;
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ ABSL_GUARDED_BY(mu_);

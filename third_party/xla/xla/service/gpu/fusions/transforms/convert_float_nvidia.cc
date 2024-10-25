@@ -85,10 +85,9 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
                                           b.create<ma::ConstantIntOp>(0, 8));
       auto cvtIntr = to_ty.isFloat8E4M3FN() ? "llvm.nvvm.f16x2.to.e4m3x2.rn"
                                             : "llvm.nvvm.f16x2.to.e5m2x2.rn";
-      cvtOp = b.create<ml::CallIntrinsicOp>(
-          b.getIntegerType(16), cvtIntr, mlir::ValueRange{vec},
-          ::mlir::LLVM::FastmathFlags{},
-          ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+      cvtOp = b.create<ml::CallIntrinsicOp>(b.getIntegerType(16),
+                                            b.getStringAttr(cvtIntr),
+                                            mlir::ValueRange{vec});
     } else {
       // Other FP types get converted to F32 first.
       mlir::FloatType f32_ty = b.getF32Type();
@@ -99,10 +98,9 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
       }
       auto cvtIntr = to_ty.isFloat8E4M3FN() ? "llvm.nvvm.ff.to.e4m3x2.rn"
                                             : "llvm.nvvm.ff.to.e5m2x2.rn";
-      cvtOp = b.create<ml::CallIntrinsicOp>(
-          b.getIntegerType(16), cvtIntr, mlir::ValueRange{value, value},
-          ::mlir::LLVM::FastmathFlags{},
-          ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+      cvtOp = b.create<ml::CallIntrinsicOp>(b.getIntegerType(16),
+                                            b.getStringAttr(cvtIntr),
+                                            mlir::ValueRange{value, value});
     }
     Value res = b.create<ml::TruncOp>(b.getIntegerType(8), cvtOp.getResults());
 
@@ -215,9 +213,8 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
                        : "llvm.nvvm.e5m2x2.to.f16x2.rn";
     mlir::FloatType f16_ty = b.getF16Type();
     auto cvtOp = b.create<ml::CallIntrinsicOp>(
-        ml::getFixedVectorType(f16_ty, 2), cvtIntr, mlir::ValueRange{input},
-        ::mlir::LLVM::FastmathFlags{},
-        ::llvm::ArrayRef<::mlir::ValueRange>{} /*op_bundle_operands*/);
+        ml::getFixedVectorType(f16_ty, 2), b.getStringAttr(cvtIntr),
+        mlir::ValueRange{input});
     Value res = b.create<ml::ExtractElementOp>(
         cvtOp.getResults(), b.create<ma::ConstantIntOp>(0, 8));
     if (to_ty.getWidth() > f16_ty.getWidth()) {

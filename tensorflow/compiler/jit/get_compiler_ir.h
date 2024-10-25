@@ -32,6 +32,8 @@ class TensorHandle;
 class EagerContext;
 
 enum class IrExportStage {
+  STABLEHLO,
+  STABLEHLO_SERIALIZED,
   HLO,
   HLO_NO_METADATA,
   HLO_SERIALIZED,

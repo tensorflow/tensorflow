@@ -700,7 +700,7 @@ lit_test_suite(
 #     deps = [
 #         "//xla/service/gpu/fusions/transforms:passes",
 #         "//xla/service/gpu/fusions/triton:passes",
-#         "//xla/service/gpu/fusions/triton:xla_triton_ops",
+#         "//xla/service/gpu/fusions/triton:xla_triton",
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@triton//:AllPassesAndDialects",

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -75,7 +74,8 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 // Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
 // single image.
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    stream_executor::CudaComputeCapability cc, gpu::Context* context,
+    stream_executor::CudaComputeCapability cc,
+    stream_executor::StreamExecutor* executor,
     std::vector<CubinOrPTXImage> images);
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(

@@ -38,9 +38,9 @@ class DeviceSimple : public DeviceBase {
   DeviceSimple();
   ~DeviceSimple();
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   const AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     return cpu_allocator();
@@ -54,10 +54,10 @@ class DeviceSimple : public DeviceBase {
   const std::string device_type_ = DEVICE_CPU;
 };
 
-Status EvaluateNode(const NodeDef& node,
-                    const absl::InlinedVector<TensorValue, 4UL>& inputs,
-                    DeviceBase* cpu_device, ResourceMgr* resource_mgr,
-                    absl::InlinedVector<TensorValue, 4UL>* output);
+absl::Status EvaluateNode(const NodeDef& node,
+                          const absl::InlinedVector<TensorValue, 4UL>& inputs,
+                          DeviceBase* cpu_device, ResourceMgr* resource_mgr,
+                          absl::InlinedVector<TensorValue, 4UL>* output);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

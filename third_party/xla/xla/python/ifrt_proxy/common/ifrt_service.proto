@@ -269,6 +269,7 @@ message AssembleArrayFromSingleDeviceArraysRequest {
   ShardingProto sharding = 2;
   repeated fixed64 single_device_array_handles = 3;
   proto.ArrayCopySemantics copy_semantics = 4;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 5;
 }
 message AssembleArrayFromSingleDeviceArraysResponse {
   fixed64 array_handle = 1;
@@ -299,6 +300,7 @@ message CopyToHostBufferResponse {}
 message DisassembleIntoSingleDeviceArraysRequest {
   fixed64 array_handle = 1;
   proto.ArrayCopySemantics copy_semantics = 2;
+  optional proto.SingleDeviceShardSemantics single_device_shard_semantics = 3;
 }
 message DisassembleIntoSingleDeviceArraysResponse {
   repeated fixed64 single_device_array_handles = 1;

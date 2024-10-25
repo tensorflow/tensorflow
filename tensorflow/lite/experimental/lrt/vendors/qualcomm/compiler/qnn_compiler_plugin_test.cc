@@ -17,62 +17,65 @@
 
 #include <gtest/gtest.h>
 #include "absl/log/absl_check.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 
 namespace {
 
-UniqueLrtCompilerPlugin GetQnnPlugin() {
-  LrtCompilerPlugin qnn_plugin;
-  LRT_CHECK_STATUS_OK(LrtPluginInit(&qnn_plugin));
+UniqueLiteRtCompilerPlugin GetQnnPlugin() {
+  LiteRtCompilerPlugin qnn_plugin;
+  LITERT_CHECK_STATUS_OK(LiteRtPluginInit(&qnn_plugin));
   ABSL_CHECK_NE(qnn_plugin, nullptr);
-  return UniqueLrtCompilerPlugin(qnn_plugin);
+  return UniqueLiteRtCompilerPlugin(qnn_plugin);
 }
 
 TEST(TestQnnPlugin, GetConfigInfo) {
-  EXPECT_STREQ(LrtPluginSocManufacturer(), "Qualcomm");
+  EXPECT_STREQ(LiteRtPluginSocManufacturer(), "Qualcomm");
 
   auto plugin = GetQnnPlugin();
 
-  ASSERT_GE(LrtPluginNumSupportedSocModels(plugin.get()), 1);
+  ASSERT_GE(LiteRtPluginNumSupportedSocModels(plugin.get()), 1);
 
   const char* config_id;
-  LRT_CHECK_STATUS_OK(
-      LrtPluginGetSupportedSocModel(plugin.get(), 0, &config_id));
+  LITERT_CHECK_STATUS_OK(
+      LiteRtPluginGetSupportedSocModel(plugin.get(), 0, &config_id));
   EXPECT_STREQ(config_id, "V68");
 }
 
 TEST(TestQnnPlugin, PartitionMulOps) {
   auto plugin = GetQnnPlugin();
-  auto model = lrt::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
-  LrtOpListT selected_ops;
+  LiteRtOpListT selected_op_list;
   ASSERT_STATUS_OK(
-      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_ops));
+      LiteRtPluginPartitionModel(plugin.get(), model.get(), &selected_op_list));
+  const auto selected_ops = selected_op_list.Vec();
 
-  EXPECT_EQ(selected_ops.ops.size(), 1);
+  ASSERT_EQ(selected_ops.size(), 1);
+  EXPECT_EQ(selected_ops[0]->op_code, kLiteRtOpCodeTflMul);
 }
 
 TEST(TestQnnPlugin, CompileMulSubgraph) {
   auto plugin = GetQnnPlugin();
-  auto model = lrt::testing::LoadTestFileModel("one_mul.tflite");
+  auto model = litert::testing::LoadTestFileModel("one_mul.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph,
                           ::graph_tools::GetSubgraph(model.get()));
 
-  LrtCompiledResult compiled;
+  LiteRtCompiledResult compiled;
   ASSERT_STATUS_OK(
-      LrtPluginCompile(plugin.get(), "V75", &subgraph, 1, &compiled));
+      LiteRtPluginCompile(plugin.get(), "V75", &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
   ASSERT_STATUS_OK(
-      LrtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
+      LiteRtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
                                byte_code_size);
@@ -82,13 +85,13 @@ TEST(TestQnnPlugin, CompileMulSubgraph) {
   size_t op_data_size;
 
   ASSERT_STATUS_OK(
-      LrtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
+      LiteRtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
                              op_data_size);
   ASSERT_EQ("qnn_partition_0", op_data_string);
 
-  LrtCompiledResultDestroy(compiled);
+  LiteRtCompiledResultDestroy(compiled);
 }
 
 }  // namespace

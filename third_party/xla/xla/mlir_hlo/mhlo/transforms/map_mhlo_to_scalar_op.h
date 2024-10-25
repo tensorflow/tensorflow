@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 #define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
+#include <cstdint>
 #include <optional>
 #include <type_traits>
 
@@ -468,10 +469,34 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
   return nullptr;
 }
 
+static bool HasDefaultMantissaBits(Type type, uint32_t mantissa_bits) {
+  if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
+    return float_ty.getFPMantissaWidth() == mantissa_bits;
+  }
+  return false;
+}
+
+static bool HasDefaultExponentBits(Type type, uint32_t exponent_bits) {
+  if (auto float_ty = mlir::dyn_cast<FloatType>(type)) {
+    return float_ty.getWidth() - float_ty.getFPMantissaWidth() - 1 ==
+           exponent_bits;
+  }
+  return false;
+}
+
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
-    Location loc, ArrayRef<Type> /*resultTypes*/, ArrayRef<Type> /*argTypes*/,
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> /*argTypes*/,
     mhlo::ReducePrecisionOp::Adaptor adaptor, OpBuilder* builder) {
+  // TODO(b/373787166): This should actually be a folder, but JAX is adding
+  // no-op ReducePrecision ops to workaround an issue with some simplifications
+  // allowed with the xla_allow_excess_precision flag. We would already fold
+  // these ops away before they reach HLO. Folding them away at emission time
+  // keeps the workaround intact.
+  if (HasDefaultExponentBits(resultTypes[0], adaptor.getExponentBits()) &&
+      HasDefaultMantissaBits(resultTypes[0], adaptor.getMantissaBits())) {
+    return adaptor.getOperand();
+  }
   return reducePrecision<arith::BitcastOp>(loc, adaptor.getOperand(),
                                            adaptor.getExponentBits(),
                                            adaptor.getMantissaBits(), builder);

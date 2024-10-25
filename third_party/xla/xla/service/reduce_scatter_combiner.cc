@@ -22,29 +22,33 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_reachability.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_combiner_utils.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_domain_map.h"
-#include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -70,9 +74,6 @@ int64_t FindMostFrequentScatterDim(
       frequency.begin(), std::max_element(frequency.begin(), frequency.end()));
   return most_frequent_dim < min_rank ? most_frequent_dim : 0;
 }
-
-using ReduceScatterKey =
-    std::tuple<AllReduceKey, /*scatter_dimension*/ int64_t>;
 
 // Combines the elements of to_combine into a single ReduceScatter op. All
 // entries in to_combine must be ReduceScatter ops with exactly one operand
@@ -172,16 +173,36 @@ absl::Status CombineReduceScatters(
 }
 }  // namespace
 
-ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
-                                             int64_t combine_threshold_count,
-                                             bool combine_by_dim)
-    : combine_threshold_in_bytes_(combine_threshold_in_bytes),
-      combine_threshold_count_(combine_threshold_count),
-      combine_by_dim_(combine_by_dim) {}
+/*static*/ std::string& ReduceScatterCombiner::GetGroupKeyExtraArgs(
+    ReduceScatterCombiner::GroupKey& key) {
+  return std::get<2>(key);
+}
 
-absl::StatusOr<bool> ReduceScatterCombiner::Run(
+std::optional<ReduceScatterCombiner::GroupKey>
+ReduceScatterCombiner::CombineKey(const HloInstruction* instruction,
+                                  const HloDomainMap& domain_map,
+                                  bool combine_by_dim) {
+  auto* rs = DynCast<HloReduceScatterInstruction>(instruction);
+  std::optional<AllReduceKey> key = GetAllReduceKey(instruction, &domain_map);
+
+  if (!rs || !key) {
+    return std::nullopt;
+  }
+  if (!MatchReductionComputation(rs->to_apply())) {
+    return std::nullopt;
+  }
+
+  // Ignore dimension (set to -1) if we are not grouping by dimension.
+  int64_t rs_dim_key = combine_by_dim ? rs->scatter_dimension() : -1;
+  return ReduceScatterCombiner::GroupKey{std::move(*key), rs_dim_key, ""};
+}
+
+absl::StatusOr<bool> ReduceScatterCombiner::RunWithKeyCombiner(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool)>
+        combine_key) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -202,32 +223,33 @@ absl::StatusOr<bool> ReduceScatterCombiner::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
 
-    auto key_fn = [&domain_map, this](const HloInstruction* instruction)
-        -> std::optional<ReduceScatterKey> {
-      auto* rs = DynCast<HloReduceScatterInstruction>(instruction);
-      std::optional<AllReduceKey> key =
-          GetAllReduceKey(instruction, domain_map.get());
-
-      if (!rs || !key) {
-        return std::nullopt;
-      }
-      if (!MatchReductionComputation(rs->to_apply())) {
-        return std::nullopt;
-      }
-
-      // Ignore dimension (set to -1) if we are not grouping by dimension.
-      int64_t rs_dim_key = this->combine_by_dim_ ? rs->scatter_dimension() : -1;
-      return ReduceScatterKey{std::move(*key), rs_dim_key};
+    auto key_fn = [&](const HloInstruction* instruction) {
+      return combine_key(instruction, *domain_map, combine_by_dim_);
     };
 
     TF_ASSIGN_OR_RETURN(
         bool computation_changed,
-        CombineInstructionsByKey<ReduceScatterKey>(
+        CombineInstructionsByKey<ReduceScatterCombiner::GroupKey>(
             computation, key_fn, &CombineReduceScatters,
             combine_threshold_in_bytes_, combine_threshold_count_));
     changed |= computation_changed;
   }
 
+  return changed;
+}
+
+ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
+                                             int64_t combine_threshold_count,
+                                             bool combine_by_dim)
+    : combine_threshold_in_bytes_(combine_threshold_in_bytes),
+      combine_threshold_count_(combine_threshold_count),
+      combine_by_dim_(combine_by_dim) {}
+
+absl::StatusOr<bool> ReduceScatterCombiner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  TF_ASSIGN_OR_RETURN(
+      bool changed, RunWithKeyCombiner(module, execution_threads, CombineKey));
   return changed;
 }
 

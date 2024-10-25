@@ -78,8 +78,8 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
   SerializationContext::Params params(ctx);
   SerializationContext serialization_ctx(params);
   DatasetDef dataset_def;
-  Status s = AsGraphDef(dataset, std::move(serialization_ctx),
-                        dataset_def.mutable_graph());
+  absl::Status s = AsGraphDef(dataset, std::move(serialization_ctx),
+                              dataset_def.mutable_graph());
   if (!s.ok()) {
     OP_REQUIRES_OK(
         ctx,

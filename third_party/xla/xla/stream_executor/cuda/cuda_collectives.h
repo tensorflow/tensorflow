@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -29,15 +29,15 @@ struct CudaCollectives {
   // the given context.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemalloc
-  static absl::StatusOr<void*> CollectiveMemoryAllocate(Context* context,
-                                                        uint64_t bytes);
+  static absl::StatusOr<void *> CollectiveMemoryAllocate(
+      StreamExecutor *executor, uint64_t bytes);
 
   // Deallocates a collective device memory space of size bytes associated with
   // the given context.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemfree
-  static absl::Status CollectiveMemoryDeallocate(Context* context,
-                                                 void* location);
+  static absl::Status CollectiveMemoryDeallocate(StreamExecutor *executor,
+                                                 void *location);
 };
 
 }  // namespace stream_executor::gpu

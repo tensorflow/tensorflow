@@ -57,20 +57,20 @@ class PluggableDevice : public LocalDevice {
   ~PluggableDevice() override;
 
   // Initialize the device and return the status of initialization.
-  Status Init(const SessionOptions& options);
+  absl::Status Init(const SessionOptions& options);
 
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
 
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
-  Status Sync() override;
+  absl::Status Sync() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override;
+  absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
+                                   AllocatorAttributes alloc_attrs,
+                                   Tensor* tensor) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
                               const DeviceContext* device_context,
@@ -111,7 +111,7 @@ class PluggableDevice : public LocalDevice {
   // allocate memory or if the tensor "from" is not DMA-copyable.
   // If there is no error prior to enqueueing the copy, an OK status
   // is returned.
-  Status MaybeCopyTensorToPluggableDevice(
+  absl::Status MaybeCopyTensorToPluggableDevice(
       const AllocatorAttributes& alloc_attrs, const Tensor& from, Tensor* to,
       StatusCallback done);
 };

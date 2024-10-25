@@ -23,56 +23,53 @@
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
-#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
-#include "tensorflow/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/lite/experimental/lrt/core/litert_model_init.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
 
-inline bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
-  flatbuffers::Verifier::Options options;
-  flatbuffers::Verifier verifier(buf, buf_size, options);
-  return tflite::VerifyModelBuffer(verifier);
-}
+using ::graph_tools::GetMetadata;
+using ::litert::testing::VerifyFlatbuffer;
 
-inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
-  auto model = lrt::testing::LoadTestFileModel(path);
+inline UniqueLiteRtModel LoadModelThroughRoundTrip(std::string_view path) {
+  auto model = litert::testing::LoadTestFileModel(path);
 
   uint8_t* buf = nullptr;
   size_t buf_size;
   size_t offset;
 
-  LRT_CHECK_STATUS_OK_MSG(
+  LITERT_CHECK_STATUS_OK_MSG(
       SerializeModel(model.release(), &buf, &buf_size, &offset),
       "Failed to serialize model");
 
   // Reload model.
-  LrtModel result = nullptr;
-  LRT_CHECK_STATUS_OK_MSG(LoadModel(buf + offset, buf_size - offset, &result),
-                          "Failed to re load model");
+  LiteRtModel result = nullptr;
+  LITERT_CHECK_STATUS_OK_MSG(
+      LoadModel(buf + offset, buf_size - offset, &result),
+      "Failed to re load model");
   delete[] buf;
 
-  return UniqueLrtModel(result);
+  return UniqueLiteRtModel(result);
 }
 
 class TestWithPath : public ::testing::TestWithParam<std::string_view> {};
 
-class TopologyTest : public ::testing::TestWithParam<LrtModel> {
+class TopologyTest : public ::testing::TestWithParam<LiteRtModel> {
  public:
-  static std::vector<LrtModel> MakeTestModels(
+  static std::vector<LiteRtModel> MakeTestModels(
       const std::vector<std::string>& paths) {
-    std::vector<LrtModel> result;
+    std::vector<LiteRtModel> result;
 
     for (auto p : paths) {
-      result.push_back(lrt::testing::LoadTestFileModel(p).release());
+      result.push_back(litert::testing::LoadTestFileModel(p).release());
       result.push_back(LoadModelThroughRoundTrip(p).release());
     }
 
@@ -80,13 +77,13 @@ class TopologyTest : public ::testing::TestWithParam<LrtModel> {
   }
 };
 
-TEST(LrtModelTest, TestLoadTestDataBadFilepath) {
-  LrtModel model = nullptr;
+TEST(LiteRtModelTest, TestLoadTestDataBadFilepath) {
+  LiteRtModel model = nullptr;
   ASSERT_STATUS_HAS_CODE(LoadModelFromFile("bad_path", &model),
-                         kLrtStatusBadFileOp);
+                         kLiteRtStatusErrorFileIO);
 }
 
-TEST(LrtModelTest, TestLoadTestDataBadFileData) {
+TEST(LiteRtModelTest, TestLoadTestDataBadFileData) {
   // NOLINTBEGIN
 #ifndef NDEBUG
   // In debug mode, flatbuffers will `assert` while verifying. This will
@@ -101,14 +98,14 @@ TEST(LrtModelTest, TestLoadTestDataBadFileData) {
   bad_file << "not_tflite";
   bad_file.close();
 
-  LrtModel model = nullptr;
+  LiteRtModel model = nullptr;
   ASSERT_STATUS_HAS_CODE(LoadModelFromFile(test_file_path.c_str(), &model),
-                         kLrtStatusFlatbufferFailedVerify);
+                         kLiteRtStatusErrorInvalidFlatbuffer);
   // NOLINTEND
 }
 
 TEST(TestSerializeModel, TestAllocations) {
-  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
 
   uint8_t* buf = nullptr;
   size_t buf_size;
@@ -120,13 +117,18 @@ TEST(TestSerializeModel, TestAllocations) {
 }
 
 TEST(TestSerializeModel, TestMetadata) {
-  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
   constexpr static std::string_view kMetadataData = "My_Meta_Data";
 
   ASSERT_STATUS_OK(AppendMetadata(model.get(), kMetadataData.data(),
                                   kMetadataData.size(), kMetadataName.data()));
+  ASSERT_RESULT_OK_ASSIGN(auto m_buffer,
+                          GetMetadata(model.get(), kMetadataName));
+  EXPECT_EQ(absl::string_view(reinterpret_cast<const char*>(m_buffer.data()),
+                              m_buffer.size()),
+            kMetadataData);
 
   uint8_t* buf = nullptr;
   size_t buf_size;
@@ -154,7 +156,7 @@ TEST(TestSerializeModel, TestMetadata) {
   tflite::BufferT* metadata_buffer =
       new_model->buffers.at(fb_metadata->buffer).get();
 
-  std::string_view fb_metadata_data(
+  absl::string_view fb_metadata_data(
       reinterpret_cast<const char*>(metadata_buffer->data.data()),
       metadata_buffer->data.size());
 
@@ -164,7 +166,7 @@ TEST(TestSerializeModel, TestMetadata) {
 }
 
 TEST(TestSerializeModel, TestCustomOpCode) {
-  auto model = lrt::testing::LoadTestFileModel("add_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("add_simple.tflite");
 
   constexpr static std::string_view kCustomCode = "MyCustomCode";
   ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
@@ -193,11 +195,11 @@ TEST(TestSerializeModel, TestCustomOpCode) {
 }
 
 TEST_P(TestWithPath, TestConstructDestroy) {
-  UniqueLrtModel model = lrt::testing::LoadTestFileModel(GetParam());
+  UniqueLiteRtModel model = litert::testing::LoadTestFileModel(GetParam());
 }
 
 TEST_P(TestWithPath, TestConstructDestroyRoundTrip) {
-  UniqueLrtModel model = LoadModelThroughRoundTrip(GetParam());
+  UniqueLiteRtModel model = LoadModelThroughRoundTrip(GetParam());
 }
 
 INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
@@ -208,14 +210,14 @@ INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
 using AddSimpleTest = TopologyTest;
 
 TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
-  UniqueLrtModel model(GetParam());
+  UniqueLiteRtModel model(GetParam());
 
   // func(arg0)
   //  output = tfl.add(arg0, arg0)
   //  return(output)
   //
 
-  ASSERT_RESULT_OK_ASSIGN(LrtSubgraph subgraph,
+  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
                           graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           graph_tools::GetSubgraphInputs(subgraph));
@@ -231,9 +233,10 @@ TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
   ASSERT_EQ(ops.size(), 1);
   auto op = ops[0];
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLrtElementTypeFloat32, {2, 2});
+  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
+                                              {2, 2});
   ASSERT_TRUE(graph_tools::MatchOpType(op, {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLrtOpCodeTflAdd));
+                                       {float_2by2_type}, kLiteRtOpCodeTflAdd));
 
   ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
@@ -254,7 +257,7 @@ INSTANTIATE_TEST_SUITE_P(
 using AddCstTest = TopologyTest;
 
 TEST_P(AddCstTest, TestBuildModelAddCst) {
-  UniqueLrtModel model(GetParam());
+  UniqueLiteRtModel model(GetParam());
 
   // func(arg0)
   //  cst = ConstantTensor([1, 2, 3, 4])
@@ -262,7 +265,7 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   //  return(output)
   //
 
-  ASSERT_RESULT_OK_ASSIGN(LrtSubgraph subgraph,
+  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
                           graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           graph_tools::GetSubgraphInputs(subgraph));
@@ -278,9 +281,9 @@ TEST_P(AddCstTest, TestBuildModelAddCst) {
   ASSERT_EQ(ops.size(), 1);
   auto op = ops[0];
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLrtElementTypeFloat32, {4});
+  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32, {4});
   ASSERT_TRUE(graph_tools::MatchOpType(op, {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLrtOpCodeTflAdd));
+                                       {float_2by2_type}, kLiteRtOpCodeTflAdd));
 
   ASSERT_RESULT_OK_ASSIGN(auto op_inputs, graph_tools::GetOpIns(op));
   ASSERT_EQ(op_inputs.size(), 2);
@@ -302,7 +305,7 @@ INSTANTIATE_TEST_SUITE_P(
 using SimpleMultiOpTest = TopologyTest;
 
 TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
-  UniqueLrtModel model(GetParam());
+  UniqueLiteRtModel model(GetParam());
 
   // func.func @main(arg0)
   //   0 = tfl.add arg0, arg0
@@ -311,7 +314,7 @@ TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
   //   3 = tfl.add 2, 2
   //   return 3
 
-  ASSERT_RESULT_OK_ASSIGN(LrtSubgraph subgraph,
+  ASSERT_RESULT_OK_ASSIGN(LiteRtSubgraph subgraph,
                           graph_tools::GetSubgraph(model.get()));
   ASSERT_RESULT_OK_ASSIGN(auto subgraph_inputs,
                           graph_tools::GetSubgraphInputs(subgraph));
@@ -331,11 +334,12 @@ TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
     ASSERT_EQ(inputs[0], inputs[1]);
   }
 
-  graph_tools::RankedTypeInfo float_2by2_type(kLrtElementTypeFloat32, {2, 2});
+  graph_tools::RankedTypeInfo float_2by2_type(kLiteRtElementTypeFloat32,
+                                              {2, 2});
 
   ASSERT_TRUE(graph_tools::MatchOpType(ops[2],
                                        {float_2by2_type, float_2by2_type},
-                                       {float_2by2_type}, kLrtOpCodeTflMul));
+                                       {float_2by2_type}, kLiteRtOpCodeTflMul));
 }
 
 INSTANTIATE_TEST_SUITE_P(SimpleMultiOpTests, SimpleMultiOpTest,

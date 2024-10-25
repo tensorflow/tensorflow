@@ -21,11 +21,13 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -614,6 +616,16 @@ void TPUValidateInputsPass::runOnOperation() {
     }
     success &= !HasSingleCoreTpu(op);
 
+    if (!success) {
+      signalPassFailure();
+    }
+  });
+
+  module.walk([&](GraphOp graph) {
+    if (HasV1ControlFlow(graph)) {
+      LOG(WARNING) << "TF2XLA MLIR bridge does not support v1 control flow."
+                   << " Use at your own risk.";
+    }
     if (!success) {
       signalPassFailure();
     }

@@ -69,21 +69,21 @@ bool IsCompatibleType(FieldDescriptor::Type field_type, DataType dtype) {
   }
 }
 
-Status ParseTextFormatFromString(absl::string_view input,
-                                 protobuf::Message* output) {
+absl::Status ParseTextFormatFromString(absl::string_view input,
+                                       protobuf::Message* output) {
   DCHECK(output != nullptr) << "output must be non NULL";
   // When checks are disabled, instead log the error and return an error status.
   if (output == nullptr) {
     LOG(ERROR) << "output must be non NULL";
-    return Status(absl::StatusCode::kInvalidArgument,
-                  "output must be non NULL");
+    return absl::Status(absl::StatusCode::kInvalidArgument,
+                        "output must be non NULL");
   }
   string err;
   StringErrorCollector err_collector(&err, /*one-indexing=*/true);
   protobuf::TextFormat::Parser parser;
   parser.RecordErrorsTo(&err_collector);
   if (!parser.ParseFromString(string(input), output)) {
-    return Status(absl::StatusCode::kInvalidArgument, err);
+    return absl::Status(absl::StatusCode::kInvalidArgument, err);
   }
   return absl::OkStatus();
 }

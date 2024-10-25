@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SCATTER_SIMPLIFIER_H_
 
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 

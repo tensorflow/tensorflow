@@ -463,10 +463,13 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 
   // Cache miss.
   if (config.should_require_complete_aot_autotune_results()) {
-    return NotFound(
+    absl::Status s = NotFound(
         "Complete XLA AOT autotuning results are required, but no AOT result "
         "was found for key: %s",
         key.ToString());
+    tsl::errors::InsertPayloads(
+        s, {{std::string(kAutotuneCacheRequiredErrorPayloadKey), ""}});
+    return s;
   }
 
   TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());
@@ -592,6 +595,9 @@ AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache_stats = CacheStats();
 }
+
+constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
+    "https://openxla.org/gpu/autotune_cache_hit_required/";
 
 }  // namespace gpu
 }  // namespace xla

@@ -43,8 +43,8 @@ struct LocalExecutorParams {
   // create_kernel returns an instance of op kernel based on NodeDef.
   // delete_kernel is called for every kernel used by the executor
   // when the executor is deleted.
-  std::function<Status(const std::shared_ptr<const NodeProperties>&,
-                       OpKernel**)>
+  std::function<absl::Status(const std::shared_ptr<const NodeProperties>&,
+                             OpKernel**)>
       create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
 

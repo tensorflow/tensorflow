@@ -192,10 +192,6 @@ class MatmulTensorDescriptor {
                                     absl::Span<const int64_t> minor_to_major,
                                     absl::Span<const int64_t> batch_dims,
                                     absl::Span<const int64_t> contracting_dims);
-  std::vector<int64_t> dimensions() const { return tensor_.dimensions(); }
-  std::vector<int64_t> minor_to_major() const {
-    return tensor_.minor_to_major();
-  }
   DataType type() const { return tensor_.type(); }
 
   std::string ToString() const;
@@ -256,9 +252,6 @@ class RnnStateTensorDescriptor {
   virtual ~RnnStateTensorDescriptor() = default;
 };
 
-// Returns a string representation of the given quantization mode.
-std::string QuantizedActivationModeString(QuantizedActivationMode mode);
-
 // Describes the dimensions that a layer consumes/produces.
 //
 // This is a matrix (height, width), its "depth" (feature_map_count),
@@ -305,9 +298,6 @@ class BatchDescriptor {
   BatchDescriptor();
   explicit BatchDescriptor(int ndims);
 
-  // Clones values from 'other' for initialization.
-  void CloneFrom(const BatchDescriptor& other);
-
   std::string ToString() const;
   std::string ToShortString() const;
 
@@ -322,9 +312,6 @@ class BatchDescriptor {
   int64_t feature_map_count() const { return tensor_.dimensions(1); }
   int64_t height() const { return GetDim(spatial_size(), DimIndex::Y); }
   int64_t width() const { return GetDim(spatial_size(), DimIndex::X); }
-  int64_t spatial_dim(DimIndex dim) const {
-    return GetDim(spatial_size(), dim);
-  }
   int ndims() const { return spatial_size().size(); }
   float value_max() const { return value_max_; }
   float value_min() const { return value_min_; }
@@ -371,21 +358,8 @@ class BatchDescriptor {
     SetDim(spatial_size(), dim, value);
     return *this;
   }
-  BatchDescriptor& set_value_max(float value) {
-    value_max_ = value;
-    return *this;
-  }
-  BatchDescriptor& set_value_min(float value) {
-    value_min_ = value;
-    return *this;
-  }
   BatchDescriptor& set_layout(DataLayout layout) {
     tensor_.set_data_layout(layout);
-    return *this;
-  }
-  BatchDescriptor& set_quantized_activation_mode(
-      QuantizedActivationMode quantized_activation_mode) {
-    quantized_activation_mode_ = quantized_activation_mode;
     return *this;
   }
 
@@ -395,28 +369,6 @@ class BatchDescriptor {
   // Return the number of nodes across all feature maps. Note that this is not
   // affected by the batch count.
   int64_t NodesAcrossFeatureMaps() const;
-
-  // Returns the number of elements (e.g. RGB pixel values) required to hold a
-  // given batch descriptor, given a no-padding assumption. Note that this is
-  // affected by the batch count.
-  int64_t ElementCount() const;
-
-  // Return the number of weights required to fully connect a layer with
-  // dimensions given by the 'input' descriptor with a layer with dimensions
-  // given by the 'output' descriptor.
-  static int64_t FullyConnectedWeightCount(const BatchDescriptor& input,
-                                           const BatchDescriptor& output);
-
-  // Return the number of biases required to fully connect to an output layer
-  // with dimensions given the 'output' descriptor.
-  static int64_t FullyConnectedBiasCount(const BatchDescriptor& output);
-
-  // Return a BatchDescriptor for the output of a depth concatenation
-  // with the given input descriptors. The inputs should have the same
-  // dimensions, except possibly for feature_map_count(), though this
-  // function does not verify that.
-  static BatchDescriptor DepthConcatenateOutputDescriptor(
-      absl::Span<const BatchDescriptor> inputs);
 
  private:
   absl::Span<const int64_t> spatial_size() const {
@@ -497,32 +449,11 @@ class FilterDescriptor {
   }
   int ndims() const { return input_filter_dims().size(); }
 
-  void CloneFrom(const FilterDescriptor& other);
-
   std::string ToString() const;
-  std::string ToShortString() const;
   TensorDescriptorProto ToProto(DataType data_type) const;
-
-  // Returns the number of weights required as parameters for a convolution
-  // using this filter descriptor.
-  int64_t ComputeWeightCount() const;
-
-  // Returns the number of biases required as parameters for a convolution
-  // using this filter descriptor.
-  int64_t bias_count() const { return output_feature_map_count(); }
 
   int64_t output_feature_map_count() const { return tensor_.dimensions(0); }
   int64_t input_feature_map_count() const { return tensor_.dimensions(1); }
-  int64_t input_filter_height() const {
-    return GetDim(input_filter_dims(), DimIndex::Y);
-  }
-  int64_t input_filter_width() const {
-    return GetDim(input_filter_dims(), DimIndex::X);
-  }
-  int64_t input_filter_dim(DimIndex dim) const {
-    return GetDim(input_filter_dims(), dim);
-  }
-
   FilterLayout layout() const { return tensor_.filter_layout(); }
 
   absl::Span<const int64_t> input_filter_dims() const {
@@ -608,7 +539,6 @@ class ConvolutionDescriptor {
   ~ConvolutionDescriptor();
 
   std::string ToString() const;
-  std::string ToShortString() const;
   ConvolutionDescriptorProto ToProto() const { return proto_; }
 
   ConvolutionDescriptor& set_zero_padding_height(int64_t value) {
@@ -656,28 +586,7 @@ class ConvolutionDescriptor {
                                      : ConvolutionMode::CROSS_CORRELATION);
     return *this;
   }
-  ConvolutionDescriptor& set_name(const std::string& name) {
-    proto_.set_name(name);
-    return *this;
-  }
-  int64_t zero_padding_height() const { return GetDim(padding(), DimIndex::Y); }
-  int64_t zero_padding_width() const { return GetDim(padding(), DimIndex::X); }
-  int64_t vertical_filter_stride() const {
-    return GetDim(strides(), DimIndex::Y);
-  }
-  int64_t horizontal_filter_stride() const {
-    return GetDim(strides(), DimIndex::X);
-  }
-  int64_t vertical_dilation_rate() const {
-    return GetDim(dilations(), DimIndex::Y);
-  }
-  int64_t horizontal_dilation_rate() const {
-    return GetDim(dilations(), DimIndex::X);
-  }
 
-  int zero_padding(DimIndex dim) const { return GetDim(padding(), dim); }
-  int filter_stride(DimIndex dim) const { return GetDim(strides(), dim); }
-  int dilation_rate(DimIndex dim) const { return GetDim(dilations(), dim); }
   // TODO(timshen): remove this function. No users of this class is setting a
   // non-default pad alignment.
   PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
@@ -698,8 +607,6 @@ class ConvolutionDescriptor {
   absl::Span<const int64_t> padding() const {
     return AsInt64Slice(proto_.paddings());
   }
-
-  std::string name() const { return proto_.name(); }
 
  private:
   absl::Span<int64_t> strides() {
@@ -736,9 +643,6 @@ enum class SpaceConcatenateMode : int64_t {
   XDirection,
   YDirection,
 };
-
-// Returns a short name for the pooling mode, e.g. "Avg".
-std::string ShortPoolingModeString(PoolingMode mode);
 
 // Describes a pooling operation to be enqueued onto a stream via a platform's
 // DnnSupport.
@@ -802,38 +706,19 @@ class PoolingDescriptor {
     propagate_nans_ = value;
     return *this;
   }
-  PoolingDescriptor& set_name(const std::string& name) {
-    name_ = name;
-    return *this;
-  }
 
   int ndims() const { return ndims_; }
-  void CloneFrom(const PoolingDescriptor& other);
-
-  std::string ToString() const;
-  std::string ToShortString() const;
 
   PoolingMode mode() const { return mode_; }
-  int64_t window_height() const { return GetDim(window_, DimIndex::Y); }
-  int64_t window_width() const { return GetDim(window_, DimIndex::X); }
-  int64_t window(DimIndex dim) const { return GetDim(window_, dim); }
-  int64_t vertical_padding() const { return GetDim(padding_, DimIndex::Y); }
-  int64_t horizontal_padding() const { return GetDim(padding_, DimIndex::X); }
-  int64_t padding(DimIndex dim) const { return GetDim(padding_, dim); }
-  int64_t vertical_stride() const { return GetDim(strides_, DimIndex::Y); }
-  int64_t horizontal_stride() const { return GetDim(strides_, DimIndex::X); }
-  int64_t stride(DimIndex dim) const { return GetDim(strides_, dim); }
   absl::Span<const int64_t> window() const { return window_; }
   absl::Span<const int64_t> padding() const { return padding_; }
   absl::Span<const int64_t> strides() const { return strides_; }
   bool propagate_nans() const { return propagate_nans_; }
-  std::string name() const { return name_; }
 
  private:
   PoolingMode mode_;
   int ndims_;
   bool propagate_nans_;
-  std::string name_;  // Name as in Tensorflow NodeDef, for debugging purposes.
 
   // Stored as: ..., y, x.
   std::vector<int64_t> window_;
@@ -1047,7 +932,6 @@ class AlgorithmConfig {
     algorithm_no_scratch_ = val;
   }
   std::optional<size_t> scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
            this->algorithm_no_scratch_ == other.algorithm_no_scratch_ &&
@@ -1129,21 +1013,6 @@ class NormalizeDescriptor {
     return *this;
   }
 
-  NormalizeDescriptor& set_wrap_around(bool wrap_around) {
-    wrap_around_ = wrap_around;
-    return *this;
-  }
-
-  NormalizeDescriptor& set_segment_size(int32_t segment_size) {
-    segment_size_ = segment_size;
-    return *this;
-  }
-
-  void CloneFrom(const NormalizeDescriptor& other);
-
-  std::string ToString() const;
-  std::string ToShortString() const;
-
   float bias() const { return bias_; }
   int32_t range() const { return range_; }
   float alpha() const { return alpha_; }
@@ -1166,8 +1035,6 @@ std::string ActivationModeString(ActivationMode mode);
 // Describes the operation that DoElementwiseOperation should perform on its
 // inputs.
 enum class ElementwiseOperation { kAdd, kMultiply };
-
-std::string ElementwiseOperationString(ElementwiseOperation op);
 
 // A simple class representing the version of the backing library, to
 // workaround the "too perfect forwarding" issue in gcc6+ compilers.

@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -99,6 +100,10 @@ class HloModuleWrapper {
       std::unique_ptr<xla::HloModule> module,
       std::function<int64_t(const xla::Shape&)> shape_func);
 
+  explicit HloModuleWrapper(
+      const xla::HloModule* module,
+      std::function<int64_t(const xla::Shape&)> shape_func);
+
   const HloInstructionWrapper* GetHloInstruction(
       absl::string_view hlo_name) const;
 
@@ -107,7 +112,10 @@ class HloModuleWrapper {
   absl::string_view Name() const { return module_->name(); }
 
  private:
-  std::unique_ptr<xla::HloModule> module_;
+  const xla::HloModule* module_;
+
+ protected:
+  std::unique_ptr<xla::HloModule> owned_module_;
 
   // Map of HloInstructionWrappers by name.
   using HloInstructionMap =
@@ -122,11 +130,16 @@ using HloModuleMap =
 void AddHloProto(HloModuleMap& hlo_module_map, uint64_t program_id,
                  const xla::HloProto& hlo_proto);
 
+// Process HloModuleMap from single XSpace.
+void ProcessHloModuleMapFromXSpace(HloModuleMap& hlo_module_map,
+                                   const XSpace* space);
+
 // WARNING: The returned pointer will be invalidated if HloModuleMap is mutated.
-inline const HloModuleWrapper* GetHloModule(const HloModuleMap& hlo_module_map,
+inline const HloModuleWrapper* GetHloModule(const HloModuleMap* hlo_module_map,
                                             uint64_t program_id) {
-  auto iter = hlo_module_map.find(program_id);
-  if (iter == hlo_module_map.end()) return nullptr;
+  if (hlo_module_map == nullptr) return nullptr;
+  auto iter = hlo_module_map->find(program_id);
+  if (iter == hlo_module_map->end()) return nullptr;
   return &iter->second;
 }
 
@@ -134,7 +147,7 @@ inline const HloInstructionWrapper* GetHloInstruction(
     const HloModuleMap& hlo_module_map, std::optional<uint64_t> program_id,
     absl::string_view hlo_name) {
   if (!program_id.has_value()) return nullptr;
-  const auto* hlo_module = GetHloModule(hlo_module_map, *program_id);
+  const auto* hlo_module = GetHloModule(&hlo_module_map, *program_id);
   if (hlo_module == nullptr) return nullptr;
   return hlo_module->GetHloInstruction(hlo_name);
 }

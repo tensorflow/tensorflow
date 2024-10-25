@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/service/op_expander_pass.h"
+#include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
 namespace xla {
 

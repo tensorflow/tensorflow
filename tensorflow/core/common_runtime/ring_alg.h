@@ -35,17 +35,18 @@ class RingAlg : public CollectiveImplementationInterface {
 
   // Establishes the requested number of subdivision permutations based on the
   // ring order implicit in the device order.
-  Status InitializeCollectiveParams(CollectiveParams* col_params) override;
+  absl::Status InitializeCollectiveParams(
+      CollectiveParams* col_params) override;
 
   // Initializes members of CollectiveContext not yet initialized, i.e. device
   // and device_locality.  Also saves the CollectiveContext in this object.
-  Status InitializeCollectiveContext(
+  absl::Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
 
  protected:
   // Called when a bad status is received that implies we should terminate
   // execution and return a bad status.
-  void StartAbort(const Status& s);
+  void StartAbort(const absl::Status& s);
   void Finish(bool ok);
 
   // Current status of a RingField
@@ -75,7 +76,7 @@ class RingAlg : public CollectiveImplementationInterface {
     bool is_final = false;  // is the last field in the pass for this rank
     Tensor chunk;           // alias to field values
     Tensor tmp_chunk;
-    Status status;
+    absl::Status status;
     string DebugString() const;
   };
   virtual void InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
@@ -112,7 +113,7 @@ class RingAlg : public CollectiveImplementationInterface {
   Notification group_size_tensor_ready_;
   std::unique_ptr<CollectiveAdapter> ca_;
   mutex status_mu_;
-  Status status_ TF_GUARDED_BY(status_mu_);
+  absl::Status status_ TF_GUARDED_BY(status_mu_);
   std::vector<RingField> rfv_;
 };
 

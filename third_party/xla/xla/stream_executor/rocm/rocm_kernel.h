@@ -26,21 +26,22 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
 
 class RocmKernel : public GpuKernel {
  public:
-  explicit RocmKernel(GpuExecutor* gpu_executor)
-      : gpu_executor_(gpu_executor) {}
+  explicit RocmKernel(StreamExecutor* executor) : executor_(executor) {}
 
   // Note that the function is unloaded when the module is unloaded, and the
-  // module that the function is contained in is owned by the GpuExecutor.
-  ~RocmKernel() override { gpu_executor_->UnloadKernel(this); }
+  // module that the function is contained in is owned by the StreamExecutor.
+  ~RocmKernel() override { executor_->UnloadKernel(this); }
 
   // As arity cannot be reflected upon using the HIP API, the arity is
   // explicitly set during the RocmExecutor::GetKernel initialization process.
@@ -56,8 +57,11 @@ class RocmKernel : public GpuKernel {
     rocm_function_ = rocm_function;
   }
 
+  // Collects metadata for the specified kernel.
+  absl::StatusOr<KernelMetadata> GetKernelMetadata();
+
  private:
-  GpuExecutor* gpu_executor_ = nullptr;
+  StreamExecutor* executor_ = nullptr;
 
   hipFunction_t rocm_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes

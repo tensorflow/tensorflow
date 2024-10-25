@@ -17,7 +17,7 @@
 
 #include <cstdarg>
 
-namespace lrt {
+namespace litert {
 namespace internal {
 
 enum class LogSeverity {
@@ -28,11 +28,11 @@ enum class LogSeverity {
   kSilent = 4
 };
 
-#define LRT_VERBOSE ::lrt::internal::LogSeverity::kVerbose
-#define LRT_INFO ::lrt::internal::LogSeverity::kInfo
-#define LRT_WARNING ::lrt::internal::LogSeverity::kWarning
-#define LRT_ERROR ::lrt::internal::LogSeverity::kError
-#define LRT_SILENT ::lrt::internal::LogSeverity::kSilent
+#define LITERT_VERBOSE ::litert::internal::LogSeverity::kVerbose
+#define LITERT_INFO ::litert::internal::LogSeverity::kInfo
+#define LITERT_WARNING ::litert::internal::LogSeverity::kWarning
+#define LITERT_ERROR ::litert::internal::LogSeverity::kError
+#define LITERT_SILENT ::litert::internal::LogSeverity::kSilent
 
 class Logger {
  public:
@@ -41,22 +41,22 @@ class Logger {
   static LogSeverity SetMinimumSeverity(LogSeverity new_severity);
 };
 
-#define LITE_RT_LOG_PROD(severity, format, ...)                       \
-  if (severity >= lrt::internal::Logger::GetMinimumSeverity()) {      \
-    lrt::internal::Logger::Log(severity, "[%s:%d] " format, __FILE__, \
-                               __LINE__, ##__VA_ARGS__);              \
+#define LITERT_LOG_PROD(severity, format, ...)                           \
+  if (severity >= litert::internal::Logger::GetMinimumSeverity()) {      \
+    litert::internal::Logger::Log(severity, "[%s:%d] " format, __FILE__, \
+                                  __LINE__, ##__VA_ARGS__);              \
   }
 
 #ifndef NDEBUG
-#define LITE_RT_LOG LITE_RT_LOG_PROD
+#define LITERT_LOG LITERT_LOG_PROD
 #else
-#define LITE_RT_LOG(severity, format, ...)             \
-  do {                                                 \
-    LITE_RT_LOG_PROD(severity, format, ##__VA_ARGS__); \
+#define LITERT_LOG(severity, format, ...)             \
+  do {                                                \
+    LITERT_LOG_PROD(severity, format, ##__VA_ARGS__); \
   } while (false)
 #endif
 
 }  // namespace internal
-}  // namespace lrt
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_LOGGING_H_

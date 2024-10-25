@@ -85,6 +85,7 @@ cc_library(
         ":stream_executor_api_headers",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -192,6 +193,7 @@ cc_library(
     name = "module_spec",
     hdrs = ["module_spec.h"],
     deps = [
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -260,6 +262,7 @@ cc_library(
     testonly = True,
     hdrs = ["mock_stream_executor.h"],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -439,6 +442,7 @@ cc_library(
         ":numeric_options",
         ":scratch_allocator",
         ":stream",
+        "//xla:util",
         "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
@@ -498,6 +502,7 @@ cc_library(
         "stream_executor.h",
     ],
     deps = [
+        ":activate_context",
         ":allocator_stats",
         ":blas",
         ":command_buffer",
@@ -737,6 +742,7 @@ cc_library(
     srcs = ["stream_executor_common.cc"],
     hdrs = ["stream_executor_common.h"],
     deps = [
+        ":activate_context",
         ":device_description",
         ":platform",
         ":stream_executor_h",

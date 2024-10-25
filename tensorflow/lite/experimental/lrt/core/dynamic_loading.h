@@ -18,36 +18,40 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 
-#include <iostream>
-#include <ostream>
-
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
 #include "tensorflow/lite/experimental/lrt/core/logging.h"
 
-namespace lrt {
+namespace litert {
+
+constexpr absl::string_view kLiteRtSharedLibPrefix = "libLiteRt";
 
 // Loads shared library at given path.
-LrtStatus OpenLib(absl::string_view so_path, void** lib_handle);
+LiteRtStatus OpenLib(absl::string_view so_path, void** lib_handle);
 
-// Dumps loading details of given lib handle.
-void DumpLibInfo(void* lib_handle, std::ostream& out = std::cerr);
+// Closes reference to loaded shared library held by lib_handle.
+LiteRtStatus CloseLib(void* lib_handle);
 
 // Resolves a named symbol from given lib handle of type Sym.
 template <class Sym>
-inline static LrtStatus ResolveLibSymbol(void* lib_handle,
-                                         absl::string_view sym_name,
-                                         Sym* sym_handle) {
+inline static LiteRtStatus ResolveLibSymbol(void* lib_handle,
+                                            absl::string_view sym_name,
+                                            Sym* sym_handle) {
   Sym ptr = (Sym)::dlsym(lib_handle, sym_name.data());
   if (ptr == nullptr) {
-    LITE_RT_LOG(LRT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
-                sym_name, ::dlerror());
-    return kLrtStatusDynamicLoadErr;
+    LITERT_LOG(LITERT_ERROR, "Faild to resolve symbol: %s, with err: %s\n",
+               sym_name, ::dlerror());
+    return kLiteRtStatusErrorDynamicLoading;
   }
   *sym_handle = ptr;
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-}  // namespace lrt
+// All internal dynamically linked dependencies for litert should be prefixed
+// "libLiteRt". Find all litert shared libraries in "search_path"
+LiteRtStatus FindLiteRtSharedLibs(absl::string_view search_path,
+                                  std::vector<std::string>& results);
+
+}  // namespace litert
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_LRT_CORE_DYNAMIC_LOADING_H_

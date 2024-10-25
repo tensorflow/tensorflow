@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 
@@ -115,8 +115,10 @@ class AutoSharding : public HloModulePass {
 
   std::vector<int64_t> GetChosenDeviceMeshShape() { return chosen_mesh_shape_; }
 
- private:
+ protected:
   AutoShardingOption option_;
+
+ private:
   // Stores the optimal value of the objective the solver found.
   double solver_optimal_objective_value_ = -1.0;
   // Stores the optimal mesh shape found.

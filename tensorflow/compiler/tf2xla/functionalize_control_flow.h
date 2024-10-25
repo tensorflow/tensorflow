@@ -48,22 +48,21 @@ namespace tensorflow {
 //
 // The user of this function is responsible for using a node filter that
 // satisfies the above conditions.
-Status FunctionalizeControlFlow(Graph* graph,
-                                FunctionLibraryDefinition* library,
-                                const NodeFilter& node_filter = {},
-                                bool include_functions = false);
+absl::Status FunctionalizeControlFlow(Graph* graph,
+                                      FunctionLibraryDefinition* library,
+                                      const NodeFilter& node_filter = {},
+                                      bool include_functions = false);
 
-Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
-                                           FunctionLibraryDefinition* library,
-                                           const NodeFilter& node_filter = {},
-                                           bool include_functions = false);
+absl::Status FunctionalizeControlFlowForGraphDef(
+    GraphDef* graph_def, FunctionLibraryDefinition* library,
+    const NodeFilter& node_filter = {}, bool include_functions = false);
 
 // Rewrites the graph by turning V1 control flow structure
 // (Switch/Merge/etc.) into V2 control flow structure (If/While), only modifies
 // functions that will be executed by XLA.
 class FunctionalizeControlFlowForXlaPass : public GraphOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  absl::Status Run(const GraphOptimizationPassOptions& options) override;
 };
 
 }  // namespace tensorflow

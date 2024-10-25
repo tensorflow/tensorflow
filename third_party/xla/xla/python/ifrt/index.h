@@ -89,7 +89,13 @@ class Index {
     return *this = *this * multiplier;
   }
 
+  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const Index& index) {
+    sink.Append(index.DebugString());
+  }
 
  private:
   Elements elements_;

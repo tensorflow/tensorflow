@@ -19,64 +19,65 @@
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_support.h"
 #include "tensorflow/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/experimental/lrt/test/common.h"
-#include "tensorflow/lite/experimental/lrt/vendors/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/lite/experimental/lrt/vendors/c/litert_compiler_plugin.h"
 
 namespace {
 
-UniqueLrtCompilerPlugin GetDummyPlugin() {
-  LrtCompilerPlugin dummy_plugin;
-  LRT_CHECK_STATUS_OK(LrtPluginInit(&dummy_plugin));
+UniqueLiteRtCompilerPlugin GetDummyPlugin() {
+  LiteRtCompilerPlugin dummy_plugin;
+  LITERT_CHECK_STATUS_OK(LiteRtPluginInit(&dummy_plugin));
   CHECK_NE(dummy_plugin, nullptr);
-  return UniqueLrtCompilerPlugin(dummy_plugin);
+  return UniqueLiteRtCompilerPlugin(dummy_plugin);
 }
 
 TEST(TestDummyPlugin, GetConfigInfo) {
-  ASSERT_STREQ(LrtPluginSocManufacturer(), "ExampleSocManufacturer");
+  ASSERT_STREQ(LiteRtPluginSocManufacturer(), "ExampleSocManufacturer");
 
   auto plugin = GetDummyPlugin();
 
-  ASSERT_EQ(1, LrtPluginNumSupportedSocModels(plugin.get()));
+  ASSERT_EQ(1, LiteRtPluginNumSupportedSocModels(plugin.get()));
 
   const char* soc_model_name;
   ASSERT_STATUS_OK(
-      LrtPluginGetSupportedSocModel(plugin.get(), 0, &soc_model_name));
+      LiteRtPluginGetSupportedSocModel(plugin.get(), 0, &soc_model_name));
   ASSERT_STREQ(soc_model_name, "ExampleSocModel");
 }
 
 TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
   auto plugin = GetDummyPlugin();
-  auto model = lrt::testing::LoadTestFileModel("simple_multi_op.tflite");
+  auto model = litert::testing::LoadTestFileModel("simple_multi_op.tflite");
 
-  LrtOpListT selected_ops;
+  LiteRtOpListT selected_op_list;
   ASSERT_STATUS_OK(
-      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_ops));
+      LiteRtPluginPartitionModel(plugin.get(), model.get(), &selected_op_list));
+  const auto selected_ops = selected_op_list.Vec();
 
-  ASSERT_EQ(selected_ops.ops.size(), 2);
-  ASSERT_EQ(selected_ops.ops[0]->op_code, kLrtOpCodeTflMul);
-  ASSERT_EQ(selected_ops.ops[1]->op_code, kLrtOpCodeTflMul);
+  ASSERT_EQ(selected_ops.size(), 2);
+  ASSERT_EQ(selected_ops[0]->op_code, kLiteRtOpCodeTflMul);
+  ASSERT_EQ(selected_ops[1]->op_code, kLiteRtOpCodeTflMul);
 }
 
 TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   auto plugin = GetDummyPlugin();
-  auto model = lrt::testing::LoadTestFileModel("mul_simple.tflite");
+  auto model = litert::testing::LoadTestFileModel("mul_simple.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
-  LrtCompiledResult compiled;
-  ASSERT_STATUS_OK(LrtPluginCompile(plugin.get(), /*soc_model=*/nullptr,
-                                    &subgraph, 1, &compiled));
+  LiteRtCompiledResult compiled;
+  ASSERT_STATUS_OK(LiteRtPluginCompile(plugin.get(), /*soc_model=*/nullptr,
+                                       &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
   ASSERT_STATUS_OK(
-      LrtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
+      LiteRtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
                                byte_code_size);
@@ -86,13 +87,13 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
   size_t op_data_size;
 
   ASSERT_STATUS_OK(
-      LrtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
+      LiteRtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
 
   std::string op_data_string(reinterpret_cast<const char*>(op_data),
                              op_data_size);
   ASSERT_EQ(op_data_string, "Partition_0");
 
-  LrtCompiledResultDestroy(compiled);
+  LiteRtCompiledResultDestroy(compiled);
 }
 
 }  // namespace

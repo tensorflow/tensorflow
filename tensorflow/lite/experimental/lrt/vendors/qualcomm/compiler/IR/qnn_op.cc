@@ -14,111 +14,111 @@
 
 #include "tensorflow/lite/experimental/lrt/vendors/qualcomm/compiler/IR/qnn_op.h"
 
-#include "third_party/qairt/include/QNN/QnnTypes.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_common.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_model.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_op_code.h"
-#include "tensorflow/lite/experimental/lrt/c/lite_rt_support.h"
-#include "tensorflow/lite/experimental/lrt/cc/lite_rt_op.h"
+#include "third_party/qairt/latest/include/QNN/QnnTypes.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_common.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_model.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_op_code.h"
+#include "tensorflow/lite/experimental/lrt/c/litert_support.h"
+#include "tensorflow/lite/experimental/lrt/cc/litert_op.h"
 
 // A macro dance to create a unique literal string given a prefix.
 #define STRINGIFY(x) #x
 #define QNN_OP_NAME(prefix) STRINGIFY(prefix##__COUNTER)
 
-namespace lrt::qnn {
+namespace litert::qnn {
 
-using ::lrt::LrtOpManager;
+using ::litert::LiteRtOpManager;
 
 namespace {
 
 // Maps "op-code" related information (name, packageName, typeName) from src
 // to dest.
-LrtStatus LegalizeOpType(const LrtOpManager& src, Qnn_OpConfig_t& dest) {
+LiteRtStatus LegalizeOpType(const LiteRtOpManager& src, Qnn_OpConfig_t& dest) {
   switch (src.Code()) {
-    case kLrtOpCodeTflMul:
+    case kLiteRtOpCodeTflMul:
       dest.v1.name = QNN_OP_NAME(mul_);
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseMultiply";
       break;
-    case kLrtOpCodeTflAdd:
+    case kLiteRtOpCodeTflAdd:
       dest.v1.name = QNN_OP_NAME("add");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseAdd";
       break;
-    case kLrtOpCodeTflBatchMatmul:
+    case kLiteRtOpCodeTflBatchMatmul:
       dest.v1.name = QNN_OP_NAME("batch_matmul");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "MatMul";
       break;
-    case kLrtOpCodeTflConcatenation:
+    case kLiteRtOpCodeTflConcatenation:
       dest.v1.name = QNN_OP_NAME("concatenation");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "Concat";
       break;
-    case kLrtOpCodeTflDiv:
+    case kLiteRtOpCodeTflDiv:
       dest.v1.name = QNN_OP_NAME("div");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseDivide";
       break;
-    case kLrtOpCodeTflFullyConnected:
+    case kLiteRtOpCodeTflFullyConnected:
       dest.v1.name = QNN_OP_NAME("fully_connected");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "FullyConnected";
       break;
-    case kLrtOpCodeTflReshape:
+    case kLiteRtOpCodeTflReshape:
       dest.v1.name = QNN_OP_NAME("reshape");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "Reshape";
       break;
-    case kLrtOpCodeTflRsqrt:
+    case kLiteRtOpCodeTflRsqrt:
       dest.v1.name = QNN_OP_NAME("rsqrt");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseRsqrt";
       break;
-    case kLrtOpCodeTflSelectV2:
+    case kLiteRtOpCodeTflSelectV2:
       dest.v1.name = QNN_OP_NAME("select_v2");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseSelect";
       break;
-    case kLrtOpCodeTflSelect:
+    case kLiteRtOpCodeTflSelect:
       dest.v1.name = QNN_OP_NAME("select");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseSelect";
       break;
-    case kLrtOpCodeTflStridedSlice:
+    case kLiteRtOpCodeTflStridedSlice:
       dest.v1.name = QNN_OP_NAME("strided_slice");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "StridedSlice";
       break;
-    case kLrtOpCodeTflSlice:
+    case kLiteRtOpCodeTflSlice:
       dest.v1.name = QNN_OP_NAME("slice");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "StridedSlice";
       break;
-    case kLrtOpCodeTflSoftmax:
+    case kLiteRtOpCodeTflSoftmax:
       dest.v1.name = QNN_OP_NAME("softmax");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "Softmax";
       break;
-    case kLrtOpCodeTflSub:
+    case kLiteRtOpCodeTflSub:
       dest.v1.name = QNN_OP_NAME("sub");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "ElementWiseSubtract";
       break;
-    case kLrtOpCodeTflTanh:
+    case kLiteRtOpCodeTflTanh:
       dest.v1.name = QNN_OP_NAME("tanh");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "Tanh";
       break;
-    case kLrtOpCodeTflTranspose:
+    case kLiteRtOpCodeTflTranspose:
       dest.v1.name = QNN_OP_NAME("transpose");
       dest.v1.packageName = "qti.aisw";
       dest.v1.typeName = "Transpose";
       break;
     default:
-      return kLrtStatusErrorUnsupported;
+      return kLiteRtStatusErrorUnsupported;
   }
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
 }  // namespace
@@ -135,15 +135,15 @@ void ResetOp(Qnn_OpConfig_t& op) {
   op.v1 = QNN_OPCONFIG_V1_INIT;
 }
 
-LrtStatus LegalizeOp(LrtOp src, Qnn_OpConfig_t& dest) {
+LiteRtStatus LegalizeOp(LiteRtOp src, Qnn_OpConfig_t& dest) {
   ResetOp(dest);
 
-  LrtOpManager::Unique src_op;
-  LRT_RETURN_STATUS_IF_NOT_OK(LrtOpManager::MakeFromOp(src, src_op));
+  LiteRtOpManager::Unique src_op;
+  LITERT_RETURN_STATUS_IF_NOT_OK(LiteRtOpManager::MakeFromOp(src, src_op));
 
-  LRT_RETURN_STATUS_IF_NOT_OK(LegalizeOpType(*src_op, dest));
+  LITERT_RETURN_STATUS_IF_NOT_OK(LegalizeOpType(*src_op, dest));
 
-  return kLrtStatusOk;
+  return kLiteRtStatusOk;
 }
 
-}  // namespace lrt::qnn
+}  // namespace litert::qnn
