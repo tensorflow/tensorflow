@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <string>
 #include <utility>
 #include <variant>
@@ -1133,17 +1134,21 @@ std::unique_ptr<HloModule> HloModule::Clone(
 }
 
 absl::Status HloModule::RemoveUnusedComputations() {
-  std::string suffix = "tmp";
-  auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, "-", suffix), config(),
-      std::make_unique<CompilationEnvironments>(*comp_envs_));
-  HloCloneContext context(module.get(), suffix);
-  entry_computation_->Clone(suffix, &context);
-  std::vector<HloComputation*> to_remove;
-  for (auto computation : computations()) {
-    auto found_computation = context.FindComputation(computation);
-    if (found_computation == nullptr) {
-      to_remove.push_back(computation);
+  absl::flat_hash_set<HloComputation*> to_remove(computations().begin(),
+                                                 computations().end());
+  std::stack<HloComputation*> agenda;
+  agenda.push(entry_computation_);
+  to_remove.erase(entry_computation_);
+  while (!agenda.empty()) {
+    HloComputation* computation = agenda.top();
+    agenda.pop();
+    for (HloInstruction* instruction : computation->instructions()) {
+      for (HloComputation* called_computation :
+           instruction->called_computations()) {
+        if (to_remove.erase(called_computation) > 0) {
+          agenda.push(called_computation);
+        }
+      }
     }
   }
   for (auto computation : to_remove) {
