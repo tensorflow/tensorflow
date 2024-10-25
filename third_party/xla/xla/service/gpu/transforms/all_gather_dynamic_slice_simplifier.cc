@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/all_gather_dynamic_slice_simplifier.h"
 
+#include <optional>
+
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_opt_utils.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace xla {
 bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(

@@ -342,8 +342,11 @@ cc_library(
     hdrs = ["all_gather_dynamic_slice_simplifier.h"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms:op_expander_pass",
         "//xla/service:collective_opt_utils",
-        "//xla/service:op_expander_pass",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -355,7 +358,12 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
