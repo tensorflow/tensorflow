@@ -27,6 +27,10 @@ this file with a file generated from [`api_template.__init__.py`](https://www.gi
 """
 # pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import keras
+
 import sysconfig as _sysconfig
 import importlib
 import inspect as _inspect
