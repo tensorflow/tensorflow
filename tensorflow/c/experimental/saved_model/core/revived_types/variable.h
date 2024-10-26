@@ -34,7 +34,7 @@ class Variable : public TensorHandleConvertible {
  public:
   // Creates an uninitialized resource variable. Note that a caller must
   // call "assign" to associate a value with the variable.
-  static Status CreateUninitialized(
+  static absl::Status CreateUninitialized(
       ImmediateExecutionContext* ctx, DataType dtype, TensorShape shape,
       absl::optional<std::string> name, const char* raw_device_name,
       const std::vector<std::string>& component_devices,
@@ -47,10 +47,10 @@ class Variable : public TensorHandleConvertible {
   TensorShape shape();
 
   // Updates the variable's contents with `handle`.
-  Status Assign(ImmediateExecutionTensorHandle* handle);
+  absl::Status Assign(ImmediateExecutionTensorHandle* handle);
 
   // Reads the value of the variable, and stores it in `out`
-  Status ReadValue(ImmediateTensorHandlePtr* out);
+  absl::Status ReadValue(ImmediateTensorHandlePtr* out);
 
   // Variable is movable, but not copyable.
   Variable(Variable&& other) = default;

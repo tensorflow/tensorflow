@@ -54,15 +54,15 @@ class TFConcreteFunction : public ConcreteFunction {
   //  ctx      - A handle to the Tensorflow runtime. This MUST be non-null and
   //             outlive TFConcreteFunction.
   //  out      - The output TFConcreteFunction.
-  static Status Create(const FunctionDef* function_def,
-                       std::vector<ImmediateExecutionTensorHandle*> captures,
-                       FunctionMetadata metadata,
-                       ImmediateExecutionContext* ctx,
-                       std::unique_ptr<TFConcreteFunction>* out);
+  static absl::Status Create(
+      const FunctionDef* function_def,
+      std::vector<ImmediateExecutionTensorHandle*> captures,
+      FunctionMetadata metadata, ImmediateExecutionContext* ctx,
+      std::unique_ptr<TFConcreteFunction>* out);
 
   // This method returns the "Call" Op used to execute the function.
-  Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
-                    ImmediateOpPtr* out) const override;
+  absl::Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                          ImmediateOpPtr* out) const override;
 
   const FunctionMetadata& GetFunctionMetadata() const override;
 

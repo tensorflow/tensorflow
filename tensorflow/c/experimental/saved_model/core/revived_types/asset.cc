@@ -32,10 +32,10 @@ namespace tensorflow {
 Asset::Asset(ImmediateTensorHandlePtr handle)
     : TensorHandleConvertible(std::move(handle)) {}
 
-Status Asset::Create(ImmediateExecutionContext* ctx,
-                     const std::string& saved_model_dir,
-                     const std::string& asset_filename,
-                     std::unique_ptr<Asset>* output) {
+absl::Status Asset::Create(ImmediateExecutionContext* ctx,
+                           const std::string& saved_model_dir,
+                           const std::string& asset_filename,
+                           std::unique_ptr<Asset>* output) {
   std::string abs_path =
       io::JoinPath(saved_model_dir, kSavedModelAssetsDirectory, asset_filename);
   AbstractTensorPtr tensor(ctx->CreateStringScalar(abs_path));
@@ -46,7 +46,7 @@ Status Asset::Create(ImmediateExecutionContext* ctx,
 
   ImmediateTensorHandlePtr handle(ctx->CreateLocalHandle(tensor.get()));
   output->reset(new Asset(std::move(handle)));
-  return Status();
+  return absl::Status();
 }
 
 }  // namespace tensorflow
