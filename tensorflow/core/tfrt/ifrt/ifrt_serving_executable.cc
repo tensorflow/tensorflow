@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -423,9 +424,15 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       .entry_function_name = signature_name(),
       .compile_metadata = compile_metadata,
       .shape_representation_fn = shape_representation_fn_,
+      .platform_name = ifrt_client_->platform_name(),
   };
-  TF_ASSIGN_OR_RETURN(tf2hlo_arg.topology, ifrt_client_->GetTopologyForDevices(
-                                               assigned_device_list_));
+
+  if (tf2hlo_arg.platform_name != xla::CudaName()) {
+    TF_ASSIGN_OR_RETURN(
+        tf2hlo_arg.topology,
+        ifrt_client_->GetTopologyForDevices(assigned_device_list_));
+  }
+
   TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
                       persistent_compilation_cache_->LookupTf2HloResultOrCreate(
                           tf2hlo_arg, assigned_device_list_));

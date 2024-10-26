@@ -127,6 +127,7 @@ TEST(Tf2HloTest, Empty) {
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+      .platform_name = xla::CpuName(),
   };
   auto result = CompileTfToHlo(arg);
 
@@ -180,6 +181,7 @@ TEST(Tf2HloTest, Tuple) {
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+      .platform_name = xla::CpuName(),
   };
 
   auto result = CompileTfToHlo(arg);
@@ -233,6 +235,7 @@ TEST(Tf2HloTest, Spmd) {
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+      .platform_name = xla::CpuName(),
   };
 
   auto result = CompileTfToHlo(arg);
@@ -324,6 +327,7 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+      .platform_name = xla::CpuName(),
   };
 
   auto result = CompileTfToHlo(arg);
@@ -440,6 +444,7 @@ TEST(Tf2HloTest, XlaCallHostCallback) {
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(cpu_topology_ptr),
+      .platform_name = xla::CpuName(),
   };
 
   auto result = CompileTfToHlo(arg);
@@ -497,6 +502,7 @@ TEST(Tf2HloTest, GpuCompile) {
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(
           std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
               xla::CudaId(), xla::CudaName(), /*gpu_topology=*/nullptr)),
+      .platform_name = xla::CudaName(),
   };
 
   auto result = CompileTfToHlo(arg);

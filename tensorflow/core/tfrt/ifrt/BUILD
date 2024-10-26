@@ -164,6 +164,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/pjrt:host_callback",
+        "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt/hlo:hlo_program",
