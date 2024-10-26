@@ -43,9 +43,8 @@ void FillRangeOutput(const Array& start_array, const Array& limit_array,
   CHECK_EQ(buffer.data.size(), output_array->shape().dims()[0]);
 }
 
-::tensorflow::Status ResolveConstantRange::Run(Model* model,
-                                               std::size_t op_index,
-                                               bool* modified) {
+absl::Status ResolveConstantRange::Run(Model* model, std::size_t op_index,
+                                       bool* modified) {
   *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* base_op = it->get();
