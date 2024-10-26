@@ -53,7 +53,7 @@ tfrt::ExecutionContext CreateFallbackTestExecutionContext(
       /*return values=*/{},
       /*attr def=*/{},
       /*node_def=*/{});
-  tensorflow::Status status = eager_context->AddFunctionDef(dummy_function_def);
+  absl::Status status = eager_context->AddFunctionDef(dummy_function_def);
   TF_DCHECK_OK(status);
 
   auto request_id = id.fetch_add(1);
