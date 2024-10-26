@@ -324,7 +324,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
                                      const string& name,
                                      test::function::Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(name, attrs, &handle);
+    absl::Status status = flr->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
       LOG(ERROR) << status;
       return nullptr;
