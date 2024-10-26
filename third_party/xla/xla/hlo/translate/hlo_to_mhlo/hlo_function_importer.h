@@ -71,14 +71,6 @@ class HloFunctionImporter {
       mlir::Builder* builder, bool is_main,
       bool flatten_computation_args_result = false);
 
-  // Imports the given hlo computation to the specified region.
-  //
-  // Flattens the tuple-typed region argument(s) and return value(s).
-  static absl::Status ImportAsRegion(
-      const HloComputation& computation, mlir::SymbolTable& symbol_table,
-      mlir::Region* region, mlir::Builder* builder,
-      bool flatten_computation_args_result = false);
-
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
   static absl::StatusOr<mlir::Value> ImportInstructions(
@@ -86,13 +78,6 @@ class HloFunctionImporter {
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
       bool flatten_computation_args_result = false);
-
-  static absl::StatusOr<mlir::Operation*> ImportInstruction(
-      const HloInstruction* instr,
-      const llvm::SmallVectorImpl<mlir::Value>& operands,
-      mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
-      bool flatten_computation_args_result = false,
-      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
                                llvm::StringRef attr_name);
@@ -172,17 +157,11 @@ class HloFunctionImporter {
   absl::StatusOr<llvm::SmallVector<mlir::Value, 4>> GetOperands(
       const HloInstruction* instruction);
 
-  // Converts xla Tensor type to the corresponding MLIR type.
-  absl::StatusOr<mlir::RankedTensorType> ConvertTensorType(const Shape& shape);
-
   // Converts an XLA shape/layout to the corresponding MLIR layout, in
   // flattened_attr, while flattening the tuple layout.
   absl::Status ConvertShapeToMlirLayout(
       const Shape& shape,
       llvm::SmallVectorImpl<mlir::Attribute>& flattened_attr);
-
-  // Returns the output type of an HloInstruction.
-  absl::StatusOr<mlir::Type> GetReturnType(const HloInstruction* instruction);
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.

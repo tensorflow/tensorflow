@@ -270,15 +270,6 @@ absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
   return importer.ImportAsFunc(computation, is_main);
 }
 
-absl::Status HloFunctionImporter::ImportAsRegion(
-    const HloComputation& computation, mlir::SymbolTable& symbol_table,
-    mlir::Region* region, mlir::Builder* builder,
-    bool flatten_computation_args_result) {
-  HloFunctionImporter importer(symbol_table, {}, builder,
-                               flatten_computation_args_result);
-  return importer.ImportAsRegion(computation, region);
-}
-
 absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     const HloComputation& computation, bool is_main) {
   std::string computation_name =
@@ -578,21 +569,6 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructions(
   HloFunctionImporter importer(symbol_table, {}, builder,
                                flatten_computation_args_result);
   return importer.ImportInstructionsImpl(computation, arguments, builder);
-}
-
-absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
-    const HloInstruction* instr,
-    const llvm::SmallVectorImpl<mlir::Value>& operands,
-    mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
-    bool flatten_computation_args_result, DynamicShapeHandlingMode mode) {
-  mlir::Block* block = builder->getBlock();
-  if (block == nullptr)
-    return InvalidArgument(
-        "ImportInstructions requires a valid block in the builder");
-
-  HloFunctionImporter importer(symbol_table, {}, builder,
-                               flatten_computation_args_result);
-  return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
 absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
