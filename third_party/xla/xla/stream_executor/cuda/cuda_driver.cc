@@ -143,27 +143,6 @@ absl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
   return std::string(path);
 }
 
-absl::Status GpuDriver::GraphConditionalHandleCreate(
-    GpuGraphConditionalHandle* handle, CUgraph graph, Context* context,
-    unsigned int default_launch_value, unsigned int flags) {
-  VLOG(2) << "Create conditional handle for a graph " << graph
-          << "; context: " << context
-          << "; default_launch_value: " << default_launch_value
-          << "; flags: " << flags;
-
-#if CUDA_VERSION >= 12030
-  return cuda::ToStatus(
-      cuGraphConditionalHandleCreate(
-          handle, graph,
-          tensorflow::down_cast<CudaContext*>(context)->context(),
-          default_launch_value, flags),
-      "Failed to create conditional handle for a CUDA graph");
-#else
-  return absl::UnimplementedError(
-      "CUDA graph conditional nodes are not implemented");
-#endif  // CUDA_VERSION >= 12030
-}
-
 static std::string ConditionalTypeToString(
     GpuDriver::GpuGraphConditionalNodeParams::Type type) {
   switch (type) {
