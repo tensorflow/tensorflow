@@ -517,6 +517,11 @@ endif()
 if(TFLITE_ENABLE_XNNPACK)
   find_package(fp16_headers REQUIRED)
   find_package(XNNPACK REQUIRED)
+  set(XNNPACK_NEON_2_SSE "")
+  if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+    find_package(NEON_2_SSE REQUIRED)
+    list(APPEND XNNPACK_NEON_2_SSE NEON_2_SSE::NEON_2_SSE)
+  endif()
   populate_tflite_source_vars("delegates/xnnpack"
     TFLITE_DELEGATES_XNNPACK_SRCS
     FILTER ".*(_test|_tester)\\.(cc|h)"
@@ -543,6 +548,7 @@ if(TFLITE_ENABLE_XNNPACK)
     flatbuffers::flatbuffers
     gemmlowp::gemmlowp
     ruy::ruy
+    ${XNNPACK_NEON_2_SSE}
     )
 
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_KERNEL_USE_XNNPACK")
