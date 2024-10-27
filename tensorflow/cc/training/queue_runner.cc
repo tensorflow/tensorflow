@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/training/queue_runner.h"
 
+#include <memory>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "tensorflow/cc/training/coordinator.h"
@@ -88,8 +90,8 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
     // One more thread to call Stop()
     nthreads++;
   }
-  thread_pool_.reset(new thread::ThreadPool(
-      Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads));
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
+      Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads);
 
   return absl::OkStatus();
 }
@@ -109,7 +111,7 @@ Status QueueRunner::StartAndCollectCostGraph(Session* sess,
 }
 
 Status QueueRunner::Start(Session* sess, int wait_for) {
-  counter_.reset(new BlockingCounter(runs_));
+  counter_ = std::make_unique<BlockingCounter>(runs_);
   for (const string& enqueue_op : enqueue_op_names_) {
     thread_pool_->Schedule(
         std::bind(&QueueRunner::Run, this, sess, enqueue_op));
@@ -229,10 +231,10 @@ Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
 }
 
 void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {
-  cg_mu_.reset(new mutex());
+  cg_mu_ = std::make_unique<mutex>();
   {
     mutex_lock l(*cg_mu_);
-    cost_graph_.reset(new CostGraphDef());
+    cost_graph_ = std::make_unique<CostGraphDef>();
   }
   run_options_ = run_options;
 }

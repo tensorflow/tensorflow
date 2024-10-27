@@ -56,7 +56,7 @@ class QueueRunner : public RunnerInterface {
   void ClearErrorCallbacks();
 
   /// The destructor would join all the threads.
-  ~QueueRunner();
+  ~QueueRunner() override;
 
   /// Starts the queue runner with the given session.
   Status Start(Session* sess);
