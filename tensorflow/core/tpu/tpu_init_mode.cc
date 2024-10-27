@@ -38,7 +38,7 @@ void ForceSetTPUInitMode(const TPUInitMode mode) {
 
 }  // namespace test
 
-Status SetTPUInitMode(const TPUInitMode mode) {
+absl::Status SetTPUInitMode(const TPUInitMode mode) {
   if (mode == TPUInitMode::kNone) {
     return errors::InvalidArgument("State cannot be set to: ",
                                    static_cast<int>(mode));
