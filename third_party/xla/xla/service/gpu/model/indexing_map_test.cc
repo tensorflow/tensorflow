@@ -108,8 +108,8 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "range vars size + rt var size must match the number of symbols in "
-            "the affine map");
+            "range vars size 1 + rt var size 0 must match the number of "
+            "symbols 0 in the affine map");
 }
 
 TEST_F(IndexingMapTest, RTVar) {

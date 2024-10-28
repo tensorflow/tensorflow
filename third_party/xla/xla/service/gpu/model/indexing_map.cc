@@ -1285,8 +1285,11 @@ bool IndexingMap::Verify(std::ostream& out) const {
     return false;
   }
   if (affine_map_.getNumSymbols() != range_vars_.size() + rt_vars_.size()) {
-    out << "range vars size + rt var size must match the number of "
-           "symbols in the affine map";
+    out << "range vars size " << range_vars_.size() << " + rt var size "
+        << rt_vars_.size()
+        << " must match the number of "
+           "symbols "
+        << affine_map_.getNumSymbols() << " in the affine map";
     return false;
   }
   return true;
