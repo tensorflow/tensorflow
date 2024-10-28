@@ -1637,6 +1637,30 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfServiceHasStopped) {
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
 }
 
+TEST_F(CoordinateTwoTasksTest,
+       BarrierWithParticipatingTasksFailsIfServiceHasStopped) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  absl::Notification n0;
+  absl::Status barrier_status;
+  // No heartbeat for a while, leader consider the task as stale.
+  // As no error propagation is available, service stops.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+
+  // Barrier should fail when called after service stops.
+  coord_service_->BarrierAsync("barrier_id", absl::Seconds(5), task_0_,
+                               /*participating_tasks=*/{task_0_},
+                               [&](absl::Status s) {
+                                 barrier_status = s;
+                                 n0.Notify();
+                               });
+
+  n0.WaitForNotification();
+  EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
+}
+
 TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
   EnableCoordinationService(/*has_service_to_client_connection=*/false);
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));

@@ -1286,13 +1286,6 @@ bool CoordinationServiceStandaloneImpl::ValidateBarrierArgs(
     absl::Status error = MakeCoordinationError(absl::InvalidArgumentError(
         absl::StrCat("A non-participating task (", GetTaskName(task),
                      ") called the barrier: ", barrier_id)));
-    // Check if coordination service has stopped. If so, return an error
-    // immediately.
-    if (ServiceHasStopped()) {
-      done(MakeCoordinationError(absl::InternalError(
-          "Barrier requested after coordination service has shut down.")));
-      return false;
-    }
     auto pair = barriers_.try_emplace(barrier_id);
     auto it = pair.first;
     auto* barrier = &it->second;
@@ -1394,17 +1387,17 @@ void CoordinationServiceStandaloneImpl::BarrierAsyncLocked(
   VLOG(3) << "Task " << GetTaskName(task) << " invoked BarrierAsync("
           << barrier_id << ").";
 
-  if (!ValidateBarrierArgs(barrier_id, timeout, task, participating_tasks,
-                           done)) {
-    return;  // Exit early if args are wrong.
-  }
-
   // Check if coordination service has stopped. If so, return an error
   // immediately.
   if (ServiceHasStopped()) {
     done(MakeCoordinationError(absl::InternalError(
         "Barrier requested after coordination service has shut down.")));
     return;
+  }
+
+  if (!ValidateBarrierArgs(barrier_id, timeout, task, participating_tasks,
+                           done)) {
+    return;  // Exit early if args are wrong.
   }
 
   auto pair = barriers_.try_emplace(barrier_id);
