@@ -48,6 +48,11 @@ class GpuCommandBuffer : public CommandBuffer {
   // GraphNodeHandle defined below.
   struct GraphNodeHandleOpaque;
 
+  // GraphConditionalOpaque is an opaque type that won't be ODR used, hence
+  // doesn't need to fully defined. It's an implementation detail of the
+  // GraphConditionalHandle defined below.
+  struct GraphConditionalOpaque;
+
  public:
   // A graph node handle is an opaque handle that identifies a graph node in the
   // graph associated with a command buffer. GraphNodeHandles are created by
@@ -56,6 +61,14 @@ class GpuCommandBuffer : public CommandBuffer {
   // nullptr, trivial copyable, POD, etc.), that's why we use a pointer to
   // define it.
   using GraphNodeHandle = GraphNodeHandleOpaque*;
+
+  // A graph conditional handle is an opaque handle that is tied to a nested
+  // command buffer. Its value determines whether the nested command buffer is
+  // executed or not. Set condition functions will update the conditional
+  // handles values. The handle has the same properties as a pointer (can be
+  // constructed from a nullptr, trivially copyable, POD, etc.), that's why we
+  // use a pointer to define it.
+  using GraphConditionalHandle = GraphConditionalOpaque*;
 
   // A handle to a Gpu graph node and a metadata describing its properties. Each
   // command (launch, memcpy, etc.) creates one or more graph nodes.
@@ -197,12 +210,12 @@ class GpuCommandBuffer : public CommandBuffer {
  private:
   // A callback to launch a kernel that updates conditional handles state.
   using SetConditionFn = std::function<absl::Status(
-      ExecutionScopeId, absl::Span<const GpuGraphConditionalHandle>)>;
+      ExecutionScopeId, absl::Span<const GraphConditionalHandle>)>;
 
   // An extension of `Builder` for building conditional command buffers tied to
   // conditional handles.
   using ConditionBuilder =
-      std::function<absl::Status(CommandBuffer*, GpuGraphConditionalHandle)>;
+      std::function<absl::Status(CommandBuffer*, GraphConditionalHandle)>;
 
   // Wraps a regular command buffer builder into condition builder.
   static ConditionBuilder ToConditionBuilder(Builder builder);
@@ -226,29 +239,29 @@ class GpuCommandBuffer : public CommandBuffer {
   // For each conditional node in the Gpu graph we keep a record of conditional
   // command buffers attached to a node, so we can apply updates to them.
   struct ConditionalCommandBuffers {
-    std::vector<GpuGraphConditionalHandle> handles;
+    std::vector<GraphConditionalHandle> conditionals;
     std::vector<std::unique_ptr<GpuCommandBuffer>> command_buffers;
   };
 
   using AllocationResult = std::pair<GpuDevicePtr, uint64_t>;
 
-  absl::StatusOr<std::vector<GpuGraphConditionalHandle>>
-  CreateConditionalHandles(size_t num_handles);
+  absl::StatusOr<std::vector<GraphConditionalHandle>> CreateConditionalHandles(
+      size_t num_handles);
 
   absl::StatusOr<std::vector<std::unique_ptr<GpuCommandBuffer>>>
   CreateConditionalCommandBuffers(
-      absl::Span<const GpuGraphConditionalHandle> handles,
+      absl::Span<const GraphConditionalHandle> conditionals,
       absl::Span<const GpuGraphHandle> graphs,
       absl::Span<const ConditionBuilder> builders);
 
   absl::Status UpdateConditionalCommandBuffers(
-      absl::Span<const GpuGraphConditionalHandle> handles,
+      absl::Span<const GraphConditionalHandle> handles,
       absl::Span<const std::unique_ptr<GpuCommandBuffer>> command_buffers,
       absl::Span<const ConditionBuilder> builders);
 
   absl::StatusOr<std::vector<GpuGraphHandle>> CreateConditionalNodes(
       ExecutionScopeId execution_scope_id, ConditionType type,
-      absl::Span<const GpuGraphConditionalHandle> handles);
+      absl::Span<const GraphConditionalHandle> conditionals);
 
   absl::Status CreateConditionalCommand(
       ExecutionScopeId execution_scope_id, ConditionType type,
@@ -428,6 +441,9 @@ class GpuCommandBuffer : public CommandBuffer {
   // This gets called at the beginning of `Finalize` and allows subclasses to
   // perform any necessary preparation before the graph is finalized.
   virtual absl::Status PrepareFinalization() = 0;
+
+  // Create a new conditional handle in the underlying graph.
+  virtual absl::StatusOr<GraphConditionalHandle> CreateConditionalHandle() = 0;
 };
 
 }  // namespace stream_executor::gpu
