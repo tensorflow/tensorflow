@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -216,6 +217,60 @@ absl::Status CudaCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
       cuGraphExecMemsetNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
                                      &params, cuda_context->context()),
       "Failed to set memset node params");
+}
+
+absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMemcpyD2DNode(
+    const Dependencies& dependencies, DeviceMemoryBase destination,
+    DeviceMemoryBase source, uint64_t size) {
+  CudaContext* cuda_context =
+      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
+  VLOG(2) << "Add memcpy d2d node to a graph " << graph_
+          << "; dst: " << destination.opaque() << "; src: " << source.opaque()
+          << "; size: " << size << "; context: " << cuda_context->context()
+          << "; deps: " << dependencies.size();
+
+  CUDA_MEMCPY3D params{};
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = AsDevicePtr(source);
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = AsDevicePtr(destination);
+  params.WidthInBytes = size;
+  params.Height = 1;
+  params.Depth = 1;
+
+  std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+
+  CUgraphNode node_handle = nullptr;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddMemcpyNode(&node_handle, graph_, deps.data(), deps.size(),
+                           &params, cuda_context->context()),
+      "Failed to add memcpy d2d node to a CUDA graph"));
+  return FromCudaGraphHandle(node_handle);
+}
+
+absl::Status CudaCommandBuffer::UpdateMemcpyD2DNode(
+    GraphNodeHandle node_handle, DeviceMemoryBase destination,
+    DeviceMemoryBase source, uint64_t size) {
+  CudaContext* cuda_context =
+      tensorflow::down_cast<CudaContext*>(parent_->gpu_context());
+  VLOG(2) << "Set memcpy d2d node params " << node_handle
+          << " in graph executable " << exec_
+          << "; dst: " << destination.opaque() << "; src: " << source.opaque()
+          << "; size: " << size << "; context: " << cuda_context->context();
+
+  CUDA_MEMCPY3D params{};
+  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.srcDevice = AsDevicePtr(source);
+  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
+  params.dstDevice = AsDevicePtr(destination);
+  params.WidthInBytes = size;
+  params.Height = 1;
+  params.Depth = 1;
+
+  return cuda::ToStatus(
+      cuGraphExecMemcpyNodeSetParams(exec_, ToCudaGraphHandle(node_handle),
+                                     &params, cuda_context->context()),
+      "Failed to set memcpy d2d node params");
 }
 
 }  // namespace stream_executor::gpu

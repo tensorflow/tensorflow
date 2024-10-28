@@ -379,6 +379,16 @@ class GpuCommandBuffer : public CommandBuffer {
                                         DeviceMemoryBase destination,
                                         BitPattern bit_pattern,
                                         size_t num_elements) = 0;
+
+  // Adds a new memcpy node to the graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) = 0;
+
+  virtual absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
+                                           DeviceMemoryBase destination,
+                                           DeviceMemoryBase source,
+                                           uint64_t size) = 0;
 };
 
 }  // namespace stream_executor::gpu

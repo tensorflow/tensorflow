@@ -371,35 +371,6 @@ absl::Status GpuDriver::GraphAddChildNode(hipGraphNode_t* node,
                   "Failed to set HIP graph child node params");
 }
 
-absl::Status GpuDriver::GraphAddMemcpyD2DNode(
-    Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-    absl::Span<const GpuGraphNodeHandle> deps, hipDeviceptr_t gpu_dst,
-    hipDeviceptr_t gpu_src, uint64_t size) {
-  VLOG(2) << "Add memcpy d2d node to a graph " << graph
-          << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context << "; deps: " << deps.size();
-
-  return ToStatus(wrap::hipGraphAddMemcpyNode1D(node, graph, deps.data(),
-                                                deps.size(), gpu_dst, gpu_src,
-                                                size, hipMemcpyDeviceToDevice),
-                  "Failed to add memcpy d2d node to a HIP graph");
-}
-
-absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src, uint64_t size) {
-  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
-          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context;
-
-  return ToStatus(
-      wrap::hipGraphExecMemcpyNodeSetParams1D(exec, node, gpu_dst, gpu_src,
-                                              size, hipMemcpyDeviceToDevice),
-      "Failed to set memcpy d2d node params");
-}
-
 int GpuDriver::GetDeviceCount() {
   int device_count = 0;
   hipError_t res = wrap::hipGetDeviceCount(&device_count);

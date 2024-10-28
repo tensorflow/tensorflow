@@ -242,19 +242,6 @@ class GpuDriver {
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
 
-  // Creates a memcpy node and adds it to a graph.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
-  static absl::Status GraphAddMemcpyD2DNode(
-      Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
-      absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
-      GpuDevicePtr gpu_src, uint64_t size);
-
-  // Sets the parameters for a memcpy node in the given graphExec.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g26186d58858ab32ccc7425b53786cce5
-  static absl::Status GraphExecMemcpyD2DNodeSetParams(
-      Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-      GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size);
-
   // Creates a child graph node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gde52afbcf91a8c79d4d7efbe0e3b6844
   static absl::Status GraphAddChildNode(

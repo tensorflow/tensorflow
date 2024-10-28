@@ -158,10 +158,6 @@ GpuCommandBuffer::ScopedGpuGraphExec::~ScopedGpuGraphExec() {
   cmd_buffer->is_owned_graph_exec_ = restore_is_owned;
 }
 
-static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
-  return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
-}
-
 // Converts a platform independent GraphNodeHandle into a platform specific
 // GpuGraphNodeHandle. This function will be removed once all
 // Node factory functions have been migrated into the subclasses.
@@ -579,22 +575,15 @@ absl::Status GpuCommandBuffer::MemcpyDeviceToDevice(
 
   if (state_ == State::kCreate) {
     Dependencies barrier = GetBarrier(execution_scope_id);
-    GpuGraphNodeHandle node_handle = nullptr;
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddMemcpyD2DNode(
-        parent_->gpu_context(), &node_handle, graph_,
-        ToPlatformSpecificHandles(barrier), AsDevicePtr(*dst), AsDevicePtr(src),
-        size));
-    execution_scope.nodes.emplace_back().handle =
-        FromPlatformSpecificHandle(node_handle);
+    TF_ASSIGN_OR_RETURN(execution_scope.nodes.emplace_back().handle,
+                        CreateMemcpyD2DNode(barrier, *dst, src, size));
     return absl::OkStatus();
   }
 
   if (state_ == State::kUpdate) {
     GraphNodeHandle node =
         execution_scope.nodes[execution_scope.update_state.node_idx++].handle;
-    return GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-        parent_->gpu_context(), exec_, ToPlatformSpecificHandle(node),
-        AsDevicePtr(*dst), AsDevicePtr(src), size);
+    return UpdateMemcpyD2DNode(node, *dst, src, size);
   }
 
   return UnsupportedStateError(state_);

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_COMMAND_BUFFER_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -63,6 +64,15 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                 DeviceMemoryBase destination,
                                 BitPattern bit_pattern,
                                 size_t num_elements) override;
+
+  absl::StatusOr<GraphNodeHandle> CreateMemcpyD2DNode(
+      const Dependencies& dependencies, DeviceMemoryBase destination,
+      DeviceMemoryBase source, uint64_t size) override;
+
+  absl::Status UpdateMemcpyD2DNode(GraphNodeHandle node_handle,
+                                   DeviceMemoryBase destination,
+                                   DeviceMemoryBase source,
+                                   uint64_t size) override;
 
   GpuExecutor* parent_;
 };

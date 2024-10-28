@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_command_buffer.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -172,6 +173,41 @@ absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
   return ToStatus(wrap::hipGraphExecMemsetNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), &params),
                   "Failed to set memset node params");
+}
+
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
+    const Dependencies& dependencies, DeviceMemoryBase destination,
+    DeviceMemoryBase source, uint64_t size) {
+  VLOG(2) << "Add memcpy d2d node to a graph " << graph_
+          << "; dst: " << destination.opaque() << "; src: " << source.opaque()
+          << "; size: " << size << "; context: " << parent_->gpu_context()
+          << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(ToStatus(
+      wrap::hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
+                                    deps.size(), AsDevicePtr(destination),
+                                    AsDevicePtr(source), size,
+                                    hipMemcpyDeviceToDevice),
+      "Failed to add memcpy d2d node to a HIP graph"));
+  return FromHipGraphHandle(node_handle);
+}
+
+absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
+    GraphNodeHandle node_handle, DeviceMemoryBase destination,
+    DeviceMemoryBase source, uint64_t size) {
+  VLOG(2) << "Set memcpy d2d node params " << node_handle
+          << " in graph executable " << exec_
+          << "; dst: " << destination.opaque() << "; src: " << source.opaque()
+          << "; size: " << size;
+
+  return ToStatus(
+      wrap::hipGraphExecMemcpyNodeSetParams1D(
+          exec_, ToHipGraphHandle(node_handle), AsDevicePtr(destination),
+          AsDevicePtr(source), size, hipMemcpyDeviceToDevice),
+      "Failed to set memcpy d2d node params");
 }
 
 }  // namespace stream_executor::gpu

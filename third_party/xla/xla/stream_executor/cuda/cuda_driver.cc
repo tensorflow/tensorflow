@@ -456,59 +456,6 @@ absl::Status GpuDriver::GraphAddKernelNode(
                         "Failed to set CUDA graph kernel node params");
 }
 
-absl::Status GpuDriver::GraphAddMemcpyD2DNode(
-    Context* context, CUgraphNode* node, CUgraph graph,
-    absl::Span<const CUgraphNode> deps, CUdeviceptr gpu_dst,
-    CUdeviceptr gpu_src, uint64_t size) {
-  CudaContext* cuda_context = tensorflow::down_cast<CudaContext*>(context);
-  VLOG(2) << "Add memcpy d2d node to a graph " << graph
-          << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << cuda_context->context()
-          << "; deps: " << deps.size();
-
-  CUDA_MEMCPY3D params;
-  memset(&params, 0, sizeof(params));
-
-  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
-  params.srcDevice = gpu_src;
-  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
-  params.dstDevice = gpu_dst;
-  params.WidthInBytes = size;
-  params.Height = 1;
-  params.Depth = 1;
-
-  return cuda::ToStatus(
-      cuGraphAddMemcpyNode(node, graph, deps.data(), deps.size(), &params,
-                           cuda_context->context()),
-      "Failed to add memcpy d2d node to a CUDA graph");
-}
-
-absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
-    CUdeviceptr gpu_dst, CUdeviceptr gpu_src, uint64_t size) {
-  CudaContext* gpu_context = tensorflow::down_cast<CudaContext*>(context);
-  VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
-          << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
-          << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << gpu_context->context();
-
-  CUDA_MEMCPY3D params;
-  memset(&params, 0, sizeof(params));
-
-  params.srcMemoryType = CU_MEMORYTYPE_DEVICE;
-  params.srcDevice = gpu_src;
-  params.dstMemoryType = CU_MEMORYTYPE_DEVICE;
-  params.dstDevice = gpu_dst;
-  params.WidthInBytes = size;
-  params.Height = 1;
-  params.Depth = 1;
-
-  return cuda::ToStatus(cuGraphExecMemcpyNodeSetParams(exec, node, &params,
-                                                       gpu_context->context()),
-                        "Failed to set memcpy d2d node params");
-}
-
 absl::Status GpuDriver::GraphAddChildNode(CUgraphNode* node, CUgraph graph,
                                           absl::Span<const CUgraphNode> deps,
                                           CUgraph child) {
