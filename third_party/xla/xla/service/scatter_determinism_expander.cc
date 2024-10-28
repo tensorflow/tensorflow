@@ -193,10 +193,7 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
   // Calculate the number of iterations needed (log_2(n))
   int64_t log_n = Log2Ceiling(static_cast<uint64_t>(num_updates));
 
-  // Start to traverse
-  HloInstruction* prev_updates = updates;
-  HloInstruction* prev_indices = indices;
-  HloInstruction* new_updates = nullptr;
+  HloInstruction* current_updates = updates;
 
   std::vector<int64_t> start_indices = {0};
   std::vector<int64_t> strides = {1};
@@ -216,7 +213,7 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
         ShapeUtil::MakeShape(indices_shape.element_type(), {offset});
 
     auto* shifted_updates = parent->AddInstruction(
-        HloInstruction::CreateSlice(shifted_updates_shape, prev_updates,
+        HloInstruction::CreateSlice(shifted_updates_shape, current_updates,
                                     start_indices, end_indices, strides));
     auto* padding_updates =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
@@ -225,9 +222,8 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
                 LiteralUtil::CreateR0(updates_shape.element_type(), 0))),
             {}));
 
-    auto* shifted_indices = parent->AddInstruction(
-        HloInstruction::CreateSlice(shifted_indices_shape, prev_indices,
-                                    start_indices, end_indices, strides));
+    auto* shifted_indices = parent->AddInstruction(HloInstruction::CreateSlice(
+        shifted_indices_shape, indices, start_indices, end_indices, strides));
     auto* padding_indices =
         parent->AddInstruction(HloInstruction::CreateBroadcast(
             padding_indices_shape,
@@ -243,18 +239,17 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
             indices_shape, {padding_indices, shifted_indices}, 0));
 
     auto* indices_mask = parent->AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {num_updates}), prev_indices,
+        ShapeUtil::MakeShape(PRED, {num_updates}), indices,
         concatenated_indices, ComparisonDirection::kEq));
-    std::vector<HloInstruction*> map_operands = {prev_updates,
+    std::vector<HloInstruction*> map_operands = {current_updates,
                                                  concatenated_updates};
     TF_ASSIGN_OR_RETURN(HloInstruction * reduced_updates,
                         MakeMapHlo(map_operands, to_apply));
-    new_updates = parent->AddInstruction(HloInstruction::CreateTernary(
+    current_updates = parent->AddInstruction(HloInstruction::CreateTernary(
         updates_shape, HloOpcode::kSelect, indices_mask, reduced_updates,
-        prev_updates));
-    prev_updates = new_updates;
+        current_updates));
   }
-  return new_updates;
+  return current_updates;
 }
 
 absl::StatusOr<std::vector<HloInstruction*>> ComputePrefixScan(
@@ -262,14 +257,17 @@ absl::StatusOr<std::vector<HloInstruction*>> ComputePrefixScan(
     HloInstruction* sorted_scalar_indices, HloScatterInstruction* scatter,
     HloComputation* parent) {
   std::vector<HloInstruction*> prefix_scans(sorted_updates.size());
+  HloInstruction* prefix_scan_update = nullptr;
   for (int i = 0; i < sorted_updates.size(); i++) {
     // TODO(chenhao) change to use the extracted computation
     TF_ASSIGN_OR_RETURN(
         HloComputation * to_apply,
         CallComputationAndGetIthOutputWithBinaryParams(scatter->to_apply(), i));
-    TF_ASSIGN_OR_RETURN(prefix_scans[i],
+    TF_ASSIGN_OR_RETURN(prefix_scan_update,
                         CreateScanWithIndices(parent, sorted_updates[i],
                                               sorted_scalar_indices, to_apply));
+    CHECK(prefix_scan_update != nullptr) << i << "th update is nullptr";
+    prefix_scans[i] = prefix_scan_update;
   }
   return prefix_scans;
 }
@@ -378,6 +376,9 @@ absl::StatusOr<HloInstruction*> ScatterDeterminismExpander::ExpandInstruction(
 
   HloInstruction* last_occurrence_indices = FindLastOccurrenceIndices(
       scatter_indices, sorted_scalar_indices, scatter, parent, num_indices);
+
+  CHECK(last_occurrence_indices != nullptr)
+      << "Last occurrence indices should not be nullptr";
 
   // Finally, recreate the scatter instruction with unique indices
   return parent->AddInstruction(HloInstruction::CreateScatter(
