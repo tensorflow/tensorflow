@@ -409,4 +409,10 @@ absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
       "Failed to set HIP graph node enabled flag");
 }
 
+absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
+  VLOG(3) << "Launch command buffer executable graph " << exec_
+          << " on a stream: " << stream;
+  return ToStatus(wrap::hipGraphLaunch(exec_, AsGpuStreamValue(stream)),
+                  "Failed to launch HIP graph");
+}
 }  // namespace stream_executor::gpu

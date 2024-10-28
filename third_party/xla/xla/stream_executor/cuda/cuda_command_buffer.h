@@ -105,6 +105,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                        CommandBuffer& root_command_buffer,
                                        bool enabled) override;
 
+  absl::Status LaunchGraph(Stream* stream) override;
+
   // Lazy loaded auxiliary kernels required for building CUDA graphs (no-op
   // barriers, updating conditional handles, etc.).
   SetIfConditionKernel set_if_condition_kernel_;

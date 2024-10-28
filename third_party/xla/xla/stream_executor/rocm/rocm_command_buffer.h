@@ -103,6 +103,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                        CommandBuffer& root_command_buffer,
                                        bool enabled) override;
 
+  absl::Status LaunchGraph(Stream* stream) override;
+
   GpuExecutor* parent_;
 };
 

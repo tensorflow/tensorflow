@@ -78,14 +78,6 @@ absl::Status GpuDriver::GraphInstantiate(hipGraphExec_t* exec, hipGraph_t graph,
                   "Failed to instantiate HIP graph");
 }
 
-absl::Status GpuDriver::GraphLaunch(hipGraphExec_t exec,
-                                    GpuStreamHandle stream) {
-  VLOG(2) << "Launching HIP executable graph " << exec << " on a stream "
-          << stream;
-  return ToStatus(wrap::hipGraphLaunch(exec, stream),
-                  "Failed to launch HIP graph");
-}
-
 absl::Status GpuDriver::GraphExecUpdate(hipGraphExec_t exec, hipGraph_t graph,
                                         GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update HIP graph executable " << exec << " with graph " << graph;

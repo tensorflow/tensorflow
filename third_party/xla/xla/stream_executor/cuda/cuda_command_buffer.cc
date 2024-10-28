@@ -487,4 +487,10 @@ absl::Status CudaCommandBuffer::SetNodeExecutionEnabled(
       "Failed to set CUDA graph node enabled flag");
 }
 
+absl::Status CudaCommandBuffer::LaunchGraph(Stream* stream) {
+  VLOG(3) << "Launch command buffer executable graph " << exec_
+          << " on a stream: " << stream;
+  return cuda::ToStatus(cuGraphLaunch(exec_, AsGpuStreamValue(stream)),
+                        "Failed to launch CUDA graph");
+}
 }  // namespace stream_executor::gpu

@@ -418,6 +418,9 @@ class GpuCommandBuffer : public CommandBuffer {
   virtual absl::Status SetNodeExecutionEnabled(
       GraphNodeHandle node_handle, CommandBuffer& root_command_buffer,
       bool enabled) = 0;
+
+  // Launches an instantiated graph. Only supported on primary command buffers.
+  virtual absl::Status LaunchGraph(Stream* stream) = 0;
 };
 
 }  // namespace stream_executor::gpu

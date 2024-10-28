@@ -181,7 +181,6 @@ gpu_only_cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
-        ":gpu_stream",
         ":gpu_types_header",
         "//xla:util",
         "//xla/stream_executor:bit_pattern",

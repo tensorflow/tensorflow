@@ -96,13 +96,6 @@ absl::Status GpuDriver::GraphInstantiate(CUgraphExec* exec, CUgraph graph,
 #endif  // CUDA_VERSION >= 12000
 }
 
-absl::Status GpuDriver::GraphLaunch(CUgraphExec exec, CUstream stream) {
-  VLOG(2) << "Launching CUDA executable graph " << exec << " on a stream "
-          << stream;
-  return cuda::ToStatus(cuGraphLaunch(exec, stream),
-                        "Failed to launch CUDA graph");
-}
-
 absl::Status GpuDriver::GraphExecUpdate(CUgraphExec exec, CUgraph graph,
                                         GraphExecUpdateResultInfo* result) {
   VLOG(2) << "Update CUDA graph executable " << exec << " with graph " << graph;

@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -981,9 +980,7 @@ absl::Status GpuCommandBuffer::Submit(Stream* stream) {
         "Can't submit non-primary command buffer for execution");
   }
 
-  VLOG(3) << "Launch command buffer executable graph " << exec_
-          << " on a stream: " << stream;
-  return GpuDriver::GraphLaunch(exec_, AsGpuStreamValue(stream));
+  return LaunchGraph(stream);
 }
 
 }  // namespace stream_executor::gpu
